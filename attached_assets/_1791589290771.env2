@@ -1,0 +1,19 @@
+PORT=3001
+FRONTEND_URL=https://localhost:5173
+FACEBOOK_APP_ID=1399522178499844
+FACEBOOK_APP_SECRET=f47f90e883433f8bb96312703d9b62be
+FACEBOOK_REDIRECT_URI=https://localhost:3001/auth/facebook/callback
+FACEBOOK_GRAPH_VERSION=v26.0
+DATABASE_URL=postgresql://postgres:Maeen123@localhost:5432/facebook_connector
+SESSION_SECRET=4f8bcb5e865641b1e85347669d5fb85d84ae899b973c9f15248aacd59e9cef2b
+ENCRYPTION_KEY=ee80f5c57795f7591b566c5161931b82c6d62f50090a0e454bb101a9be5f000a
+WHATSAPP_EVOLUTION_BASE_URL=http://localhost:8081
+# Global Evolution API key; backend-only, never sent to the frontend.
+WHATSAPP_EVOLUTION_API_KEY=MaeenEvolution2026
+WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL=https://host.docker.internal:3001
+# Select "openai" or "gemini". AI keys are backend-only.
+WHATSAPP_AI_PROVIDER=gemini
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_API_KEY=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
+GEMINI_API_KEY=AQ.Ab8RN6JA70HYSDeXZZUU0qJqvapLv9rd5ztwi790ROlA7WQf9g
+GEMINI_MODEL=gemini-2.5-flash

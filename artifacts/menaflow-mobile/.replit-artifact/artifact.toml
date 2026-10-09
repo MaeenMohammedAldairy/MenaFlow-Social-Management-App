@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/menaflow-mobile/"
+title = "MenaFlow Mobile"
+description = "An Arabic-first social commerce and content management app for Android and iOS, bringing connected social accounts, AI-assisted product content, publishing approvals, customer activity, and business insights together."
+version = "1.0.0"
+id = "artifacts/menaflow-mobile"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/menaflow-mobile/" ]
+localPort = 23932
+
+[services.development]
+run = "pnpm --filter @workspace/menaflow-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/menaflow-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/menaflow-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "23932"
+BASE_PATH = "/menaflow-mobile/"
