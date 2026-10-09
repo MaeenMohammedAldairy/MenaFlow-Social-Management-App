@@ -1,16 +1,28 @@
 {
   "expo": {
-    "name": "MenaFlow Mobile",
+    "name": "MenaFlow",
     "slug": "menaflow-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "menaflow-mobile",
     "userInterfaceStyle": "automatic",
-    "ios": {
-      "supportsTablet": false
+    "splash": {
+      "backgroundColor": "#F2FBFA",
+      "image": "./assets/images/icon.png",
+      "resizeMode": "contain"
     },
-    "android": {},
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.menaflow.mobile"
+    },
+    "android": {
+      "package": "com.menaflow.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#F2FBFA"
+      }
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },

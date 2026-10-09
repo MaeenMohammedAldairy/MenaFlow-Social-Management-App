@@ -13,6 +13,8 @@ import {
 } from '@expo-google-fonts/inter';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StudioProvider } from '@/context/StudioContext';
+import { Platform, I18nManager } from 'react-native';
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -23,6 +25,7 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerBackTitle: 'Back' }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="compose" options={{ headerShown: false, presentation: 'modal' }} />
     </Stack>
   );
 }
@@ -41,6 +44,13 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' && !I18nManager.isRTL) {
+      I18nManager.allowRTL(true);
+      I18nManager.forceRTL(true);
+    }
+  }, []);
+
   if (!fontsLoaded && !fontError) return null;
 
   return (
@@ -49,7 +59,9 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView>
             <KeyboardProvider>
-              <RootLayoutNav />
+              <StudioProvider>
+                <RootLayoutNav />
+              </StudioProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>

@@ -18,8 +18,25 @@ function NativeTabLayout() {
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Icon
           sf={{ default: 'house', selected: 'house.fill' }}
+          md="home"
         />
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>الرئيسية</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="content">
+        <NativeTabs.Trigger.Icon sf="doc.text" md="article" />
+        <NativeTabs.Trigger.Label>المحتوى</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="sources">
+        <NativeTabs.Trigger.Icon sf="point.3.connected.trianglepath.dotted" md="hub" />
+        <NativeTabs.Trigger.Label>المصادر</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="reports">
+        <NativeTabs.Trigger.Icon sf="chart.bar" md="bar_chart" />
+        <NativeTabs.Trigger.Label>التقارير</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="settings">
+        <NativeTabs.Trigger.Icon sf="gearshape" md="settings" />
+        <NativeTabs.Trigger.Label>الإعدادات</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -37,7 +54,7 @@ function ClassicTabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
-        headerShown: true,
+        headerShown: false,
         tabBarStyle: {
           position: 'absolute',
           backgroundColor: isIOS ? 'transparent' : colors.background,
@@ -66,7 +83,7 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: 'الرئيسية',
           tabBarIcon: ({ color }) =>
             isIOS ? (
               <SymbolView name="house" tintColor={color} size={24} />
@@ -75,6 +92,10 @@ function ClassicTabLayout() {
             ),
         }}
       />
+      <Tabs.Screen name="content" options={{ title: 'المحتوى', tabBarIcon: ({ color }) => <Feather name="file-text" size={21} color={color} /> }} />
+      <Tabs.Screen name="sources" options={{ title: 'المصادر', tabBarIcon: ({ color }) => <Feather name="share-2" size={21} color={color} /> }} />
+      <Tabs.Screen name="reports" options={{ title: 'التقارير', tabBarIcon: ({ color }) => <Feather name="bar-chart-2" size={21} color={color} /> }} />
+      <Tabs.Screen name="settings" options={{ title: 'الإعدادات', tabBarIcon: ({ color }) => <Feather name="settings" size={21} color={color} /> }} />
     </Tabs>
   );
 }

@@ -1,0 +1,160 @@
+import { Feather } from '@expo/vector-icons';
+import React from 'react';
+import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useColors } from '@/hooks/useColors';
+import { useStudio } from '@/context/StudioContext';
+
+export function Page({ children, scroll = true }: { children: React.ReactNode; scroll?: boolean }) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const { storageError } = useStudio();
+  const content = (
+    <View style={[styles.pageContent, { paddingTop: Platform.OS === 'web' ? Math.max(insets.top, 67) + 8 : insets.top + 8, paddingBottom: Platform.OS === 'web' ? 112 : 112 + insets.bottom }]}>
+      {storageError ? <View style={[styles.errorBanner, { backgroundColor: colors.secondary }]}><Text style={[styles.errorText, { color: colors.destructive }]}>{storageError}</Text></View> : null}
+      {children}
+    </View>
+  );
+  return (
+    <View style={[styles.page, { backgroundColor: colors.background }]}>
+      {scroll ? (
+        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          {content}
+        </ScrollView>
+      ) : content}
+    </View>
+  );
+}
+
+export function BrandHeader({ showBell = false }: { showBell?: boolean }) {
+  const colors = useColors();
+  return (
+    <View style={styles.brandHeader}>
+      {showBell ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="الإشعارات" testID="notifications-button" onPress={() => Alert.alert('الإشعارات', 'لا توجد إشعارات جديدة.')} style={styles.iconOnly}>
+          <Feather name="bell" size={21} color={colors.foreground} />
+          <View style={[styles.notificationDot, { backgroundColor: colors.primary }]} />
+        </Pressable>
+      ) : <View style={styles.headerSpacer} />}
+      <View style={styles.brandLockup}>
+        <Image source={require('../assets/images/icon.png')} style={styles.brandMark} />
+        <Text style={[styles.brandName, { color: colors.foreground }]}>MenaFlow</Text>
+      </View>
+      <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
+        <Feather name="user" size={17} color={colors.primary} />
+      </View>
+    </View>
+  );
+}
+
+export function PageTitle({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
+  const colors = useColors();
+  return (
+    <View style={styles.titleRow}>
+      <View style={styles.titleCopy}>
+        <Text style={[styles.pageTitle, { color: colors.foreground }]}>{title}</Text>
+        {subtitle ? <Text style={[styles.pageSubtitle, { color: colors.mutedForeground }]}>{subtitle}</Text> : null}
+      </View>
+      {action}
+    </View>
+  );
+}
+
+export function Panel({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+  const colors = useColors();
+  return <View style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.border }, style]}>{children}</View>;
+}
+
+export function SectionTitle({ title, action }: { title: string; action?: React.ReactNode }) {
+  const colors = useColors();
+  return (
+    <View style={styles.sectionTitle}>
+      <Text style={[styles.sectionText, { color: colors.foreground }]}>{title}</Text>
+      {action}
+    </View>
+  );
+}
+
+export function ActionButton({ label, icon, onPress, secondary = false, disabled = false }: { label: string; icon: keyof typeof Feather.glyphMap; onPress: () => void; secondary?: boolean; disabled?: boolean }) {
+  const colors = useColors();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      testID={`button-${label}`}
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.actionButton,
+        { backgroundColor: secondary ? colors.card : colors.primary, borderColor: secondary ? colors.border : colors.primary, opacity: disabled ? 0.5 : pressed ? 0.82 : 1 },
+      ]}
+    >
+      <Feather name={icon} size={16} color={secondary ? colors.primary : colors.primaryForeground} />
+      <Text style={[styles.actionLabel, { color: secondary ? colors.primary : colors.primaryForeground }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+export function EmptyState({ icon, title, body }: { icon: keyof typeof Feather.glyphMap; title: string; body: string }) {
+  const colors = useColors();
+  return (
+    <View style={styles.emptyState}>
+      <View style={[styles.emptyIcon, { backgroundColor: colors.accent }]}>
+        <Feather name={icon} size={22} color={colors.primary} />
+      </View>
+      <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{title}</Text>
+      <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>{body}</Text>
+    </View>
+  );
+}
+
+export function StatusPill({ label, tone = 'muted' }: { label: string; tone?: 'green' | 'amber' | 'blue' | 'muted' }) {
+  const colors = useColors();
+  const color = tone === 'green' ? colors.primary : tone === 'amber' ? colors.warning : tone === 'blue' ? colors.blue : colors.mutedForeground;
+  return (
+    <View style={[styles.pill, { backgroundColor: tone === 'green' ? colors.accent : colors.secondary }]}>
+      <View style={[styles.pillDot, { backgroundColor: color }]} />
+      <Text style={[styles.pillText, { color }]}>{label}</Text>
+    </View>
+  );
+}
+
+export function IconButton({ icon, onPress, label, color }: { icon: keyof typeof Feather.glyphMap; onPress: () => void; label: string; color?: string }) {
+  const colors = useColors();
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={styles.iconOnly}>
+      <Feather name={icon} size={18} color={color ?? colors.mutedForeground} />
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1 },
+  scrollContent: { flexGrow: 1 },
+  pageContent: { paddingHorizontal: 18, gap: 18 },
+  brandHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', minHeight: 38 },
+  brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  brandMark: { width: 29, height: 29, borderRadius: 9 },
+  brandName: { fontSize: 19, fontWeight: '800', letterSpacing: -0.7 },
+  iconOnly: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
+  headerSpacer: { width: 40 },
+  notificationDot: { position: 'absolute', width: 7, height: 7, borderRadius: 4, top: 8, right: 8 },
+  avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  titleRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 },
+  titleCopy: { flex: 1, alignItems: 'flex-end', gap: 4 },
+  pageTitle: { fontSize: 24, fontWeight: '800', textAlign: 'right' },
+  pageSubtitle: { fontSize: 13, lineHeight: 20, textAlign: 'right' },
+  panel: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 14, shadowColor: '#0A2540', shadowOpacity: 0.035, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 1 },
+  sectionTitle: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  sectionText: { fontSize: 16, fontWeight: '800', textAlign: 'right' },
+  actionButton: { minHeight: 46, borderRadius: 15, borderWidth: 1, paddingHorizontal: 15, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  actionLabel: { fontSize: 14, fontWeight: '700' },
+  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 22, paddingHorizontal: 18, gap: 8 },
+  emptyIcon: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  emptyTitle: { fontSize: 15, fontWeight: '800', textAlign: 'center' },
+  emptyBody: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  errorBanner: { borderRadius: 12, padding: 12 },
+  errorText: { fontSize: 12, textAlign: 'right', lineHeight: 18 },
+  pill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' },
+  pillDot: { width: 6, height: 6, borderRadius: 3 },
+  pillText: { fontSize: 11, fontWeight: '700' },
+});
