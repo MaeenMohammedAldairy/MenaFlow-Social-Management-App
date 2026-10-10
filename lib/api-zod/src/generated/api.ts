@@ -43,3 +43,51 @@ export const GenerateAiContentResponse = zod.object({
 })
 
 
+/**
+ * @summary Check whether the signed-in user is the MenaFlow owner
+ */
+export const GetOwnerAccessResponse = zod.object({
+  "authorized": zod.boolean()
+})
+
+
+/**
+ * @summary Get the owner's connected social accounts
+ */
+export const GetSocialConnectionsResponse = zod.object({
+  "facebook": zod.union([zod.object({
+  "accountId": zod.string(),
+  "accountName": zod.string(),
+  "connectedAt": zod.coerce.date()
+}),zod.null()]),
+  "instagram": zod.union([zod.object({
+  "accountId": zod.string(),
+  "accountName": zod.string(),
+  "connectedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Start Facebook and Instagram account authorization
+ */
+export const PostMetaConnectResponse = zod.object({
+  "authorizationUrl": zod.string().url(),
+  "callbackUri": zod.string().url()
+})
+
+
+/**
+ * @summary Remove the owner's Meta connection from MenaFlow
+ */
+export const DeleteMetaConnectionResponse = zod.object({
+  "disconnected": zod.boolean()
+})
+
+
+/**
+ * @summary Complete the Meta authorization callback
+ */
+export const MetaOAuthCallbackResponse = zod.void()
+
+

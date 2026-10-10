@@ -9,8 +9,7 @@ import { ActionButton, BrandHeader, PageTitle, Panel, SectionTitle } from '@/com
 import { useStudio, type Channel } from '@/context/StudioContext';
 import { useColors } from '@/hooks/useColors';
 import { useGenerateAiContent } from '@workspace/api-client-react';
-import { Redirect } from 'expo-router';
-import { useAuth } from '@clerk/expo';
+import { OwnerGuard } from '@/components/OwnerGuard';
 
 const channelOptions: { key: Channel; label: string; icon: keyof typeof Feather.glyphMap }[] = [
   { key: 'instagram', label: 'إنستغرام', icon: 'instagram' },
@@ -21,7 +20,6 @@ const channelOptions: { key: Channel; label: string; icon: keyof typeof Feather.
 export default function ComposeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { isLoaded, isSignedIn } = useAuth();
   const { addPost } = useStudio();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -32,9 +30,6 @@ export default function ComposeScreen() {
   const [tone, setTone] = useState<'professional' | 'friendly' | 'promotional' | 'concise'>('friendly');
   const [aiError, setAiError] = useState('');
   const aiGeneration = useGenerateAiContent();
-
-  if (!isLoaded) return null;
-  if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
 
   const toggleChannel = (channel: Channel) => {
     setSelected((current) => current.includes(channel) ? current.filter((item) => item !== channel) : [...current, channel]);
@@ -79,13 +74,14 @@ export default function ComposeScreen() {
   };
 
   return (
-    <KeyboardAwareScrollViewCompat
-      style={[styles.root, { backgroundColor: colors.background }]}
-      contentContainerStyle={[styles.content, { paddingTop: Platform.OS === 'web' ? Math.max(insets.top, 67) + 8 : insets.top + 8, paddingBottom: Math.max(insets.bottom, 20) }]}
-      bottomOffset={72}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
+    <OwnerGuard>
+      <KeyboardAwareScrollViewCompat
+        style={[styles.root, { backgroundColor: colors.background }]}
+        contentContainerStyle={[styles.content, { paddingTop: Platform.OS === 'web' ? Math.max(insets.top, 67) + 8 : insets.top + 8, paddingBottom: Math.max(insets.bottom, 20) }]}
+        bottomOffset={72}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
       <BrandHeader />
       <PageTitle title="منشور جديد" subtitle="اكتب المحتوى وحدد القنوات المقصودة." action={<Pressable accessibilityRole="button" accessibilityLabel="إغلاق" onPress={() => router.back()} style={styles.closeButton}><Feather name="x" size={20} color={colors.foreground} /></Pressable>} />
       <Panel style={styles.aiPanel}>
@@ -199,7 +195,8 @@ export default function ComposeScreen() {
         </View>
         <Text style={[styles.disclaimer, { color: colors.mutedForeground }]}>تُحفظ المسودات على هذا الجهاز. النشر إلى المنصات غير متاح قبل اكتمال الربط والتفويض.</Text>
       </Panel>
-    </KeyboardAwareScrollViewCompat>
+      </KeyboardAwareScrollViewCompat>
+    </OwnerGuard>
   );
 }
 

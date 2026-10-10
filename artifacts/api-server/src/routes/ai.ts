@@ -3,20 +3,13 @@ import {
   GenerateAiContentBody,
   GenerateAiContentResponse,
 } from "@workspace/api-zod";
-import { Router, type IRouter, type RequestHandler } from "express";
+import { Router, type IRouter } from "express";
+import { requireOwner } from "../lib/owner-access";
 
 const router: IRouter = Router();
 const requestTimes = new Map<string, number[]>();
 const WINDOW_MS = 60_000;
 const REQUESTS_PER_WINDOW = 8;
-
-const requireAuth: RequestHandler = (req, res, next) => {
-  if (!getAuth(req).userId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
-  next();
-};
 
 function allowRequest(userId: string): boolean {
   const now = Date.now();
@@ -162,7 +155,7 @@ async function generateWithGemini(
   return { content, model };
 }
 
-router.post("/ai/content", requireAuth, async (req, res): Promise<void> => {
+router.post("/ai/content", requireOwner, async (req, res): Promise<void> => {
   const userId = getAuth(req).userId;
   if (!userId) {
     res.status(401).json({ error: "سجّل الدخول أولاً." });

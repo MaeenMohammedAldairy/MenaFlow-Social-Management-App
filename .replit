@@ -18,3 +18,10 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+FACEBOOK_APP_ID = "1399522178499844"
+WHATSAPP_EVOLUTION_BASE_URL = "http://localhost:8081"
+WHATSAPP_EVOLUTION_INSTANCE = "Maeensoftware"

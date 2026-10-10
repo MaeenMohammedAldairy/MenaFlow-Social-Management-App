@@ -23,7 +23,11 @@ import type {
   AiContentInput,
   AiContentResponse,
   ApiError,
-  HealthStatus
+  AuthAccessResponse,
+  HealthStatus,
+  MetaConnectResponse,
+  MetaDisconnectResponse,
+  SocialConnectionsResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -219,4 +223,383 @@ export const useGenerateAiContent = <TError = ErrorType<ApiError>,
       > => {
       return useMutation(getGenerateAiContentMutationOptions(options));
     }
+
+export const getGetOwnerAccessUrl = () => {
+
+
+
+
+  return `/api/auth/access`
+}
+
+/**
+ * @summary Check whether the signed-in user is the MenaFlow owner
+ */
+export const getOwnerAccess = async ( options?: Parameters<typeof customFetch>[1]): Promise<AuthAccessResponse> => {
+
+  return customFetch<AuthAccessResponse>(getGetOwnerAccessUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOwnerAccessQueryKey = () => {
+    return [
+    `/api/auth/access`
+    ] as const;
+    }
+
+
+export const getGetOwnerAccessQueryOptions = <TData = Awaited<ReturnType<typeof getOwnerAccess>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOwnerAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOwnerAccessQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOwnerAccess>>> = ({ signal }) => getOwnerAccess({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOwnerAccess>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOwnerAccessQueryResult = NonNullable<Awaited<ReturnType<typeof getOwnerAccess>>>
+export type GetOwnerAccessQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Check whether the signed-in user is the MenaFlow owner
+ */
+
+export function useGetOwnerAccess<TData = Awaited<ReturnType<typeof getOwnerAccess>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOwnerAccess>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOwnerAccessQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSocialConnectionsUrl = () => {
+
+
+
+
+  return `/api/social/connections`
+}
+
+/**
+ * @summary Get the owner's connected social accounts
+ */
+export const getSocialConnections = async ( options?: Parameters<typeof customFetch>[1]): Promise<SocialConnectionsResponse> => {
+
+  return customFetch<SocialConnectionsResponse>(getGetSocialConnectionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSocialConnectionsQueryKey = () => {
+    return [
+    `/api/social/connections`
+    ] as const;
+    }
+
+
+export const getGetSocialConnectionsQueryOptions = <TData = Awaited<ReturnType<typeof getSocialConnections>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSocialConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSocialConnectionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSocialConnections>>> = ({ signal }) => getSocialConnections({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSocialConnections>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSocialConnectionsQueryResult = NonNullable<Awaited<ReturnType<typeof getSocialConnections>>>
+export type GetSocialConnectionsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get the owner's connected social accounts
+ */
+
+export function useGetSocialConnections<TData = Awaited<ReturnType<typeof getSocialConnections>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSocialConnections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSocialConnectionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getPostMetaConnectUrl = () => {
+
+
+
+
+  return `/api/social/meta/connect`
+}
+
+/**
+ * @summary Start Facebook and Instagram account authorization
+ */
+export const postMetaConnect = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetaConnectResponse> => {
+
+  return customFetch<MetaConnectResponse>(getPostMetaConnectUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getPostMetaConnectMutationKey = () => ['postMetaConnect'] as const;
+
+export const getPostMetaConnectMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postMetaConnect>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof postMetaConnect>>, TError,void, TContext> => {
+
+const mutationKey = getPostMetaConnectMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postMetaConnect>>, void> = () => {
+
+
+          return  postMetaConnect(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostMetaConnectMutationResult = NonNullable<Awaited<ReturnType<typeof postMetaConnect>>>
+
+    export type PostMetaConnectMutationError = ErrorType<ApiError>
+
+
+    /**
+ * @summary Start Facebook and Instagram account authorization
+ */
+export const usePostMetaConnect = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postMetaConnect>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof postMetaConnect>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getPostMetaConnectMutationOptions(options));
+    }
+
+export const getDeleteMetaConnectionUrl = () => {
+
+
+
+
+  return `/api/social/meta`
+}
+
+/**
+ * @summary Remove the owner's Meta connection from MenaFlow
+ */
+export const deleteMetaConnection = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetaDisconnectResponse> => {
+
+  return customFetch<MetaDisconnectResponse>(getDeleteMetaConnectionUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteMetaConnectionMutationKey = () => ['deleteMetaConnection'] as const;
+
+export const getDeleteMetaConnectionMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMetaConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMetaConnection>>, TError,void, TContext> => {
+
+const mutationKey = getDeleteMetaConnectionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMetaConnection>>, void> = () => {
+
+
+          return  deleteMetaConnection(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMetaConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMetaConnection>>>
+
+    export type DeleteMetaConnectionMutationError = ErrorType<ApiError>
+
+
+    /**
+ * @summary Remove the owner's Meta connection from MenaFlow
+ */
+export const useDeleteMetaConnection = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMetaConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMetaConnection>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteMetaConnectionMutationOptions(options));
+    }
+
+export const getMetaOAuthCallbackUrl = () => {
+
+
+
+
+  return `/api/social/meta/callback`
+}
+
+/**
+ * @summary Complete the Meta authorization callback
+ */
+export const metaOAuthCallback = async ( options?: Parameters<typeof customFetch>[1]): Promise<unknown> => {
+
+  return customFetch<unknown>(getMetaOAuthCallbackUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getMetaOAuthCallbackQueryKey = () => {
+    return [
+    `/api/social/meta/callback`
+    ] as const;
+    }
+
+
+export const getMetaOAuthCallbackQueryOptions = <TData = Awaited<ReturnType<typeof metaOAuthCallback>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof metaOAuthCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getMetaOAuthCallbackQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof metaOAuthCallback>>> = ({ signal }) => metaOAuthCallback({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof metaOAuthCallback>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type MetaOAuthCallbackQueryResult = NonNullable<Awaited<ReturnType<typeof metaOAuthCallback>>>
+export type MetaOAuthCallbackQueryError = ErrorType<void>
+
+
+/**
+ * @summary Complete the Meta authorization callback
+ */
+
+export function useMetaOAuthCallback<TData = Awaited<ReturnType<typeof metaOAuthCallback>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof metaOAuthCallback>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getMetaOAuthCallbackQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

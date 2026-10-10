@@ -42,6 +42,7 @@ function RootLayoutNav() {
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="compose" options={{ headerShown: false, presentation: 'modal' }} />
+      <Stack.Screen name="oauth/meta" options={{ headerShown: false }} />
     </Stack>
   );
 }

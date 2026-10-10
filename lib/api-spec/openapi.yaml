@@ -12,6 +12,10 @@ tags:
     description: Health operations
   - name: ai
     description: Secure AI content generation
+  - name: auth
+    description: Owner access control
+  - name: social
+    description: Social account connections
 paths:
   /healthz:
     get:
@@ -30,6 +34,8 @@ paths:
     post:
       operationId: generateAiContent
       tags: [ai]
+      security:
+        - bearerAuth: []
       summary: Generate Arabic social media content
       description: Generates a draft using a server-side AI provider key. Requires an authenticated owner session.
       requestBody:
@@ -75,7 +81,112 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /auth/access:
+    get:
+      operationId: getOwnerAccess
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: Check whether the signed-in user is the MenaFlow owner
+      responses:
+        "200":
+          description: Owner access result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthAccessResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: Owner access is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/connections:
+    get:
+      operationId: getSocialConnections
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Get the owner's connected social accounts
+      responses:
+        "200":
+          description: Current social account connections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SocialConnectionsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta/connect:
+    post:
+      operationId: postMetaConnect
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Start Facebook and Instagram account authorization
+      responses:
+        "200":
+          description: Meta authorization link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaConnectResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: Meta connection is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta:
+    delete:
+      operationId: deleteMetaConnection
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Remove the owner's Meta connection from MenaFlow
+      responses:
+        "200":
+          description: Connection removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaDisconnectResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta/callback:
+    get:
+      operationId: metaOAuthCallback
+      tags: [social]
+      summary: Complete the Meta authorization callback
+      responses:
+        "302":
+          description: Redirects back to the MenaFlow mobile app
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
     HealthStatus:
       type: object
@@ -122,4 +233,49 @@ components:
         error:
           type: string
       required: [error]
+    AuthAccessResponse:
+      type: object
+      properties:
+        authorized:
+          type: boolean
+      required: [authorized]
+    SocialAccountStatus:
+      type: object
+      properties:
+        accountId:
+          type: string
+        accountName:
+          type: string
+        connectedAt:
+          type: string
+          format: date-time
+      required: [accountId, accountName, connectedAt]
+    SocialConnectionsResponse:
+      type: object
+      properties:
+        facebook:
+          oneOf:
+            - $ref: "#/components/schemas/SocialAccountStatus"
+            - type: "null"
+        instagram:
+          oneOf:
+            - $ref: "#/components/schemas/SocialAccountStatus"
+            - type: "null"
+      required: [facebook, instagram]
+    MetaConnectResponse:
+      type: object
+      properties:
+        authorizationUrl:
+          type: string
+          format: uri
+        callbackUri:
+          type: string
+          format: uri
+      required: [authorizationUrl, callbackUri]
+    MetaDisconnectResponse:
+      type: object
+      properties:
+        disconnected:
+          type: boolean
+      required: [disconnected]
 

@@ -1,0 +1,1 @@
+- [MenaFlow owner access](menaflow-single-owner.md) — MenaFlow is for one business owner; keep workspace access scoped to that account.

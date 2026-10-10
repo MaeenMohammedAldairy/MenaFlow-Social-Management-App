@@ -67,3 +67,27 @@ export interface ApiError {
   error: string;
 }
 
+export interface AuthAccessResponse {
+  authorized: boolean;
+}
+
+export interface SocialAccountStatus {
+  accountId: string;
+  accountName: string;
+  connectedAt: string;
+}
+
+export interface SocialConnectionsResponse {
+  facebook: SocialAccountStatus | null;
+  instagram: SocialAccountStatus | null;
+}
+
+export interface MetaConnectResponse {
+  authorizationUrl: string;
+  callbackUri: string;
+}
+
+export interface MetaDisconnectResponse {
+  disconnected: boolean;
+}
+
