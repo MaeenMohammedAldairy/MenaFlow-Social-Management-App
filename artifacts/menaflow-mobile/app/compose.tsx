@@ -8,6 +8,9 @@ import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollV
 import { ActionButton, BrandHeader, PageTitle, Panel, SectionTitle } from '@/components/Ui';
 import { useStudio, type Channel } from '@/context/StudioContext';
 import { useColors } from '@/hooks/useColors';
+import { useGenerateAiContent } from '@workspace/api-client-react';
+import { Redirect } from 'expo-router';
+import { useAuth } from '@clerk/expo';
 
 const channelOptions: { key: Channel; label: string; icon: keyof typeof Feather.glyphMap }[] = [
   { key: 'instagram', label: 'إنستغرام', icon: 'instagram' },
@@ -18,10 +21,20 @@ const channelOptions: { key: Channel; label: string; icon: keyof typeof Feather.
 export default function ComposeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { isLoaded, isSignedIn } = useAuth();
   const { addPost } = useStudio();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [selected, setSelected] = useState<Channel[]>(['instagram']);
+  const [idea, setIdea] = useState('');
+  const [businessContext, setBusinessContext] = useState('');
+  const [provider, setProvider] = useState<'gemini' | 'openai'>('gemini');
+  const [tone, setTone] = useState<'professional' | 'friendly' | 'promotional' | 'concise'>('friendly');
+  const [aiError, setAiError] = useState('');
+  const aiGeneration = useGenerateAiContent();
+
+  if (!isLoaded) return null;
+  if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
 
   const toggleChannel = (channel: Channel) => {
     setSelected((current) => current.includes(channel) ? current.filter((item) => item !== channel) : [...current, channel]);
@@ -41,6 +54,30 @@ export default function ComposeScreen() {
     router.back();
   };
 
+  const generateDraft = async () => {
+    if (idea.trim().length < 3) {
+      setAiError('اكتب فكرة قصيرة من ثلاثة أحرف على الأقل.');
+      return;
+    }
+    setAiError('');
+    try {
+      const result = await aiGeneration.mutateAsync({
+        data: {
+          idea: idea.trim(),
+          businessContext: businessContext.trim() || undefined,
+          provider,
+          tone,
+          channel: selected[0] ?? 'instagram',
+        },
+      });
+      setBody(result.content);
+      if (!title.trim()) setTitle(idea.trim().slice(0, 60));
+      await Haptics.selectionAsync();
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : 'تعذر إنشاء المسودة. حاول مرة أخرى.');
+    }
+  };
+
   return (
     <KeyboardAwareScrollViewCompat
       style={[styles.root, { backgroundColor: colors.background }]}
@@ -51,6 +88,77 @@ export default function ComposeScreen() {
     >
       <BrandHeader />
       <PageTitle title="منشور جديد" subtitle="اكتب المحتوى وحدد القنوات المقصودة." action={<Pressable accessibilityRole="button" accessibilityLabel="إغلاق" onPress={() => router.back()} style={styles.closeButton}><Feather name="x" size={20} color={colors.foreground} /></Pressable>} />
+      <Panel style={styles.aiPanel}>
+        <SectionTitle title="اكتبها بالذكاء الاصطناعي" />
+        <Text style={[styles.helper, { color: colors.mutedForeground }]}>أدخل فكرة بسيطة، وسيُنشئ لك مسودة عربية قابلة للتعديل.</Text>
+        <TextInput
+          value={idea}
+          onChangeText={setIdea}
+          placeholder="مثال: عرض نهاية الأسبوع على منتجاتنا الجديدة"
+          placeholderTextColor={colors.mutedForeground}
+          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+          textAlign="right"
+          accessibilityLabel="فكرة المنشور"
+        />
+        <TextInput
+          value={businessContext}
+          onChangeText={setBusinessContext}
+          placeholder="معلومة اختيارية عن النشاط أو العرض"
+          placeholderTextColor={colors.mutedForeground}
+          style={[styles.input, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+          textAlign="right"
+          accessibilityLabel="معلومات إضافية عن النشاط"
+        />
+        <Text style={[styles.fieldLabel, { color: colors.foreground }]}>مزود الذكاء الاصطناعي</Text>
+        <View style={styles.channelChips}>
+          {([
+            ['gemini', 'Gemini'],
+            ['openai', 'OpenAI'],
+          ] as const).map(([value, label]) => {
+            const active = provider === value;
+            return (
+              <Pressable
+                key={value}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => setProvider(value)}
+                style={[styles.channelChip, { backgroundColor: active ? colors.accent : colors.background, borderColor: active ? colors.primary : colors.border }]}
+              >
+                <Text style={[styles.chipLabel, { color: active ? colors.primary : colors.mutedForeground }]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={[styles.fieldLabel, { color: colors.foreground }]}>نبرة الكتابة</Text>
+        <View style={styles.channelChips}>
+          {([
+            ['friendly', 'ودودة'],
+            ['professional', 'احترافية'],
+            ['promotional', 'تسويقية'],
+            ['concise', 'مختصرة'],
+          ] as const).map(([value, label]) => {
+            const active = tone === value;
+            return (
+              <Pressable
+                key={value}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => setTone(value)}
+                style={[styles.channelChip, { backgroundColor: active ? colors.accent : colors.background, borderColor: active ? colors.primary : colors.border }]}
+              >
+                <Text style={[styles.chipLabel, { color: active ? colors.primary : colors.mutedForeground }]}>{label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {aiError ? <Text accessibilityRole="alert" style={[styles.aiError, { color: colors.destructive }]}>{aiError}</Text> : null}
+        <ActionButton
+          label={aiGeneration.isPending ? 'جارٍ إنشاء المسودة…' : 'أنشئ مسودة'}
+          icon="zap"
+          onPress={generateDraft}
+          disabled={idea.trim().length < 3 || aiGeneration.isPending}
+        />
+      </Panel>
       <Panel>
         <SectionTitle title="محتوى المنشور" />
         <TextInput
@@ -97,6 +205,7 @@ export default function ComposeScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  aiPanel: { gap: 11 },
   content: { flexGrow: 1, paddingHorizontal: 18, gap: 18 },
   closeButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   input: { minHeight: 46, borderWidth: 1, borderRadius: 13, paddingHorizontal: 12, fontSize: 14 },
@@ -107,4 +216,6 @@ const styles = StyleSheet.create({
   chipLabel: { fontSize: 11, fontWeight: '700' },
   formActions: { flexDirection: 'row-reverse', gap: 8 },
   disclaimer: { fontSize: 11, textAlign: 'right', lineHeight: 17 },
+  helper: { fontSize: 11, lineHeight: 17, textAlign: 'right' },
+  aiError: { fontSize: 11, lineHeight: 17, textAlign: 'right' },
 });

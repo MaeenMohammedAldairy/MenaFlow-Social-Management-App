@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: ai
+    description: Secure AI content generation
 paths:
   /healthz:
     get:
@@ -24,6 +26,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /ai/content:
+    post:
+      operationId: generateAiContent
+      tags: [ai]
+      summary: Generate Arabic social media content
+      description: Generates a draft using a server-side AI provider key. Requires an authenticated owner session.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiContentInput"
+      responses:
+        "200":
+          description: Generated content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiContentResponse"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: Generation limit reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: AI provider failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: Provider key is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +84,42 @@ components:
           type: string
       required:
         - status
+    AiContentInput:
+      type: object
+      additionalProperties: false
+      properties:
+        idea:
+          type: string
+          minLength: 3
+          maxLength: 1200
+        businessContext:
+          type: string
+          maxLength: 500
+        provider:
+          type: string
+          enum: [gemini, openai]
+        tone:
+          type: string
+          enum: [professional, friendly, promotional, concise]
+        channel:
+          type: string
+          enum: [instagram, facebook, whatsapp]
+      required: [idea, provider, tone, channel]
+    AiContentResponse:
+      type: object
+      properties:
+        content:
+          type: string
+        provider:
+          type: string
+          enum: [gemini, openai]
+        model:
+          type: string
+      required: [content, provider, model]
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+      required: [error]
 

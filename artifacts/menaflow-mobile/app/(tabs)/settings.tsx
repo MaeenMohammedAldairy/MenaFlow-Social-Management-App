@@ -5,6 +5,7 @@ import { BrandHeader, Page, PageTitle, Panel, SectionTitle } from '@/components/
 import { useStudio } from '@/context/StudioContext';
 import { useColors } from '@/hooks/useColors';
 import { router } from 'expo-router';
+import { useClerk, useUser } from '@clerk/expo';
 
 function SettingRow({ icon, title, subtitle, value, onValueChange }: { icon: keyof typeof Feather.glyphMap; title: string; subtitle?: string; value?: boolean; onValueChange?: (next: boolean) => void }) {
   const colors = useColors();
@@ -23,13 +24,15 @@ function SettingRow({ icon, title, subtitle, value, onValueChange }: { icon: key
 export default function SettingsScreen() {
   const colors = useColors();
   const { preferences, updatePreference } = useStudio();
+  const { user } = useUser();
+  const { signOut } = useClerk();
   return (
     <Page>
       <BrandHeader />
       <PageTitle title="الإعدادات" subtitle="تحكم في تفضيلات مساحة عملك." />
       <Panel>
         <SectionTitle title="الحساب" />
-        <Pressable onPress={() => Alert.alert('ملف الحساب', 'تسجيل الدخول وإدارة أعضاء الفريق غير مفعّلين في هذه النسخة.')}><SettingRow icon="user" title="الملف الشخصي" subtitle="إعداد ملف الحساب" /></Pressable>
+        <SettingRow icon="user" title={user?.fullName || 'الملف الشخصي'} subtitle={user?.primaryEmailAddress?.emailAddress || 'حساب مالك النشاط'} />
         <Pressable onPress={() => router.push('/(tabs)/sources')}><SettingRow icon="link-2" title="الحسابات المرتبطة" subtitle="إدارة منصات التواصل" /></Pressable>
       </Panel>
       <Panel>
@@ -46,6 +49,7 @@ export default function SettingsScreen() {
         <SectionTitle title="الدعم والأمان" />
         <Pressable onPress={() => Alert.alert('مركز المساعدة', 'تواصل مع فريق MenaFlow عبر البريد المخصص للدعم في إعدادات حسابك.')}><SettingRow icon="help-circle" title="مركز المساعدة" /></Pressable>
         <Pressable onPress={() => Alert.alert('الخصوصية', 'تُخزّن المسودات الحالية على هذا الجهاز. لا يتم إرسالها إلى منصات التواصل من دون ربط الحساب والموافقة.')}><SettingRow icon="shield" title="الخصوصية والأمان" /></Pressable>
+        <Pressable onPress={async () => { await signOut(); router.replace('/(auth)/sign-in'); }}><SettingRow icon="log-out" title="تسجيل الخروج" subtitle="إنهاء الجلسة على هذا الجهاز" /></Pressable>
         <Pressable onPress={() => Alert.alert('حول التطبيق', 'MenaFlow — مساحة عربية لإدارة المحتوى والحسابات الاجتماعية.')}><SettingRow icon="info" title="حول MenaFlow" /></Pressable>
       </Panel>
       <Text style={[styles.version, { color: colors.mutedForeground }]}>MenaFlow · الإصدار 1.0</Text>

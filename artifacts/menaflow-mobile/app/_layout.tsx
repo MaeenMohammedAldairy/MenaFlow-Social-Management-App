@@ -13,6 +13,9 @@ import {
 } from '@expo-google-fonts/inter';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { ClerkLoaded, ClerkProvider, useAuth } from '@clerk/expo';
+import { tokenCache } from '@clerk/expo/token-cache';
+import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react';
 import { StudioProvider } from '@/context/StudioContext';
 import { Platform, I18nManager } from 'react-native';
 
@@ -20,10 +23,23 @@ import { Platform, I18nManager } from 'react-native';
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
+const publicDomain = process.env.EXPO_PUBLIC_DOMAIN;
+if (publicDomain) setBaseUrl(`https://${publicDomain}`);
+
+const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
+const clerkProxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
 function RootLayoutNav() {
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    setAuthTokenGetter(() => getToken());
+    return () => setAuthTokenGetter(null);
+  }, [getToken]);
+
   return (
     <Stack screenOptions={{ headerBackTitle: 'Back' }}>
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="compose" options={{ headerShown: false, presentation: 'modal' }} />
     </Stack>
@@ -52,6 +68,9 @@ export default function RootLayout() {
   }, []);
 
   if (!fontsLoaded && !fontError) return null;
+  if (!clerkPublishableKey) {
+    throw new Error('Missing Clerk publishable key. Check the secure Clerk setup.');
+  }
 
   return (
     <SafeAreaProvider>
@@ -59,9 +78,17 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView>
             <KeyboardProvider>
-              <StudioProvider>
-                <RootLayoutNav />
-              </StudioProvider>
+              <ClerkProvider
+                publishableKey={clerkPublishableKey}
+                tokenCache={tokenCache}
+                proxyUrl={clerkProxyUrl}
+              >
+                <ClerkLoaded>
+                  <StudioProvider>
+                    <RootLayoutNav />
+                  </StudioProvider>
+                </ClerkLoaded>
+              </ClerkProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>
