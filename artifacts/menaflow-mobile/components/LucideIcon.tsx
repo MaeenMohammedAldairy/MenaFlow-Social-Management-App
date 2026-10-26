@@ -1,0 +1,93 @@
+import {
+  BarChart3,
+  Bell,
+  Camera,
+  Check,
+  ChevronLeft,
+  CircleAlert,
+  CircleCheck,
+  ExternalLink,
+  Eye,
+  FilePlus2,
+  FileText,
+  Globe,
+  Heart,
+  House,
+  CircleHelp,
+  Info,
+  Link,
+  Link2,
+  LogOut,
+  MessageCircle,
+  MessageSquare,
+  Pause,
+  PenLine,
+  Plus,
+  Play,
+  RefreshCw,
+  Save,
+  Send,
+  Settings,
+  Share2,
+  Shield,
+  Trash2,
+  Sun,
+  UserRound,
+  UsersRound,
+  XCircle,
+  Zap,
+  X,
+} from 'lucide-react-native';
+import type { LucideProps } from 'lucide-react-native';
+
+const icons = {
+  'alert-circle': CircleAlert,
+  'bar-chart-2': BarChart3,
+  bell: Bell,
+  'check-circle': CircleCheck,
+  check: Check,
+  'chevron-left': ChevronLeft,
+  'external-link': ExternalLink,
+  eye: Eye,
+  facebook: UsersRound,
+  'file-plus': FilePlus2,
+  'file-text': FileText,
+  globe: Globe,
+  heart: Heart,
+  'help-circle': CircleHelp,
+  home: House,
+  info: Info,
+  instagram: Camera,
+  link: Link,
+  'link-2': Link2,
+  'log-out': LogOut,
+  'message-circle': MessageCircle,
+  'message-square': MessageSquare,
+  pause: Pause,
+  'edit-3': PenLine,
+  plus: Plus,
+  play: Play,
+  'refresh-cw': RefreshCw,
+  save: Save,
+  send: Send,
+  settings: Settings,
+  'share-2': Share2,
+  shield: Shield,
+  sun: Sun,
+  'trash-2': Trash2,
+  user: UserRound,
+  'x-circle': XCircle,
+  x: X,
+  zap: Zap,
+} as const;
+
+export type LucideIconName = keyof typeof icons;
+
+type IconProps = LucideProps & {
+  name: LucideIconName;
+};
+
+export function LucideIcon({ name, ...props }: IconProps) {
+  const IconComponent = icons[name];
+  return <IconComponent {...props} />;
+}

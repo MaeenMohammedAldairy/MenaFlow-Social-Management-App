@@ -4,15 +4,13 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "sh -c 'if [ -n \"$REPLIT_EXPO_SESSION_SECRET\" ]; then pnpm exec create-launch login --session \"$REPLIT_EXPO_SESSION_SECRET\" || true; fi' && EXPO_PACKAGER_PROXY_URL=https://$REPLIT_EXPO_DEV_DOMAIN EXPO_PUBLIC_DOMAIN=$REPLIT_DEV_DOMAIN EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=$CLERK_PUBLISHABLE_KEY EXPO_PUBLIC_REPL_ID=$REPL_ID REACT_NATIVE_PACKAGER_HOSTNAME=$REPLIT_DEV_DOMAIN pnpm exec expo start --localhost --port $PORT",
+    "dev": "node scripts/dev.js",
     "build": "node scripts/build.js",
     "serve": "node server/serve.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@expo-google-fonts/inter": "^0.4.0",
-    "@expo/vector-icons": "^15.0.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@stardazed/streams-text-encoding": "^1.0.2",
     "@tanstack/react-query": "catalog:",
@@ -56,8 +54,11 @@
   },
   "dependencies": {
     "@clerk/expo": "4.8.0",
+    "@expo-google-fonts/cairo": "^0.4.2",
     "expo-auth-session": "~57.0.14",
     "expo-crypto": "~57.0.3",
-    "expo-secure-store": "~57.0.4"
+    "expo-secure-store": "~57.0.4",
+    "libphonenumber-js": "^1.13.15",
+    "lucide-react-native": "^1.53.0"
   }
 }

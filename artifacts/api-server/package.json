@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
+    "dev": "node -e \"for (const f of ['../../.env', '../../.env2', './.env']) { try { process.loadEnvFile(f); } catch (_) {} }; process.env.NODE_ENV = 'development'; const { spawnSync } = require('node:child_process'); const result = spawnSync(process.execPath, ['./build.mjs'], { stdio: 'inherit', env: process.env }); if (result.error) throw result.error; if (result.status !== 0) process.exit(result.status ?? 1); import('./dist/index.mjs').catch((error) => { console.error(error); process.exit(1); });\"",
+    "migrate-whatsapp-media": "node ./scripts/migrate-whatsapp-media-to-supabase.mjs",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -19,8 +20,10 @@
     "drizzle-orm": "catalog:",
     "express": "^5.2.1",
     "http-proxy-middleware": "4.2.0",
+    "pg": "^8.23.0",
     "pino": "^9.14.0",
-    "pino-http": "^10.5.0"
+    "pino-http": "^10.5.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

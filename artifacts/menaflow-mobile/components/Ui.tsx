@@ -1,16 +1,46 @@
-import { Feather } from '@expo/vector-icons';
 import React from 'react';
-import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Alert, Image, Platform, Pressable, RefreshControlProps, ScrollView, StyleSheet, View, type ScrollViewProps, type StyleProp, type ViewStyle } from 'react-native';
+import { CairoText as Text } from '@/components/CairoTypography';
+import { LucideIcon as Icon, type LucideIconName } from '@/components/LucideIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { useStudio } from '@/context/StudioContext';
+import { router } from 'expo-router';
 
-export function Page({ children, scroll = true }: { children: React.ReactNode; scroll?: boolean }) {
+export function Page({
+  children,
+  scroll = true,
+  refreshControl,
+  bottomPadding,
+  onScroll,
+}: {
+  children: React.ReactNode;
+  scroll?: boolean;
+  refreshControl?: React.ReactElement<RefreshControlProps>;
+  bottomPadding?: number;
+  onScroll?: ScrollViewProps['onScroll'];
+}) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { storageError } = useStudio();
   const content = (
-    <View style={[styles.pageContent, { paddingTop: Platform.OS === 'web' ? Math.max(insets.top, 67) + 8 : insets.top + 8, paddingBottom: Platform.OS === 'web' ? 112 : 112 + insets.bottom }]}>
+    <View
+      style={[
+        styles.pageContent,
+        {
+          paddingTop:
+            Platform.OS === 'web'
+              ? Math.max(insets.top, 67) + 8
+              : insets.top + 8,
+          paddingBottom:
+            bottomPadding === undefined
+              ? Platform.OS === 'web'
+                ? 112
+                : 112 + insets.bottom
+              : bottomPadding + insets.bottom,
+        },
+      ]}
+    >
       {storageError ? <View style={[styles.errorBanner, { backgroundColor: colors.secondary }]}><Text style={[styles.errorText, { color: colors.destructive }]}>{storageError}</Text></View> : null}
       {children}
     </View>
@@ -18,7 +48,14 @@ export function Page({ children, scroll = true }: { children: React.ReactNode; s
   return (
     <View style={[styles.page, { backgroundColor: colors.background }]}>
       {scroll ? (
-        <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          refreshControl={refreshControl}
+          onScroll={onScroll}
+          scrollEventThrottle={onScroll ? 250 : undefined}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
           {content}
         </ScrollView>
       ) : content}
@@ -28,21 +65,55 @@ export function Page({ children, scroll = true }: { children: React.ReactNode; s
 
 export function BrandHeader({ showBell = false }: { showBell?: boolean }) {
   const colors = useColors();
+  const { posts } = useStudio();
+  const pendingReview = posts.filter((p) => p.status === 'review').length;
+
+  const handleNotifications = () => {
+    if (pendingReview > 0) {
+      Alert.alert(
+        'مركز التنبيهات',
+        `لديك ${pendingReview} من المنشورات بانتظار المراجعة والاعتماد للنشر.`
+      );
+    } else {
+      Alert.alert(
+        'مركز التنبيهات',
+        'لا توجد تنبيهات جديدة. جميع مساحات العمل والربط بحالة مستقرة.'
+      );
+    }
+  };
+
   return (
     <View style={styles.brandHeader}>
       {showBell ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="الإشعارات" testID="notifications-button" onPress={() => Alert.alert('الإشعارات', 'لا توجد إشعارات جديدة.')} style={styles.iconOnly}>
-          <Feather name="bell" size={21} color={colors.foreground} />
-          <View style={[styles.notificationDot, { backgroundColor: colors.primary }]} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="الإشعارات"
+          testID="notifications-button"
+          onPress={handleNotifications}
+          style={styles.iconOnly}
+        >
+          <Icon name="bell" size={21} color={colors.foreground} />
+          {pendingReview > 0 && (
+            <View style={[styles.notificationDot, { backgroundColor: colors.primary }]} />
+          )}
         </Pressable>
       ) : <View style={styles.headerSpacer} />}
       <View style={styles.brandLockup}>
         <Image source={require('../assets/images/icon.png')} style={styles.brandMark} />
         <Text style={[styles.brandName, { color: colors.foreground }]}>MenaFlow</Text>
       </View>
-      <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
-        <Feather name="user" size={17} color={colors.primary} />
-      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="الملف الشخصي وإكمال الإعداد"
+        testID="profile-button"
+        onPress={() => router.push('/account/profile')}
+        style={({ pressed }) => [
+          styles.avatar,
+          { backgroundColor: colors.accent, opacity: pressed ? 0.72 : 1 },
+        ]}
+      >
+        <Icon name="user" size={17} color={colors.primary} />
+      </Pressable>
     </View>
   );
 }
@@ -75,7 +146,7 @@ export function SectionTitle({ title, action }: { title: string; action?: React.
   );
 }
 
-export function ActionButton({ label, icon, onPress, secondary = false, disabled = false }: { label: string; icon: keyof typeof Feather.glyphMap; onPress: () => void; secondary?: boolean; disabled?: boolean }) {
+export function ActionButton({ label, icon, onPress, secondary = false, disabled = false }: { label: string; icon: LucideIconName; onPress: () => void; secondary?: boolean; disabled?: boolean }) {
   const colors = useColors();
   return (
     <Pressable
@@ -88,18 +159,18 @@ export function ActionButton({ label, icon, onPress, secondary = false, disabled
         { backgroundColor: secondary ? colors.card : colors.primary, borderColor: secondary ? colors.border : colors.primary, opacity: disabled ? 0.5 : pressed ? 0.82 : 1 },
       ]}
     >
-      <Feather name={icon} size={16} color={secondary ? colors.primary : colors.primaryForeground} />
+      <Icon name={icon} size={16} color={secondary ? colors.primary : colors.primaryForeground} />
       <Text style={[styles.actionLabel, { color: secondary ? colors.primary : colors.primaryForeground }]}>{label}</Text>
     </Pressable>
   );
 }
 
-export function EmptyState({ icon, title, body }: { icon: keyof typeof Feather.glyphMap; title: string; body: string }) {
+export function EmptyState({ icon, title, body }: { icon: LucideIconName; title: string; body: string }) {
   const colors = useColors();
   return (
     <View style={styles.emptyState}>
       <View style={[styles.emptyIcon, { backgroundColor: colors.accent }]}>
-        <Feather name={icon} size={22} color={colors.primary} />
+        <Icon name={icon} size={22} color={colors.primary} />
       </View>
       <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{title}</Text>
       <Text style={[styles.emptyBody, { color: colors.mutedForeground }]}>{body}</Text>
@@ -118,11 +189,11 @@ export function StatusPill({ label, tone = 'muted' }: { label: string; tone?: 'g
   );
 }
 
-export function IconButton({ icon, onPress, label, color }: { icon: keyof typeof Feather.glyphMap; onPress: () => void; label: string; color?: string }) {
+export function IconButton({ icon, onPress, label, color }: { icon: LucideIconName; onPress: () => void; label: string; color?: string }) {
   const colors = useColors();
   return (
     <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={styles.iconOnly}>
-      <Feather name={icon} size={18} color={color ?? colors.mutedForeground} />
+      <Icon name={icon} size={18} color={color ?? colors.mutedForeground} />
     </Pressable>
   );
 }

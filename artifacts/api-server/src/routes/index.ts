@@ -1,14 +1,42 @@
 import { Router, type IRouter } from "express";
-import healthRouter from "./health";
 import aiRouter from "./ai";
 import accessRouter from "./access";
 import socialRouter from "./social";
+import whatsappMessagesRouter from "./whatsapp-messages";
+import whatsappContentAssociationsRouter from "./whatsapp-content-associations";
+import whatsappSyncRouter from "./whatsapp-sync";
+import metaRouter from "./meta";
+import metaInboxRouter from "./meta-inbox";
+import metaInboxRepliesRouter from "./meta-inbox-replies";
+import metaAutoRepliesRouter from "./meta-auto-replies";
+import metaWebhookRouter from "./meta-webhook";
+import metaWebhookSubscriptionsRouter from "./meta-webhook-subscriptions";
+import whatsappGroupsRouter from "./whatsapp-groups";
+import postsRouter from "./posts";
+import accountDetailsRouter from "./account-details";
+import workspacesRouter from "./workspaces";
+import onboardingRouter from "./onboarding";
+import whatsappAutoRepliesRouter from "./whatsapp-auto-replies";
 
 const router: IRouter = Router();
 
-router.use(healthRouter);
 router.use(accessRouter);
 router.use(socialRouter);
+router.use(whatsappMessagesRouter);
+router.use(whatsappContentAssociationsRouter);
+router.use(whatsappSyncRouter);
+router.use(whatsappAutoRepliesRouter);
+router.use(whatsappGroupsRouter);
+router.use(metaRouter);
+router.use(metaInboxRouter);
+router.use(metaInboxRepliesRouter);
+router.use(metaAutoRepliesRouter);
+router.use(metaWebhookRouter);
+router.use(metaWebhookSubscriptionsRouter);
 router.use(aiRouter);
+router.use(postsRouter);
+router.use(accountDetailsRouter);
+router.use(workspacesRouter);
+router.use(onboardingRouter);
 
 export default router;

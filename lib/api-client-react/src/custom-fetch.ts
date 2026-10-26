@@ -17,6 +17,7 @@ const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
 let _baseUrl: string | null = null;
 let _authTokenGetter: AuthTokenGetter | null = null;
+let _workspaceIdGetter: (() => string | null | Promise<string | null>) | null = null;
 
 /**
  * Set a base URL that is prepended to every relative request URL
@@ -37,11 +38,42 @@ export function setBaseUrl(url: string | null): void {
  * Useful for Expo bundles making token-gated API calls.
  * Pass `null` to clear the getter.
  *
- * NOTE: This function should never be used in web applications where session
- * token cookies are automatically associated with API calls by the browser.
+ * This is used by both native and web clients. The API is cross-origin from
+ * the Expo web app, so web requests also need the explicit bearer token.
  */
 export function setAuthTokenGetter(getter: AuthTokenGetter | null): void {
   _authTokenGetter = getter;
+}
+
+/**
+ * Register a getter that supplies the active workspace ID.  Before every
+ * fetch the getter is invoked; when it returns a non-null string, an
+ * `x-workspace-id` header is attached to the request.
+ *
+ * Call this once after the user has selected (or been assigned) a workspace.
+ * Pass `null` to clear the getter (e.g. on sign-out).
+ */
+export function setWorkspaceIdGetter(
+  getter: (() => string | null | Promise<string | null>) | null,
+): void {
+  _workspaceIdGetter = getter;
+}
+
+export async function fetchApiResponse(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+): Promise<Response> {
+  input = applyBaseUrl(input);
+  const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, init.headers);
+  if (_authTokenGetter && !headers.has("authorization")) {
+    const token = await _authTokenGetter();
+    if (token) headers.set("authorization", `Bearer ${token}`);
+  }
+  if (_workspaceIdGetter && !headers.has("x-workspace-id")) {
+    const workspaceId = await _workspaceIdGetter();
+    if (workspaceId) headers.set("x-workspace-id", workspaceId);
+  }
+  return fetch(input, { ...init, headers });
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -349,18 +381,9 @@ export async function customFetch<T = unknown>(
     headers.set("accept", DEFAULT_JSON_ACCEPT);
   }
 
-  // Attach bearer token when an auth getter is configured and no
-  // Authorization header has been explicitly provided.
-  if (_authTokenGetter && !headers.has("authorization")) {
-    const token = await _authTokenGetter();
-    if (token) {
-      headers.set("authorization", `Bearer ${token}`);
-    }
-  }
-
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetch(input, { ...init, method, headers });
+  const response = await fetchApiResponse(input, { ...init, method, headers });
 
   if (!response.ok) {
     const errorData = await parseErrorBody(response, method);

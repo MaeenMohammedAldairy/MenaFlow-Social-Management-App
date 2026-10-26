@@ -5,12 +5,25 @@ import {
   canAutoPublishMessage,
   containsSensitivePersonalData,
   isBusinessAuthoredMessage,
+  resolveMessageSenderId,
 } from "./whatsapp-marketing-safety.ts";
 
 test("only exact linked business sender IDs qualify as business-authored", () => {
   assert.equal(isBusinessAuthoredMessage("971501234567@s.whatsapp.net", "+971 50 123 4567"), true);
   assert.equal(isBusinessAuthoredMessage("971501234568@s.whatsapp.net", "+971 50 123 4567"), false);
   assert.equal(isBusinessAuthoredMessage("12345@lid", "+971 50 123 4567"), false);
+});
+
+test("outgoing group messages with fromMe set use the linked business phone", () => {
+  const businessPhone = "+967777187184";
+  assert.equal(resolveMessageSenderId({
+    fromMe: true,
+    participant: undefined,
+  }, businessPhone), businessPhone);
+  assert.equal(resolveMessageSenderId({
+    fromMe: false,
+    participant: "967700000001@s.whatsapp.net",
+  }, businessPhone), "967700000001@s.whatsapp.net");
 });
 
 test("personal contact details and verification secrets are rejected", () => {
@@ -20,17 +33,16 @@ test("personal contact details and verification secrets are rejected", () => {
   assert.equal(containsSensitivePersonalData("منتج متوفر بلون أزرق"), false);
 });
 
-test("only available messages from explicitly approved WhatsApp groups are analyzed", () => {
+test("available messages from selected WhatsApp groups are analyzed regardless of send permissions", () => {
   const approved = {
     isGroup: true,
     groupSelected: true,
-    groupCanPublish: true,
     messageAvailable: true,
   };
   assert.equal(canAnalyzeWhatsAppMessage(approved), true);
+  assert.equal(canAnalyzeWhatsAppMessage({ ...approved, canPublish: false }), true);
   assert.equal(canAnalyzeWhatsAppMessage({ ...approved, isGroup: false }), false);
   assert.equal(canAnalyzeWhatsAppMessage({ ...approved, groupSelected: false }), false);
-  assert.equal(canAnalyzeWhatsAppMessage({ ...approved, groupCanPublish: false }), false);
   assert.equal(canAnalyzeWhatsAppMessage({ ...approved, messageAvailable: false }), false);
 });
 

@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
-import path from "node:path";
-import { and, asc, eq, inArray, lte, lt, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, lte, lt, notExists, or, sql } from "drizzle-orm";
 import {
   db,
   menaContentJobs,
+  menaMetaConnections,
   menaContentSettings,
+  menaPostActivityEvents,
   menaWhatsAppConnections,
+  menaWhatsAppGroups,
   menaWhatsAppGroupSelections,
   menaWhatsAppMessageMedia,
   menaWhatsAppMessages,
@@ -19,19 +20,30 @@ import {
   containsSensitivePersonalData,
 } from "./whatsapp-marketing-safety";
 import { publishPostToMeta } from "./meta-publishing";
-
-const MEDIA_ROOT = path.resolve(
-  process.cwd(),
-  "..",
-  "..",
-  "artifacts",
-  "api-server",
-  "storage",
-  "whatsapp",
-);
+import { connectedMetaChannels } from "./meta-channel-routing";
+import { notifyPostsChanged } from "./post-events";
+import { makePostActivityEvent } from "./post-activity";
+import {
+  hasPreviouslyProcessedAlbumItems,
+  whatsappAlbumProcessingLockKey,
+  whatsappAlbumSettleMs,
+  whatsappAlbumMaxWaitMs,
+  whatsappAlbumCompletionState,
+  whatsappContentPostId,
+  whatsappTextNeedsAssociationWait,
+  whatsappStandaloneMediaNeedsAssociationWait,
+  whatsappTextAlbumAssociationMs,
+  whatsappTextSettleMs,
+} from "./whatsapp-albums";
+import { isConfirmedWhatsAppMediaGroupSource } from "./whatsapp-album-relations";
+import { getWhatsAppContentBundle } from "./whatsapp-content-associations";
+import { retryWhatsAppMediaDownload } from "./whatsapp-media-download";
+import { extractWhatsAppAlbumAssociation } from "./whatsapp-message-scope";
+import { saveDraft, safePublishResults } from "./whatsapp-marketing-drafts";
 
 type ProcessOptions = {
   allowAutoPublish?: boolean;
+  manualReview?: boolean;
 };
 
 function isRetryableContentError(error: unknown): boolean {
@@ -45,14 +57,6 @@ function isRetryableContentError(error: unknown): boolean {
   );
 }
 
-type AiDraft = {
-  eligible: boolean;
-  title: string;
-  facebook: string;
-  instagram: string;
-  reason: string;
-};
-
 function settingsChannels(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.filter((channel): channel is string =>
@@ -60,378 +64,525 @@ function settingsChannels(value: unknown): string[] {
   ))];
 }
 
-async function generateDraft(
-  text: string,
-  media?: { mimeType: string; buffer: Buffer },
-): Promise<{ draft: AiDraft; model: string }> {
-  const prompt = [
-    "قيّم رسالة من مجموعة واتساب تجارية وأنشئ منشورين عربيين ملائمين لفيسبوك وإنستغرام.",
-    "أعد JSON فقط بالمفاتيح eligible (boolean), title, facebook, instagram, reason.",
-    "eligible=true فقط إذا كان المحتوى عرضاً/منتجاً/خدمةً تجارية واضحة صالحة للنشر العام.",
-    "لا تنشر محادثة أو طلب عميل أو بيانات شخصية أو أرقاماً أو رموز تحقق أو معلومة غير مؤكدة.",
-    "لا تخترع سعراً أو خصماً أو ضماناً أو مواصفة أو رابطاً. استخدم الوقائع الصريحة فقط.",
-    "إذا كان المحتوى غير مؤهل أو ملتبساً اجعل eligible=false واكتب سبباً قصيراً.",
-    `نص الرسالة المصدر:\n${text || "(لا يوجد نص)"}`,
-  ].join("\n");
-  const openAiKey = process.env.OPENAI_API_KEY;
-  const geminiKey = process.env.GEMINI_API_KEY;
-  let content: string | null | undefined;
-  let model: string;
-  const generateWithGemini = async (): Promise<{ content: string; model: string }> => {
-    if (!geminiKey) throw new Error("MISSING_GEMINI_KEY");
-    const parts: Array<Record<string, unknown>> = [{ text: prompt }];
-    if (media) {
-      parts.push({
-        inlineData: {
-          mimeType: media.mimeType,
-          data: media.buffer.toString("base64"),
-        },
-      });
-    }
-    const preferredModel = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
-    const models = [...new Set([preferredModel, "gemini-flash-lite-latest"])];
-    let lastError: Error = new Error("GEMINI_EMPTY_RESPONSE");
-    for (const geminiModel of models) {
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent`,
-          {
-            method: "POST",
-            headers: {
-              "x-goog-api-key": geminiKey,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: "حلّل بحذر. لا تستنتج من الصورة بيانات غير ظاهرة بوضوح." }] },
-              contents: [{ parts }],
-              generationConfig: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                  type: "OBJECT",
-                  properties: {
-                    eligible: { type: "BOOLEAN" },
-                    title: { type: "STRING" },
-                    facebook: { type: "STRING" },
-                    instagram: { type: "STRING" },
-                    reason: { type: "STRING" },
-                  },
-                  required: ["eligible", "title", "facebook", "instagram", "reason"],
-                },
-                temperature: 0.2,
-                maxOutputTokens: 900,
-              },
-            }),
-            signal: AbortSignal.timeout(45_000),
-          },
-        );
-        if (!response.ok) {
-          lastError = new Error(`GEMINI_HTTP_${response.status}`);
-          if ([404, 429, 500, 502, 503, 504].includes(response.status) && geminiModel !== models.at(-1)) {
-            console.warn("Configured Gemini model unavailable; trying fallback model", {
-              reason: lastError.message,
-            });
-            continue;
-          }
-          throw lastError;
-        }
-        const payload = await response.json() as {
-          candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-        };
-        const generated = payload.candidates?.[0]?.content?.parts
-          ?.map((part) => part.text ?? "")
-          .join("");
-        if (generated) return { content: generated, model: geminiModel };
-        lastError = new Error("GEMINI_EMPTY_RESPONSE");
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error("GEMINI_REQUEST_FAILED");
-        if (
-          geminiModel !== models.at(-1) &&
-          (lastError.name === "TypeError" || lastError.name === "TimeoutError" || lastError.message === "GEMINI_EMPTY_RESPONSE")
-        ) {
-          console.warn("Configured Gemini model request failed; trying fallback model", {
-            reason: lastError.name === "Error" ? lastError.message : lastError.name,
-          });
-          continue;
-        }
-        throw lastError;
-      }
-    }
-    throw lastError;
-  };
 
-  const generateWithOpenAI = async (): Promise<{ content: string; model: string }> => {
-    if (!openAiKey) throw new Error("MISSING_OPENAI_KEY");
-    const openAiModel = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
-    const userContent: Array<Record<string, unknown>> = [{ type: "text", text: prompt }];
-    if (media) {
-      userContent.push({
-        type: "image_url",
-        image_url: {
-          url: `data:${media.mimeType};base64,${media.buffer.toString("base64")}`,
-          detail: "low",
-        },
-      });
-    }
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openAiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: openAiModel,
-        messages: [
-          { role: "system", content: "حلّل بحذر. لا تستنتج من الصورة بيانات غير ظاهرة بوضوح." },
-          { role: "user", content: userContent },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.2,
-        max_tokens: 900,
-      }),
-      signal: AbortSignal.timeout(45_000),
-    });
-    if (!response.ok) throw new Error(`OPENAI_HTTP_${response.status}`);
-    const payload = await response.json() as {
-      choices?: Array<{ message?: { content?: string | null } }>;
-    };
-    const generated = payload.choices?.[0]?.message?.content;
-    if (!generated) throw new Error("OPENAI_EMPTY_RESPONSE");
-    return { content: generated, model: openAiModel };
-  };
 
-  if (openAiKey) {
-    try {
-      ({ content, model } = await generateWithOpenAI());
-    } catch (error) {
-      if (!geminiKey) throw error;
-      const reason = error instanceof Error ? error.message : "OPENAI_REQUEST_FAILED";
-      console.warn("WhatsApp content AI provider failed; trying configured fallback", {
-        provider: "openai",
-        reason,
-      });
-      ({ content, model } = await generateWithGemini());
-    }
-  } else if (geminiKey) {
-    ({ content, model } = await generateWithGemini());
-  } else {
-    throw new Error("MISSING_AI_PROVIDER_KEY");
-  }
-  if (!content) throw new Error("AI_EMPTY_RESPONSE");
-  const result = JSON.parse(content) as Partial<AiDraft>;
-  if (typeof result.eligible !== "boolean") throw new Error("AI_INVALID_ASSESSMENT");
-  return {
-    model,
-    draft: {
-      eligible: result.eligible,
-      title: typeof result.title === "string" ? result.title.trim().slice(0, 120) : "",
-      facebook: typeof result.facebook === "string" ? result.facebook.trim().slice(0, 5000) : "",
-      instagram: typeof result.instagram === "string" ? result.instagram.trim().slice(0, 2200) : "",
-      reason: typeof result.reason === "string" ? result.reason.trim().slice(0, 300) : "",
-    },
-  };
-}
-
-async function saveDraft(
-  ownerId: string,
-  message: typeof menaWhatsAppMessages.$inferSelect,
-  draft: Partial<AiDraft>,
-  reason: string,
-  model: string | null,
-  mediaUrl: string | null,
-  safeSourceText: string | null,
-) {
-  const id = createHash("sha256")
-    .update(`${ownerId}:${message.id}`)
-    .digest("hex");
-  const status = "review";
-  const [inserted] = await db
-    .insert(posts)
-    .values({
-      id,
-      ownerId,
-      title: draft.title || (reason ? "محتوى يحتاج إلى مراجعة" : "منشور تسويقي"),
-      body: draft.facebook || draft.instagram || "",
-      channels: [],
-      status,
-      sourceType: "whatsapp",
-      sourceMessageId: message.id,
-      sourceGroupJid: message.groupJid,
-      sourceMessageDate: message.messageTimestamp,
-      sourceText: safeSourceText,
-      mediaUrls: mediaUrl ? [mediaUrl] : [],
-      metadata: {
-        instagramBody: draft.instagram ?? "",
-        reviewReason: reason || draft.reason || null,
-        aiModel: model,
-      },
-      autoPublish: false,
-      autoPublishChannels: [],
-      publishResults: {},
-      error: reason || null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    })
-    .onConflictDoNothing()
-    .returning();
-  if (inserted) return { post: inserted, created: true };
-  const [existing] = await db
-    .select()
-    .from(posts)
-    .where(and(eq(posts.ownerId, ownerId), eq(posts.id, id)))
-    .limit(1);
-  if (!existing) throw new Error("POST_DEDUPLICATION_CONFLICT");
-  return { post: existing, created: false };
-}
-
-export async function processWhatsAppMessage(
-  ownerId: string,
+async function processWhatsAppMessageUnlocked(
+  workspaceId: string,
   messageId: string,
   options: ProcessOptions = {},
-): Promise<{ outcome: "created" | "existing" | "skipped"; postId?: string; reason?: string }> {
+): Promise<{ outcome: "created" | "existing" | "skipped" | "deferred"; postId?: string; reason?: string; retryAt?: Date }> {
   const [message] = await db
     .select()
     .from(menaWhatsAppMessages)
-    .where(and(eq(menaWhatsAppMessages.ownerId, ownerId), eq(menaWhatsAppMessages.id, messageId)))
+    .where(and(
+      eq(menaWhatsAppMessages.workspaceId, workspaceId),
+      eq(menaWhatsAppMessages.id, messageId),
+    ))
     .limit(1);
   if (!message || message.messageStatus === "deleted") return { outcome: "skipped", reason: "MESSAGE_NOT_AVAILABLE" };
+  const ownerId = message.ownerId;
+  if (message.messageType === "albumMediaUnresolved") {
+    console.error("WhatsApp album media has no parent key and was withheld from individual publishing", {
+      reason: "WHATSAPP_ALBUM_PARENT_KEY_MISSING_REQUIRES_REVIEW",
+    });
+    return { outcome: "skipped", reason: "WHATSAPP_ALBUM_PARENT_KEY_MISSING_REQUIRES_REVIEW" };
+  }
+
+  const textSettleMs = whatsappTextSettleMs(process.env.WHATSAPP_TEXT_SETTLE_MS);
+  const associationWindowMs = whatsappTextAlbumAssociationMs(
+    process.env.WHATSAPP_TEXT_ALBUM_ASSOCIATION_MS,
+  );
+  const textAssociationSettleMs = textSettleMs + associationWindowMs * 2;
+  const contentBundle = message.groupId
+    ? await getWhatsAppContentBundle(
+        {
+        workspaceId,
+        instanceName: message.instanceName,
+        groupId: message.groupId,
+        },
+        message.id,
+      )
+    : null;
+  const hasConfirmedMediaGroup =
+    isConfirmedWhatsAppMediaGroupSource(message.mediaGroupSource) &&
+    Boolean(message.mediaGroupId);
+  if (whatsappTextNeedsAssociationWait({
+    hasMediaGroup: hasConfirmedMediaGroup || Boolean(contentBundle),
+    hasMedia: message.mediaAvailable,
+    hasText: Boolean(message.textBody?.trim() || message.caption?.trim()),
+    createdAt: message.createdAt,
+    now: new Date(),
+    settleMs: textAssociationSettleMs,
+  })) {
+    return {
+      outcome: "deferred",
+      reason: "WHATSAPP_TEXT_WAITING_FOR_ALBUM_ASSOCIATION",
+      retryAt: new Date(message.createdAt.getTime() + textAssociationSettleMs),
+    };
+  }
+  if (message.mediaAvailable && whatsappStandaloneMediaNeedsAssociationWait({
+    hasKnownGroup: hasConfirmedMediaGroup || Boolean(contentBundle),
+    createdAt: message.createdAt,
+    now: new Date(),
+    settleMs: whatsappAlbumSettleMs(process.env.WHATSAPP_ALBUM_SETTLE_MS),
+    associationWindowMs,
+  })) {
+    const retryAt = new Date(
+      message.createdAt.getTime() +
+      whatsappAlbumSettleMs(process.env.WHATSAPP_ALBUM_SETTLE_MS) +
+      associationWindowMs * 2,
+    );
+    return {
+      outcome: "deferred",
+      reason: "WHATSAPP_MEDIA_WAITING_FOR_ALBUM_ASSOCIATION",
+      retryAt,
+    };
+  }
 
   const [connection] = await db
     .select()
     .from(menaWhatsAppConnections)
-    .where(eq(menaWhatsAppConnections.ownerId, ownerId))
+    .where(and(
+      eq(menaWhatsAppConnections.workspaceId, workspaceId),
+      eq(menaWhatsAppConnections.instanceName, message.instanceName),
+    ))
     .limit(1);
   if (!connection) return { outcome: "skipped", reason: "WHATSAPP_CONNECTION_NOT_FOUND" };
+  if (!message.groupId) {
+    return { outcome: "skipped", reason: "WHATSAPP_GROUP_IDENTITY_REQUIRED" };
+  }
   const [selection] = await db
-    .select()
+    .select({
+      id: menaWhatsAppGroupSelections.id,
+      groupName: menaWhatsAppGroupSelections.groupName,
+    })
     .from(menaWhatsAppGroupSelections)
+    .innerJoin(
+      menaWhatsAppGroups,
+      and(
+        eq(menaWhatsAppGroups.workspaceId, workspaceId),
+        eq(menaWhatsAppGroups.instanceName, message.instanceName),
+        eq(menaWhatsAppGroups.id, message.groupId),
+      ),
+    )
     .where(
       and(
-        eq(menaWhatsAppGroupSelections.ownerId, ownerId),
+        eq(menaWhatsAppGroupSelections.workspaceId, workspaceId),
         eq(menaWhatsAppGroupSelections.instanceName, message.instanceName),
-        eq(menaWhatsAppGroupSelections.groupJid, message.groupJid),
+        or(
+          eq(menaWhatsAppGroupSelections.groupId, message.groupId),
+          eq(
+            menaWhatsAppGroupSelections.groupId,
+            menaWhatsAppGroups.parentGroupId,
+          ),
+        ),
         eq(menaWhatsAppGroupSelections.selected, true),
-        eq(menaWhatsAppGroupSelections.canPublish, true),
       ),
     )
     .limit(1);
   if (!canAnalyzeWhatsAppMessage({
     isGroup: message.groupJid.endsWith("@g.us"),
-    groupSelected: Boolean(selection?.selected),
-    groupCanPublish: Boolean(selection?.canPublish),
+    groupSelected: Boolean(selection),
     messageAvailable: message.messageStatus !== "deleted",
   })) {
     return { outcome: "skipped", reason: "GROUP_NOT_APPROVED" };
   }
 
-  const [existingPost] = await db
-    .select({ id: posts.id })
-    .from(posts)
-    .where(and(eq(posts.ownerId, ownerId), eq(posts.sourceType, "whatsapp"), eq(posts.sourceMessageId, message.id)))
-    .limit(1);
-  if (existingPost) return { outcome: "existing", postId: existingPost.id };
-
-  const [media] = await db
+  const bundleMessageIds = contentBundle?.messageIds ?? [message.id];
+  const bundleRows = bundleMessageIds.length === 1 && bundleMessageIds[0] === message.id
+    ? [message]
+    : await db
+        .select()
+        .from(menaWhatsAppMessages)
+        .where(and(
+          eq(menaWhatsAppMessages.workspaceId, workspaceId),
+          eq(menaWhatsAppMessages.instanceName, message.instanceName),
+          eq(menaWhatsAppMessages.groupId, message.groupId),
+          inArray(menaWhatsAppMessages.id, bundleMessageIds),
+          eq(menaWhatsAppMessages.messageStatus, "received"),
+        ));
+  const confirmedAlbumIds = [...new Set(bundleRows
+    .filter((item) =>
+      item.mediaGroupId &&
+      isConfirmedWhatsAppMediaGroupSource(item.mediaGroupSource),
+    )
+    .map((item) => item.mediaGroupId!))];
+  let groupMessages = await db
     .select()
-    .from(menaWhatsAppMessageMedia)
+    .from(menaWhatsAppMessages)
     .where(and(
-      eq(menaWhatsAppMessageMedia.ownerId, ownerId),
-      eq(menaWhatsAppMessageMedia.messageId, message.id),
+      eq(menaWhatsAppMessages.workspaceId, workspaceId),
+      eq(menaWhatsAppMessages.instanceName, message.instanceName),
+      eq(menaWhatsAppMessages.groupId, message.groupId),
+      eq(menaWhatsAppMessages.messageStatus, "received"),
+      or(
+        inArray(menaWhatsAppMessages.id, bundleMessageIds),
+        ...(confirmedAlbumIds.length > 0
+          ? [and(
+              inArray(menaWhatsAppMessages.mediaGroupId, confirmedAlbumIds),
+              inArray(menaWhatsAppMessages.mediaGroupSource, [
+                "protocol_association",
+                "provider_album_container",
+              ]),
+            )]
+          : []),
+      ),
     ))
-    .limit(1);
-  const text = [message.textBody, message.caption].filter(Boolean).join("\n").trim();
-  const mediaReady = !message.mediaAvailable || media?.downloadStatus === "stored";
-  const safeText = containsSensitivePersonalData(text) ? null : text || null;
-  const mediaUrl = media?.downloadStatus === "stored" ? media.id : null;
-  if (message.messageType === "albumMessage" && !text && !media) {
-    const saved = await saveDraft(
-      ownerId,
-      message,
-      {},
-      "ALBUM_CONTAINER_REQUIRES_REVIEW",
-      null,
-      null,
-      null,
-    );
-    return { outcome: saved.created ? "created" : "existing", postId: saved.post.id, reason: "ALBUM_CONTAINER_REQUIRES_REVIEW" };
-  }
-
-  let draft: Partial<AiDraft> = {};
-  let model: string | null = null;
-  let reason = "";
-  if (containsSensitivePersonalData(text)) {
-    reason = "SENSITIVE_PERSONAL_DATA_REQUIRES_REVIEW";
-  } else if (!mediaReady) {
-    reason = "MEDIA_NOT_READY";
-  } else if (media && media.mediaType === "video") {
-    reason = "VIDEO_ANALYSIS_REQUIRES_MANUAL_REVIEW";
-  } else if (media && !media.mimeType?.startsWith("image/")) {
-    reason = "MEDIA_TYPE_REQUIRES_MANUAL_REVIEW";
-  } else if (!safeText && !media) {
-    reason = "EMPTY_MESSAGE";
-  } else {
-    try {
-      let image: { mimeType: string; buffer: Buffer } | undefined;
-      if (media) {
-        const resolved = path.resolve(media.storagePath);
-        if (!resolved.startsWith(`${MEDIA_ROOT}${path.sep}`)) throw new Error("INVALID_MEDIA_STORAGE_PATH");
-        const fileStat = await stat(resolved);
-        if (!fileStat.isFile() || fileStat.size === 0 || fileStat.size > 8 * 1024 * 1024) {
-          throw new Error("IMAGE_SIZE_UNSUPPORTED");
-        }
-        image = { mimeType: media.mimeType || "image/jpeg", buffer: await readFile(resolved) };
-      }
-      const generated = await generateDraft(safeText ?? "", image);
-      draft = generated.draft;
-      model = generated.model;
-      console.info("WhatsApp marketing analysis completed", {
-        messageId: message.id,
-        model,
-        eligible: draft.eligible === true,
-        imageIncluded: Boolean(image),
-        mediaId: media?.id ?? null,
-        mediaMimeType: image?.mimeType ?? null,
-        mediaSizeBytes: image?.buffer.length ?? 0,
-      });
-      if (!draft.eligible || !draft.facebook || !draft.instagram) {
-        reason = draft.reason || "CONTENT_NOT_ELIGIBLE_OR_INCOMPLETE";
-      }
-    } catch (error) {
-      reason = error instanceof Error ? error.message : "AI_ANALYSIS_FAILED";
-      console.error("WhatsApp marketing analysis failed", {
-        messageId: message.id,
-        mediaId: media?.id ?? null,
-        reason,
-        retryable: isRetryableContentError(error),
-      });
-      if (isRetryableContentError(error)) throw error;
+    .orderBy(asc(menaWhatsAppMessages.messageTimestamp), asc(menaWhatsAppMessages.createdAt));
+  for (const groupMessage of groupMessages) {
+    if (groupMessage.mediaDownloadStatus === "failed" || groupMessage.mediaDownloadStatus === "pending") {
+      await retryWhatsAppMediaDownload(groupMessage);
     }
   }
+  if (contentBundle || confirmedAlbumIds.length > 0) {
+    groupMessages = await db
+      .select()
+      .from(menaWhatsAppMessages)
+      .where(and(
+        eq(menaWhatsAppMessages.workspaceId, workspaceId),
+        eq(menaWhatsAppMessages.instanceName, message.instanceName),
+        eq(menaWhatsAppMessages.groupId, message.groupId),
+        eq(menaWhatsAppMessages.messageStatus, "received"),
+        or(
+          inArray(menaWhatsAppMessages.id, bundleMessageIds),
+          ...(confirmedAlbumIds.length > 0
+            ? [and(
+                inArray(menaWhatsAppMessages.mediaGroupId, confirmedAlbumIds),
+                inArray(menaWhatsAppMessages.mediaGroupSource, [
+                  "protocol_association",
+                  "provider_album_container",
+                ]),
+              )]
+            : []),
+        ),
+      ))
+      .orderBy(
+        asc(menaWhatsAppMessages.messageTimestamp),
+        asc(menaWhatsAppMessages.createdAt),
+      );
+  }
+  groupMessages.sort((left, right) => {
+    const leftIndex = left.mediaGroupIndex;
+    const rightIndex = right.mediaGroupIndex;
+    if (leftIndex !== null && rightIndex !== null && leftIndex !== rightIndex) return leftIndex - rightIndex;
+    if (leftIndex !== null && rightIndex === null) return -1;
+    if (leftIndex === null && rightIndex !== null) return 1;
+    return (left.messageTimestamp?.getTime() ?? 0) - (right.messageTimestamp?.getTime() ?? 0);
+  });
+  const sourceMessage = groupMessages[0] ?? message;
+  const confirmedMediaGroupId = groupMessages.find((item) =>
+    item.mediaGroupId &&
+    isConfirmedWhatsAppMediaGroupSource(item.mediaGroupSource),
+  )?.mediaGroupId ?? null;
+  const albumSourceMessageId =
+    contentBundle?.id ?? confirmedMediaGroupId ?? sourceMessage.id;
+  const contentGroupKey = albumSourceMessageId;
+  const existingPostConditions = [
+    eq(posts.sourceMessageId, albumSourceMessageId),
+    eq(posts.id, whatsappContentPostId(ownerId, contentGroupKey)),
+    ...(contentBundle || confirmedMediaGroupId
+      ? groupMessages.map((item) =>
+          sql`${posts.metadata} @> ${JSON.stringify({ sourceRemoteMessageIds: [item.remoteMessageId] })}::jsonb`,
+        )
+      : []),
+  ];
+  const [existingPost] = await db
+    .select()
+    .from(posts)
+    .where(and(
+      eq(posts.workspaceId, workspaceId),
+      eq(posts.sourceType, "whatsapp"),
+      or(...existingPostConditions),
+    ))
+    .limit(1);
+  const sourceMessageId = existingPost?.sourceMessageId ?? albumSourceMessageId;
 
-  const saved = await saveDraft(ownerId, message, draft, reason, model, mediaUrl, safeText);
-  if (!saved.created) return { outcome: "existing", postId: saved.post.id };
+  const messageIds = [...new Set(groupMessages.map((item) => item.id))];
+  const mediaRows = messageIds.length > 0
+    ? await db
+        .select()
+        .from(menaWhatsAppMessageMedia)
+        .where(and(
+          eq(menaWhatsAppMessageMedia.workspaceId, workspaceId),
+          inArray(menaWhatsAppMessageMedia.messageId, messageIds),
+        ))
+    : [];
+  const messageOrder = new Map(groupMessages.map((item, index) => [item.id, index]));
+  mediaRows.sort((left, right) => {
+    return (messageOrder.get(left.messageId) ?? Number.MAX_SAFE_INTEGER) -
+      (messageOrder.get(right.messageId) ?? Number.MAX_SAFE_INTEGER) ||
+      left.mediaIndex - right.mediaIndex;
+  });
+  const readyMedia = mediaRows.filter((item) => item.downloadStatus === "stored");
+  const expectedCount = Math.max(
+    0,
+    ...groupMessages.map((item) =>
+      isConfirmedWhatsAppMediaGroupSource(item.mediaGroupSource)
+        ? item.mediaGroupExpectedCount ?? 0
+        : 0,
+    ),
+  );
+  const isAlbumGroup = groupMessages.some((item) =>
+    item.mediaGroupId &&
+    isConfirmedWhatsAppMediaGroupSource(item.mediaGroupSource),
+  );
+  const settleMs = whatsappAlbumSettleMs(process.env.WHATSAPP_ALBUM_SETTLE_MS);
+  const latestReceivedAt = Math.max(...groupMessages.map((item) => item.updatedAt.getTime()));
+  const firstReceivedAt = Math.min(...groupMessages.map((item) => item.createdAt.getTime()));
+  const missingMessageMedia = groupMessages.some((item) =>
+    item.mediaAvailable && !readyMedia.some((media) => media.messageId === item.id),
+  );
+  const hasPendingDownload = mediaRows.some((item) => item.downloadStatus === "pending") ||
+    groupMessages.some((item) => item.mediaDownloadStatus === "pending");
+  const hasTerminalDownloadFailure = mediaRows.some((item) => item.downloadStatus === "failed") ||
+    groupMessages.some((item) => item.mediaDownloadStatus === "failed");
+  const unresolvedAlbumContainer = readyMedia.length === 0 &&
+    groupMessages.some((item) =>
+      item.mediaGroupSource === "provider_album_container" &&
+      item.messageType.toLowerCase().includes("album"),
+    );
+  const completion = whatsappAlbumCompletionState({
+    expectedCount,
+    storedCount: readyMedia.length,
+    isAlbum: isAlbumGroup,
+    hasAlbumContainer: unresolvedAlbumContainer,
+    hasMediaGroup: isAlbumGroup || Boolean(contentBundle),
+    hasPendingDownload,
+    hasMissingMessageMedia: missingMessageMedia,
+    hasTerminalDownloadFailure,
+    firstSeenAt: new Date(firstReceivedAt),
+    latestUpdate: new Date(latestReceivedAt),
+    now: new Date(),
+    settleMs,
+    maxWaitMs: whatsappAlbumMaxWaitMs(process.env.WHATSAPP_ALBUM_MAX_WAIT_MS),
+    manualReview: options.manualReview,
+  });
+  const shouldWaitForAlbum = completion.shouldWait;
+  const incompleteReview = completion.reviewRequired;
+  const manualIncompleteReview = options.manualReview === true && incompleteReview;
+  const timedOutIncompleteReview = incompleteReview && !manualIncompleteReview;
+  if (shouldWaitForAlbum && !incompleteReview) {
+    const retryAt = new Date(Date.now() + (hasPendingDownload ? 30_000 : settleMs));
+    console.info("WhatsApp album is waiting for all expected media", {
+      sourceMessageId,
+      expectedCount,
+      storedCount: readyMedia.length,
+      mediaDownloadPending: hasPendingDownload,
+      retryAt: retryAt.toISOString(),
+    });
+    return {
+      outcome: "deferred",
+      reason: hasPendingDownload
+        ? "WHATSAPP_MEDIA_DOWNLOAD_RETRY_PENDING"
+        : "WHATSAPP_ALBUM_WAITING_FOR_MEDIA",
+      retryAt,
+    };
+  }
+  if (timedOutIncompleteReview) {
+    console.error("WhatsApp album completion timed out and was sent for manual review", {
+      sourceMessageId,
+      expectedCount,
+      storedCount: readyMedia.length,
+      firstSeenAt: new Date(firstReceivedAt).toISOString(),
+      reason: "WHATSAPP_ALBUM_COMPLETION_UNCONFIRMED_REQUIRES_REVIEW",
+    });
+  } else if (manualIncompleteReview) {
+    console.info("WhatsApp incomplete album was explicitly sent for manual review", {
+      sourceMessageId,
+      expectedCount,
+      storedCount: readyMedia.length,
+      reason: "WHATSAPP_ALBUM_MANUAL_REVIEW_INCOMPLETE",
+    });
+  }
+  if (unresolvedAlbumContainer && !incompleteReview) {
+    return {
+      outcome: "deferred",
+      reason: "WHATSAPP_ALBUM_CONTAINER_WAITING_FOR_MEDIA",
+      retryAt: new Date(Date.now() + settleMs),
+    };
+  }
+
+  if (groupMessages.filter((item) => item.mediaAvailable).length > 1) {
+    const groupMessageIds = groupMessages.map((item) => item.id);
+    const existingIndividualPosts = await db
+      .select({ sourceMessageId: posts.sourceMessageId })
+      .from(posts)
+      .where(and(
+        eq(posts.workspaceId, workspaceId),
+        eq(posts.sourceType, "whatsapp"),
+        inArray(posts.sourceMessageId, groupMessageIds),
+      ));
+    const hasPreviouslyProcessedItems = hasPreviouslyProcessedAlbumItems(
+      sourceMessageId,
+      groupMessageIds,
+      existingIndividualPosts.map((post) => post.sourceMessageId),
+    );
+    if (hasPreviouslyProcessedItems && !existingPost) {
+      console.warn("WhatsApp album has prior individual posts; automatic reprocessing was blocked", {
+        sourceMessageId,
+        existingPostCount: existingIndividualPosts.length,
+      });
+      return {
+        outcome: "skipped",
+        reason: "WHATSAPP_ALBUM_HAS_EXISTING_POSTS_REQUIRES_MANUAL_REVIEW",
+      };
+    }
+  }
 
   const [settings] = await db
     .select()
     .from(menaContentSettings)
-    .where(eq(menaContentSettings.ownerId, ownerId))
+    .where(eq(menaContentSettings.workspaceId, workspaceId))
     .limit(1);
-  const channels = settingsChannels(settings?.autoPublishChannels);
+  const configuredChannels = settingsChannels(settings?.autoPublishChannels);
+
+  const text = [...new Set(groupMessages.flatMap((item) =>
+    [item.textBody, item.caption].filter((value): value is string => Boolean(value?.trim())),
+  ))].join("\n");
+  const mediaReady = groupMessages.every((item) =>
+    !item.mediaAvailable || readyMedia.some((media) => media.messageId === item.id),
+  ) && completion.mediaReady;
+  const safeText = containsSensitivePersonalData(text) ? null : text || null;
+  const mediaUrls = readyMedia.map((media) => media.id);
+  const hasVideo = readyMedia.some((media) => media.mediaType === "video");
+  const reason = "WHATSAPP_ORIGINAL_CONTENT_REQUIRES_REVIEW";
+  const draft = {
+    eligible: false,
+    title: "",
+    facebook: text,
+    instagram: text,
+    reason,
+  };
+  const model: string | null = null;
+
+  const saved = await saveDraft(
+    ownerId,
+    sourceMessage,
+    sourceMessageId,
+    draft,
+    reason,
+    model,
+    mediaUrls,
+    groupMessages.map((item) => item.remoteMessageId),
+    safeText,
+    readyMedia.map((media, mediaIndex) => ({
+      id: media.id,
+      messageId: media.messageId,
+      mediaType: media.mediaType,
+      mimeType: media.mimeType,
+      mediaIndex: media.mediaIndex,
+      messageOrder: messageOrder.get(media.messageId) ?? mediaIndex,
+      messageTimestamp: groupMessages
+        .find((message) => message.id === media.messageId)
+        ?.messageTimestamp?.toISOString() ?? null,
+    })),
+    selection.groupName,
+    contentBundle?.id ?? null,
+  );
+  if (saved.post && saved.post.sourceMessageId !== sourceMessageId) {
+    const consistentId = whatsappContentPostId(ownerId, sourceMessageId);
+    if (saved.post.id !== consistentId) {
+      await db
+        .update(posts)
+        .set({
+          id: consistentId,
+          sourceMessageId,
+          sourceGroupJid: sourceMessage.groupJid,
+          sourceMessageDate: sourceMessage.messageTimestamp,
+          sourceText: safeText,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(posts.workspaceId, workspaceId),
+          eq(posts.id, saved.post.id),
+        ));
+    }
+  }
+  if (!saved.created) return { outcome: "existing", postId: saved.post.id };
+
+  const [metaConnection] = await db
+    .select({
+      pageId: menaMetaConnections.pageId,
+      instagramUserId: menaMetaConnections.instagramUserId,
+    })
+    .from(menaMetaConnections)
+    .where(eq(menaMetaConnections.workspaceId, workspaceId))
+    .limit(1);
+  if (
+    metaConnection?.pageId &&
+    Array.isArray(saved.post.channels) &&
+    saved.post.channels.includes("facebook")
+  ) {
+    const events = [
+      makePostActivityEvent({
+        ownerId,
+        workspaceId: saved.post.workspaceId,
+        postId: saved.post.id,
+        accountId: metaConnection.pageId,
+        channel: "facebook",
+        eventType: "post_created",
+        actorId: ownerId,
+        details: { title: saved.post.title },
+      }),
+      ...(saved.post.status === "review"
+        ? [
+            makePostActivityEvent({
+              ownerId,
+              workspaceId: saved.post.workspaceId,
+              postId: saved.post.id,
+              accountId: metaConnection.pageId,
+              channel: "facebook",
+              eventType: "post_submitted_for_review",
+              actorId: ownerId,
+              details: { title: saved.post.title },
+            }),
+          ]
+        : []),
+    ];
+    await db.insert(menaPostActivityEvents).values(events);
+  }
+  const channels = connectedMetaChannels(configuredChannels, metaConnection);
+  const businessAuthored = isBusinessAuthoredMessage(message.senderId, connection.phoneNumber);
+  const contentEligible = canAutoPublishMessage({
+    isGroup: message.groupJid.endsWith("@g.us"),
+    businessAuthored,
+    text,
+    mediaReady,
+    hasUnsupportedVideo: hasVideo,
+  });
+  const enabledForMessage = Boolean(
+    settings?.enabledAt &&
+    message.messageTimestamp &&
+    message.messageTimestamp >= settings.enabledAt,
+  );
+  const selectedChannelsConnected =
+    channels.length > 0 && channels.length === configuredChannels.length;
   const autoEligible =
     options.allowAutoPublish === true &&
-    canAutoPublishMessage({
-      isGroup: message.groupJid.endsWith("@g.us"),
-      businessAuthored: isBusinessAuthoredMessage(message.senderId, connection.phoneNumber),
-      text,
-      mediaReady,
-      hasUnsupportedVideo: media?.mediaType === "video",
-    }) &&
+    contentEligible &&
     settings?.autoPublishEnabled === true &&
-    Boolean(settings.enabledAt && message.messageTimestamp && message.messageTimestamp >= settings.enabledAt) &&
+    enabledForMessage &&
     !reason &&
     draft.eligible === true &&
-    channels.length > 0 &&
+    selectedChannelsConnected &&
     mediaReady;
-  if (!autoEligible) return { outcome: "created", postId: saved.post.id, reason: reason || undefined };
+  if (!autoEligible) {
+    const autoPublishReason = reason ||
+      (options.allowAutoPublish !== true
+        ? "AUTO_PUBLISH_NOT_ALLOWED"
+        : settings?.autoPublishEnabled !== true
+          ? "AUTO_PUBLISH_DISABLED"
+          : !enabledForMessage
+            ? "MESSAGE_PRECEDES_AUTO_PUBLISH_ENABLEMENT"
+            : !businessAuthored
+              ? "MESSAGE_NOT_SENT_BY_BUSINESS"
+              : !contentEligible
+                ? "MESSAGE_NOT_ELIGIBLE_FOR_AUTO_PUBLISH"
+                : !selectedChannelsConnected
+                  ? "AUTO_PUBLISH_CHANNEL_NOT_CONNECTED"
+                  : "AUTO_PUBLISH_CHANNELS_NOT_SELECTED");
+    return { outcome: "created", postId: saved.post.id, reason: autoPublishReason };
+  }
 
   const [locked] = await db
     .update(posts)
@@ -442,7 +593,11 @@ export async function processWhatsAppMessage(
       autoPublishChannels: channels,
       updatedAt: new Date(),
     })
-    .where(and(eq(posts.id, saved.post.id), eq(posts.ownerId, ownerId), eq(posts.status, "review")))
+    .where(and(
+      eq(posts.id, saved.post.id),
+      eq(posts.workspaceId, workspaceId),
+      eq(posts.status, "review"),
+    ))
     .returning();
   if (!locked) return { outcome: "existing", postId: saved.post.id, reason: "PUBLISH_ALREADY_CLAIMED" };
 
@@ -457,15 +612,25 @@ export async function processWhatsAppMessage(
         await db
           .update(posts)
           .set({ publishResults: { ...persistedResults }, updatedAt: new Date() })
-          .where(and(eq(posts.id, locked.id), eq(posts.ownerId, ownerId)));
+          .where(and(
+            eq(posts.id, locked.id),
+            eq(posts.workspaceId, workspaceId),
+          ));
       },
+      workspaceId,
+      false,
+      true,
     );
   } catch (error) {
     const reason = error instanceof Error ? error.message : "META_PUBLISH_FAILED";
     await db
       .update(posts)
       .set({ status: "failed", error: reason, updatedAt: new Date() })
-      .where(and(eq(posts.id, locked.id), eq(posts.ownerId, ownerId)));
+      .where(and(
+        eq(posts.id, locked.id),
+        eq(posts.workspaceId, workspaceId),
+      ));
+    notifyPostsChanged(ownerId);
     return { outcome: "created", postId: locked.id, reason };
   }
   const allPublished = channels.every((channel) => completed[channel]?.status === "published");
@@ -477,7 +642,11 @@ export async function processWhatsAppMessage(
       error: allPublished ? null : "AUTO_PUBLISH_INCOMPLETE",
       updatedAt: new Date(),
     })
-    .where(and(eq(posts.id, locked.id), eq(posts.ownerId, ownerId)));
+    .where(and(
+      eq(posts.id, locked.id),
+      eq(posts.workspaceId, workspaceId),
+    ));
+  notifyPostsChanged(ownerId);
   return {
     outcome: "created",
     postId: locked.id,
@@ -485,48 +654,141 @@ export async function processWhatsAppMessage(
   };
 }
 
-function safePublishResults(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? { ...(value as Record<string, unknown>) }
-    : {};
+export async function processWhatsAppMessage(
+  workspaceId: string,
+  messageId: string,
+  options: ProcessOptions = {},
+): Promise<{ outcome: "created" | "existing" | "skipped" | "deferred"; postId?: string; reason?: string; retryAt?: Date }> {
+  if (!workspaceId) throw new Error("WORKSPACE_CONTEXT_MISSING");
+  const [message] = await db
+    .select({
+      id: menaWhatsAppMessages.id,
+      ownerId: menaWhatsAppMessages.ownerId,
+      instanceName: menaWhatsAppMessages.instanceName,
+      groupId: menaWhatsAppMessages.groupId,
+      mediaGroupId: menaWhatsAppMessages.mediaGroupId,
+      mediaGroupSource: menaWhatsAppMessages.mediaGroupSource,
+      messageType: menaWhatsAppMessages.messageType,
+      remoteMessageId: menaWhatsAppMessages.remoteMessageId,
+      sourceMediaPayload: menaWhatsAppMessages.sourceMediaPayload,
+    })
+    .from(menaWhatsAppMessages)
+    .where(and(
+      eq(menaWhatsAppMessages.workspaceId, workspaceId),
+      eq(menaWhatsAppMessages.id, messageId),
+    ))
+    .limit(1);
+  if (!message) return processWhatsAppMessageUnlocked(workspaceId, messageId, options);
+
+  const contentBundle = message.groupId
+    ? await getWhatsAppContentBundle({
+        workspaceId,
+        instanceName: message.instanceName,
+        groupId: message.groupId,
+      }, message.id)
+    : null;
+  const confirmedMediaGroupId = isConfirmedWhatsAppMediaGroupSource(
+    message.mediaGroupSource,
+  ) ? message.mediaGroupId : null;
+  const parentMessageId = message.mediaGroupSource === "protocol_association"
+    ? extractWhatsAppAlbumAssociation(message.sourceMediaPayload)?.parentMessageId
+    : message.mediaGroupSource === "provider_album_container" &&
+        message.messageType.toLowerCase().includes("album")
+      ? message.remoteMessageId
+      : null;
+  const lockKey = whatsappAlbumProcessingLockKey(
+    message.ownerId,
+    contentBundle?.id ?? confirmedMediaGroupId,
+    message.remoteMessageId,
+    parentMessageId,
+  );
+  return withMessageLock(lockKey, () =>
+    processWhatsAppMessageUnlocked(workspaceId, messageId, options),
+  );
+}
+
+const inFlightMessageLocks = new Map<string, Promise<void>>();
+
+async function withMessageLock<T>(lockKey: string, fn: () => Promise<T>): Promise<T> {
+  while (inFlightMessageLocks.has(lockKey)) {
+    try {
+      await inFlightMessageLocks.get(lockKey);
+    } catch {
+      // ignore
+    }
+  }
+
+  let releaseLock!: () => void;
+  const lockPromise = new Promise<void>((resolve) => {
+    releaseLock = resolve;
+  });
+  inFlightMessageLocks.set(lockKey, lockPromise);
+
+  try {
+    return await fn();
+  } finally {
+    inFlightMessageLocks.delete(lockKey);
+    releaseLock();
+  }
 }
 
 export async function processWhatsAppBacklog(
-  ownerId: string,
+  workspaceId: string,
   limit: number,
-): Promise<{ scanned: number; created: number; existing: number; skipped: number }> {
+): Promise<{ scanned: number; created: number; existing: number; skipped: number; deferred: number }> {
+  if (!workspaceId) throw new Error("WORKSPACE_CONTEXT_MISSING");
   const messages = await db
     .select({ id: menaWhatsAppMessages.id })
     .from(menaWhatsAppMessages)
     .innerJoin(
+      menaWhatsAppGroups,
+      and(
+        eq(menaWhatsAppGroups.id, menaWhatsAppMessages.groupId),
+        eq(menaWhatsAppGroups.workspaceId, workspaceId),
+        eq(menaWhatsAppGroups.instanceName, menaWhatsAppMessages.instanceName),
+      ),
+    )
+    .innerJoin(
       menaWhatsAppGroupSelections,
       and(
-        eq(menaWhatsAppGroupSelections.ownerId, menaWhatsAppMessages.ownerId),
+        eq(menaWhatsAppGroupSelections.workspaceId, workspaceId),
         eq(menaWhatsAppGroupSelections.instanceName, menaWhatsAppMessages.instanceName),
-        eq(menaWhatsAppGroupSelections.groupJid, menaWhatsAppMessages.groupJid),
+        or(
+          eq(menaWhatsAppGroupSelections.groupId, menaWhatsAppMessages.groupId),
+          eq(menaWhatsAppGroupSelections.groupId, menaWhatsAppGroups.parentGroupId),
+        ),
         eq(menaWhatsAppGroupSelections.selected, true),
-        eq(menaWhatsAppGroupSelections.canPublish, true),
       ),
     )
     .where(and(
-      eq(menaWhatsAppMessages.ownerId, ownerId),
+      eq(menaWhatsAppMessages.workspaceId, workspaceId),
       eq(menaWhatsAppMessages.messageStatus, "received"),
       notExists(
         db
           .select({ id: posts.id })
           .from(posts)
           .where(and(
-            eq(posts.ownerId, menaWhatsAppMessages.ownerId),
+            eq(posts.workspaceId, menaWhatsAppMessages.workspaceId),
             eq(posts.sourceType, "whatsapp"),
-            eq(posts.sourceMessageId, menaWhatsAppMessages.id),
+            or(
+              eq(posts.sourceMessageId, menaWhatsAppMessages.id),
+              and(
+                isNotNull(menaWhatsAppMessages.mediaGroupId),
+                inArray(menaWhatsAppMessages.mediaGroupSource, [
+                  "protocol_association",
+                  "provider_album_container",
+                ]),
+                eq(posts.sourceMessageId, menaWhatsAppMessages.mediaGroupId),
+              ),
+            ),
           )),
       ),
     ))
     .orderBy(asc(menaWhatsAppMessages.messageTimestamp))
     .limit(limit);
-  const results = { scanned: messages.length, created: 0, existing: 0, skipped: 0 };
+  const results = { scanned: messages.length, created: 0, existing: 0, skipped: 0, deferred: 0 };
   for (const message of messages) {
-    const result = await processWhatsAppMessage(ownerId, message.id, {
+    const result = await processWhatsAppMessage(workspaceId, message.id, {
       allowAutoPublish: false,
     });
     results[result.outcome] += 1;
@@ -534,21 +796,56 @@ export async function processWhatsAppBacklog(
   return results;
 }
 
-export async function enqueueWhatsAppMessage(ownerId: string, messageId: string): Promise<void> {
-  const id = createHash("sha256").update(`${ownerId}:${messageId}`).digest("hex");
+export async function enqueueWhatsAppMessage(workspaceId: string, messageId: string): Promise<void> {
+  if (!workspaceId) throw new Error("WORKSPACE_CONTEXT_MISSING");
+  const [message] = await db
+    .select({
+      workspaceId: menaWhatsAppMessages.workspaceId,
+      instanceName: menaWhatsAppMessages.instanceName,
+      ownerId: menaWhatsAppMessages.ownerId,
+    })
+    .from(menaWhatsAppMessages)
+    .where(and(
+      eq(menaWhatsAppMessages.workspaceId, workspaceId),
+      eq(menaWhatsAppMessages.id, messageId),
+    ))
+    .limit(1);
+  if (!message) throw new Error("WHATSAPP_MESSAGE_NOT_FOUND");
+  const [connection] = await db
+    .select({ instanceName: menaWhatsAppConnections.instanceName })
+    .from(menaWhatsAppConnections)
+    .where(and(
+      eq(menaWhatsAppConnections.workspaceId, workspaceId),
+      eq(menaWhatsAppConnections.instanceName, message.instanceName),
+    ))
+    .limit(1);
+  if (!connection) throw new Error("WHATSAPP_CONNECTION_NOT_FOUND");
+  const id = createHash("sha256").update(`${workspaceId}:${messageId}`).digest("hex");
+  const now = new Date();
   await db
     .insert(menaContentJobs)
     .values({
       id,
-      ownerId,
+      ownerId: message.ownerId,
+      workspaceId,
       messageId,
       status: "pending",
       attempts: 0,
-      nextRunAt: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      nextRunAt: now,
+      createdAt: now,
+      updatedAt: now,
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: menaContentJobs.id,
+      setWhere: eq(menaContentJobs.workspaceId, workspaceId),
+      set: {
+        status: "pending",
+        attempts: 0,
+        lastError: null,
+        nextRunAt: now,
+        updatedAt: now,
+      },
+    });
 }
 
 let queueWorkerRunning = false;
@@ -592,15 +889,27 @@ export async function processWhatsAppMarketingQueue(): Promise<void> {
 
     for (const job of claimed) {
       try {
-        const result = await processWhatsAppMessage(job.ownerId, job.messageId, { allowAutoPublish: true });
+        const result = await processWhatsAppMessage(
+          job.workspaceId,
+          job.messageId,
+          { allowAutoPublish: true },
+        );
         await db
           .update(menaContentJobs)
           .set({
-            status: result.outcome === "skipped" ? "skipped" : "done",
+            status: result.outcome === "deferred"
+              ? "pending"
+              : result.outcome === "skipped"
+                ? "skipped"
+                : "done",
             lastError: result.reason ?? null,
+            nextRunAt: result.retryAt ?? new Date(),
             updatedAt: new Date(),
           })
-          .where(eq(menaContentJobs.id, job.id));
+          .where(and(
+            eq(menaContentJobs.id, job.id),
+            eq(menaContentJobs.workspaceId, job.workspaceId),
+          ));
         console.info("WhatsApp content job completed", {
           jobId: job.id,
           messageId: job.messageId,
@@ -619,7 +928,10 @@ export async function processWhatsAppMarketingQueue(): Promise<void> {
             nextRunAt: new Date(Date.now() + (retry ? job.attempts * 30_000 : 0)),
             updatedAt: new Date(),
           })
-          .where(eq(menaContentJobs.id, job.id));
+          .where(and(
+            eq(menaContentJobs.id, job.id),
+            eq(menaContentJobs.workspaceId, job.workspaceId),
+          ));
         console.error("WhatsApp content job failed", {
           jobId: job.id,
           messageId: job.messageId,

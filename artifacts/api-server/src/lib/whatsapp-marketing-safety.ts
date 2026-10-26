@@ -24,6 +24,17 @@ export function isBusinessAuthoredMessage(
   return Boolean(sender && business && sender === business);
 }
 
+export function resolveMessageSenderId(input: {
+  fromMe: unknown;
+  participant?: unknown;
+  sender?: unknown;
+}, businessPhone: string | null | undefined): string | null {
+  if (input.fromMe === true && businessPhone) return businessPhone;
+  if (typeof input.participant === "string") return input.participant;
+  if (typeof input.sender === "string") return input.sender;
+  return null;
+}
+
 export function containsSensitivePersonalData(text: string): boolean {
   return (
     privateContentPattern.test(text) ||
@@ -35,15 +46,9 @@ export function containsSensitivePersonalData(text: string): boolean {
 export function canAnalyzeWhatsAppMessage(input: {
   isGroup: boolean;
   groupSelected: boolean;
-  groupCanPublish: boolean;
   messageAvailable: boolean;
 }): boolean {
-  return (
-    input.isGroup &&
-    input.groupSelected &&
-    input.groupCanPublish &&
-    input.messageAvailable
-  );
+  return input.isGroup && input.groupSelected && input.messageAvailable;
 }
 
 export function canAutoPublishMessage(input: {
