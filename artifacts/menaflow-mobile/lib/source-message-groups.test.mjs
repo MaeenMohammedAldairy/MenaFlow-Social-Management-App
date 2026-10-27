@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { groupWhatsAppMessages } from "./source-message-groups.ts";
+import {
+  canConvertWhatsAppMessageGroup,
+  groupWhatsAppMessages,
+} from "./source-message-groups.ts";
 
 function message(overrides = {}) {
   return {
@@ -171,6 +174,202 @@ test("keeps an image caption with its message and separate from another explicit
   assert.equal(grouped.length, 2);
   assert.equal(grouped[0].text, "صورة المنتج الأول");
   assert.equal(grouped[0].mediaGroupId, null);
+});
+
+test("adds candidate album media to suggestions without merging the groups", () => {
+  const requester = message({
+    id: "requester",
+    associationSuggestions: [{
+      sourceMessageId: "requester",
+      candidateGroupKey: "album:candidate-album",
+      candidateMessageId: "candidate-image",
+      candidateText: null,
+      candidateMediaCount: 2,
+    }],
+  });
+  const candidateAlbumFirst = message({
+    id: "candidate-image",
+    mediaGroupId: "candidate-album",
+    mediaGroupSource: "protocol_association",
+    media: [{ id: "candidate-media-1", mediaType: "image", downloadStatus: "stored" }],
+  });
+  const candidateAlbumSecond = message({
+    id: "candidate-video",
+    mediaGroupId: "candidate-album",
+    mediaGroupSource: "protocol_association",
+    media: [{ id: "candidate-media-2", mediaType: "video", downloadStatus: "pending" }],
+  });
+
+  const grouped = groupWhatsAppMessages([
+    requester,
+    candidateAlbumFirst,
+    candidateAlbumSecond,
+  ]);
+  const requesterGroup = grouped.find((group) => group.messages[0].id === "requester");
+
+  assert.equal(grouped.length, 2);
+  assert.deepEqual(
+    requesterGroup.associationSuggestions[0].candidateMedia.map(({ item }) => item.id),
+    ["candidate-media-1", "candidate-media-2"],
+  );
+  assert.deepEqual(
+    grouped.map((group) => group.messages.map(({ id }) => id)),
+    [["requester"], ["candidate-image", "candidate-video"]],
+  );
+});
+
+test("keeps suggestion text fallback when candidate media is not in the displayed messages", () => {
+  const grouped = groupWhatsAppMessages([
+    message({
+      id: "requester",
+      associationSuggestions: [{
+        sourceMessageId: "requester",
+        candidateGroupKey: "message:not-loaded",
+        candidateMessageId: "not-loaded",
+        candidateText: "مرشح",
+        candidateMediaCount: 1,
+      }],
+    }),
+  ]);
+
+  assert.equal(grouped[0].associationSuggestions[0].candidateMedia.length, 0);
+  assert.equal(grouped[0].associationSuggestions[0].candidateText, "مرشح");
+});
+
+test("keeps cross-page association actions on the loaded candidate card", () => {
+  const grouped = groupWhatsAppMessages([
+    message({
+      id: "candidate",
+      mediaAvailable: true,
+      media: [{ id: "candidate-media", mediaType: "image", downloadStatus: "stored" }],
+      associationSuggestions: [{
+        sourceMessageId: "source-on-another-page",
+        candidateMessageId: "candidate",
+        candidateGroupKey: "message:candidate",
+        candidateText: null,
+        candidateMediaCount: 1,
+      }],
+    }),
+  ]);
+
+  assert.equal(grouped.length, 1);
+  assert.equal(grouped[0].associationSuggestions.length, 1);
+  assert.equal(
+    grouped[0].associationSuggestions[0].candidateMedia[0].item.id,
+    "candidate-media",
+  );
+});
+
+test("does not display an association suggestion after it has been decided", () => {
+  const grouped = groupWhatsAppMessages([
+    message({
+      id: "requester",
+      contentBundleId: "confirmed-bundle",
+      associationSuggestions: [{
+        sourceMessageId: "requester",
+        candidateGroupKey: "message:candidate",
+        candidateMessageId: "candidate",
+        candidateText: null,
+        candidateMediaCount: 1,
+        decision: "accepted",
+      }],
+    }),
+    message({
+      id: "candidate",
+      contentBundleId: "confirmed-bundle",
+    }),
+  ]);
+
+  assert.equal(grouped.length, 1);
+  assert.deepEqual(grouped[0].messages.map(({ id }) => id), ["requester", "candidate"]);
+  assert.deepEqual(grouped[0].associationSuggestions, []);
+});
+
+test("moves confirmed album media into the text group's card", () => {
+  const grouped = groupWhatsAppMessages([
+    message({
+      id: "caption-text",
+      contentBundleId: "confirmed-bundle",
+      textBody: "نص المنتج",
+    }),
+    message({
+      id: "album-representative",
+      contentBundleId: "confirmed-bundle",
+      mediaGroupId: "confirmed-album",
+      mediaGroupSource: "protocol_association",
+      media: [{ id: "album-media-1", downloadStatus: "stored" }],
+    }),
+    message({
+      id: "album-sibling",
+      mediaGroupId: "confirmed-album",
+      mediaGroupSource: "protocol_association",
+      media: [{ id: "album-media-2", downloadStatus: "stored" }],
+    }),
+  ]);
+
+  assert.equal(grouped.length, 1);
+  assert.equal(grouped[0].text, "نص المنتج");
+  assert.deepEqual(
+    grouped[0].messages.map(({ id }) => id),
+    ["caption-text", "album-representative", "album-sibling"],
+  );
+  assert.deepEqual(
+    grouped[0].media.map(({ item }) => item.id),
+    ["album-media-1", "album-media-2"],
+  );
+});
+
+test("shows media fetched through a confirmed content bundle on its message card", () => {
+  const grouped = groupWhatsAppMessages([
+    message({
+      id: "text-only-page-message",
+      contentBundleId: "bundle-with-off-page-album",
+      textBody: "نص مرتبط بألبوم",
+      contentBundleMedia: [
+        { id: "off-page-image", mediaType: "image", downloadStatus: "stored" },
+      ],
+    }),
+  ]);
+
+  assert.equal(grouped.length, 1);
+  assert.deepEqual(grouped[0].media.map(({ item }) => item.id), ["off-page-image"]);
+});
+
+test("allows conversion only when the group has text and complete stored media", () => {
+  const complete = {
+    text: "نص المنتج",
+    media: [
+      { item: { downloadStatus: "stored" } },
+      { item: { downloadStatus: "stored" } },
+    ],
+    expectedCount: 2,
+    mediaPending: false,
+    mediaFailed: false,
+  };
+
+  assert.equal(canConvertWhatsAppMessageGroup(complete), true);
+  assert.equal(
+    canConvertWhatsAppMessageGroup({ ...complete, text: " " }),
+    false,
+  );
+  assert.equal(
+    canConvertWhatsAppMessageGroup({ ...complete, media: [] }),
+    false,
+  );
+  assert.equal(
+    canConvertWhatsAppMessageGroup({
+      ...complete,
+      media: [{ item: { downloadStatus: "stored" } }],
+    }),
+    false,
+  );
+  assert.equal(
+    canConvertWhatsAppMessageGroup({
+      ...complete,
+      media: [{ item: { downloadStatus: "pending" } }, complete.media[1]],
+    }),
+    false,
+  );
 });
 
 test("returns an empty list when there are no messages", () => {

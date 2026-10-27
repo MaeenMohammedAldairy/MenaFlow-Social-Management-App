@@ -10,4 +10,5 @@ import type { SocialAccountStatus } from './socialAccountStatus';
 export interface SocialConnectionsResponse {
   facebook: SocialAccountStatus | null;
   instagram: SocialAccountStatus | null;
+  whatsapp?: SocialAccountStatus | null;
 }

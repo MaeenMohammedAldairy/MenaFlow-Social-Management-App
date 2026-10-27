@@ -71,15 +71,76 @@ export interface AuthAccessResponse {
   authorized: boolean;
 }
 
+export type OnboardingProgressInputAction = typeof OnboardingProgressInputAction[keyof typeof OnboardingProgressInputAction];
+
+
+export const OnboardingProgressInputAction = {
+  advance: 'advance',
+  back: 'back',
+  skip: 'skip',
+} as const;
+
+export interface OnboardingProgressInput {
+  action: OnboardingProgressInputAction;
+}
+
+export interface OnboardingStatus {
+  started: boolean;
+  /**
+     * @minimum 0
+     * @maximum 3
+     */
+  currentStep: number;
+  completed: boolean;
+  socialAccountsCompleted: boolean;
+}
+
+export type SocialAccountStatusConnectionState = typeof SocialAccountStatusConnectionState[keyof typeof SocialAccountStatusConnectionState];
+
+
+export const SocialAccountStatusConnectionState = {
+  connected: 'connected',
+  connecting: 'connecting',
+  disconnected: 'disconnected',
+  missing: 'missing',
+  unavailable: 'unavailable',
+} as const;
+
+export type SocialAccountStatusAuthorizationStatus = typeof SocialAccountStatusAuthorizationStatus[keyof typeof SocialAccountStatusAuthorizationStatus];
+
+
+export const SocialAccountStatusAuthorizationStatus = {
+  ready: 'ready',
+  needs_reauthorization: 'needs_reauthorization',
+} as const;
+
+export type SocialAccountStatusAuthorizationReason = typeof SocialAccountStatusAuthorizationReason[keyof typeof SocialAccountStatusAuthorizationReason] | null;
+
+
+export const SocialAccountStatusAuthorizationReason = {
+  token_expired: 'token_expired',
+  permissions_unverified: 'permissions_unverified',
+  permissions_missing: 'permissions_missing',
+} as const;
+
 export interface SocialAccountStatus {
   accountId: string;
   accountName: string;
   connectedAt: string;
+  connected?: boolean;
+  connectionState?: SocialAccountStatusConnectionState;
+  instanceName?: string;
+  phoneNumber?: string;
+  authorizationStatus?: SocialAccountStatusAuthorizationStatus;
+  authorizationReason?: SocialAccountStatusAuthorizationReason;
+  missingPermissions?: string[];
+  accessTokenExpiresAt?: string | null;
 }
 
 export interface SocialConnectionsResponse {
   facebook: SocialAccountStatus | null;
   instagram: SocialAccountStatus | null;
+  whatsapp?: SocialAccountStatus | null;
 }
 
 export interface MetaConnectResponse {
@@ -87,7 +148,341 @@ export interface MetaConnectResponse {
   callbackUri: string;
 }
 
+export type MetaConnectInputIntegration = typeof MetaConnectInputIntegration[keyof typeof MetaConnectInputIntegration];
+
+
+export const MetaConnectInputIntegration = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export interface MetaConnectInput {
+  integration?: MetaConnectInputIntegration;
+}
+
+export type MetaDisconnectResponsePlatform = typeof MetaDisconnectResponsePlatform[keyof typeof MetaDisconnectResponsePlatform];
+
+
+export const MetaDisconnectResponsePlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type MetaDisconnectResponseExternalRevocation = typeof MetaDisconnectResponseExternalRevocation[keyof typeof MetaDisconnectResponseExternalRevocation];
+
+
+export const MetaDisconnectResponseExternalRevocation = {
+  unavailable: 'unavailable',
+} as const;
+
 export interface MetaDisconnectResponse {
   disconnected: boolean;
+  alreadyDisconnected?: boolean;
+  platform?: MetaDisconnectResponsePlatform;
+  alsoDisconnectedInstagram?: boolean;
+  externalRevocation?: MetaDisconnectResponseExternalRevocation;
 }
+
+export type PostItemChannelsItem = typeof PostItemChannelsItem[keyof typeof PostItemChannelsItem];
+
+
+export const PostItemChannelsItem = {
+  instagram: 'instagram',
+  facebook: 'facebook',
+  whatsapp: 'whatsapp',
+} as const;
+
+export type PostItemStatus = typeof PostItemStatus[keyof typeof PostItemStatus];
+
+
+export const PostItemStatus = {
+  draft: 'draft',
+  review: 'review',
+  approved: 'approved',
+  scheduled: 'scheduled',
+  published: 'published',
+} as const;
+
+export type PostItemMetadata = { [key: string]: unknown };
+
+export interface PostItem {
+  id: string;
+  title: string;
+  body: string;
+  channels: PostItemChannelsItem[];
+  status: PostItemStatus;
+  metadata?: PostItemMetadata;
+  mediaUrls?: string[];
+  mediaPreviewUrls?: string[];
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type CreatePostInputChannelsItem = typeof CreatePostInputChannelsItem[keyof typeof CreatePostInputChannelsItem];
+
+
+export const CreatePostInputChannelsItem = {
+  instagram: 'instagram',
+  facebook: 'facebook',
+  whatsapp: 'whatsapp',
+} as const;
+
+export type CreatePostInputStatus = typeof CreatePostInputStatus[keyof typeof CreatePostInputStatus];
+
+
+export const CreatePostInputStatus = {
+  draft: 'draft',
+  review: 'review',
+  scheduled: 'scheduled',
+  published: 'published',
+} as const;
+
+export type CreatePostInputMetadata = { [key: string]: unknown };
+
+export interface CreatePostInput {
+  id?: string;
+  title: string;
+  body: string;
+  channels: CreatePostInputChannelsItem[];
+  status: CreatePostInputStatus;
+  metadata?: CreatePostInputMetadata;
+}
+
+export type UpdatePostInputChannelsItem = typeof UpdatePostInputChannelsItem[keyof typeof UpdatePostInputChannelsItem];
+
+
+export const UpdatePostInputChannelsItem = {
+  instagram: 'instagram',
+  facebook: 'facebook',
+  whatsapp: 'whatsapp',
+} as const;
+
+export type UpdatePostInputStatus = typeof UpdatePostInputStatus[keyof typeof UpdatePostInputStatus];
+
+
+export const UpdatePostInputStatus = {
+  draft: 'draft',
+  review: 'review',
+  approved: 'approved',
+  scheduled: 'scheduled',
+  published: 'published',
+} as const;
+
+export interface UpdatePostInput {
+  title?: string;
+  body?: string;
+  channels?: UpdatePostInputChannelsItem[];
+  status?: UpdatePostInputStatus;
+}
+
+export interface PostDeleteResult {
+  success: boolean;
+}
+
+export interface WhatsAppPairingCodeInput {
+  /** @pattern ^\+?[1-9][0-9]{7,14}$ */
+  phoneNumber: string;
+  /** Replace the pending Evolution instance using the same instance name before requesting a new pairing code. */
+  refreshCode?: boolean;
+}
+
+export type WhatsAppPairingCodeResponseState = typeof WhatsAppPairingCodeResponseState[keyof typeof WhatsAppPairingCodeResponseState];
+
+
+export const WhatsAppPairingCodeResponseState = {
+  connecting: 'connecting',
+} as const;
+
+export interface WhatsAppPairingCodeResponse {
+  instanceName: string;
+  phoneNumber: string;
+  pairingCode: string;
+  /** Optional QR image returned by Evolution for scanning when phone-number pairing is rejected. */
+  qrCodeBase64?: string;
+  state: WhatsAppPairingCodeResponseState;
+}
+
+export type WhatsAppConnectionStatusState = typeof WhatsAppConnectionStatusState[keyof typeof WhatsAppConnectionStatusState];
+
+
+export const WhatsAppConnectionStatusState = {
+  connecting: 'connecting',
+  connected: 'connected',
+  disconnected: 'disconnected',
+} as const;
+
+export interface WhatsAppConnectionStatus {
+  state: WhatsAppConnectionStatusState;
+}
+
+export type WhatsAppAutoReplySettingsLanguage = typeof WhatsAppAutoReplySettingsLanguage[keyof typeof WhatsAppAutoReplySettingsLanguage];
+
+
+export const WhatsAppAutoReplySettingsLanguage = {
+  ar: 'ar',
+  match_customer: 'match_customer',
+} as const;
+
+export type WhatsAppAutoReplySettingsTone = typeof WhatsAppAutoReplySettingsTone[keyof typeof WhatsAppAutoReplySettingsTone];
+
+
+export const WhatsAppAutoReplySettingsTone = {
+  friendly_professional: 'friendly_professional',
+  concise: 'concise',
+  formal: 'formal',
+} as const;
+
+export interface WhatsAppAutoReplySettings {
+  enabled: boolean;
+  language: WhatsAppAutoReplySettingsLanguage;
+  tone: WhatsAppAutoReplySettingsTone;
+  /** @maxLength 2000 */
+  instructions: string;
+}
+
+export interface WhatsAppAutoReplySettingsResponse {
+  connected: boolean;
+  /** @nullable */
+  phoneNumber: string | null;
+  settings: WhatsAppAutoReplySettings;
+}
+
+export type WhatsAppAutoReplyTestInputLanguage = typeof WhatsAppAutoReplyTestInputLanguage[keyof typeof WhatsAppAutoReplyTestInputLanguage];
+
+
+export const WhatsAppAutoReplyTestInputLanguage = {
+  ar: 'ar',
+  match_customer: 'match_customer',
+} as const;
+
+export type WhatsAppAutoReplyTestInputTone = typeof WhatsAppAutoReplyTestInputTone[keyof typeof WhatsAppAutoReplyTestInputTone];
+
+
+export const WhatsAppAutoReplyTestInputTone = {
+  friendly_professional: 'friendly_professional',
+  concise: 'concise',
+  formal: 'formal',
+} as const;
+
+export interface WhatsAppAutoReplyTestInput {
+  language: WhatsAppAutoReplyTestInputLanguage;
+  tone: WhatsAppAutoReplyTestInputTone;
+  /** @maxLength 2000 */
+  instructions: string;
+  /**
+     * @minLength 1
+     * @maxLength 1000
+     */
+  customerMessage: string;
+}
+
+export type WhatsAppGroupKind = typeof WhatsAppGroupKind[keyof typeof WhatsAppGroupKind];
+
+
+export const WhatsAppGroupKind = {
+  community: 'community',
+  announcement: 'announcement',
+  group: 'group',
+  unknown: 'unknown',
+} as const;
+
+export type WhatsAppGroupRole = typeof WhatsAppGroupRole[keyof typeof WhatsAppGroupRole];
+
+
+export const WhatsAppGroupRole = {
+  admin: 'admin',
+  superadmin: 'superadmin',
+  member: 'member',
+  unknown: 'unknown',
+} as const;
+
+export type WhatsAppGroupPublishState = typeof WhatsAppGroupPublishState[keyof typeof WhatsAppGroupPublishState];
+
+
+export const WhatsAppGroupPublishState = {
+  eligible: 'eligible',
+  restricted: 'restricted',
+  unverified: 'unverified',
+} as const;
+
+export interface WhatsAppGroup {
+  groupJid: string;
+  groupId: string;
+  kind: "announcement";
+  name: string;
+  communityParentJid?: string;
+  selected: boolean;
+  verifiedAt?: string;
+}
+
+export interface WhatsAppGroupsResponse {
+  groups: WhatsAppGroup[];
+}
+
+export interface WhatsAppGroupSelectionsResponse {
+  groups: WhatsAppGroup[];
+}
+
+export interface WhatsAppGroupSelectionsInput {
+  /**
+     * @maxItems 500
+     * @items.pattern ^[0-9]+(?:-[0-9]+)?@g\.us$
+     */
+  groupJids: string[];
+}
+
+export interface WhatsAppDisconnectResult {
+  disconnected: boolean;
+  alreadyDisconnected?: boolean;
+  evolutionInstanceDeleted?: boolean;
+}
+
+export type DeleteMetaConnectionParams = {
+/**
+ * Defaults to facebook for compatibility; disconnecting Facebook also removes its linked Instagram account.
+ */
+platform?: DeleteMetaConnectionPlatform;
+};
+
+export type DeleteMetaConnectionPlatform = typeof DeleteMetaConnectionPlatform[keyof typeof DeleteMetaConnectionPlatform];
+
+
+export const DeleteMetaConnectionPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type GetWhatsAppConnectionStatusParams = {
+instanceName: string;
+};
+
+export type TestWhatsAppAutoReply200 = {
+  reply: string;
+};
+
+export type GetPostsPageParams = {
+/**
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+cursor?: string;
+};
+
+export type GetPostsPage200 = {
+  items: PostItem[];
+  nextCursor: string | null;
+};
+
+export type GetKnownPostIdsBody = {
+  /**
+     * @maxItems 1000
+     * @items.maxLength 150
+     */
+  ids: string[];
+};
+
+export type GetKnownPostIds200 = {
+  ids: string[];
+};
 

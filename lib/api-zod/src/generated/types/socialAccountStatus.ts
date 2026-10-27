@@ -5,9 +5,20 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { SocialAccountStatusAuthorizationReason } from './socialAccountStatusAuthorizationReason';
+import type { SocialAccountStatusAuthorizationStatus } from './socialAccountStatusAuthorizationStatus';
+import type { SocialAccountStatusConnectionState } from './socialAccountStatusConnectionState';
 
 export interface SocialAccountStatus {
   accountId: string;
   accountName: string;
   connectedAt: Date;
+  connected?: boolean;
+  connectionState?: SocialAccountStatusConnectionState;
+  instanceName?: string;
+  phoneNumber?: string;
+  authorizationStatus?: SocialAccountStatusAuthorizationStatus;
+  authorizationReason?: SocialAccountStatusAuthorizationReason;
+  missingPermissions?: string[];
+  accessTokenExpiresAt?: Date | null;
 }

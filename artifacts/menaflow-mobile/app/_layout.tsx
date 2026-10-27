@@ -1,58 +1,128 @@
-import React, { useEffect } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { ErrorBoundary } from '@/components/ErrorBoundary';
+import React, { useEffect, useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
   useFonts,
-} from '@expo-google-fonts/inter';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { ClerkLoaded, ClerkProvider, useAuth } from '@clerk/expo';
-import { tokenCache } from '@clerk/expo/token-cache';
-import { setAuthTokenGetter, setBaseUrl } from '@workspace/api-client-react';
-import { StudioProvider } from '@/context/StudioContext';
-import { Platform, I18nManager } from 'react-native';
+  Cairo_200ExtraLight,
+  Cairo_300Light,
+  Cairo_400Regular,
+  Cairo_500Medium,
+  Cairo_600SemiBold,
+  Cairo_700Bold,
+  Cairo_800ExtraBold,
+  Cairo_900Black,
+} from "@expo-google-fonts/cairo";
+import { Stack } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { ClerkLoaded, ClerkProvider, useAuth } from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
+import {
+  getGetSocialConnectionsQueryKey,
+  getGetOnboardingStatusQueryKey,
+  setAuthTokenGetter,
+  setBaseUrl,
+} from "@workspace/api-client-react";
+import { StudioProvider } from "@/context/StudioContext";
+import { Platform, I18nManager } from "react-native";
+import { isLocalAuthDisabled } from "@/constants/auth";
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
-const publicDomain = process.env.EXPO_PUBLIC_DOMAIN;
-if (publicDomain) setBaseUrl(`https://${publicDomain}`);
+queryClient.setQueryDefaults(getGetSocialConnectionsQueryKey(), {
+  staleTime: 30_000,
+});
+queryClient.setQueryDefaults(getGetOnboardingStatusQueryKey(), {
+  staleTime: 5 * 60_000,
+  refetchOnWindowFocus: false,
+});
+const configuredPublicDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
+if (!__DEV__ && !configuredPublicDomain) {
+  throw new Error("Missing EXPO_PUBLIC_DOMAIN for a production API build.");
+}
+const publicDomain = configuredPublicDomain || "localhost:5000";
+if (publicDomain) {
+  const hasProtocol = /^https?:\/\//i.test(publicDomain);
+  const apiUrl = new URL(
+    hasProtocol ? publicDomain : `https://${publicDomain}`,
+  );
+  if (
+    !__DEV__ &&
+    (apiUrl.protocol !== "https:" ||
+      ["localhost", "127.0.0.1", "[::1]"].includes(apiUrl.hostname))
+  ) {
+    throw new Error(
+      "Production EXPO_PUBLIC_DOMAIN must use a public HTTPS API origin.",
+    );
+  }
+  if (
+    !hasProtocol &&
+    (apiUrl.hostname === "localhost" ||
+      apiUrl.hostname === "127.0.0.1" ||
+      apiUrl.hostname === "[::1]")
+  ) {
+    apiUrl.protocol = "http:";
+  }
+  setBaseUrl(apiUrl.origin);
+}
 
-const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? '';
+const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 const clerkProxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
-function RootLayoutNav() {
-  const { getToken } = useAuth();
-
-  useEffect(() => {
-    setAuthTokenGetter(() => getToken());
-    return () => setAuthTokenGetter(null);
-  }, [getToken]);
-
+function AppNavigator() {
   return (
-    <Stack screenOptions={{ headerBackTitle: 'Back' }}>
+    <Stack screenOptions={{ headerBackTitle: "Back" }}>
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="compose" options={{ headerShown: false, presentation: 'modal' }} />
+      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+      <Stack.Screen name="whatsapp-setup" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="compose"
+        options={{ headerShown: false, presentation: "modal" }}
+      />
       <Stack.Screen name="oauth/meta" options={{ headerShown: false }} />
     </Stack>
   );
 }
 
+function AuthenticatedAppNavigator() {
+  const { getToken, userId } = useAuth();
+  const getTokenRef = React.useRef(getToken);
+  const [authTokenGetterReady, setAuthTokenGetterReady] = useState(false);
+  getTokenRef.current = getToken;
+
+  useEffect(() => {
+    setAuthTokenGetter(() => getTokenRef.current());
+    setAuthTokenGetterReady(true);
+    return () => setAuthTokenGetter(null);
+  }, []);
+
+  if (!authTokenGetterReady) return null;
+
+  return (
+    <StudioProvider
+      key={userId ?? "signed-out"}
+      storageNamespace={userId ? `user:${userId}` : null}
+    >
+      <AppNavigator />
+    </StudioProvider>
+  );
+}
+
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
+    Cairo_200ExtraLight,
+    Cairo_300Light,
+    Cairo_400Regular,
+    Cairo_500Medium,
+    Cairo_600SemiBold,
+    Cairo_700Bold,
+    Cairo_800ExtraBold,
+    Cairo_900Black,
   });
 
   useEffect(() => {
@@ -62,15 +132,17 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError]);
 
   useEffect(() => {
-    if (Platform.OS !== 'web' && !I18nManager.isRTL) {
+    if (Platform.OS !== "web" && !I18nManager.isRTL) {
       I18nManager.allowRTL(true);
       I18nManager.forceRTL(true);
     }
   }, []);
 
   if (!fontsLoaded && !fontError) return null;
-  if (!clerkPublishableKey) {
-    throw new Error('Missing Clerk publishable key. Check the secure Clerk setup.');
+  if (!isLocalAuthDisabled && !clerkPublishableKey) {
+    throw new Error(
+      "Missing Clerk publishable key. Check the secure Clerk setup.",
+    );
   }
 
   return (
@@ -79,17 +151,21 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView>
             <KeyboardProvider>
-              <ClerkProvider
-                publishableKey={clerkPublishableKey}
-                tokenCache={tokenCache}
-                proxyUrl={clerkProxyUrl}
-              >
-                <ClerkLoaded>
-                  <StudioProvider>
-                    <RootLayoutNav />
-                  </StudioProvider>
-                </ClerkLoaded>
-              </ClerkProvider>
+              {isLocalAuthDisabled ? (
+                <StudioProvider>
+                  <AppNavigator />
+                </StudioProvider>
+              ) : (
+                <ClerkProvider
+                  publishableKey={clerkPublishableKey}
+                  tokenCache={tokenCache}
+                  proxyUrl={clerkProxyUrl}
+                >
+                  <ClerkLoaded>
+                    <AuthenticatedAppNavigator />
+                  </ClerkLoaded>
+                </ClerkProvider>
+              )}
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>

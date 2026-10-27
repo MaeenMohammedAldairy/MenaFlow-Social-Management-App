@@ -5,7 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { MetaDisconnectResponseExternalRevocation } from './metaDisconnectResponseExternalRevocation';
+import type { MetaDisconnectResponsePlatform } from './metaDisconnectResponsePlatform';
 
 export interface MetaDisconnectResponse {
   disconnected: boolean;
+  alreadyDisconnected?: boolean;
+  platform?: MetaDisconnectResponsePlatform;
+  alsoDisconnectedInstagram?: boolean;
+  externalRevocation?: MetaDisconnectResponseExternalRevocation;
 }

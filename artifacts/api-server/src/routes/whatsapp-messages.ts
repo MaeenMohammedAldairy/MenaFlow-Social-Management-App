@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
@@ -41,16 +41,54 @@ const router: IRouter = Router();
 
 const WHATSAPP_MEDIA_STORAGE_ROOT = resolveWhatsAppMediaStorageRoot();
 
-function buildMediaUrl(mediaId: string): {
+function buildMediaUrl(
+  mediaId: string,
+  requestOrigin?: string,
+  variant: "original" | "thumbnail" = "original",
+): {
   url: string | null;
   accessError: string | null;
 } {
   try {
-    return { url: signedWhatsAppMediaUrl(mediaId), accessError: null };
+    return {
+      url: signedWhatsAppMediaUrl(mediaId, true, variant, requestOrigin),
+      accessError: null,
+    };
   } catch (error) {
     if (!(error instanceof PublicMediaUrlError)) throw error;
     return { url: null, accessError: error.reason };
   }
+}
+
+function serializeWhatsAppMessageMedia(
+  media: typeof menaWhatsAppMessageMedia.$inferSelect,
+  requestOrigin?: string,
+) {
+  const publicUrl =
+    media.downloadStatus === "stored"
+      ? buildMediaUrl(media.id, requestOrigin)
+      : { url: null, accessError: null };
+  const thumbnailUrl =
+    media.downloadStatus === "stored" &&
+    media.thumbnailPath &&
+    !["failed", "unavailable"].includes(media.thumbnailPath)
+      ? buildMediaUrl(media.id, requestOrigin, "thumbnail")
+      : publicUrl;
+  return {
+    id: media.id,
+    mediaIndex: media.mediaIndex,
+    mediaType: media.mediaType,
+    fileName: media.fileName,
+    mimeType: media.mimeType,
+    sizeBytes: media.sizeBytes,
+    storageKey: media.storageKey,
+    downloadStatus: media.downloadStatus,
+    failureReason: media.failureReason,
+    url: publicUrl.url,
+    thumbnailUrl: thumbnailUrl.url,
+    accessError: publicUrl.accessError,
+    createdAt: media.createdAt.toISOString(),
+  };
 }
 
 async function mediaResponse(
@@ -192,6 +230,10 @@ router.get(
       res.status(401).json({ error: "سجّل الدخول أولاً." });
       return;
     }
+    const requestHost = req.get("host");
+    const requestOrigin = requestHost
+      ? `${req.protocol}://${requestHost}`
+      : undefined;
 
     try {
       const [connection] = await db
@@ -306,6 +348,7 @@ router.get(
             ? asc(menaWhatsAppMessages.messageTimestamp)
             : desc(menaWhatsAppMessages.messageTimestamp),
           desc(menaWhatsAppMessages.createdAt),
+          desc(menaWhatsAppMessages.id),
         )
         .limit(limit)
         .offset(offset);
@@ -420,6 +463,111 @@ router.get(
         }
       }
 
+      const bundlesById = new Map(
+        [...bundlesByMessage.values()].map((bundle) => [bundle.id, bundle]),
+      );
+      const bundleMessageIds = [
+        ...new Set([...bundlesById.values()].flatMap((bundle) => bundle.messageIds)),
+      ];
+      const bundleMembers = bundleMessageIds.length > 0
+        ? await db
+            .select({
+              id: menaWhatsAppMessages.id,
+              mediaGroupId: menaWhatsAppMessages.mediaGroupId,
+              mediaGroupSource: menaWhatsAppMessages.mediaGroupSource,
+            })
+            .from(menaWhatsAppMessages)
+            .where(and(
+              eq(menaWhatsAppMessages.workspaceId, workspaceId),
+              eq(menaWhatsAppMessages.instanceName, connection.instanceName),
+              inArray(menaWhatsAppMessages.groupId, messageGroupIds),
+              inArray(menaWhatsAppMessages.id, bundleMessageIds),
+            ))
+        : [];
+      const albumIdsByBundleId = new Map<string, Set<string>>();
+      const bundleIdsByMediaMessageId = new Map<string, Set<string>>();
+      for (const member of bundleMembers) {
+        const bundle = bundlesByMessage.get(member.id);
+        if (!bundle) continue;
+        const memberBundleIds =
+          bundleIdsByMediaMessageId.get(member.id) ?? new Set<string>();
+        memberBundleIds.add(bundle.id);
+        bundleIdsByMediaMessageId.set(member.id, memberBundleIds);
+        if (
+          !member.mediaGroupId ||
+          !isConfirmedWhatsAppMediaGroupSource(member.mediaGroupSource)
+        ) continue;
+        const albumIds = albumIdsByBundleId.get(bundle.id) ?? new Set<string>();
+        albumIds.add(member.mediaGroupId);
+        albumIdsByBundleId.set(bundle.id, albumIds);
+      }
+      const bundleIdsByAlbumId = new Map<string, string[]>();
+      for (const [bundleId, albumIds] of albumIdsByBundleId) {
+        for (const albumId of albumIds) {
+          const bundleIds = bundleIdsByAlbumId.get(albumId) ?? [];
+          bundleIds.push(bundleId);
+          bundleIdsByAlbumId.set(albumId, bundleIds);
+        }
+      }
+      const bundleAlbumIds = [
+        ...new Set([...albumIdsByBundleId.values()].flatMap((ids) => [...ids])),
+      ];
+      const associatedAlbumMembers = bundleAlbumIds.length > 0
+        ? await db
+            .select({
+              id: menaWhatsAppMessages.id,
+              mediaGroupId: menaWhatsAppMessages.mediaGroupId,
+            })
+            .from(menaWhatsAppMessages)
+            .where(and(
+              eq(menaWhatsAppMessages.workspaceId, workspaceId),
+              eq(menaWhatsAppMessages.instanceName, connection.instanceName),
+              inArray(menaWhatsAppMessages.groupId, messageGroupIds),
+              inArray(menaWhatsAppMessages.mediaGroupId, bundleAlbumIds),
+              inArray(menaWhatsAppMessages.mediaGroupSource, [
+                "protocol_association",
+                "provider_album_container",
+              ]),
+            ))
+        : [];
+      for (const member of associatedAlbumMembers) {
+        if (!member.mediaGroupId) continue;
+        for (const bundleId of bundleIdsByAlbumId.get(member.mediaGroupId) ?? []) {
+          const bundle = bundlesById.get(bundleId);
+          if (bundle) bundlesByMessage.set(member.id, bundle);
+          const memberBundleIds =
+            bundleIdsByMediaMessageId.get(member.id) ?? new Set<string>();
+          memberBundleIds.add(bundleId);
+          bundleIdsByMediaMessageId.set(member.id, memberBundleIds);
+        }
+      }
+      const associatedMediaMessageIds = [...bundleIdsByMediaMessageId.keys()];
+      const associatedMediaRows = associatedMediaMessageIds.length > 0
+        ? await db
+            .select()
+            .from(menaWhatsAppMessageMedia)
+            .where(and(
+              eq(menaWhatsAppMessageMedia.workspaceId, workspaceId),
+              eq(menaWhatsAppMessageMedia.instanceName, connection.instanceName),
+              inArray(menaWhatsAppMessageMedia.groupId, messageGroupIds),
+              inArray(
+                menaWhatsAppMessageMedia.messageId,
+                associatedMediaMessageIds,
+              ),
+            ))
+        : [];
+      const associatedMediaByBundle = new Map<
+        string,
+        typeof associatedMediaRows
+      >();
+      for (const media of associatedMediaRows) {
+        for (const bundleId of bundleIdsByMediaMessageId.get(media.messageId) ?? []) {
+          const bundleMedia = associatedMediaByBundle.get(bundleId) ?? [];
+          bundleMedia.push(media);
+          associatedMediaByBundle.set(bundleId, bundleMedia);
+        }
+      }
+
       const sourceIds = [
         ...new Set(
           rows.flatMap((message) => [
@@ -477,6 +625,9 @@ router.get(
           mediaGroupId: message.mediaGroupId,
           mediaGroupSource: message.mediaGroupSource,
           contentBundleId: contentBundle?.id ?? null,
+          contentBundleMedia: [] as ReturnType<
+            typeof serializeWhatsAppMessageMedia
+          >[],
           mediaGroupIndex: message.mediaGroupIndex,
           mediaGroupExpectedCount: message.mediaGroupExpectedCount,
           mediaDownloadStatus: message.mediaDownloadStatus,
@@ -498,30 +649,101 @@ router.get(
             reason: string;
             decision: WhatsAppContentAssociationDecision | null;
           }>,
-          media: (mediaByMessage.get(message.id) ?? []).map((media) => {
-            const publicUrl =
-              media.downloadStatus === "stored"
-                ? buildMediaUrl(media.id)
-                : { url: null, accessError: null };
-            return {
-              id: media.id,
-              mediaIndex: media.mediaIndex,
-              mediaType: media.mediaType,
-              fileName: media.fileName,
-              mimeType: media.mimeType,
-              sizeBytes: media.sizeBytes,
-              storageKey: media.storageKey,
-              downloadStatus: media.downloadStatus,
-              failureReason: media.failureReason,
-              url: publicUrl.url,
-              accessError: publicUrl.accessError,
-              createdAt: media.createdAt.toISOString(),
-            };
-          }),
+          media: (mediaByMessage.get(message.id) ?? []).map((media) =>
+            serializeWhatsAppMessageMedia(media, requestOrigin),
+          ),
         };
       });
-      const suggestionsByMessage = findWhatsAppAssociationSuggestions(
-        messages.map((message) => ({
+      const bundlesWithAttachedMedia = new Set<string>();
+      for (const message of messages) {
+        if (!message.contentBundleId) continue;
+        if (bundlesWithAttachedMedia.has(message.contentBundleId)) continue;
+        const bundleMedia = associatedMediaByBundle.get(message.contentBundleId) ?? [];
+        if (bundleMedia.length === 0) continue;
+        bundlesWithAttachedMedia.add(message.contentBundleId);
+        message.contentBundleMedia = bundleMedia.map((media) =>
+          serializeWhatsAppMessageMedia(media, requestOrigin),
+        );
+      }
+      const associationContextConditions = messages.flatMap((message) => {
+        const timestamp = message.messageTimestamp
+          ? new Date(message.messageTimestamp)
+          : new Date(message.createdAt);
+        if (!message.senderId || !Number.isFinite(timestamp.getTime())) return [];
+        const rangeStart = new Date(timestamp.getTime() - 30_000);
+        const rangeEnd = new Date(timestamp.getTime() + 30_000);
+        const effectiveTimestamp = sql`coalesce(${menaWhatsAppMessages.messageTimestamp}, ${menaWhatsAppMessages.createdAt})`;
+        return [and(
+          eq(menaWhatsAppMessages.groupId, groupIdByMessage.get(message.id)!),
+          eq(menaWhatsAppMessages.senderId, message.senderId),
+          gte(effectiveTimestamp, rangeStart),
+          lte(effectiveTimestamp, rangeEnd),
+        )];
+      });
+      const associationContextRows = associationContextConditions.length > 0
+        ? await db
+            .select({
+              id: menaWhatsAppMessages.id,
+              groupId: menaWhatsAppMessages.groupId,
+              remoteMessageId: menaWhatsAppMessages.remoteMessageId,
+              senderId: menaWhatsAppMessages.senderId,
+              textBody: menaWhatsAppMessages.textBody,
+              caption: menaWhatsAppMessages.caption,
+              mediaAvailable: menaWhatsAppMessages.mediaAvailable,
+              mediaGroupId: menaWhatsAppMessages.mediaGroupId,
+              mediaGroupSource: menaWhatsAppMessages.mediaGroupSource,
+              messageTimestamp: menaWhatsAppMessages.messageTimestamp,
+              createdAt: menaWhatsAppMessages.createdAt,
+              replyToRemoteId: menaWhatsAppMessages.replyToRemoteId,
+            })
+            .from(menaWhatsAppMessages)
+            .where(and(
+              eq(menaWhatsAppMessages.workspaceId, workspaceId),
+              eq(menaWhatsAppMessages.instanceName, connection.instanceName),
+              inArray(menaWhatsAppMessages.groupId, messageGroupIds),
+              or(...associationContextConditions),
+            ))
+        : [];
+      const pageMessageIdSet = new Set(messages.map((message) => message.id));
+      const externalContextRows = associationContextRows.filter(
+        (message) => !pageMessageIdSet.has(message.id),
+      );
+      const contextMediaCounts = externalContextRows.length > 0
+        ? await db
+            .select({
+              messageId: menaWhatsAppMessageMedia.messageId,
+              count: sql<number>`count(*)::int`,
+            })
+            .from(menaWhatsAppMessageMedia)
+            .where(and(
+              eq(menaWhatsAppMessageMedia.workspaceId, workspaceId),
+              eq(menaWhatsAppMessageMedia.instanceName, connection.instanceName),
+              inArray(menaWhatsAppMessageMedia.groupId, messageGroupIds),
+              inArray(
+                menaWhatsAppMessageMedia.messageId,
+                externalContextRows.map((message) => message.id),
+              ),
+            ))
+            .groupBy(menaWhatsAppMessageMedia.messageId)
+        : [];
+      const contextMediaCountByMessageId = new Map(
+        contextMediaCounts.map(({ messageId, count }) => [messageId, count]),
+      );
+      const suggestionMessagesByGroup = new Map<
+        string,
+        Parameters<typeof findWhatsAppAssociationSuggestions>[0]
+      >();
+      const appendSuggestionMessage = (
+        messageGroupId: string | undefined,
+        suggestionMessage: Parameters<typeof findWhatsAppAssociationSuggestions>[0][number],
+      ) => {
+        if (!messageGroupId) return;
+        const groupMessages = suggestionMessagesByGroup.get(messageGroupId) ?? [];
+        groupMessages.push(suggestionMessage);
+        suggestionMessagesByGroup.set(messageGroupId, groupMessages);
+      };
+      for (const message of messages) {
+        appendSuggestionMessage(groupIdByMessage.get(message.id), {
           id: message.id,
           remoteMessageId: message.remoteMessageId,
           senderId: message.senderId,
@@ -534,21 +756,63 @@ router.get(
           createdAt: message.createdAt,
           replyToRemoteId: message.replyToRemoteId,
           mediaCount: message.media.length,
-        })),
-      );
+        });
+      }
+      for (const message of externalContextRows) {
+        appendSuggestionMessage(message.groupId ?? undefined, {
+          id: message.id,
+          remoteMessageId: message.remoteMessageId,
+          senderId: message.senderId,
+          textBody: message.textBody,
+          caption: message.caption,
+          mediaAvailable: message.mediaAvailable,
+          mediaGroupId: message.mediaGroupId,
+          mediaGroupSource: message.mediaGroupSource,
+          messageTimestamp: message.messageTimestamp?.toISOString() ?? null,
+          createdAt: message.createdAt.toISOString(),
+          replyToRemoteId: message.replyToRemoteId,
+          mediaCount: contextMediaCountByMessageId.get(message.id) ?? 0,
+        });
+      }
+      const suggestionsByMessage = new Map<
+        string,
+        Array<(typeof messages)[number]["associationSuggestions"][number]>
+      >();
+      for (const groupMessages of suggestionMessagesByGroup.values()) {
+        for (const [messageId, suggestions] of
+          findWhatsAppAssociationSuggestions(groupMessages)) {
+          const current = suggestionsByMessage.get(messageId) ?? [];
+          current.push(...suggestions.map((suggestion) => ({
+            ...suggestion,
+            decision: null,
+          })));
+          suggestionsByMessage.set(messageId, current);
+        }
+      }
+      const messagesById = new Map(messages.map((message) => [message.id, message]));
       for (const [messageId, suggestions] of suggestionsByMessage) {
-        const message = messages.find((item) => item.id === messageId);
-        const messageGroupId = groupIdByMessage.get(messageId);
-        if (!message || !messageGroupId) continue;
-        const decisions =
-          decisionsByGroup.get(messageGroupId) ?? new Map();
-        message.associationSuggestions = suggestions.map((suggestion) => ({
-          ...suggestion,
-          decision: decisions.get(whatsappAssociationPairKey(
-            suggestion.sourceMessageId,
-            suggestion.candidateMessageId,
-          )) ?? null,
-        }));
+        for (const suggestion of suggestions) {
+          const currentCandidateAlbumMessage = suggestion.candidateMediaGroupId
+            ? messages.find((message) =>
+                message.mediaGroupId === suggestion.candidateMediaGroupId &&
+                isConfirmedWhatsAppMediaGroupSource(message.mediaGroupSource),
+              )
+            : undefined;
+          const message = messagesById.get(messageId) ??
+            messagesById.get(suggestion.candidateMessageId) ??
+            currentCandidateAlbumMessage;
+          if (!message) continue;
+          const messageGroupId = groupIdByMessage.get(message.id);
+          if (!messageGroupId) continue;
+          const decisions = decisionsByGroup.get(messageGroupId) ?? new Map();
+          message.associationSuggestions.push({
+            ...suggestion,
+            decision: decisions.get(whatsappAssociationPairKey(
+              suggestion.sourceMessageId,
+              suggestion.candidateMessageId,
+            )) ?? null,
+          });
+        }
       }
 
       res.json({
@@ -595,7 +859,12 @@ router.get(
         return;
       }
       res.json({
-        url: signedWhatsAppMediaUrl(media.id, true, variant),
+        url: signedWhatsAppMediaUrl(
+          media.id,
+          true,
+          variant,
+          req.get("host") ? `${req.protocol}://${req.get("host")}` : undefined,
+        ),
       });
     } catch (error) {
       console.error("Error refreshing signed WhatsApp media URL:", error);

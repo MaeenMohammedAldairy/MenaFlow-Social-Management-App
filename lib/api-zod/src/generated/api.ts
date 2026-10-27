@@ -52,25 +52,112 @@ export const GetOwnerAccessResponse = zod.object({
 
 
 /**
+ * @summary Get onboarding progress for the current workspace
+ */
+export const getOnboardingStatusResponseCurrentStepMin = 0;
+export const getOnboardingStatusResponseCurrentStepMax = 3;
+
+
+
+export const GetOnboardingStatusResponse = zod.object({
+  "started": zod.boolean(),
+  "currentStep": zod.number().int().min(getOnboardingStatusResponseCurrentStepMin).max(getOnboardingStatusResponseCurrentStepMax),
+  "completed": zod.boolean(),
+  "socialAccountsCompleted": zod.boolean()
+})
+
+
+/**
+ * @summary Save onboarding progress for the current workspace
+ */
+export const UpdateOnboardingProgressBody = zod.object({
+  "action": zod.enum(['advance', 'back', 'skip'])
+})
+
+export const updateOnboardingProgressResponseCurrentStepMin = 0;
+export const updateOnboardingProgressResponseCurrentStepMax = 3;
+
+
+
+export const UpdateOnboardingProgressResponse = zod.object({
+  "started": zod.boolean(),
+  "currentStep": zod.number().int().min(updateOnboardingProgressResponseCurrentStepMin).max(updateOnboardingProgressResponseCurrentStepMax),
+  "completed": zod.boolean(),
+  "socialAccountsCompleted": zod.boolean()
+})
+
+
+/**
+ * @summary Mark social account setup complete for the current workspace
+ */
+export const completeSocialAccountsSetupResponseCurrentStepMin = 0;
+export const completeSocialAccountsSetupResponseCurrentStepMax = 3;
+
+
+
+export const CompleteSocialAccountsSetupResponse = zod.object({
+  "started": zod.boolean(),
+  "currentStep": zod.number().int().min(completeSocialAccountsSetupResponseCurrentStepMin).max(completeSocialAccountsSetupResponseCurrentStepMax),
+  "completed": zod.boolean(),
+  "socialAccountsCompleted": zod.boolean()
+})
+
+
+/**
  * @summary Get the owner's connected social accounts
  */
 export const GetSocialConnectionsResponse = zod.object({
   "facebook": zod.union([zod.object({
   "accountId": zod.string(),
   "accountName": zod.string(),
-  "connectedAt": zod.coerce.date()
+  "connectedAt": zod.coerce.date(),
+  "connected": zod.boolean().optional(),
+  "connectionState": zod.enum(['connected', 'connecting', 'disconnected', 'missing', 'unavailable']).optional(),
+  "instanceName": zod.string().optional(),
+  "phoneNumber": zod.string().optional(),
+  "authorizationStatus": zod.enum(['ready', 'needs_reauthorization']).optional(),
+  "authorizationReason": zod.union([zod.enum(['token_expired', 'permissions_unverified', 'permissions_missing']),zod.null()]).optional(),
+  "missingPermissions": zod.array(zod.string()).optional(),
+  "accessTokenExpiresAt": zod.union([zod.coerce.date(),zod.null()]).optional()
 }),zod.null()]),
   "instagram": zod.union([zod.object({
   "accountId": zod.string(),
   "accountName": zod.string(),
-  "connectedAt": zod.coerce.date()
-}),zod.null()])
+  "connectedAt": zod.coerce.date(),
+  "connected": zod.boolean().optional(),
+  "connectionState": zod.enum(['connected', 'connecting', 'disconnected', 'missing', 'unavailable']).optional(),
+  "instanceName": zod.string().optional(),
+  "phoneNumber": zod.string().optional(),
+  "authorizationStatus": zod.enum(['ready', 'needs_reauthorization']).optional(),
+  "authorizationReason": zod.union([zod.enum(['token_expired', 'permissions_unverified', 'permissions_missing']),zod.null()]).optional(),
+  "missingPermissions": zod.array(zod.string()).optional(),
+  "accessTokenExpiresAt": zod.union([zod.coerce.date(),zod.null()]).optional()
+}),zod.null()]),
+  "whatsapp": zod.union([zod.object({
+  "accountId": zod.string(),
+  "accountName": zod.string(),
+  "connectedAt": zod.coerce.date(),
+  "connected": zod.boolean().optional(),
+  "connectionState": zod.enum(['connected', 'connecting', 'disconnected', 'missing', 'unavailable']).optional(),
+  "instanceName": zod.string().optional(),
+  "phoneNumber": zod.string().optional(),
+  "authorizationStatus": zod.enum(['ready', 'needs_reauthorization']).optional(),
+  "authorizationReason": zod.union([zod.enum(['token_expired', 'permissions_unverified', 'permissions_missing']),zod.null()]).optional(),
+  "missingPermissions": zod.array(zod.string()).optional(),
+  "accessTokenExpiresAt": zod.union([zod.coerce.date(),zod.null()]).optional()
+}),zod.null()]).optional()
 })
 
 
 /**
- * @summary Start Facebook and Instagram account authorization
+ * @summary Start Facebook or Instagram account authorization
  */
+export const postMetaConnectBodyIntegrationDefault = `facebook`;
+
+export const PostMetaConnectBody = zod.object({
+  "integration": zod.enum(['facebook', 'instagram']).default(postMetaConnectBodyIntegrationDefault)
+})
+
 export const PostMetaConnectResponse = zod.object({
   "authorizationUrl": zod.string().url(),
   "callbackUri": zod.string().url()
@@ -78,10 +165,18 @@ export const PostMetaConnectResponse = zod.object({
 
 
 /**
- * @summary Remove the owner's Meta connection from MenaFlow
+ * @summary Disconnect a Meta platform account owned by the authenticated user
  */
+export const DeleteMetaConnectionQueryParams = zod.object({
+  "platform": zod.enum(['facebook', 'instagram']).optional().describe('Defaults to facebook for compatibility; disconnecting Facebook also removes its linked Instagram account.')
+})
+
 export const DeleteMetaConnectionResponse = zod.object({
-  "disconnected": zod.boolean()
+  "disconnected": zod.boolean(),
+  "alreadyDisconnected": zod.boolean().optional(),
+  "platform": zod.enum(['facebook', 'instagram']).optional(),
+  "alsoDisconnectedInstagram": zod.boolean().optional(),
+  "externalRevocation": zod.enum(['unavailable']).optional()
 })
 
 
@@ -89,5 +184,302 @@ export const DeleteMetaConnectionResponse = zod.object({
  * @summary Complete the Meta authorization callback
  */
 export const MetaOAuthCallbackResponse = zod.void()
+
+
+/**
+ * @summary Reuse or create a workspace Evolution instance and request a pairing code
+ */
+export const postWhatsAppPairingCodeBodyPhoneNumberRegExp = new RegExp('^\\+?[1-9][0-9]{7,14}$');
+
+
+export const PostWhatsAppPairingCodeBody = zod.object({
+  "phoneNumber": zod.string().regex(postWhatsAppPairingCodeBodyPhoneNumberRegExp),
+  "refreshCode": zod.boolean().optional().describe('Replace the pending Evolution instance using the same instance name before requesting a new pairing code.')
+})
+
+export const PostWhatsAppPairingCodeResponse = zod.object({
+  "instanceName": zod.string(),
+  "phoneNumber": zod.string(),
+  "pairingCode": zod.string(),
+  "qrCodeBase64": zod.string().optional().describe('Optional QR image returned by Evolution for scanning when phone-number pairing is rejected.'),
+  "state": zod.enum(['connecting'])
+})
+
+
+/**
+ * @summary Check the live Evolution API connection state for the owner's pending instance
+ */
+export const GetWhatsAppConnectionStatusQueryParams = zod.object({
+  "instanceName": zod.coerce.string()
+})
+
+export const GetWhatsAppConnectionStatusResponse = zod.object({
+  "state": zod.enum(['connecting', 'connected', 'disconnected'])
+})
+
+
+/**
+ * @summary Get the current workspace WhatsApp automatic-reply settings
+ */
+export const getWhatsAppAutoReplySettingsResponseSettingsInstructionsMax = 2000;
+
+
+
+export const GetWhatsAppAutoReplySettingsResponse = zod.object({
+  "connected": zod.boolean(),
+  "phoneNumber": zod.string().nullable(),
+  "settings": zod.object({
+  "enabled": zod.boolean(),
+  "language": zod.enum(['ar', 'match_customer']),
+  "tone": zod.enum(['friendly_professional', 'concise', 'formal']),
+  "instructions": zod.string().max(getWhatsAppAutoReplySettingsResponseSettingsInstructionsMax)
+})
+})
+
+
+/**
+ * @summary Save and optionally enable tested WhatsApp automatic replies
+ */
+export const saveWhatsAppAutoReplySettingsBodyInstructionsMax = 2000;
+
+
+
+export const SaveWhatsAppAutoReplySettingsBody = zod.object({
+  "enabled": zod.boolean(),
+  "language": zod.enum(['ar', 'match_customer']),
+  "tone": zod.enum(['friendly_professional', 'concise', 'formal']),
+  "instructions": zod.string().max(saveWhatsAppAutoReplySettingsBodyInstructionsMax)
+})
+
+export const saveWhatsAppAutoReplySettingsResponseInstructionsMax = 2000;
+
+
+
+export const SaveWhatsAppAutoReplySettingsResponse = zod.object({
+  "enabled": zod.boolean(),
+  "language": zod.enum(['ar', 'match_customer']),
+  "tone": zod.enum(['friendly_professional', 'concise', 'formal']),
+  "instructions": zod.string().max(saveWhatsAppAutoReplySettingsResponseInstructionsMax)
+})
+
+
+/**
+ * @summary Generate a test preview without sending a WhatsApp message
+ */
+export const testWhatsAppAutoReplyBodyInstructionsMax = 2000;
+
+export const testWhatsAppAutoReplyBodyCustomerMessageMax = 1000;
+
+
+
+export const TestWhatsAppAutoReplyBody = zod.object({
+  "language": zod.enum(['ar', 'match_customer']),
+  "tone": zod.enum(['friendly_professional', 'concise', 'formal']),
+  "instructions": zod.string().max(testWhatsAppAutoReplyBodyInstructionsMax),
+  "customerMessage": zod.string().min(1).max(testWhatsAppAutoReplyBodyCustomerMessageMax)
+})
+
+export const TestWhatsAppAutoReplyResponse = zod.object({
+  "reply": zod.string()
+})
+
+
+/**
+ * @summary Fetch WhatsApp announcement groups for the owner's connected account
+ */
+export const GetWhatsAppGroupsResponse = zod.object({
+  "groups": zod.array(zod.object({
+  "groupJid": zod.string(),
+  "groupId": zod.string(),
+  "kind": zod.enum(['announcement']),
+  "name": zod.string(),
+  "communityParentJid": zod.string().optional(),
+  "selected": zod.boolean(),
+  "verifiedAt": zod.coerce.date().optional()
+}))
+})
+
+
+/**
+ * @summary Get the current owner's saved WhatsApp group selections
+ */
+export const GetWhatsAppGroupSelectionsResponse = zod.object({
+  "groups": zod.array(zod.object({
+  "groupJid": zod.string(),
+  "groupId": zod.string(),
+  "kind": zod.enum(['announcement']),
+  "name": zod.string(),
+  "communityParentJid": zod.string().optional(),
+  "selected": zod.boolean(),
+  "verifiedAt": zod.coerce.date().optional()
+}))
+})
+
+
+/**
+ * @summary Save selected announcement group JIDs for the current WhatsApp instance
+ */
+export const saveWhatsAppGroupSelectionsBodyGroupJidsItemRegExp = new RegExp('^[0-9]+(?:-[0-9]+)?@g\\.us$');
+export const saveWhatsAppGroupSelectionsBodyGroupJidsMax = 500;
+
+
+
+export const SaveWhatsAppGroupSelectionsBody = zod.object({
+  "groupJids": zod.array(zod.string().regex(saveWhatsAppGroupSelectionsBodyGroupJidsItemRegExp)).max(saveWhatsAppGroupSelectionsBodyGroupJidsMax)
+})
+
+export const SaveWhatsAppGroupSelectionsResponse = zod.object({
+  "groups": zod.array(zod.object({
+  "groupJid": zod.string(),
+  "groupId": zod.string(),
+  "kind": zod.enum(['announcement']),
+  "name": zod.string(),
+  "communityParentJid": zod.string().optional(),
+  "selected": zod.boolean(),
+  "verifiedAt": zod.coerce.date().optional()
+}))
+})
+
+
+/**
+ * @summary Disconnect WhatsApp account
+ */
+export const DeleteWhatsAppConnectionResponse = zod.object({
+  "disconnected": zod.boolean(),
+  "alreadyDisconnected": zod.boolean().optional(),
+  "evolutionInstanceDeleted": zod.boolean().optional()
+})
+
+
+/**
+ * @summary Get all posts for the current owner
+ */
+export const GetPostsResponseItem = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "mediaUrls": zod.array(zod.string()).optional(),
+  "mediaPreviewUrls": zod.array(zod.string()).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+export const GetPostsResponse = zod.array(GetPostsResponseItem)
+
+
+/**
+ * @summary Create a new post
+ */
+export const CreatePostBody = zod.object({
+  "id": zod.string().optional(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
+  "status": zod.enum(['draft', 'review', 'scheduled', 'published']),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional()
+})
+
+export const CreatePostResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "mediaUrls": zod.array(zod.string()).optional(),
+  "mediaPreviewUrls": zod.array(zod.string()).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Get a page of posts for the active workspace
+ */
+export const getPostsPageQueryLimitDefault = 20;
+export const getPostsPageQueryLimitMax = 50;
+
+
+
+export const GetPostsPageQueryParams = zod.object({
+  "limit": zod.coerce.number().int().min(1).max(getPostsPageQueryLimitMax).default(getPostsPageQueryLimitDefault),
+  "cursor": zod.coerce.string().optional()
+})
+
+export const GetPostsPageResponse = zod.object({
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "mediaUrls": zod.array(zod.string()).optional(),
+  "mediaPreviewUrls": zod.array(zod.string()).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})),
+  "nextCursor": zod.string().nullable()
+})
+
+
+/**
+ * @summary Check cached post IDs in the active workspace
+ */
+export const getKnownPostIdsBodyIdsItemMax = 150;
+
+export const getKnownPostIdsBodyIdsMax = 1000;
+
+
+
+export const GetKnownPostIdsBody = zod.object({
+  "ids": zod.array(zod.string().max(getKnownPostIdsBodyIdsItemMax)).max(getKnownPostIdsBodyIdsMax)
+})
+
+export const GetKnownPostIdsResponse = zod.object({
+  "ids": zod.array(zod.string())
+})
+
+
+/**
+ * @summary Update a post
+ */
+export const UpdatePostParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const UpdatePostBody = zod.object({
+  "title": zod.string().optional(),
+  "body": zod.string().optional(),
+  "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])).optional(),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']).optional()
+})
+
+export const UpdatePostResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "mediaUrls": zod.array(zod.string()).optional(),
+  "mediaPreviewUrls": zod.array(zod.string()).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Delete a post
+ */
+export const DeletePostParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeletePostResponse = zod.object({
+  "success": zod.boolean()
+})
 
 

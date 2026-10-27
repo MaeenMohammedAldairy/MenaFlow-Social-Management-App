@@ -24,6 +24,13 @@ export async function saveDraft(
   }>,
   sourceGroupName: string,
   contentBundleId: string | null = null,
+  readiness: {
+    sourceMediaComplete: boolean;
+    sourceExpectedMediaCount: number;
+  } = {
+    sourceMediaComplete: true,
+    sourceExpectedMediaCount: mediaUrls.length,
+  },
 ) {
   const id = whatsappContentPostId(ownerId, sourceMessageId);
   const status = "review";
@@ -51,6 +58,8 @@ export async function saveDraft(
         aiModel: model,
         sourceRemoteMessageIds,
         sourceMedia,
+        sourceMediaComplete: readiness.sourceMediaComplete,
+        sourceExpectedMediaCount: readiness.sourceExpectedMediaCount,
         mediaGroupId: message.mediaGroupSource ? message.mediaGroupId : null,
         mediaGroupSource: message.mediaGroupSource,
         contentBundleId,
@@ -127,6 +136,8 @@ export async function saveDraft(
     aiModel: model,
     sourceRemoteMessageIds: mergedRemoteIds,
     sourceMedia: mergedSourceMedia,
+    sourceMediaComplete: readiness.sourceMediaComplete,
+    sourceExpectedMediaCount: readiness.sourceExpectedMediaCount,
     mediaGroupId: message.mediaGroupSource ? message.mediaGroupId : null,
     mediaGroupSource: message.mediaGroupSource,
     contentBundleId:

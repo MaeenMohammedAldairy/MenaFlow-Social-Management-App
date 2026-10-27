@@ -62,6 +62,7 @@ export interface WhatsAppMessageMedia {
   failureReason?: string | null;
   accessError?: string | null;
   url?: string | null;
+  thumbnailUrl?: string | null;
   storageKey?: string | null;
   createdAt?: string | null;
 }
@@ -78,6 +79,7 @@ export interface WhatsAppMessage {
   mediaGroupId?: string | null;
   mediaGroupSource?: "protocol_association" | "provider_album_container" | null;
   contentBundleId?: string | null;
+  contentBundleMedia?: WhatsAppMessageMedia[];
   mediaGroupIndex?: number | null;
   mediaGroupExpectedCount?: number | null;
   mediaDownloadStatus?: string | null;

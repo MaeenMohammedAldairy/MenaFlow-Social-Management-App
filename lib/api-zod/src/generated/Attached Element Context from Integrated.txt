@@ -1,0 +1,60 @@
+Attached Element Context from Integrated Browser
+
+Element: div.css-view-g5y9jx.r-borderRadius-y47klf.r-borderWidth-rs99b7.r-boxShadow-1u0vly4.r-padding-nsbfu8.r-gap-1ssbvtb
+
+URL: http://localhost:8082/inbox
+
+HTML Path: div#root > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0.r-bottom-1p0dtai.r-left-1d2f490.r-position-u8s1d.r-right-zchlnj.r-top-ipm5af > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0.r-overflow-1udh08x > div.css-view-g5y9jx.r-bottom-1p0dtai.r-left-1d2f490.r-position-u8s1d.r-right-zchlnj.r-top-ipm5af > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-WebkitOverflowScrolling-150rngu.r-flexDirection-eqz5dr.r-flexGrow-16y2uox.r-flexShrink-1wbh5a2.r-overflowX-11yh6sk.r-overflowY-1rnoaur.r-transform-agouwx > div.css-view-g5y9jx.r-WebkitOverflowScrolling-150rngu.r-flexDirection-eqz5dr.r-flexGrow-16y2uox.r-flexShrink-1wbh5a2.r-overflowX-11yh6sk.r-overflowY-1rnoaur.r-transform-agouwx.r-scrollbarWidth-2eszeu > div.css-view-g5y9jx.r-flexGrow-16y2uox > div.css-view-g5y9jx.r-gap-1pnwn9g.r-paddingInline-284m6k > div.css-view-g5y9jx.r-gap-1ssbvtb > div.css-view-g5y9jx.r-borderRadius-y47klf.r-borderWidth-rs99b7.r-boxShadow-1u0vly4.r-padding-nsbfu8.r-gap-1ssbvtb
+
+Outer HTML:
+```html
+<div class="css-view-g5y9jx r-borderRadius-y47klf r-borderWidth-rs99b7 r-boxShadow-1u0vly4 r-padding-nsbfu8 r-gap-1ssbvtb" style="background-color: rgb(255, 255, 255); border-color: rgb(220, 237, 233);"><div class="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-1euycsn r-gap-1ssbvtb"><div class="css-view-g5y9jx r-flex-13awgt0 r-gap-1599tul"><div dir="auto" class="css-text-146c3p1 r-fontSize-a023e6 r-fontWeight-b88u0q r-textAlign-1ff274t" style="color: rgb(18, 50, 102); font-family: Cairo_700Bold;">فيسبوك</div><div dir="auto" class="css-text-146c3p1 r-fontSize-1enofrn r-textAlign-1ff274t" style="color: rgb(117, 139, 170); font-family: Cairo_400Regular;">فيسبوك · رسالة خاصة · 26‏/10‏/2026، 12:27:29 ص</div></div><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3978D6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-message-circle"><path fill="none" stroke="#3978D6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719"></path></svg></div><div class="css-view-g5y9jx r-gap-1cmwbt1"><button aria-label="عرض الصورة" role="button" tabindex="0" class="css-view-g5y9jx r-cursor-1loqt21 r-touchAction-1otgn73 r-alignSelf-173mn98 r-borderRadius-1q9bdsx r-height-key0ze r-maxWidth-1ces89m r-overflow-1udh08x r-width-13qz1uu" type="button"><div data-expoimage="true" class="css-view-g5y9jx" style="overflow: hidden; width: 100%; height: 100%;"><div><img fetchpriority="auto" loading="lazy" src="https://scontent.xx.fbcdn.net/v/t1.15752-9/845995714_2191703391765746_2586939134202351603_n.jpg?_nc_cat=111&amp;ccb=1-7&amp;_nc_sid=eb2e90&amp;_nc_ohc=cfoXHBMCj80Q7kNvwEEWZXk&amp;_nc_oc=AdobVI7PUFUcVDi2PqkzNkvOgYjFqG_JaBKb7T-hxPgxNST8wGyaI-MZtax_Ub7k_eVCzJfOya0IjAHtqEQQHLP4&amp;_nc_ad=z-m&amp;_nc_cid=0&amp;_nc_zt=23&amp;_nc_ht=scontent.xx&amp;oh=03_Q7cD6gGPNO25v4UDB9H50BFkiianduKfAS3EV8PFclN6Hz4jSA&amp;oe=6B05FEE6" style="object-position: left 50% top 50%; width: 100%; height: 100%; position: absolute; left: 0px; top: 0px; object-fit: cover; transition-duration: 0ms; transition-timing-function: linear;"></div></div></button></div><div class="css-view-g5y9jx r-alignItems-obd0qt r-flexDirection-1euycsn r-gap-1cmwbt1"><textarea placeholder="اكتب ردًا..." maxlength="2000" autocapitalize="sentences" autocomplete="on" autocorrect="on" dir="auto" spellcheck="true" virtualkeyboardpolicy="auto" aria-label="اكتب ردك" class="css-textinput-11aywtz r-placeholderTextColor-6taxm2 r-borderRadius-1q9bdsx r-borderWidth-rs99b7 r-flex-13awgt0 r-fontSize-1b43r93 r-maxHeight-1xpiuri r-minHeight-peo1c r-paddingBlock-1s5swlz r-paddingInline-3o4zer" style="--placeholderTextColor: #758BAA; color: rgb(18, 50, 102); border-color: rgb(220, 237, 233); background-color: rgb(242, 251, 250);"></textarea><button aria-disabled="true" disabled="" aria-label="إرسال الرد" role="button" tabindex="-1" class="css-view-g5y9jx r-pointerEvents-12vffkv r-alignItems-1awozwy r-borderRadius-1q9bdsx r-height-1ugchlj r-justifyContent-1777fci r-width-usgzl9" type="button" style="background-color: rgb(10, 167, 122); opacity: 0.45;"><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-send"><path fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path><path fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="m21.854 2.147-10.94 10.939"></path></svg></button></div></div>
+```
+
+Dimensions:
+- top: 123px
+- left: 18px
+- width: 904px
+- height: 411px
+
+CSS:
+```css
+element { background-color: rgb(255, 255, 255); border-color: rgb(220, 237, 233); }
+.css-view-g5y9jx { align-content: flex-start; align-items: stretch; background-color: rgba(0, 0, 0, 0); border: 0px solid black; box-sizing: border-box; display: flex; flex-basis: auto; flex-direction: column; flex-shrink: 0; list-style: none; margin: 0px; min-height: 0px; min-width: 0px; padding: 0px; position: relative; text-decoration: none; z-index: 0; }
+.r-borderWidth-rs99b7 { border-width: 1px; }
+.r-borderRadius-y47klf { border-radius: 20px; }
+.r-padding-nsbfu8 { padding: 16px; }
+.r-gap-1ssbvtb { gap: 12px; }
+.r-boxShadow-1u0vly4 { box-shadow: rgba(10, 37, 64, 0.04) 0px 6px 14px; }
+
+/* Inherited */
+.css-view-g5y9jx { list-style: none }
+
+/* Resolved values */
+margin: 0px;
+padding: 16px;
+border-radius: 20px;
+border: 1px solid rgb(220, 237, 233);
+text-decoration: rgb(0, 0, 0);
+align-content: flex-start;
+align-items: stretch;
+background-color: rgb(255, 255, 255);
+box-shadow: rgba(10, 37, 64, 0.04) 0px 6px 14px 0px;
+box-sizing: border-box;
+column-gap: 12px;
+display: flex;
+flex-basis: auto;
+flex-direction: column;
+flex-shrink: 0;
+height: 411px;
+list-style-image: none;
+list-style-position: outside;
+list-style-type: none;
+min-height: 0px;
+min-width: 0px;
+position: relative;
+row-gap: 12px;
+unicode-bidi: isolate /*UA*/;
+width: 904px;
+z-index: 0;
+```

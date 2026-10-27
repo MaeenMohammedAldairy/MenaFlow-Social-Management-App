@@ -478,6 +478,21 @@ async function processWhatsAppMessageUnlocked(
     })),
     selection.groupName,
     contentBundle?.id ?? null,
+    {
+      sourceMediaComplete: Boolean(
+        readyMedia.length > 0 &&
+        !missingMessageMedia &&
+        !hasPendingDownload &&
+        !hasTerminalDownloadFailure &&
+        !unresolvedAlbumContainer &&
+        (expectedCount <= 0 || readyMedia.length >= expectedCount),
+      ),
+      sourceExpectedMediaCount: Math.max(
+        expectedCount,
+        mediaRows.length,
+        readyMedia.length,
+      ),
+    },
   );
   if (saved.post && saved.post.sourceMessageId !== sourceMessageId) {
     const consistentId = whatsappContentPostId(ownerId, sourceMessageId);

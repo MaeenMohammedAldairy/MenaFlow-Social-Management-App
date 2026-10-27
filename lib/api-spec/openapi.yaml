@@ -16,6 +16,8 @@ tags:
     description: Owner access control
   - name: social
     description: Social account connections
+  - name: posts
+    description: Post management and synchronization
 paths:
   /healthz:
     get:
@@ -107,6 +109,96 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /onboarding:
+    get:
+      operationId: getOnboardingStatus
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: Get onboarding progress for the current workspace
+      responses:
+        "200":
+          description: Current onboarding state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStatus"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Workspace selection required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /onboarding/progress:
+    post:
+      operationId: updateOnboardingProgress
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: Save onboarding progress for the current workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingProgressInput"
+      responses:
+        "200":
+          description: Updated onboarding state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStatus"
+        "400":
+          description: Invalid progress action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Workspace selection required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /onboarding/social-accounts/complete:
+    post:
+      operationId: completeSocialAccountsSetup
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: Mark social account setup complete for the current workspace
+      responses:
+        "200":
+          description: Completed social account setup state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingStatus"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Workspace selection required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /social/connections:
     get:
       operationId: getSocialConnections
@@ -133,7 +225,13 @@ paths:
       tags: [social]
       security:
         - bearerAuth: []
-      summary: Start Facebook and Instagram account authorization
+      summary: Start Facebook or Instagram account authorization
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetaConnectInput"
       responses:
         "200":
           description: Meta authorization link
@@ -159,7 +257,15 @@ paths:
       tags: [social]
       security:
         - bearerAuth: []
-      summary: Remove the owner's Meta connection from MenaFlow
+      summary: Disconnect a Meta platform account owned by the authenticated user
+      parameters:
+        - name: platform
+          in: query
+          required: false
+          description: Defaults to facebook for compatibility; disconnecting Facebook also removes its linked Instagram account.
+          schema:
+            type: string
+            enum: [facebook, instagram]
       responses:
         "200":
           description: Connection removed
@@ -181,6 +287,573 @@ paths:
       responses:
         "302":
           description: Redirects back to the MenaFlow mobile app
+  /social/whatsapp/connect:
+    post:
+      operationId: postWhatsAppPairingCode
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Reuse or create a workspace Evolution instance and request a pairing code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsAppPairingCodeInput"
+      responses:
+        "200":
+          description: Workspace Evolution instance reused or created and pairing code generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppPairingCodeResponse"
+        "400":
+          description: Invalid phone number
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: WhatsApp is already connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: Evolution API could not generate a pairing code for the phone number
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Evolution API request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: Evolution API is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/connection-status:
+    get:
+      operationId: getWhatsAppConnectionStatus
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Check the live Evolution API connection state for the owner's pending instance
+      parameters:
+        - name: instanceName
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Current Evolution API connection state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppConnectionStatus"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No matching pending WhatsApp connection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Evolution API request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/auto-reply-settings:
+    get:
+      operationId: getWhatsAppAutoReplySettings
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Get the current workspace WhatsApp automatic-reply settings
+      responses:
+        "200":
+          description: Current WhatsApp connection and automatic-reply settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppAutoReplySettingsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No WhatsApp connection found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      operationId: saveWhatsAppAutoReplySettings
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Save and optionally enable tested WhatsApp automatic replies
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsAppAutoReplySettings"
+      responses:
+        "200":
+          description: Settings saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppAutoReplySettings"
+        "400":
+          description: Invalid settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: WhatsApp is disconnected or the current settings have not been tested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: AI provider is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/auto-reply-test:
+    post:
+      operationId: testWhatsAppAutoReply
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Generate a test preview without sending a WhatsApp message
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsAppAutoReplyTestInput"
+      responses:
+        "200":
+          description: Generated test reply preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reply:
+                    type: string
+                required: [reply]
+        "400":
+          description: Invalid test message or settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: WhatsApp is disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "429":
+          description: Test generation rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: AI provider is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/groups:
+    get:
+      operationId: getWhatsAppGroups
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Fetch WhatsApp announcement groups for the owner's connected account
+      responses:
+        "200":
+          description: Live announcement groups without participant or permission details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppGroupsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No WhatsApp account connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: WhatsApp connection is not active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Evolution API request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/group-selections:
+    get:
+      operationId: getWhatsAppGroupSelections
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Get the current owner's saved WhatsApp group selections
+      responses:
+        "200":
+          description: Saved selections for the current WhatsApp instance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppGroupSelectionsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      operationId: saveWhatsAppGroupSelections
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Save selected announcement group JIDs for the current WhatsApp instance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsAppGroupSelectionsInput"
+      responses:
+        "200":
+          description: Announcement group selections saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppGroupSelectionsResponse"
+        "400":
+          description: Invalid selection input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No WhatsApp account connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: WhatsApp connection is not active
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: A selected group is not currently eligible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Evolution API request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp:
+    delete:
+      operationId: deleteWhatsAppConnection
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Disconnect WhatsApp account
+      responses:
+        "200":
+          description: WhatsApp disconnected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppDisconnectResult"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /posts:
+    get:
+      operationId: getPosts
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Get all posts for the current owner
+      responses:
+        "200":
+          description: List of posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PostItem"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      operationId: createPost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Create a new post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePostInput"
+      responses:
+        "201":
+          description: Post created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostItem"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /posts/page:
+    get:
+      operationId: getPostsPage
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Get a page of posts for the active workspace
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: One keyset-paginated page of posts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PostItem"
+                  nextCursor:
+                    type: string
+                    nullable: true
+                required: [items, nextCursor]
+        "400":
+          description: Invalid page size or cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /posts/known-ids:
+    post:
+      operationId: getKnownPostIds
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Check cached post IDs in the active workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  maxItems: 1000
+                  items:
+                    type: string
+                    maxLength: 150
+              required: [ids]
+      responses:
+        "200":
+          description: IDs already stored in the active workspace
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ids:
+                    type: array
+                    items:
+                      type: string
+                required: [ids]
+        "400":
+          description: Invalid ID list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /posts/{id}:
+    patch:
+      operationId: updatePost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Update a post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePostInput"
+      responses:
+        "200":
+          description: Post updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostItem"
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: deletePost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Delete a post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Post deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostDeleteResult"
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   securitySchemes:
     bearerAuth:
@@ -239,6 +912,28 @@ components:
         authorized:
           type: boolean
       required: [authorized]
+    OnboardingProgressInput:
+      type: object
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [advance, back, skip]
+      required: [action]
+    OnboardingStatus:
+      type: object
+      properties:
+        started:
+          type: boolean
+        currentStep:
+          type: integer
+          minimum: 0
+          maximum: 3
+        completed:
+          type: boolean
+        socialAccountsCompleted:
+          type: boolean
+      required: [started, currentStep, completed, socialAccountsCompleted]
     SocialAccountStatus:
       type: object
       properties:
@@ -249,6 +944,32 @@ components:
         connectedAt:
           type: string
           format: date-time
+        connected:
+          type: boolean
+        connectionState:
+          type: string
+          enum: [connected, connecting, disconnected, missing, unavailable]
+        instanceName:
+          type: string
+        phoneNumber:
+          type: string
+        authorizationStatus:
+          type: string
+          enum: [ready, needs_reauthorization]
+        authorizationReason:
+          oneOf:
+            - type: string
+              enum: [token_expired, permissions_unverified, permissions_missing]
+            - type: "null"
+        missingPermissions:
+          type: array
+          items:
+            type: string
+        accessTokenExpiresAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
       required: [accountId, accountName, connectedAt]
     SocialConnectionsResponse:
       type: object
@@ -258,6 +979,10 @@ components:
             - $ref: "#/components/schemas/SocialAccountStatus"
             - type: "null"
         instagram:
+          oneOf:
+            - $ref: "#/components/schemas/SocialAccountStatus"
+            - type: "null"
+        whatsapp:
           oneOf:
             - $ref: "#/components/schemas/SocialAccountStatus"
             - type: "null"
@@ -272,10 +997,242 @@ components:
           type: string
           format: uri
       required: [authorizationUrl, callbackUri]
+    MetaConnectInput:
+      type: object
+      properties:
+        integration:
+          type: string
+          enum: [facebook, instagram]
+          default: facebook
     MetaDisconnectResponse:
       type: object
       properties:
         disconnected:
           type: boolean
+        alreadyDisconnected:
+          type: boolean
+        platform:
+          type: string
+          enum: [facebook, instagram]
+        alsoDisconnectedInstagram:
+          type: boolean
+        externalRevocation:
+          type: string
+          enum: [unavailable]
       required: [disconnected]
-
+    PostItem:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+            enum: [instagram, facebook, whatsapp]
+        status:
+          type: string
+          enum: [draft, review, scheduled, published]
+        metadata:
+          type: object
+          additionalProperties: true
+        mediaUrls:
+          type: array
+          items:
+            type: string
+        mediaPreviewUrls:
+          type: array
+          items:
+            type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required: [id, title, body, channels, status, createdAt]
+    CreatePostInput:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+            enum: [instagram, facebook, whatsapp]
+        status:
+          type: string
+          enum: [draft, review, scheduled, published]
+        metadata:
+          type: object
+          additionalProperties: true
+      required: [title, body, channels, status]
+    UpdatePostInput:
+      type: object
+      properties:
+        title:
+          type: string
+        body:
+          type: string
+        channels:
+          type: array
+          items:
+            type: string
+            enum: [instagram, facebook, whatsapp]
+        status:
+          type: string
+          enum: [draft, review, scheduled, published]
+    PostDeleteResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required: [success]
+    WhatsAppPairingCodeInput:
+      type: object
+      properties:
+        phoneNumber:
+          type: string
+          pattern: '^\+?[1-9][0-9]{7,14}$'
+        refreshCode:
+          type: boolean
+          description: Replace the pending Evolution instance using the same instance name before requesting a new pairing code.
+      required: [phoneNumber]
+    WhatsAppPairingCodeResponse:
+      type: object
+      properties:
+        instanceName:
+          type: string
+        phoneNumber:
+          type: string
+        pairingCode:
+          type: string
+        qrCodeBase64:
+          type: string
+          description: Optional QR image returned by Evolution for scanning when phone-number pairing is rejected.
+        state:
+          type: string
+          enum: [connecting]
+      required: [instanceName, phoneNumber, pairingCode, state]
+    WhatsAppConnectionStatus:
+      type: object
+      properties:
+        state:
+          type: string
+          enum: [connecting, connected, disconnected]
+      required: [state]
+    WhatsAppAutoReplySettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        language:
+          type: string
+          enum: [ar, match_customer]
+        tone:
+          type: string
+          enum: [friendly_professional, concise, formal]
+        instructions:
+          type: string
+          maxLength: 2000
+      required: [enabled, language, tone, instructions]
+    WhatsAppAutoReplySettingsResponse:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        phoneNumber:
+          type: [string, "null"]
+        settings:
+          $ref: "#/components/schemas/WhatsAppAutoReplySettings"
+      required: [connected, phoneNumber, settings]
+    WhatsAppAutoReplyTestInput:
+      type: object
+      properties:
+        language:
+          type: string
+          enum: [ar, match_customer]
+        tone:
+          type: string
+          enum: [friendly_professional, concise, formal]
+        instructions:
+          type: string
+          maxLength: 2000
+        customerMessage:
+          type: string
+          minLength: 1
+          maxLength: 1000
+      required: [language, tone, instructions, customerMessage]
+    WhatsAppGroup:
+      type: object
+      properties:
+        groupJid:
+          type: string
+        groupId:
+          type: string
+        kind:
+          type: string
+          enum: [announcement]
+        name:
+          type: string
+        communityParentJid:
+          type: string
+        selected:
+          type: boolean
+        verifiedAt:
+          type: string
+          format: date-time
+      required:
+        [
+          groupJid,
+          groupId,
+          kind,
+          name,
+          selected,
+        ]
+    WhatsAppGroupsResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppGroup"
+      required: [groups]
+    WhatsAppGroupSelectionsResponse:
+      type: object
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppGroup"
+      required: [groups]
+    WhatsAppGroupSelectionsInput:
+      type: object
+      properties:
+        groupJids:
+          type: array
+          maxItems: 500
+          uniqueItems: true
+          items:
+            type: string
+            pattern: '^[0-9]+(?:-[0-9]+)?@g\.us$'
+      required: [groupJids]
+    WhatsAppDisconnectResult:
+      type: object
+      properties:
+        disconnected:
+          type: boolean
+        alreadyDisconnected:
+          type: boolean
+        evolutionInstanceDeleted:
+          type: boolean
+      required: [disconnected]

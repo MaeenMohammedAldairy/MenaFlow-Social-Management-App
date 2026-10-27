@@ -23,7 +23,7 @@ interface WhatsAppGroupMessagesModalProps {
   messagesData: WhatsAppGroupMessagesResponse | null;
   displayedMessageGroups: DisplayedWhatsAppMessageGroup[];
   page: number;
-  converting?: boolean;
+  convertingMessageIds?: Record<string, boolean>;
   associationDecisionPending?: string | null;
   associationError?: string;
   onClose: () => void;
@@ -46,7 +46,7 @@ export function WhatsAppGroupMessagesModal({
   messagesData,
   displayedMessageGroups,
   page,
-  converting,
+  convertingMessageIds,
   associationDecisionPending,
   associationError,
   onClose,
@@ -193,7 +193,7 @@ export function WhatsAppGroupMessagesModal({
                   <WhatsAppMessageGroupCard
                     key={messageGroup.key}
                     group={messageGroup}
-                    converting={Boolean(converting)}
+                    convertingMessageIds={convertingMessageIds ?? {}}
                     associationDecisionPending={associationDecisionPending ?? null}
                     onPreview={onPreview}
                     onConvert={(messageId) => onConvert(messageId)}

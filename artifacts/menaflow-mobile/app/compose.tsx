@@ -1,8 +1,9 @@
-import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { CairoText as Text, CairoTextInput as TextInput } from '@/components/CairoTypography';
+import { LucideIcon as Icon, type LucideIconName } from '@/components/LucideIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
 import { ActionButton, BrandHeader, PageTitle, Panel, SectionTitle } from '@/components/Ui';
@@ -11,7 +12,7 @@ import { useColors } from '@/hooks/useColors';
 import { useGenerateAiContent } from '@workspace/api-client-react';
 import { OwnerGuard } from '@/components/OwnerGuard';
 
-const channelOptions: { key: Channel; label: string; icon: keyof typeof Feather.glyphMap }[] = [
+const channelOptions: { key: Channel; label: string; icon: LucideIconName }[] = [
   { key: 'instagram', label: 'إنستغرام', icon: 'instagram' },
   { key: 'facebook', label: 'فيسبوك', icon: 'facebook' },
   { key: 'whatsapp', label: 'واتساب', icon: 'message-circle' },
@@ -21,9 +22,18 @@ export default function ComposeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { addPost } = useStudio();
+  const { channel: initialChannel } = useLocalSearchParams<{ channel?: string }>();
+  const initialSelected: Channel[] =
+    initialChannel === 'facebook' ||
+    initialChannel === 'instagram' ||
+    initialChannel === 'whatsapp'
+      ? [initialChannel]
+      : ['instagram'];
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [selected, setSelected] = useState<Channel[]>(['instagram']);
+  const [aiGeneratedAt, setAiGeneratedAt] = useState<string | null>(null);
+  const [aiProviderUsed, setAiProviderUsed] = useState<'gemini' | 'openai' | null>(null);
+  const [selected, setSelected] = useState<Channel[]>(initialSelected);
   const [idea, setIdea] = useState('');
   const [businessContext, setBusinessContext] = useState('');
   const [provider, setProvider] = useState<'gemini' | 'openai'>('gemini');
@@ -44,7 +54,21 @@ export default function ComposeScreen() {
       Alert.alert('اختر قناة', 'حدد قناة واحدة على الأقل لتوضيح وجهة المحتوى.');
       return;
     }
-    addPost({ title: title.trim(), body: body.trim(), channels: selected, status });
+    await addPost({
+      title: title.trim(),
+      body: body.trim(),
+      channels: selected,
+      status,
+      ...(aiGeneratedAt
+        ? {
+            metadata: {
+              aiGenerated: true,
+              aiProvider: aiProviderUsed,
+              aiGeneratedAt,
+            },
+          }
+        : {}),
+    });
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.back();
   };
@@ -66,6 +90,8 @@ export default function ComposeScreen() {
         },
       });
       setBody(result.content);
+      setAiGeneratedAt(new Date().toISOString());
+      setAiProviderUsed(provider);
       if (!title.trim()) setTitle(idea.trim().slice(0, 60));
       await Haptics.selectionAsync();
     } catch (error) {
@@ -83,7 +109,7 @@ export default function ComposeScreen() {
         showsVerticalScrollIndicator={false}
       >
       <BrandHeader />
-      <PageTitle title="منشور جديد" subtitle="اكتب المحتوى وحدد القنوات المقصودة." action={<Pressable accessibilityRole="button" accessibilityLabel="إغلاق" onPress={() => router.back()} style={styles.closeButton}><Feather name="x" size={20} color={colors.foreground} /></Pressable>} />
+      <PageTitle title="منشور جديد" subtitle="اكتب المحتوى وحدد القنوات المقصودة." action={<Pressable accessibilityRole="button" accessibilityLabel="إغلاق" onPress={() => router.back()} style={styles.closeButton}><Icon name="x" size={20} color={colors.foreground} /></Pressable>} />
       <Panel style={styles.aiPanel}>
         <SectionTitle title="اكتبها بالذكاء الاصطناعي" />
         <Text style={[styles.helper, { color: colors.mutedForeground }]}>أدخل فكرة بسيطة، وسيُنشئ لك مسودة عربية قابلة للتعديل.</Text>
@@ -182,8 +208,14 @@ export default function ComposeScreen() {
           {channelOptions.map((channel) => {
             const active = selected.includes(channel.key);
             return (
-              <Pressable key={channel.key} onPress={() => toggleChannel(channel.key)} style={[styles.channelChip, { backgroundColor: active ? colors.accent : colors.background, borderColor: active ? colors.primary : colors.border }]}>
-                <Feather name={channel.icon} size={15} color={active ? colors.primary : colors.mutedForeground} />
+              <Pressable
+                key={channel.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => toggleChannel(channel.key)}
+                style={[styles.channelChip, { backgroundColor: active ? colors.accent : colors.background, borderColor: active ? colors.primary : colors.border }]}
+              >
+                <Icon name={channel.icon} size={15} color={active ? colors.primary : colors.mutedForeground} />
                 <Text style={[styles.chipLabel, { color: active ? colors.primary : colors.mutedForeground }]}>{channel.label}</Text>
               </Pressable>
             );

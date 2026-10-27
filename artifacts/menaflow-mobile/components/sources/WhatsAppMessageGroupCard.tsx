@@ -4,11 +4,14 @@ import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { StatusPill } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
-import type { DisplayedWhatsAppMessageGroup } from "@/lib/source-message-groups";
+import {
+  canConvertWhatsAppMessageGroup,
+  type DisplayedWhatsAppMessageGroup,
+} from "@/lib/source-message-groups";
 
 type Props = {
   group: DisplayedWhatsAppMessageGroup;
-  converting: boolean;
+  convertingMessageIds: Record<string, boolean>;
   onPreview: (url: string) => void;
   onConvert: (messageId: string) => void;
   associationDecisionPending: string | null;
@@ -21,7 +24,7 @@ type Props = {
 
 export function WhatsAppMessageGroupCard({
   group,
-  converting,
+  convertingMessageIds,
   onPreview,
   onConvert,
   associationDecisionPending,
@@ -31,15 +34,8 @@ export function WhatsAppMessageGroupCard({
   const sourceMessage = group.messages.find((message) =>
     Boolean(message.textBody?.trim() || message.caption?.trim()),
   ) ?? group.messages[0];
-  const associationSuggestions = [
-    ...new Map(group.messages.flatMap((message) =>
-      message.associationSuggestions ?? [],
-    ).map((suggestion) => [
-      `${suggestion.sourceMessageId}:${suggestion.candidateGroupKey}`,
-      suggestion,
-    ])).values(),
-  ];
-
+  const converting = Boolean(sourceMessage && convertingMessageIds[sourceMessage.id]);
+  const canConvert = canConvertWhatsAppMessageGroup(group);
   return (
     <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.background }]}>
       <View style={styles.header}>
@@ -71,64 +67,103 @@ export function WhatsAppMessageGroupCard({
       ) : (
         <Text style={[styles.body, { color: colors.mutedForeground }]}>لا يوجد نص</Text>
       )}
-      {associationSuggestions.length > 0 ? (
+      {group.associationSuggestions.length > 0 ? (
         <View style={styles.suggestionList}>
           <Text style={[styles.meta, { color: colors.primary }]}>
             اقتراحات ارتباط للمراجعة فقط؛ لم يتم دمج الرسائل تلقائياً:
           </Text>
-          {associationSuggestions.map((suggestion) => (
+          {group.associationSuggestions.map((suggestion) => (
             <View
               key={`${suggestion.sourceMessageId}:${suggestion.candidateGroupKey}`}
               style={styles.suggestion}
             >
-              <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-                {suggestion.candidateText || "وسائط مرشحة"} · {suggestion.candidateMediaCount} وسيط
-              </Text>
-              {suggestion.decision ? (
-                <StatusPill
-                  label={suggestion.decision === "accepted" ? "ارتباط مؤكد" : "رُفض الارتباط"}
-                  tone={suggestion.decision === "accepted" ? "green" : "muted"}
-                />
-              ) : (
-                <View style={styles.suggestionActions}>
-                  {(["accepted", "rejected"] as const).map((decision) => {
-                    const actionKey = `${suggestion.sourceMessageId}:${suggestion.candidateMessageId}`;
-                    const pending = associationDecisionPending === actionKey;
-                    return (
+              {suggestion.candidateMedia.length > 0 ? (
+                <View
+                  accessibilityLabel={`وسائط مقترحة، ${suggestion.candidateMediaCount} عنصر`}
+                  style={styles.candidateMediaList}
+                >
+                  {suggestion.candidateMedia.map(({ item }) =>
+                    item.downloadStatus === "stored" &&
+                    item.mediaType === "image" &&
+                    item.url ? (
                       <Pressable
-                        key={decision}
+                        key={item.id}
                         accessibilityRole="button"
-                        accessibilityLabel={
-                          decision === "accepted"
-                            ? "تأكيد أن الرسائل تخص المحتوى نفسه"
-                            : "رفض اقتراح ربط الرسائل"
-                        }
-                        disabled={Boolean(associationDecisionPending)}
-                        onPress={() => onAssociationDecision(
-                          suggestion.sourceMessageId,
-                          suggestion.candidateMessageId,
-                          decision,
-                        )}
+                        accessibilityLabel="معاينة صورة الوسائط المقترحة"
+                        onPress={() => item.url && onPreview(item.url)}
+                      >
+                        <Image
+                          source={{ uri: item.thumbnailUrl || item.url }}
+                          style={styles.mediaThumbnail}
+                          resizeMode="cover"
+                        />
+                      </Pressable>
+                    ) : (
+                      <View
+                        key={item.id}
                         style={[
-                          styles.suggestionAction,
-                          {
-                            borderColor: colors.border,
-                            opacity: associationDecisionPending ? 0.5 : 1,
-                          },
+                          styles.mediaPlaceholder,
+                          { backgroundColor: colors.accent },
                         ]}
                       >
-                        {pending ? (
-                          <ActivityIndicator size="small" color={colors.primary} />
-                        ) : (
-                          <Text style={[styles.meta, { color: colors.primary }]}>
-                            {decision === "accepted" ? "تأكيد الربط" : "رفض"}
-                          </Text>
-                        )}
-                      </Pressable>
-                    );
-                  })}
+                        <Text style={[styles.mediaType, { color: colors.primary }]}>
+                          {item.downloadStatus === "failed"
+                            ? "فشل التحميل"
+                            : item.downloadStatus !== "stored"
+                              ? "جارٍ التحميل"
+                              : item.mediaType === "video"
+                                ? "فيديو"
+                                : item.mediaType === "document"
+                                  ? "مستند"
+                                  : item.mediaType}
+                        </Text>
+                      </View>
+                    ),
+                  )}
                 </View>
+              ) : (
+                <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+                  {suggestion.candidateText || "وسائط مرشحة"} · {suggestion.candidateMediaCount} وسيط
+                </Text>
               )}
+              <View style={styles.suggestionActions}>
+                {(["accepted", "rejected"] as const).map((decision) => {
+                  const actionKey = `${suggestion.sourceMessageId}:${suggestion.candidateMessageId}`;
+                  const pending = associationDecisionPending === actionKey;
+                  return (
+                    <Pressable
+                      key={decision}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        decision === "accepted"
+                          ? "تأكيد أن الرسائل تخص المحتوى نفسه"
+                          : "رفض اقتراح ربط الرسائل"
+                      }
+                      disabled={Boolean(associationDecisionPending)}
+                      onPress={() => onAssociationDecision(
+                        suggestion.sourceMessageId,
+                        suggestion.candidateMessageId,
+                        decision,
+                      )}
+                      style={[
+                        styles.suggestionAction,
+                        {
+                          borderColor: colors.border,
+                          opacity: associationDecisionPending ? 0.5 : 1,
+                        },
+                      ]}
+                    >
+                      {pending ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
+                      ) : (
+                        <Text style={[styles.meta, { color: colors.primary }]}>
+                          {decision === "accepted" ? "تأكيد الربط" : "رفض"}
+                        </Text>
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
           ))}
         </View>
@@ -144,7 +179,7 @@ export function WhatsAppMessageGroupCard({
               onPress={() => item.url && onPreview(item.url)}
             >
               <Image
-                source={{ uri: item.url || undefined }}
+                source={{ uri: item.thumbnailUrl || item.url || undefined }}
                 style={styles.mediaThumbnail}
                 resizeMode="cover"
               />
@@ -184,16 +219,17 @@ export function WhatsAppMessageGroupCard({
         group.mediaFailed ||
         group.contentBundleId
       ) &&
-      !group.postId ? (
+      !group.postId &&
+      canConvert ? (
         <Pressable
           accessibilityRole="button"
-          disabled={converting || group.mediaPending}
+          disabled={converting}
           onPress={() => sourceMessage && onConvert(sourceMessage.id)}
           style={[
             styles.convertAction,
             {
               borderColor: colors.primary,
-              opacity: converting || group.mediaPending ? 0.5 : 1,
+              opacity: converting ? 0.5 : 1,
             },
           ]}
         >
@@ -227,6 +263,7 @@ const styles = StyleSheet.create({
   body: { fontSize: 12, lineHeight: 19, textAlign: "right" },
   suggestionList: { alignItems: "flex-end", gap: 8 },
   suggestion: { alignItems: "flex-end", gap: 5 },
+  candidateMediaList: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },
   suggestionActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   suggestionAction: {
     minHeight: 36,

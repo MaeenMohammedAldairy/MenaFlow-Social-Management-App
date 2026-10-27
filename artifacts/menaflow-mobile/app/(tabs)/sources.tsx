@@ -15,6 +15,7 @@ import {
   getSocialConnections,
   type OnboardingStatus,
   type WhatsAppGroupMessagesResponse,
+  type WhatsAppMessage,
   type WhatsAppSyncStatusResponse,
   postMetaConnect,
   postWhatsAppPairingCode,
@@ -206,7 +207,9 @@ function SourcesContent({ userId }: { userId: string | null }) {
   const autoConnectHandledRef = useRef<string | null>(null);
   const [disconnectDialog, setDisconnectDialog] =
     useState<DisconnectDialogState | null>(null);
-  const [convertingWhatsAppGroup, setConvertingWhatsAppGroup] = useState(false);
+  const [convertingWhatsAppGroups, setConvertingWhatsAppGroups] = useState<
+    Record<string, boolean>
+  >({});
   const [whatsappInput, setWhatsappInput] = useState<{
     phoneNumber: string;
     instanceName?: string;
@@ -239,6 +242,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
   const [groupMessagesPage, setGroupMessagesPage] = useState(1);
   const [groupMessagesData, setGroupMessagesData] =
     useState<WhatsAppGroupMessagesResponse | null>(null);
+  const [loadedGroupMessages, setLoadedGroupMessages] = useState<WhatsAppMessage[]>([]);
   const [groupMessagesLoading, setGroupMessagesLoading] = useState(false);
   const [groupMessagesError, setGroupMessagesError] = useState("");
   const [associationDecisionPending, setAssociationDecisionPending] =
@@ -326,8 +330,19 @@ function SourcesContent({ userId }: { userId: string | null }) {
     staleTime: 5 * 60 * 1000,
   });
   const displayedMessageGroups = useMemo(
-    () => groupWhatsAppMessages(groupMessagesData?.messages ?? []),
-    [groupMessagesData?.messages],
+    () => {
+      const currentPageMessageIds = new Set(
+        (groupMessagesData?.messages ?? []).map((message) => message.id),
+      );
+      return groupWhatsAppMessages(loadedGroupMessages).filter((group) =>
+        group.messages.some((message) => currentPageMessageIds.has(message.id)) ||
+        group.associationSuggestions.some((suggestion) =>
+          currentPageMessageIds.has(suggestion.sourceMessageId) ||
+          currentPageMessageIds.has(suggestion.candidateMessageId),
+        ),
+      );
+    },
+    [groupMessagesData?.messages, loadedGroupMessages],
   );
 
   useEffect(
@@ -1025,6 +1040,11 @@ function SourcesContent({ userId }: { userId: string | null }) {
       if (controller.signal.aborted) return;
       setGroupMessagesData(response);
       setGroupMessagesPage(page);
+      setLoadedGroupMessages((current) => {
+        const messagesById = new Map(current.map((message) => [message.id, message]));
+        for (const message of response.messages) messagesById.set(message.id, message);
+        return [...messagesById.values()];
+      });
     } catch (error: unknown) {
       if (controller.signal.aborted) return;
       setGroupMessagesError(
@@ -1038,6 +1058,24 @@ function SourcesContent({ userId }: { userId: string | null }) {
     }
   };
 
+  useEffect(() => {
+    if (
+      !groupMessagesOpen ||
+      !activeGroupJid ||
+      !displayedMessageGroups.some((group) => group.mediaPending)
+    ) return;
+
+    const refreshTimer = setInterval(() => {
+      void loadGroupMessages(activeGroupJid, groupMessagesPage);
+    }, 5000);
+    return () => clearInterval(refreshTimer);
+  }, [
+    activeGroupJid,
+    displayedMessageGroups,
+    groupMessagesOpen,
+    groupMessagesPage,
+  ]);
+
   const closeGroupMessages = () => {
     groupMessagesRequestRef.current?.controller.abort();
     groupMessagesRequestRef.current = null;
@@ -1046,7 +1084,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
   };
 
   const convertWhatsAppGroupToPost = async (messageId: string) => {
-    setConvertingWhatsAppGroup(true);
+    setConvertingWhatsAppGroups((current) => ({ ...current, [messageId]: true }));
     try {
       const response = await fetchApiResponse("/api/posts/from-message", {
         method: "POST",
@@ -1076,7 +1114,11 @@ function SourcesContent({ userId }: { userId: string | null }) {
           : "تعذّر تحويل مجموعة الوسائط إلى منشور.",
       );
     } finally {
-      setConvertingWhatsAppGroup(false);
+      setConvertingWhatsAppGroups((current) => {
+        const next = { ...current };
+        delete next[messageId];
+        return next;
+      });
     }
   };
 
@@ -1089,11 +1131,27 @@ function SourcesContent({ userId }: { userId: string | null }) {
     setAssociationDecisionPending(actionKey);
     setAssociationError("");
     try {
-      await decideWhatsAppContentAssociation({
+      const result = await decideWhatsAppContentAssociation({
         firstMessageId: sourceMessageId,
         secondMessageId: candidateMessageId,
         decision,
       });
+      setLoadedGroupMessages((current) => current.map((message) => {
+        const associationSuggestions = (message.associationSuggestions ?? []).filter(
+          (suggestion) => !(
+            suggestion.sourceMessageId === sourceMessageId &&
+            suggestion.candidateMessageId === candidateMessageId
+          ),
+        );
+        return {
+          ...message,
+          ...(decision === "accepted" && result.contentBundleId &&
+            (message.id === sourceMessageId || message.id === candidateMessageId)
+            ? { contentBundleId: result.contentBundleId }
+            : {}),
+          associationSuggestions,
+        };
+      }));
       if (activeGroupJid) {
         await loadGroupMessages(activeGroupJid, groupMessagesPage);
       }
@@ -1109,6 +1167,8 @@ function SourcesContent({ userId }: { userId: string | null }) {
   };
 
   const openGroupMessages = async (groupJid: string, groupName: string) => {
+    setGroupMessagesData(null);
+    setLoadedGroupMessages([]);
     setActiveGroupJid(groupJid);
     setActiveGroupName(groupName);
     setGroupMessagesPage(1);
@@ -1576,7 +1636,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
         messagesData={groupMessagesData}
         displayedMessageGroups={displayedMessageGroups}
         page={groupMessagesPage}
-        converting={convertingWhatsAppGroup}
+        convertingMessageIds={convertingWhatsAppGroups}
         associationDecisionPending={associationDecisionPending}
         associationError={associationError}
         onClose={closeGroupMessages}

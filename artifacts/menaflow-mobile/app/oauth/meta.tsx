@@ -1,17 +1,23 @@
-import { Feather } from '@expo/vector-icons';
 import { getGetSocialConnectionsQueryKey } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { CairoText as Text } from '@/components/CairoTypography';
+import { LucideIcon as Icon } from '@/components/LucideIcon';
 import { Page, Panel } from '@/components/Ui';
 import { useColors } from '@/hooks/useColors';
+import { metaOAuthErrorMessage } from '@/constants/meta-oauth';
 
 export default function MetaOAuthResultScreen() {
   const colors = useColors();
   const queryClient = useQueryClient();
-  const { status } = useLocalSearchParams<{ status?: string }>();
-  const connected = status === 'connected' || status === 'facebook_connected';
+  const { status, reason, detail } = useLocalSearchParams<{
+    status?: string;
+    reason?: string;
+    detail?: string;
+  }>();
+  const connected = status === 'facebook_connected';
 
   useEffect(() => {
     if (connected) {
@@ -21,10 +27,21 @@ export default function MetaOAuthResultScreen() {
     }
   }, [connected, queryClient]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !status || !window.opener) {
+      return;
+    }
+    window.opener.postMessage(
+      { type: 'menaflow-meta-oauth', status, reason, detail },
+      window.location.origin,
+    );
+    window.setTimeout(() => window.close(), 500);
+  }, [reason, status]);
+
   return (
     <Page>
       <Panel style={styles.panel}>
-        <Feather
+        <Icon
           name={connected ? 'check-circle' : 'alert-circle'}
           size={42}
           color={connected ? colors.primary : colors.mutedForeground}
@@ -34,8 +51,8 @@ export default function MetaOAuthResultScreen() {
         </Text>
         <Text style={[styles.body, { color: colors.mutedForeground }]}>
           {connected
-            ? 'يمكنك العودة إلى مصادر المحتوى لمراجعة حالة حساباتك.'
-            : 'ارجع إلى التطبيق وتحقق من إعدادات OAuth وصلاحيات Meta.'}
+            ? detail || 'يمكنك العودة إلى مصادر المحتوى لمراجعة حالة حساباتك.'
+            : metaOAuthErrorMessage(reason, detail)}
         </Text>
         <Pressable
           accessibilityRole="button"

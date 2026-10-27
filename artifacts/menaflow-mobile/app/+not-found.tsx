@@ -1,5 +1,6 @@
 import { Link, Stack } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { CairoText as Text } from '@/components/CairoTypography';
 import { useColors } from '@/hooks/useColors';
 
 export default function NotFoundScreen() {

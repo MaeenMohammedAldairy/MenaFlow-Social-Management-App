@@ -3,8 +3,17 @@ import { Redirect } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
+import { isLocalAuthDisabled } from '@/constants/auth';
 
 export default function AppIndex() {
+  if (isLocalAuthDisabled) {
+    return <Redirect href="/(tabs)" />;
+  }
+
+  return <AuthenticatedAppIndex />;
+}
+
+function AuthenticatedAppIndex() {
   const colors = useColors();
   const { isLoaded, isSignedIn } = useAuth();
 

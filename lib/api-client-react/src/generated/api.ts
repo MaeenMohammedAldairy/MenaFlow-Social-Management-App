@@ -24,10 +24,34 @@ import type {
   AiContentResponse,
   ApiError,
   AuthAccessResponse,
+  CreatePostInput,
+  DeleteMetaConnectionParams,
+  GetKnownPostIds200,
+  GetKnownPostIdsBody,
+  GetPostsPage200,
+  GetPostsPageParams,
+  GetWhatsAppConnectionStatusParams,
   HealthStatus,
+  MetaConnectInput,
   MetaConnectResponse,
   MetaDisconnectResponse,
-  SocialConnectionsResponse
+  OnboardingProgressInput,
+  OnboardingStatus,
+  PostDeleteResult,
+  PostItem,
+  SocialConnectionsResponse,
+  TestWhatsAppAutoReply200,
+  UpdatePostInput,
+  WhatsAppAutoReplySettings,
+  WhatsAppAutoReplySettingsResponse,
+  WhatsAppAutoReplyTestInput,
+  WhatsAppConnectionStatus,
+  WhatsAppDisconnectResult,
+  WhatsAppGroupSelectionsInput,
+  WhatsAppGroupSelectionsResponse,
+  WhatsAppGroupsResponse,
+  WhatsAppPairingCodeInput,
+  WhatsAppPairingCodeResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -301,6 +325,245 @@ export function useGetOwnerAccess<TData = Awaited<ReturnType<typeof getOwnerAcce
 
 
 
+export const getGetOnboardingStatusUrl = () => {
+
+
+
+
+  return `/api/onboarding`
+}
+
+/**
+ * @summary Get onboarding progress for the current workspace
+ */
+export const getOnboardingStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<OnboardingStatus> => {
+
+  return customFetch<OnboardingStatus>(getGetOnboardingStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOnboardingStatusQueryKey = () => {
+    return [
+    `/api/onboarding`
+    ] as const;
+    }
+
+
+export const getGetOnboardingStatusQueryOptions = <TData = Awaited<ReturnType<typeof getOnboardingStatus>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOnboardingStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOnboardingStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOnboardingStatus>>> = ({ signal }) => getOnboardingStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOnboardingStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOnboardingStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getOnboardingStatus>>>
+export type GetOnboardingStatusQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get onboarding progress for the current workspace
+ */
+
+export function useGetOnboardingStatus<TData = Awaited<ReturnType<typeof getOnboardingStatus>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOnboardingStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOnboardingStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateOnboardingProgressUrl = () => {
+
+
+
+
+  return `/api/onboarding/progress`
+}
+
+/**
+ * @summary Save onboarding progress for the current workspace
+ */
+export const updateOnboardingProgress = async (onboardingProgressInput: OnboardingProgressInput, options?: Parameters<typeof customFetch>[1]): Promise<OnboardingStatus> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<OnboardingStatus>(getUpdateOnboardingProgressUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(onboardingProgressInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateOnboardingProgressMutationKey = () => ['updateOnboardingProgress'] as const;
+
+export const getUpdateOnboardingProgressMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOnboardingProgress>>, TError,UpdateOnboardingProgressMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOnboardingProgress>>, TError,UpdateOnboardingProgressMutationVariables, TContext> => {
+
+const mutationKey = getUpdateOnboardingProgressMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOnboardingProgress>>, UpdateOnboardingProgressMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateOnboardingProgress(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOnboardingProgressMutationResult = NonNullable<Awaited<ReturnType<typeof updateOnboardingProgress>>>
+    export type UpdateOnboardingProgressMutationBody = BodyType<OnboardingProgressInput>
+    export type UpdateOnboardingProgressMutationError = ErrorType<ApiError>
+    export type UpdateOnboardingProgressMutationVariables = {data: BodyType<OnboardingProgressInput>}
+
+    /**
+ * @summary Save onboarding progress for the current workspace
+ */
+export const useUpdateOnboardingProgress = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOnboardingProgress>>, TError,UpdateOnboardingProgressMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOnboardingProgress>>,
+        TError,
+        UpdateOnboardingProgressMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateOnboardingProgressMutationOptions(options));
+    }
+
+export const getCompleteSocialAccountsSetupUrl = () => {
+
+
+
+
+  return `/api/onboarding/social-accounts/complete`
+}
+
+/**
+ * @summary Mark social account setup complete for the current workspace
+ */
+export const completeSocialAccountsSetup = async ( options?: Parameters<typeof customFetch>[1]): Promise<OnboardingStatus> => {
+
+  return customFetch<OnboardingStatus>(getCompleteSocialAccountsSetupUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCompleteSocialAccountsSetupMutationKey = () => ['completeSocialAccountsSetup'] as const;
+
+export const getCompleteSocialAccountsSetupMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeSocialAccountsSetup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeSocialAccountsSetup>>, TError,void, TContext> => {
+
+const mutationKey = getCompleteSocialAccountsSetupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeSocialAccountsSetup>>, void> = () => {
+
+
+          return  completeSocialAccountsSetup(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteSocialAccountsSetupMutationResult = NonNullable<Awaited<ReturnType<typeof completeSocialAccountsSetup>>>
+
+    export type CompleteSocialAccountsSetupMutationError = ErrorType<ApiError>
+
+
+    /**
+ * @summary Mark social account setup complete for the current workspace
+ */
+export const useCompleteSocialAccountsSetup = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeSocialAccountsSetup>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeSocialAccountsSetup>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCompleteSocialAccountsSetupMutationOptions(options));
+    }
+
 export const getGetSocialConnectionsUrl = () => {
 
 
@@ -387,16 +650,30 @@ export const getPostMetaConnectUrl = () => {
 }
 
 /**
- * @summary Start Facebook and Instagram account authorization
+ * @summary Start Facebook or Instagram account authorization
  */
-export const postMetaConnect = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetaConnectResponse> => {
+export const postMetaConnect = async (metaConnectInput?: MetaConnectInput, options?: Parameters<typeof customFetch>[1]): Promise<MetaConnectResponse> => {
 
-  return customFetch<MetaConnectResponse>(getPostMetaConnectUrl(),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MetaConnectResponse>(getPostMetaConnectUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(metaConnectInput)
   }
 );}
 
@@ -407,8 +684,8 @@ export const postMetaConnect = async ( options?: Parameters<typeof customFetch>[
 export const getPostMetaConnectMutationKey = () => ['postMetaConnect'] as const;
 
 export const getPostMetaConnectMutationOptions = <TError = ErrorType<ApiError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postMetaConnect>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof postMetaConnect>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postMetaConnect>>, TError,PostMetaConnectMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof postMetaConnect>>, TError,PostMetaConnectMutationVariables, TContext> => {
 
 const mutationKey = getPostMetaConnectMutationKey();
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -420,10 +697,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postMetaConnect>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postMetaConnect>>, PostMetaConnectMutationVariables> = (props) => {
+          const {data} = props ?? {};
 
-
-          return  postMetaConnect(requestOptions)
+          return  postMetaConnect(data,requestOptions)
         }
 
 
@@ -434,38 +711,45 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type PostMetaConnectMutationResult = NonNullable<Awaited<ReturnType<typeof postMetaConnect>>>
-
+    export type PostMetaConnectMutationBody = BodyType<MetaConnectInput> | undefined
     export type PostMetaConnectMutationError = ErrorType<ApiError>
-
+    export type PostMetaConnectMutationVariables = {data?: BodyType<MetaConnectInput>}
 
     /**
- * @summary Start Facebook and Instagram account authorization
+ * @summary Start Facebook or Instagram account authorization
  */
 export const usePostMetaConnect = <TError = ErrorType<ApiError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postMetaConnect>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postMetaConnect>>, TError,PostMetaConnectMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof postMetaConnect>>,
         TError,
-        void,
+        PostMetaConnectMutationVariables,
         TContext
       > => {
       return useMutation(getPostMetaConnectMutationOptions(options));
     }
 
-export const getDeleteMetaConnectionUrl = () => {
+export const getDeleteMetaConnectionUrl = (params?: DeleteMetaConnectionParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/social/meta`
+  return stringifiedParams.length > 0 ? `/api/social/meta?${stringifiedParams}` : `/api/social/meta`
 }
 
 /**
- * @summary Remove the owner's Meta connection from MenaFlow
+ * @summary Disconnect a Meta platform account owned by the authenticated user
  */
-export const deleteMetaConnection = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetaDisconnectResponse> => {
+export const deleteMetaConnection = async (params?: DeleteMetaConnectionParams, options?: Parameters<typeof customFetch>[1]): Promise<MetaDisconnectResponse> => {
 
-  return customFetch<MetaDisconnectResponse>(getDeleteMetaConnectionUrl(),
+  return customFetch<MetaDisconnectResponse>(getDeleteMetaConnectionUrl(params),
   {
     ...options,
     method: 'DELETE'
@@ -481,8 +765,8 @@ export const deleteMetaConnection = async ( options?: Parameters<typeof customFe
 export const getDeleteMetaConnectionMutationKey = () => ['deleteMetaConnection'] as const;
 
 export const getDeleteMetaConnectionMutationOptions = <TError = ErrorType<ApiError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMetaConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteMetaConnection>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMetaConnection>>, TError,DeleteMetaConnectionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMetaConnection>>, TError,DeleteMetaConnectionMutationVariables, TContext> => {
 
 const mutationKey = getDeleteMetaConnectionMutationKey();
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -494,10 +778,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMetaConnection>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMetaConnection>>, DeleteMetaConnectionMutationVariables> = (props) => {
+          const {params} = props ?? {};
 
-
-          return  deleteMetaConnection(requestOptions)
+          return  deleteMetaConnection(params,requestOptions)
         }
 
 
@@ -510,17 +794,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteMetaConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMetaConnection>>>
 
     export type DeleteMetaConnectionMutationError = ErrorType<ApiError>
-
+    export type DeleteMetaConnectionMutationVariables = {params?: DeleteMetaConnectionParams}
 
     /**
- * @summary Remove the owner's Meta connection from MenaFlow
+ * @summary Disconnect a Meta platform account owned by the authenticated user
  */
 export const useDeleteMetaConnection = <TError = ErrorType<ApiError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMetaConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMetaConnection>>, TError,DeleteMetaConnectionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteMetaConnection>>,
         TError,
-        void,
+        DeleteMetaConnectionMutationVariables,
         TContext
       > => {
       return useMutation(getDeleteMetaConnectionMutationOptions(options));
@@ -602,4 +886,1245 @@ export function useMetaOAuthCallback<TData = Awaited<ReturnType<typeof metaOAuth
 
 
 
+
+export const getPostWhatsAppPairingCodeUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/connect`
+}
+
+/**
+ * @summary Reuse or create a workspace Evolution instance and request a pairing code
+ */
+export const postWhatsAppPairingCode = async (whatsAppPairingCodeInput: WhatsAppPairingCodeInput, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppPairingCodeResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WhatsAppPairingCodeResponse>(getPostWhatsAppPairingCodeUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(whatsAppPairingCodeInput)
+  }
+);}
+
+
+
+
+
+export const getPostWhatsAppPairingCodeMutationKey = () => ['postWhatsAppPairingCode'] as const;
+
+export const getPostWhatsAppPairingCodeMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postWhatsAppPairingCode>>, TError,PostWhatsAppPairingCodeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof postWhatsAppPairingCode>>, TError,PostWhatsAppPairingCodeMutationVariables, TContext> => {
+
+const mutationKey = getPostWhatsAppPairingCodeMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof postWhatsAppPairingCode>>, PostWhatsAppPairingCodeMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  postWhatsAppPairingCode(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PostWhatsAppPairingCodeMutationResult = NonNullable<Awaited<ReturnType<typeof postWhatsAppPairingCode>>>
+    export type PostWhatsAppPairingCodeMutationBody = BodyType<WhatsAppPairingCodeInput>
+    export type PostWhatsAppPairingCodeMutationError = ErrorType<ApiError>
+    export type PostWhatsAppPairingCodeMutationVariables = {data: BodyType<WhatsAppPairingCodeInput>}
+
+    /**
+ * @summary Reuse or create a workspace Evolution instance and request a pairing code
+ */
+export const usePostWhatsAppPairingCode = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postWhatsAppPairingCode>>, TError,PostWhatsAppPairingCodeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof postWhatsAppPairingCode>>,
+        TError,
+        PostWhatsAppPairingCodeMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPostWhatsAppPairingCodeMutationOptions(options));
+    }
+
+export const getGetWhatsAppConnectionStatusUrl = (params: GetWhatsAppConnectionStatusParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/whatsapp/connection-status?${stringifiedParams}` : `/api/social/whatsapp/connection-status`
+}
+
+/**
+ * @summary Check the live Evolution API connection state for the owner's pending instance
+ */
+export const getWhatsAppConnectionStatus = async (params: GetWhatsAppConnectionStatusParams, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppConnectionStatus> => {
+
+  return customFetch<WhatsAppConnectionStatus>(getGetWhatsAppConnectionStatusUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsAppConnectionStatusQueryKey = (params?: GetWhatsAppConnectionStatusParams,) => {
+    return [
+    `/api/social/whatsapp/connection-status`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWhatsAppConnectionStatusQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppConnectionStatus>>, TError = ErrorType<ApiError>>(params: GetWhatsAppConnectionStatusParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppConnectionStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppConnectionStatusQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppConnectionStatus>>> = ({ signal }) => getWhatsAppConnectionStatus(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppConnectionStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsAppConnectionStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsAppConnectionStatus>>>
+export type GetWhatsAppConnectionStatusQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Check the live Evolution API connection state for the owner's pending instance
+ */
+
+export function useGetWhatsAppConnectionStatus<TData = Awaited<ReturnType<typeof getWhatsAppConnectionStatus>>, TError = ErrorType<ApiError>>(
+ params: GetWhatsAppConnectionStatusParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppConnectionStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsAppConnectionStatusQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWhatsAppAutoReplySettingsUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/auto-reply-settings`
+}
+
+/**
+ * @summary Get the current workspace WhatsApp automatic-reply settings
+ */
+export const getWhatsAppAutoReplySettings = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppAutoReplySettingsResponse> => {
+
+  return customFetch<WhatsAppAutoReplySettingsResponse>(getGetWhatsAppAutoReplySettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsAppAutoReplySettingsQueryKey = () => {
+    return [
+    `/api/social/whatsapp/auto-reply-settings`
+    ] as const;
+    }
+
+
+export const getGetWhatsAppAutoReplySettingsQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppAutoReplySettings>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppAutoReplySettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppAutoReplySettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppAutoReplySettings>>> = ({ signal }) => getWhatsAppAutoReplySettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppAutoReplySettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsAppAutoReplySettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsAppAutoReplySettings>>>
+export type GetWhatsAppAutoReplySettingsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get the current workspace WhatsApp automatic-reply settings
+ */
+
+export function useGetWhatsAppAutoReplySettings<TData = Awaited<ReturnType<typeof getWhatsAppAutoReplySettings>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppAutoReplySettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsAppAutoReplySettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveWhatsAppAutoReplySettingsUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/auto-reply-settings`
+}
+
+/**
+ * @summary Save and optionally enable tested WhatsApp automatic replies
+ */
+export const saveWhatsAppAutoReplySettings = async (whatsAppAutoReplySettings: WhatsAppAutoReplySettings, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppAutoReplySettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WhatsAppAutoReplySettings>(getSaveWhatsAppAutoReplySettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(whatsAppAutoReplySettings)
+  }
+);}
+
+
+
+
+
+export const getSaveWhatsAppAutoReplySettingsMutationKey = () => ['saveWhatsAppAutoReplySettings'] as const;
+
+export const getSaveWhatsAppAutoReplySettingsMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveWhatsAppAutoReplySettings>>, TError,SaveWhatsAppAutoReplySettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveWhatsAppAutoReplySettings>>, TError,SaveWhatsAppAutoReplySettingsMutationVariables, TContext> => {
+
+const mutationKey = getSaveWhatsAppAutoReplySettingsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveWhatsAppAutoReplySettings>>, SaveWhatsAppAutoReplySettingsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveWhatsAppAutoReplySettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveWhatsAppAutoReplySettingsMutationResult = NonNullable<Awaited<ReturnType<typeof saveWhatsAppAutoReplySettings>>>
+    export type SaveWhatsAppAutoReplySettingsMutationBody = BodyType<WhatsAppAutoReplySettings>
+    export type SaveWhatsAppAutoReplySettingsMutationError = ErrorType<ApiError>
+    export type SaveWhatsAppAutoReplySettingsMutationVariables = {data: BodyType<WhatsAppAutoReplySettings>}
+
+    /**
+ * @summary Save and optionally enable tested WhatsApp automatic replies
+ */
+export const useSaveWhatsAppAutoReplySettings = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveWhatsAppAutoReplySettings>>, TError,SaveWhatsAppAutoReplySettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveWhatsAppAutoReplySettings>>,
+        TError,
+        SaveWhatsAppAutoReplySettingsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveWhatsAppAutoReplySettingsMutationOptions(options));
+    }
+
+export const getTestWhatsAppAutoReplyUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/auto-reply-test`
+}
+
+/**
+ * @summary Generate a test preview without sending a WhatsApp message
+ */
+export const testWhatsAppAutoReply = async (whatsAppAutoReplyTestInput: WhatsAppAutoReplyTestInput, options?: Parameters<typeof customFetch>[1]): Promise<TestWhatsAppAutoReply200> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<TestWhatsAppAutoReply200>(getTestWhatsAppAutoReplyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(whatsAppAutoReplyTestInput)
+  }
+);}
+
+
+
+
+
+export const getTestWhatsAppAutoReplyMutationKey = () => ['testWhatsAppAutoReply'] as const;
+
+export const getTestWhatsAppAutoReplyMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testWhatsAppAutoReply>>, TError,TestWhatsAppAutoReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testWhatsAppAutoReply>>, TError,TestWhatsAppAutoReplyMutationVariables, TContext> => {
+
+const mutationKey = getTestWhatsAppAutoReplyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testWhatsAppAutoReply>>, TestWhatsAppAutoReplyMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  testWhatsAppAutoReply(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestWhatsAppAutoReplyMutationResult = NonNullable<Awaited<ReturnType<typeof testWhatsAppAutoReply>>>
+    export type TestWhatsAppAutoReplyMutationBody = BodyType<WhatsAppAutoReplyTestInput>
+    export type TestWhatsAppAutoReplyMutationError = ErrorType<ApiError>
+    export type TestWhatsAppAutoReplyMutationVariables = {data: BodyType<WhatsAppAutoReplyTestInput>}
+
+    /**
+ * @summary Generate a test preview without sending a WhatsApp message
+ */
+export const useTestWhatsAppAutoReply = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testWhatsAppAutoReply>>, TError,TestWhatsAppAutoReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testWhatsAppAutoReply>>,
+        TError,
+        TestWhatsAppAutoReplyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTestWhatsAppAutoReplyMutationOptions(options));
+    }
+
+export const getGetWhatsAppGroupsUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/groups`
+}
+
+/**
+ * @summary Fetch and verify WhatsApp groups for the owner's connected account
+ */
+export const getWhatsAppGroups = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppGroupsResponse> => {
+
+  return customFetch<WhatsAppGroupsResponse>(getGetWhatsAppGroupsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsAppGroupsQueryKey = () => {
+    return [
+    `/api/social/whatsapp/groups`
+    ] as const;
+    }
+
+
+export const getGetWhatsAppGroupsQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppGroups>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppGroupsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppGroups>>> = ({ signal }) => getWhatsAppGroups({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppGroups>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsAppGroupsQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsAppGroups>>>
+export type GetWhatsAppGroupsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Fetch and verify WhatsApp groups for the owner's connected account
+ */
+
+export function useGetWhatsAppGroups<TData = Awaited<ReturnType<typeof getWhatsAppGroups>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppGroups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsAppGroupsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWhatsAppGroupSelectionsUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/group-selections`
+}
+
+/**
+ * @summary Get the current owner's saved WhatsApp group selections
+ */
+export const getWhatsAppGroupSelections = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppGroupSelectionsResponse> => {
+
+  return customFetch<WhatsAppGroupSelectionsResponse>(getGetWhatsAppGroupSelectionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsAppGroupSelectionsQueryKey = () => {
+    return [
+    `/api/social/whatsapp/group-selections`
+    ] as const;
+    }
+
+
+export const getGetWhatsAppGroupSelectionsQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppGroupSelections>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppGroupSelections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppGroupSelectionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppGroupSelections>>> = ({ signal }) => getWhatsAppGroupSelections({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppGroupSelections>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsAppGroupSelectionsQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsAppGroupSelections>>>
+export type GetWhatsAppGroupSelectionsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get the current owner's saved WhatsApp group selections
+ */
+
+export function useGetWhatsAppGroupSelections<TData = Awaited<ReturnType<typeof getWhatsAppGroupSelections>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppGroupSelections>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsAppGroupSelectionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveWhatsAppGroupSelectionsUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/group-selections`
+}
+
+/**
+ * @summary Save selections after revalidating send permissions with Evolution API
+ */
+export const saveWhatsAppGroupSelections = async (whatsAppGroupSelectionsInput: WhatsAppGroupSelectionsInput, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppGroupSelectionsResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WhatsAppGroupSelectionsResponse>(getSaveWhatsAppGroupSelectionsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(whatsAppGroupSelectionsInput)
+  }
+);}
+
+
+
+
+
+export const getSaveWhatsAppGroupSelectionsMutationKey = () => ['saveWhatsAppGroupSelections'] as const;
+
+export const getSaveWhatsAppGroupSelectionsMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveWhatsAppGroupSelections>>, TError,SaveWhatsAppGroupSelectionsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveWhatsAppGroupSelections>>, TError,SaveWhatsAppGroupSelectionsMutationVariables, TContext> => {
+
+const mutationKey = getSaveWhatsAppGroupSelectionsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveWhatsAppGroupSelections>>, SaveWhatsAppGroupSelectionsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveWhatsAppGroupSelections(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveWhatsAppGroupSelectionsMutationResult = NonNullable<Awaited<ReturnType<typeof saveWhatsAppGroupSelections>>>
+    export type SaveWhatsAppGroupSelectionsMutationBody = BodyType<WhatsAppGroupSelectionsInput>
+    export type SaveWhatsAppGroupSelectionsMutationError = ErrorType<ApiError>
+    export type SaveWhatsAppGroupSelectionsMutationVariables = {data: BodyType<WhatsAppGroupSelectionsInput>}
+
+    /**
+ * @summary Save selections after revalidating send permissions with Evolution API
+ */
+export const useSaveWhatsAppGroupSelections = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveWhatsAppGroupSelections>>, TError,SaveWhatsAppGroupSelectionsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveWhatsAppGroupSelections>>,
+        TError,
+        SaveWhatsAppGroupSelectionsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveWhatsAppGroupSelectionsMutationOptions(options));
+    }
+
+export const getDeleteWhatsAppConnectionUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp`
+}
+
+/**
+ * @summary Disconnect WhatsApp account
+ */
+export const deleteWhatsAppConnection = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppDisconnectResult> => {
+
+  return customFetch<WhatsAppDisconnectResult>(getDeleteWhatsAppConnectionUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteWhatsAppConnectionMutationKey = () => ['deleteWhatsAppConnection'] as const;
+
+export const getDeleteWhatsAppConnectionMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, TError,void, TContext> => {
+
+const mutationKey = getDeleteWhatsAppConnectionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, void> = () => {
+
+
+          return  deleteWhatsAppConnection(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteWhatsAppConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteWhatsAppConnection>>>
+
+    export type DeleteWhatsAppConnectionMutationError = ErrorType<ApiError>
+
+
+    /**
+ * @summary Disconnect WhatsApp account
+ */
+export const useDeleteWhatsAppConnection = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteWhatsAppConnection>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteWhatsAppConnectionMutationOptions(options));
+    }
+
+export const getGetPostsUrl = () => {
+
+
+
+
+  return `/api/posts`
+}
+
+/**
+ * @summary Get all posts for the current owner
+ */
+export const getPosts = async ( options?: Parameters<typeof customFetch>[1]): Promise<PostItem[]> => {
+
+  return customFetch<PostItem[]>(getGetPostsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPostsQueryKey = () => {
+    return [
+    `/api/posts`
+    ] as const;
+    }
+
+
+export const getGetPostsQueryOptions = <TData = Awaited<ReturnType<typeof getPosts>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPosts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPostsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPosts>>> = ({ signal }) => getPosts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPosts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPostsQueryResult = NonNullable<Awaited<ReturnType<typeof getPosts>>>
+export type GetPostsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get all posts for the current owner
+ */
+
+export function useGetPosts<TData = Awaited<ReturnType<typeof getPosts>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPosts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPostsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePostUrl = () => {
+
+
+
+
+  return `/api/posts`
+}
+
+/**
+ * @summary Create a new post
+ */
+export const createPost = async (createPostInput: CreatePostInput, options?: Parameters<typeof customFetch>[1]): Promise<PostItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PostItem>(getCreatePostUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPostInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePostMutationKey = () => ['createPost'] as const;
+
+export const getCreatePostMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPost>>, TError,CreatePostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPost>>, TError,CreatePostMutationVariables, TContext> => {
+
+const mutationKey = getCreatePostMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPost>>, CreatePostMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPost(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePostMutationResult = NonNullable<Awaited<ReturnType<typeof createPost>>>
+    export type CreatePostMutationBody = BodyType<CreatePostInput>
+    export type CreatePostMutationError = ErrorType<ApiError>
+    export type CreatePostMutationVariables = {data: BodyType<CreatePostInput>}
+
+    /**
+ * @summary Create a new post
+ */
+export const useCreatePost = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPost>>, TError,CreatePostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPost>>,
+        TError,
+        CreatePostMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreatePostMutationOptions(options));
+    }
+
+export const getGetPostsPageUrl = (params?: GetPostsPageParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/posts/page?${stringifiedParams}` : `/api/posts/page`
+}
+
+/**
+ * @summary Get a page of posts for the active workspace
+ */
+export const getPostsPage = async (params?: GetPostsPageParams, options?: Parameters<typeof customFetch>[1]): Promise<GetPostsPage200> => {
+
+  return customFetch<GetPostsPage200>(getGetPostsPageUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPostsPageQueryKey = (params?: GetPostsPageParams,) => {
+    return [
+    `/api/posts/page`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPostsPageQueryOptions = <TData = Awaited<ReturnType<typeof getPostsPage>>, TError = ErrorType<ApiError>>(params?: GetPostsPageParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPostsPage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPostsPageQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPostsPage>>> = ({ signal }) => getPostsPage(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPostsPage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPostsPageQueryResult = NonNullable<Awaited<ReturnType<typeof getPostsPage>>>
+export type GetPostsPageQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get a page of posts for the active workspace
+ */
+
+export function useGetPostsPage<TData = Awaited<ReturnType<typeof getPostsPage>>, TError = ErrorType<ApiError>>(
+ params?: GetPostsPageParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPostsPage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPostsPageQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetKnownPostIdsUrl = () => {
+
+
+
+
+  return `/api/posts/known-ids`
+}
+
+/**
+ * @summary Check cached post IDs in the active workspace
+ */
+export const getKnownPostIds = async (getKnownPostIdsBody: GetKnownPostIdsBody, options?: Parameters<typeof customFetch>[1]): Promise<GetKnownPostIds200> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<GetKnownPostIds200>(getGetKnownPostIdsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(getKnownPostIdsBody)
+  }
+);}
+
+
+
+
+
+export const getGetKnownPostIdsMutationKey = () => ['getKnownPostIds'] as const;
+
+export const getGetKnownPostIdsMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getKnownPostIds>>, TError,GetKnownPostIdsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof getKnownPostIds>>, TError,GetKnownPostIdsMutationVariables, TContext> => {
+
+const mutationKey = getGetKnownPostIdsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getKnownPostIds>>, GetKnownPostIdsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  getKnownPostIds(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetKnownPostIdsMutationResult = NonNullable<Awaited<ReturnType<typeof getKnownPostIds>>>
+    export type GetKnownPostIdsMutationBody = BodyType<GetKnownPostIdsBody>
+    export type GetKnownPostIdsMutationError = ErrorType<ApiError>
+    export type GetKnownPostIdsMutationVariables = {data: BodyType<GetKnownPostIdsBody>}
+
+    /**
+ * @summary Check cached post IDs in the active workspace
+ */
+export const useGetKnownPostIds = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getKnownPostIds>>, TError,GetKnownPostIdsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof getKnownPostIds>>,
+        TError,
+        GetKnownPostIdsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getGetKnownPostIdsMutationOptions(options));
+    }
+
+export const getUpdatePostUrl = (id: string,) => {
+
+
+
+
+  return `/api/posts/${id}`
+}
+
+/**
+ * @summary Update a post
+ */
+export const updatePost = async (id: string,
+    updatePostInput: UpdatePostInput, options?: Parameters<typeof customFetch>[1]): Promise<PostItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PostItem>(getUpdatePostUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updatePostInput)
+  }
+);}
+
+
+
+
+
+export const getUpdatePostMutationKey = () => ['updatePost'] as const;
+
+export const getUpdatePostMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePost>>, TError,UpdatePostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updatePost>>, TError,UpdatePostMutationVariables, TContext> => {
+
+const mutationKey = getUpdatePostMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updatePost>>, UpdatePostMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updatePost(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdatePostMutationResult = NonNullable<Awaited<ReturnType<typeof updatePost>>>
+    export type UpdatePostMutationBody = BodyType<UpdatePostInput>
+    export type UpdatePostMutationError = ErrorType<ApiError>
+    export type UpdatePostMutationVariables = {id: string;data: BodyType<UpdatePostInput>}
+
+    /**
+ * @summary Update a post
+ */
+export const useUpdatePost = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updatePost>>, TError,UpdatePostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updatePost>>,
+        TError,
+        UpdatePostMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdatePostMutationOptions(options));
+    }
+
+export const getDeletePostUrl = (id: string,) => {
+
+
+
+
+  return `/api/posts/${id}`
+}
+
+/**
+ * @summary Delete a post
+ */
+export const deletePost = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<PostDeleteResult> => {
+
+  return customFetch<PostDeleteResult>(getDeletePostUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeletePostMutationKey = () => ['deletePost'] as const;
+
+export const getDeletePostMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePost>>, TError,DeletePostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deletePost>>, TError,DeletePostMutationVariables, TContext> => {
+
+const mutationKey = getDeletePostMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deletePost>>, DeletePostMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  deletePost(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeletePostMutationResult = NonNullable<Awaited<ReturnType<typeof deletePost>>>
+
+    export type DeletePostMutationError = ErrorType<ApiError>
+    export type DeletePostMutationVariables = {id: string}
+
+    /**
+ * @summary Delete a post
+ */
+export const useDeletePost = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deletePost>>, TError,DeletePostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deletePost>>,
+        TError,
+        DeletePostMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDeletePostMutationOptions(options));
+    }
 

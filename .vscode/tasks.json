@@ -1,0 +1,19 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "MenaFlow Mobile Dev",
+			"type": "shell",
+			"command": "pnpm --filter @workspace/menaflow-mobile run dev",
+			"isBackground": true,
+			"problemMatcher": []
+		},
+		{
+			"label": "MenaFlow API Server",
+			"type": "shell",
+			"command": "pnpm --filter @workspace/api-server run dev",
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}

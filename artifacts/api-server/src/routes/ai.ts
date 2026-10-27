@@ -1,10 +1,11 @@
-import { getAuth } from "@clerk/express";
 import {
   GenerateAiContentBody,
   GenerateAiContentResponse,
 } from "@workspace/api-zod";
 import { Router, type IRouter } from "express";
-import { requireOwner } from "../lib/owner-access";
+import { callAiProvider } from "../lib/ai-provider.ts";
+import { requestOwnerId } from "../lib/owner-access";
+import { requireWorkspace } from "../lib/workspace-context";
 
 const router: IRouter = Router();
 const requestTimes = new Map<string, number[]>();
@@ -85,78 +86,9 @@ function buildPrompt(input: {
     .join("\n");
 }
 
-async function generateWithOpenAI(
-  prompt: string,
-): Promise<{ content: string; model: string }> {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error("MISSING_OPENAI_KEY");
-  const model = modelName(process.env.OPENAI_MODEL, "gpt-4o-mini");
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "system",
-          content: "أنت مساعد كتابة تسويقية. التزم بالتعليمات واكتب بالعربية فقط.",
-        },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.7,
-      max_tokens: 700,
-    }),
-    signal: AbortSignal.timeout(30_000),
-  });
 
-  if (!response.ok) throw new Error(`OPENAI_HTTP_${response.status}`);
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-  };
-  const content = payload.choices?.[0]?.message?.content?.trim();
-  if (!content) throw new Error("OPENAI_EMPTY_RESPONSE");
-  return { content, model };
-}
-
-async function generateWithGemini(
-  prompt: string,
-): Promise<{ content: string; model: string }> {
-  const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("MISSING_GEMINI_KEY");
-  const model = modelName(process.env.GEMINI_MODEL, "gemini-2.5-flash");
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "x-goog-api-key": key,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7, maxOutputTokens: 700 },
-      }),
-      signal: AbortSignal.timeout(30_000),
-    },
-  );
-
-  if (!response.ok) throw new Error(`GEMINI_HTTP_${response.status}`);
-  const payload = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
-  const content = payload.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text ?? "")
-    .join("")
-    .trim();
-  if (!content) throw new Error("GEMINI_EMPTY_RESPONSE");
-  return { content, model };
-}
-
-router.post("/ai/content", requireOwner, async (req, res): Promise<void> => {
-  const userId = getAuth(req).userId;
+router.post("/ai/content", requireWorkspace, async (req, res): Promise<void> => {
+  const userId = requestOwnerId(req);
   if (!userId) {
     res.status(401).json({ error: "سجّل الدخول أولاً." });
     return;
@@ -176,10 +108,18 @@ router.post("/ai/content", requireOwner, async (req, res): Promise<void> => {
   const { idea, businessContext, provider, tone, channel } = parsed.data;
   const prompt = buildPrompt({ idea, businessContext, tone, channel });
   try {
-    const generated =
-      provider === "gemini"
-        ? await generateWithGemini(prompt)
-        : await generateWithOpenAI(prompt);
+    const generated = await callAiProvider({
+      preferredProvider: provider === "gemini" ? "gemini" : undefined,
+      openAiMessages: [
+        { role: "system", content: "أنت مساعد كتابة تسويقية. التزم بالتعليمات واكتب بالعربية فقط." },
+        { role: "user", content: prompt },
+      ],
+      geminiContents: [{ parts: [{ text: prompt }] }],
+      geminiSystemInstruction: "أنت مساعد كتابة تسويقية. التزم بالتعليمات واكتب بالعربية فقط.",
+      temperature: 0.7,
+      maxTokens: 700,
+      timeoutMs: 30_000,
+    });
     res.json(
       GenerateAiContentResponse.parse({
         content: generated.content,

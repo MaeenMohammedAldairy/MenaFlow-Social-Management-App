@@ -5,10 +5,13 @@ import {
   and,
   eq,
   isNull,
+  isNotNull,
   like,
   asc,
+  gt,
   lte,
   ne,
+  notExists,
   notLike,
   or,
   sql,
@@ -281,6 +284,12 @@ async function storeMedia(
     return current?.downloadStatus === "stored" ? "stored" : "pending";
   }
 
+  const startedAt = performance.now();
+  let downloadMs = 0;
+  let uploadMs = 0;
+  let localWriteMs = 0;
+  let downloadedBytes = 0;
+  let storageProvider: "supabase" | "local" | null = null;
   try {
     const advertisedHash = sourceMediaHash(details.sourceSha256);
     if (advertisedHash) {
@@ -324,9 +333,12 @@ async function storeMedia(
     const inlineData = details.base64Data
       ? mediaBuffer({ base64: details.base64Data })
       : null;
+    const downloadStartedAt = performance.now();
     const downloaded = inlineData
       ? { buffer: inlineData, mimeType: details.mimeType }
       : await fetchMedia(message.instanceName, sourceMessage, key);
+    downloadMs = Math.round(performance.now() - downloadStartedAt);
+    downloadedBytes = downloaded.buffer.length;
     const mimeType = normalizeMimeType(downloaded.mimeType ?? details.mimeType);
     const mimeExtension = mimeType?.split("/")[1];
     const fileExtension = details.fileName?.slice(details.fileName.lastIndexOf("."));
@@ -346,7 +358,10 @@ async function storeMedia(
       `${hash}${extension}`,
     ].join("/");
     const storageKey = objectPath;
+    const uploadStartedAt = performance.now();
     const provider = await storeMediaObject(objectPath, downloaded.buffer, mimeType ?? "application/octet-stream");
+    uploadMs = Math.round(performance.now() - uploadStartedAt);
+    storageProvider = provider;
     const storagePath = provider === "supabase"
       ? objectPath
       : path.join(
@@ -358,8 +373,10 @@ async function storeMedia(
           `${hash}${extension}`,
         );
     if (provider === "local") {
+      const localWriteStartedAt = performance.now();
       await mkdir(path.dirname(storagePath), { recursive: true });
       await writeFile(storagePath, downloaded.buffer);
+      localWriteMs = Math.round(performance.now() - localWriteStartedAt);
     }
     const [stored] = await db
       .update(menaWhatsAppMessageMedia)
@@ -381,6 +398,16 @@ async function storeMedia(
       .where(identity)
       .returning({ id: menaWhatsAppMessageMedia.id });
     if (!stored) throw new Error("MEDIA_STORAGE_CONFLICT_WORKSPACE_MISMATCH");
+    console.info("WhatsApp media stored", {
+      messageId: message.id,
+      mediaIndex,
+      bytes: downloadedBytes,
+      provider,
+      downloadMs,
+      uploadMs,
+      localWriteMs,
+      totalMs: Math.round(performance.now() - startedAt),
+    });
     return "stored";
   } catch (error) {
     const errorCode = mediaErrorCode(error);
@@ -403,6 +430,12 @@ async function storeMedia(
       attempt: attempt.downloadAttempts,
       retryAt: retryAt?.toISOString() ?? null,
       reason: errorCode,
+      bytes: downloadedBytes,
+      provider: storageProvider,
+      downloadMs,
+      uploadMs,
+      localWriteMs,
+      totalMs: Math.round(performance.now() - startedAt),
     });
     return retry ? "pending" : "failed";
   }
@@ -567,6 +600,69 @@ export async function retryWhatsAppMediaDownload(message: WhatsAppMessage): Prom
   return status === "stored";
 }
 
+let mediaDownloadWorkerRunning = false;
+
+export async function processWhatsAppMediaDownloadQueue(): Promise<number> {
+  if (mediaDownloadWorkerRunning) return 0;
+  mediaDownloadWorkerRunning = true;
+  const startedAt = performance.now();
+
+  try {
+    const now = new Date();
+    const messages = await db
+      .select()
+      .from(menaWhatsAppMessages)
+      .where(and(
+        ne(menaWhatsAppMessages.messageStatus, "deleted"),
+        eq(menaWhatsAppMessages.mediaAvailable, true),
+        eq(menaWhatsAppMessages.mediaDownloadStatus, "pending"),
+        isNotNull(menaWhatsAppMessages.groupId),
+        isNotNull(menaWhatsAppMessages.sourceMediaPayload),
+        notExists(
+          db
+            .select({ id: menaWhatsAppMessageMedia.id })
+            .from(menaWhatsAppMessageMedia)
+            .where(and(
+              eq(menaWhatsAppMessageMedia.workspaceId, menaWhatsAppMessages.workspaceId),
+              eq(menaWhatsAppMessageMedia.messageId, menaWhatsAppMessages.id),
+              isNotNull(menaWhatsAppMessageMedia.nextAttemptAt),
+              gt(menaWhatsAppMessageMedia.nextAttemptAt, now),
+            )),
+        ),
+      ))
+      .orderBy(asc(menaWhatsAppMessages.updatedAt))
+      .limit(10);
+
+    let completed = 0;
+    for (let offset = 0; offset < messages.length; offset += 3) {
+      const batch = messages.slice(offset, offset + 3);
+      const outcomes = await Promise.all(batch.map(async (message) => {
+        try {
+          return await retryWhatsAppMediaDownload(message);
+        } catch (error) {
+          console.error("WhatsApp media queue item failed", {
+            messageId: message.id,
+            reason: mediaErrorCode(error),
+          });
+          return false;
+        }
+      }));
+      completed += outcomes.filter(Boolean).length;
+    }
+
+    if (messages.length > 0) {
+      console.info("WhatsApp media queue batch completed", {
+        selected: messages.length,
+        completed,
+        totalMs: Math.round(performance.now() - startedAt),
+      });
+    }
+    return completed;
+  } finally {
+    mediaDownloadWorkerRunning = false;
+  }
+}
+
 let thumbnailWorkerRunning = false;
 
 export async function processWhatsAppMediaThumbnailQueue(): Promise<number> {
@@ -584,7 +680,7 @@ export async function processWhatsAppMediaThumbnailQueue(): Promise<number> {
         isNull(menaWhatsAppMessageMedia.thumbnailPath),
       ))
       .orderBy(asc(menaWhatsAppMessageMedia.updatedAt))
-      .limit(3);
+      .limit(5);
 
     let completed = 0;
     for (const media of pending) {
