@@ -1,5 +1,9 @@
 import { and, eq } from "drizzle-orm";
 import { db, menaWhatsAppMessages, posts } from "@workspace/db";
+import {
+  consumeSubscriptionUsage,
+  releaseSubscriptionUsage,
+} from "./subscriptions.ts";
 import { recordOrEmpty } from "./value-utils.ts";
 import { notifyPostsChanged } from "./post-events";
 import { whatsappContentPostId } from "./whatsapp-albums";
@@ -35,6 +39,21 @@ export async function saveDraft(
 ) {
   const id = whatsappContentPostId(ownerId, sourceMessageId);
   const status = "review";
+  const [knownExistingPost] = await db
+    .select({ id: posts.id })
+    .from(posts)
+    .where(and(
+      eq(posts.ownerId, ownerId),
+      eq(posts.workspaceId, message.workspaceId),
+      eq(posts.id, id),
+    ))
+    .limit(1);
+  const quota = knownExistingPost
+    ? null
+    : await consumeSubscriptionUsage(message.workspaceId, "postsCreated");
+  if (quota && !quota.allowed) {
+    throw new Error("SUBSCRIPTION_LIMIT_REACHED:postsCreated");
+  }
   const [inserted] = await db
     .insert(posts)
     .values({
@@ -73,10 +92,27 @@ export async function saveDraft(
       updatedAt: new Date(),
     })
     .onConflictDoNothing()
-    .returning();
+    .returning()
+    .catch(async (error: unknown) => {
+      if (quota) {
+        await releaseSubscriptionUsage(
+          message.workspaceId,
+          "postsCreated",
+          quota.periodKey,
+        );
+      }
+      throw error;
+    });
   if (inserted) {
     notifyPostsChanged(ownerId);
     return { post: inserted, created: true };
+  }
+  if (quota) {
+    await releaseSubscriptionUsage(
+      message.workspaceId,
+      "postsCreated",
+      quota.periodKey,
+    );
   }
   const [existing] = await db
     .select()
