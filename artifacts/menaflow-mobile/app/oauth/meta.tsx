@@ -7,7 +7,10 @@ import { CairoText as Text } from '@/components/CairoTypography';
 import { LucideIcon as Icon } from '@/components/LucideIcon';
 import { Page, Panel } from '@/components/Ui';
 import { useColors } from '@/hooks/useColors';
-import { metaOAuthErrorMessage } from '@/constants/meta-oauth';
+import {
+  META_OAUTH_RETURN_CONTEXT_KEY,
+  metaOAuthErrorMessage,
+} from '@/constants/meta-oauth';
 
 export default function MetaOAuthResultScreen() {
   const colors = useColors();
@@ -62,7 +65,25 @@ export default function MetaOAuthResultScreen() {
         </Text>
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.replace('/connect-accounts')}
+          onPress={() => {
+            const returnContext =
+              Platform.OS === 'web' && typeof window !== 'undefined'
+                ? window.sessionStorage.getItem(META_OAUTH_RETURN_CONTEXT_KEY)
+                : null;
+            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+              window.sessionStorage.removeItem(META_OAUTH_RETURN_CONTEXT_KEY);
+            }
+            router.replace(
+              returnContext === 'publishing'
+                ? {
+                    pathname: '/(tabs)/more/sources',
+                    params: { view: 'publishing' },
+                  }
+                : returnContext === 'sources'
+                  ? '/(tabs)/more/sources'
+                  : '/connect-accounts',
+            );
+          }}
           style={[styles.button, { backgroundColor: colors.primary }]}
         >
           <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>

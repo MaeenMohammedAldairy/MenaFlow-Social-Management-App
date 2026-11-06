@@ -55,7 +55,10 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { useStudio } from "@/context/StudioContext";
 import { router, useLocalSearchParams } from "expo-router";
-import { metaOAuthErrorMessage } from "@/constants/meta-oauth";
+import {
+  META_OAUTH_RETURN_CONTEXT_KEY,
+  metaOAuthErrorMessage,
+} from "@/constants/meta-oauth";
 import { groupWhatsAppMessages } from "@/lib/source-message-groups";
 import {
   CountryPickerModal,
@@ -629,6 +632,14 @@ function SourcesContent({
     try {
       const setup = await postMetaConnect({ integration: platform });
       if (Platform.OS === "web" && typeof window !== "undefined") {
+        window.sessionStorage.setItem(
+          META_OAUTH_RETURN_CONTEXT_KEY,
+          isPublishingAccounts
+            ? "publishing"
+            : includeWhatsApp
+              ? "onboarding"
+              : "sources",
+        );
         window.location.assign(setup.authorizationUrl);
         return;
       }

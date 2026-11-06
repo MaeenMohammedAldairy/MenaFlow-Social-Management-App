@@ -1,3 +1,5 @@
+export const META_OAUTH_RETURN_CONTEXT_KEY = "menaflow.meta.oauth.return-context";
+
 export function metaOAuthErrorMessage(reason?: string, detail?: string): string {
   switch (reason) {
     case "no_manageable_page":
