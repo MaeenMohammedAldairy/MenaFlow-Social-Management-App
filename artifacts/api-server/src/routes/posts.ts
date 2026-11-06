@@ -42,10 +42,6 @@ import {
   postReadinessMessage,
 } from "../lib/post-readiness";
 import {
-  consumeSubscriptionUsage,
-  releaseSubscriptionUsage,
-} from "../lib/subscriptions";
-import {
   processWhatsAppBacklog,
   processWhatsAppMessage,
 } from "../lib/whatsapp-marketing";
@@ -890,8 +886,6 @@ router.post("/posts", requireWorkspace, async (req, res) => {
     String(
       (payload as Record<string, unknown>).id ?? data.id ?? randomUUID(),
     ).trim() || randomUUID();
-  let postUsagePeriodKey: string | null = null;
-  let createdPost = false;
 
   try {
     const [existing] = await db
@@ -948,16 +942,6 @@ router.post("/posts", requireWorkspace, async (req, res) => {
       error: null,
       updatedAt: new Date(),
     };
-    if (!existing) {
-      const quota = await consumeSubscriptionUsage(
-        workspaceId,
-        "postsCreated",
-      );
-      if (!quota.allowed) {
-        throw new Error("SUBSCRIPTION_LIMIT_REACHED:postsCreated");
-      }
-      postUsagePeriodKey = quota.periodKey;
-    }
     const [saved] = existing
       ? await db
           .update(posts)
@@ -976,20 +960,11 @@ router.post("/posts", requireWorkspace, async (req, res) => {
           .onConflictDoNothing()
           .returning();
     if (!saved) {
-      if (postUsagePeriodKey) {
-        await releaseSubscriptionUsage(
-          workspaceId,
-          "postsCreated",
-          postUsagePeriodKey,
-        );
-        postUsagePeriodKey = null;
-      }
       res
         .status(409)
         .json({ error: "تعذّر حفظ المنشور بسبب تعارض في المعرّف." });
       return;
     }
-    createdPost = !existing;
     if (!existing) {
       const [metaConnection] = await db
         .select()
@@ -1028,13 +1003,6 @@ router.post("/posts", requireWorkspace, async (req, res) => {
         ),
       );
   } catch (error) {
-    if (postUsagePeriodKey && !createdPost) {
-      await releaseSubscriptionUsage(
-        workspaceId,
-        "postsCreated",
-        postUsagePeriodKey,
-      );
-    }
     if (sendPostQuotaError(res, error)) return;
     console.error("Error creating post:", error);
     res.status(500).json({ error: "تعذر حفظ المنشور في الخادم." });

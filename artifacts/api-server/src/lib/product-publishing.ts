@@ -7,10 +7,6 @@ import {
   productPublicationJobs,
   products,
 } from "@workspace/db";
-import {
-  consumeSubscriptionUsage,
-  releaseSubscriptionUsage,
-} from "./subscriptions.ts";
 import { publishPostToMeta } from "./meta-publishing.ts";
 import { notifyPostsChanged } from "./post-events.ts";
 import {
@@ -80,17 +76,6 @@ async function preparePost(job: PublicationJob) {
   }
 
   const postId = job.postId ?? randomUUID();
-  let postUsagePeriodKey: string | null = null;
-  if (!job.postId) {
-    const quota = await consumeSubscriptionUsage(
-      job.workspaceId,
-      "postsCreated",
-    );
-    if (!quota.allowed) {
-      throw new Error("SUBSCRIPTION_LIMIT_REACHED:postsCreated");
-    }
-    postUsagePeriodKey = quota.periodKey;
-  }
   const [post] = await db.transaction(async (transaction) => {
     if (!job.postId) {
       await transaction.insert(posts).values({
@@ -139,18 +124,11 @@ async function preparePost(job: PublicationJob) {
         eq(posts.workspaceId, job.workspaceId),
       ))
       .limit(1);
-    if (!updatedJob || !createdPost) throw new Error("PRODUCT_POST_PREPARATION_FAILED");
+    if (!updatedJob || !createdPost) {
+      throw new Error("PRODUCT_POST_PREPARATION_FAILED");
+    }
     return [createdPost];
-  }).catch(async (error: unknown) => {
-      if (postUsagePeriodKey) {
-        await releaseSubscriptionUsage(
-          job.workspaceId,
-          "postsCreated",
-          postUsagePeriodKey,
-        );
-      }
-      throw error;
-    });
+  });
   return post;
 }
 
