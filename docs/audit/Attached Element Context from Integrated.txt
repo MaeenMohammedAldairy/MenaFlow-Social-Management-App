@@ -1,0 +1,60 @@
+Attached Element Context from Integrated Browser
+
+Element: div.css-view-g5y9jx.r-borderRadius-y47klf.r-borderWidth-rs99b7.r-boxShadow-1u0vly4.r-padding-nsbfu8.r-gap-1ssbvtb
+
+URL: http://localhost:8081/inbox
+
+HTML Path: div#root > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0.r-bottom-1p0dtai.r-left-1d2f490.r-position-u8s1d.r-right-zchlnj.r-top-ipm5af > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0.r-overflow-1udh08x > div.css-view-g5y9jx.r-bottom-1p0dtai.r-left-1d2f490.r-position-u8s1d.r-right-zchlnj.r-top-ipm5af > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-flex-13awgt0 > div.css-view-g5y9jx.r-WebkitOverflowScrolling-150rngu.r-flexDirection-eqz5dr.r-flexGrow-16y2uox.r-flexShrink-1wbh5a2.r-overflowX-11yh6sk.r-overflowY-1rnoaur.r-transform-agouwx > div.css-view-g5y9jx.r-WebkitOverflowScrolling-150rngu.r-flexDirection-eqz5dr.r-flexGrow-16y2uox.r-flexShrink-1wbh5a2.r-overflowX-11yh6sk.r-overflowY-1rnoaur.r-transform-agouwx.r-scrollbarWidth-2eszeu > div.css-view-g5y9jx.r-flexGrow-16y2uox > div.css-view-g5y9jx.r-gap-1pnwn9g.r-paddingInline-284m6k > div.css-view-g5y9jx.r-borderRadius-y47klf.r-borderWidth-rs99b7.r-boxShadow-1u0vly4.r-padding-nsbfu8.r-gap-1ssbvtb
+
+Outer HTML:
+```html
+<div class="css-view-g5y9jx r-borderRadius-y47klf r-borderWidth-rs99b7 r-boxShadow-1u0vly4 r-padding-nsbfu8 r-gap-1ssbvtb" style="background-color: rgb(255, 255, 255); border-color: rgb(220, 237, 233);"><div class="css-view-g5y9jx r-alignItems-1awozwy r-flexDirection-1euycsn r-gap-1cmwbt1"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#D69325" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info"><circle fill="none" stroke="#D69325" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" cx="12" cy="12" r="10"></circle><path fill="none" stroke="#D69325" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4"></path><path fill="none" stroke="#D69325" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M12 8h.01"></path></svg><div dir="auto" class="css-text-146c3p1 r-fontSize-a023e6 r-fontWeight-b88u0q r-textAlign-1ff274t" style="color: rgb(18, 50, 102); font-family: Cairo_700Bold;">يلزم إعداد Webhook على الخادم</div></div><div dir="auto" class="css-text-146c3p1 r-fontSize-n6v787 r-lineHeight-hbpseb r-textAlign-1ff274t" style="color: rgb(117, 139, 170); font-family: Cairo_400Regular;">أضف MENA_META_WEBHOOK_VERIFY_TOKEN إلى إعدادات الخادم وأعد تشغيله. ثم أكمل إعداد عنوان Webhook وحقوله في لوحة تطبيق Meta.</div></div>
+```
+
+Dimensions:
+- top: 222px
+- left: 18px
+- width: 904px
+- height: 97px
+
+CSS:
+```css
+element { background-color: rgb(255, 255, 255); border-color: rgb(220, 237, 233); }
+.css-view-g5y9jx { align-content: flex-start; align-items: stretch; background-color: rgba(0, 0, 0, 0); border: 0px solid black; box-sizing: border-box; display: flex; flex-basis: auto; flex-direction: column; flex-shrink: 0; list-style: none; margin: 0px; min-height: 0px; min-width: 0px; padding: 0px; position: relative; text-decoration: none; z-index: 0; }
+.r-borderWidth-rs99b7 { border-width: 1px; }
+.r-borderRadius-y47klf { border-radius: 20px; }
+.r-padding-nsbfu8 { padding: 16px; }
+.r-gap-1ssbvtb { gap: 12px; }
+.r-boxShadow-1u0vly4 { box-shadow: rgba(10, 37, 64, 0.04) 0px 6px 14px; }
+
+/* Inherited */
+.css-view-g5y9jx { list-style: none }
+
+/* Resolved values */
+margin: 0px;
+padding: 16px;
+border-radius: 20px;
+border: 1px solid rgb(220, 237, 233);
+text-decoration: rgb(0, 0, 0);
+align-content: flex-start;
+align-items: stretch;
+background-color: rgb(255, 255, 255);
+box-shadow: rgba(10, 37, 64, 0.04) 0px 6px 14px 0px;
+box-sizing: border-box;
+column-gap: 12px;
+display: flex;
+flex-basis: auto;
+flex-direction: column;
+flex-shrink: 0;
+height: 97px;
+list-style-image: none;
+list-style-position: outside;
+list-style-type: none;
+min-height: 0px;
+min-width: 0px;
+position: relative;
+row-gap: 12px;
+unicode-bidi: isolate /*UA*/;
+width: 904px;
+z-index: 0;
+```

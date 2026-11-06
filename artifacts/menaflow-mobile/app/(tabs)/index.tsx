@@ -199,9 +199,16 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
         <SectionTitle
           title="حساباتك الاجتماعية"
           action={
-            <Pressable onPress={() => router.push("/(tabs)/more/sources")}>
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: "/(tabs)/more/sources",
+                  params: { view: "publishing" },
+                })
+              }
+            >
               <Text style={[styles.link, { color: colors.primary }]}>
-                إدارة الحسابات
+                إدارة حسابات النشر
               </Text>
             </Pressable>
           }
