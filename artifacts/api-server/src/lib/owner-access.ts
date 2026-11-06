@@ -25,11 +25,22 @@ export function assertProductionConfiguration(): void {
       "CLERK_SECRET_KEY and CLERK_PUBLISHABLE_KEY must be configured in production.",
     );
   }
+  const usesTestSecret = clerkSecretKey.startsWith("sk_test_");
+  const usesTestPublishable = clerkPublishableKey.startsWith("pk_test_");
+
+  if (usesTestSecret !== usesTestPublishable) {
+    throw new Error(
+      "CLERK_SECRET_KEY and CLERK_PUBLISHABLE_KEY must use the same Clerk environment.",
+    );
+  }
+
   if (
-    clerkSecretKey.startsWith("sk_test_") ||
-    clerkPublishableKey.startsWith("pk_test_")
+    usesTestSecret &&
+    process.env.MENA_ALLOW_CLERK_TEST_KEYS_IN_PRODUCTION !== "true"
   ) {
-    throw new Error("Clerk test keys must not be used in production.");
+    throw new Error(
+      "Clerk test keys require MENA_ALLOW_CLERK_TEST_KEYS_IN_PRODUCTION=true.",
+    );
   }
 
   if (!process.env.ENCRYPTION_KEY || process.env.ENCRYPTION_KEY.length < 32) {
