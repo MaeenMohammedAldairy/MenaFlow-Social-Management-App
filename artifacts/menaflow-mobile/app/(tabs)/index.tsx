@@ -1,6 +1,12 @@
 import { router } from "expo-router";
 import React, { useState } from "react";
-import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
+import {
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
@@ -44,6 +50,8 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const { posts, refreshPosts, syncing } = useStudio();
   const [refreshing, setRefreshing] = useState(false);
+  const { width } = useWindowDimensions();
+  const isWideScreen = width >= 1024;
 
   const connectionsQuery = useQuery({
     queryKey: [
@@ -113,52 +121,54 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
           tintColor={colors.primary}
         />
       }
+      contentMaxWidth={1280}
     >
       <BrandHeader showBell />
       <PageTitle
         title="مرحباً بك في MenaFlow"
         subtitle="إدارة محتواك وحساباتك من مكان واحد."
       />
-      <View style={[styles.hero, { backgroundColor: colors.accent }]}>
-        <View style={[styles.heroOrb, { backgroundColor: colors.primary }]} />
-        <View style={styles.heroText}>
-          <Text style={[styles.heroEyebrow, { color: colors.primary }]}>
-            مساحة عملك
-          </Text>
-          <Text style={[styles.heroTitle, { color: colors.foreground }]}>
-            ابدأ بخطوة بسيطة
-          </Text>
-          <Text style={[styles.heroBody, { color: colors.mutedForeground }]}>
-            {hasAnyConnection
-              ? "حساباتك متصلة ومستعدة. أنشئ محتواك وانشره بنقرة واحدة."
-              : "أنشئ مسودة، راجعها، ثم اربط قنواتك للنشر المباشر."}
-          </Text>
+      <View
+        style={[
+          styles.hero,
+          width < 420 && styles.heroPhone,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.heroContent,
+            width < 420 && styles.heroContentPhone,
+            width < 360 && styles.heroContentCompact,
+          ]}
+        >
+          <View style={styles.heroText}>
+            <Text style={[styles.heroEyebrow, { color: colors.primary }]}>
+              مساحة عملك
+            </Text>
+            <Text
+              style={[
+                styles.heroTitle,
+                width >= 360 && width < 420 && styles.heroTitlePhone,
+                { color: colors.foreground },
+              ]}
+            >
+              ابدأ بخطوة بسيطة
+            </Text>
+            <Text style={[styles.heroBody, { color: colors.mutedForeground }]}>
+              {hasAnyConnection
+                ? "حساباتك متصلة ومستعدة. أنشئ محتواك وانشره بنقرة واحدة."
+                : "أنشئ مسودة، راجعها، ثم اربط قنواتك للنشر المباشر."}
+            </Text>
+          </View>
           <ActionButton
             label="إنشاء محتوى"
             icon="plus"
             onPress={() => router.push("/compose")}
           />
-        </View>
-        <View
-          style={[styles.heroIllustration, { backgroundColor: colors.card }]}
-        >
-          <Icon name="send" size={32} color={colors.primary} />
-          <View
-            style={[
-              styles.heroMiniBadge,
-              {
-                backgroundColor: hasAnyConnection
-                  ? colors.greenSoft
-                  : colors.blueSoft,
-              },
-            ]}
-          >
-            <Icon
-              name={hasAnyConnection ? "check" : "plus"}
-              size={14}
-              color={hasAnyConnection ? colors.green : colors.blue}
-            />
-          </View>
         </View>
       </View>
 
@@ -195,271 +205,271 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
         ))}
       </View>
 
-      <Panel>
-        <SectionTitle
-          title="حساباتك الاجتماعية"
-          action={
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/more/sources",
-                  params: { view: "publishing" },
-                })
-              }
-            >
-              <Text style={[styles.link, { color: colors.primary }]}>
-                إدارة حسابات النشر
-              </Text>
-            </Pressable>
-          }
-        />
-        <View style={styles.channelRow}>
-          {channelsData.map((channel) => (
-            <Pressable
-              key={channel.name}
-              accessibilityRole="button"
-              accessibilityLabel={
-                channel.connected
-                  ? `تفاصيل حساب ${channel.name}`
-                  : `ربط ${channel.name}`
-              }
-              onPress={() =>
-                channel.connected
-                  ? router.push({
-                      pathname: "/account/[platform]",
-                      params: { platform: channel.platform },
-                    })
-                  : router.push({
-                      pathname: "/(tabs)/more/sources",
-                      params: { connect: channel.platform },
-                    })
-              }
-              style={[
-                styles.channelTile,
-                {
-                  borderColor: channel.connected
-                    ? colors.primary
-                    : colors.border,
-                  backgroundColor: colors.background,
-                },
-              ]}
-            >
-              <Icon name={channel.icon} size={23} color={channel.tint} />
-              <Text style={[styles.channelName, { color: colors.foreground }]}>
-                {channel.name}
-              </Text>
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.channelState,
-                  {
-                    color: channel.connected
-                      ? colors.green
-                      : colors.mutedForeground,
-                    fontWeight: channel.connected ? "700" : "400",
-                  },
-                ]}
-              >
-                {channel.detail}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={[styles.helperNote, { color: colors.mutedForeground }]}>
-          {hasAnyConnection
-            ? "حساباتك متصلة بالخادم. يتم تحديث بيانات النشر والوصول دورياً."
-            : "لن تظهر بيانات الأداء حتى تربط حساباتك في صفحة المصادر."}
-        </Text>
-      </Panel>
-
-      <Panel>
-        <SectionTitle
-          title="أحدث المحتوى"
-          action={
-            <Pressable onPress={() => router.push("/(tabs)/content")}>
-              <Text style={[styles.link, { color: colors.primary }]}>
-                عرض الكل
-              </Text>
-            </Pressable>
-          }
-        />
-        {posts.length === 0 ? (
-          <EmptyState
-            icon="file-text"
-            title="مساحة المحتوى جاهزة"
-            body="ابدأ بكتابة أول منشور. ستتم مزامنة المحتوى تلقائياً مع الخادم."
-          />
-        ) : (
-          posts.slice(0, 4).map((post) => {
-            const title = post.title.trim();
-            const displayTitle =
-              title &&
-              ![
-                "محتوى يحتاج إلى مراجعة",
-                "محتوى من واتساب",
-                "منشور بدون عنوان",
-              ].includes(title)
-                ? title
-                : post.body
-                    .trim()
-                    .split(/\r?\n/)
-                    .find(Boolean)
-                    ?.replace(/^[*#\s]+/, "")
-                    .slice(0, 72) || "منشور بدون عنوان";
-            const statusLabel =
-              post.status === "review"
-                ? "بانتظار المراجعة"
-                : post.status === "draft"
-                  ? "مسودة"
-                  : post.status === "scheduled"
-                    ? "مجدول"
-                    : post.status === "publishing"
-                      ? "قيد الإرسال"
-                      : post.status === "failed"
-                        ? "فشل النشر"
-                        : post.status === "approved"
-                          ? "معتمد للنشر"
-                          : "منشور";
-            const postDate = formatArabicDate(
-              post.sourceMessageDate ?? post.createdAt,
-            );
-            return (
-              <View
-                key={post.id}
-                style={[
-                  styles.activityRow,
-                  { borderBottomColor: colors.border },
-                ]}
-              >
-                <StatusPill
-                  style={styles.activityStatus}
-                  label={statusLabel}
-                  tone={
-                    post.status === "review"
-                      ? "amber"
-                      : post.status === "published"
-                        ? "green"
-                        : "muted"
-                  }
-                />
+      <View
+        style={[
+          styles.contentGrid,
+          isWideScreen && styles.contentGridWide,
+        ]}
+      >
+        <View style={styles.contentColumn}>
+          <Panel>
+            <SectionTitle
+              title="حساباتك الاجتماعية"
+              action={
                 <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`عرض ${displayTitle}`}
                   onPress={() =>
                     router.push({
-                      pathname: "/(tabs)/content",
-                      params: { status: post.status },
+                      pathname: "/(tabs)/more/sources",
+                      params: { view: "publishing" },
                     })
                   }
-                  style={styles.activityCopy}
                 >
-                  <Text
-                    numberOfLines={2}
-                    style={[styles.activityTitle, { color: colors.foreground }]}
-                  >
-                    {displayTitle}
+                  <Text style={[styles.link, { color: colors.primary }]}>
+                    إدارة حسابات النشر
+                  </Text>
+                </Pressable>
+              }
+            />
+            <View style={styles.channelRow}>
+              {channelsData.map((channel) => (
+                <Pressable
+                  key={channel.name}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    channel.connected
+                      ? `تفاصيل حساب ${channel.name}`
+                      : `ربط ${channel.name}`
+                  }
+                  onPress={() =>
+                    channel.connected
+                      ? router.push({
+                          pathname: "/account/[platform]",
+                          params: { platform: channel.platform },
+                        })
+                      : router.push({
+                          pathname: "/(tabs)/more/sources",
+                          params: { connect: channel.platform },
+                        })
+                  }
+                  style={[
+                    styles.channelTile,
+                    {
+                      borderColor: channel.connected
+                        ? colors.primary
+                        : colors.border,
+                      backgroundColor: colors.background,
+                    },
+                  ]}
+                >
+                  <Icon name={channel.icon} size={23} color={channel.tint} />
+                  <Text style={[styles.channelName, { color: colors.foreground }]}>
+                    {channel.name}
                   </Text>
                   <Text
                     numberOfLines={1}
                     style={[
-                      styles.activityMeta,
-                      { color: colors.mutedForeground },
+                      styles.channelState,
+                      {
+                        color: channel.connected
+                          ? colors.green
+                          : colors.mutedForeground,
+                        fontWeight: channel.connected ? "700" : "400",
+                      },
                     ]}
                   >
-                    {post.channels
-                      .map((channel) =>
-                        channel === "instagram"
-                          ? "إنستغرام"
-                          : channel === "facebook"
-                            ? "فيسبوك"
-                            : "واتساب",
-                      )
-                      .join("، ") || "بدون قنوات"}
-                    {postDate ? ` · ${postDate}` : ""}
+                    {channel.detail}
                   </Text>
                 </Pressable>
-                {post.status === "review" ? (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={`مراجعة ${displayTitle}`}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(tabs)/content",
-                        params: { status: "review" },
-                      })
-                    }
+              ))}
+            </View>
+            <Text style={[styles.helperNote, { color: colors.mutedForeground }]}>
+              {hasAnyConnection
+                ? "حساباتك متصلة بالخادم. يتم تحديث بيانات النشر والوصول دورياً."
+                : "لن تظهر بيانات الأداء حتى تربط حساباتك في صفحة المصادر."}
+            </Text>
+          </Panel>
+        </View>
+
+        <View style={styles.contentColumn}>
+          <Panel>
+            <SectionTitle
+              title="أحدث المحتوى"
+              action={
+                <Pressable onPress={() => router.push("/(tabs)/content")}>
+                  <Text style={[styles.link, { color: colors.primary }]}>
+                    عرض الكل
+                  </Text>
+                </Pressable>
+              }
+            />
+            {posts.length === 0 ? (
+              <EmptyState
+                icon="file-text"
+                title="مساحة المحتوى جاهزة"
+                body="ابدأ بكتابة أول منشور. ستتم مزامنة المحتوى تلقائياً مع الخادم."
+              />
+            ) : (
+              posts.slice(0, 4).map((post) => {
+                const title = post.title.trim();
+                const displayTitle =
+                  title &&
+                  ![
+                    "محتوى يحتاج إلى مراجعة",
+                    "محتوى من واتساب",
+                    "منشور بدون عنوان",
+                  ].includes(title)
+                    ? title
+                    : post.body
+                        .trim()
+                        .split(/\r?\n/)
+                        .find(Boolean)
+                        ?.replace(/^[*#\s]+/, "")
+                        .slice(0, 72) || "منشور بدون عنوان";
+                const statusLabel =
+                  post.status === "review"
+                    ? "بانتظار المراجعة"
+                    : post.status === "draft"
+                      ? "مسودة"
+                      : post.status === "scheduled"
+                        ? "مجدول"
+                        : post.status === "publishing"
+                          ? "قيد الإرسال"
+                          : post.status === "failed"
+                            ? "فشل النشر"
+                            : post.status === "approved"
+                              ? "معتمد للنشر"
+                              : "منشور";
+                const postDate = formatArabicDate(
+                  post.sourceMessageDate ?? post.createdAt,
+                );
+                return (
+                  <View
+                    key={post.id}
                     style={[
-                      styles.reviewButton,
-                      { backgroundColor: colors.accent },
+                      styles.activityRow,
+                      { borderBottomColor: colors.border },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.reviewButtonLabel,
-                        { color: colors.primary },
-                      ]}
+                    <StatusPill
+                      style={styles.activityStatus}
+                      label={statusLabel}
+                      tone={
+                        post.status === "review"
+                          ? "amber"
+                          : post.status === "published"
+                            ? "green"
+                            : "muted"
+                      }
+                    />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`عرض ${displayTitle}`}
+                      onPress={() =>
+                        router.push({
+                          pathname: "/(tabs)/content",
+                          params: { status: post.status },
+                        })
+                      }
+                      style={styles.activityCopy}
                     >
-                      مراجعة
-                    </Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            );
-          })
-        )}
-      </Panel>
+                      <Text
+                        numberOfLines={2}
+                        style={[
+                          styles.activityTitle,
+                          { color: colors.foreground },
+                        ]}
+                      >
+                        {displayTitle}
+                      </Text>
+                      <Text
+                        numberOfLines={1}
+                        style={[
+                          styles.activityMeta,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        {post.channels
+                          .map((channel) =>
+                            channel === "instagram"
+                              ? "إنستغرام"
+                              : channel === "facebook"
+                                ? "فيسبوك"
+                                : "واتساب",
+                          )
+                          .join("، ") || "بدون قنوات"}
+                        {postDate ? ` · ${postDate}` : ""}
+                      </Text>
+                    </Pressable>
+                    {post.status === "review" ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`مراجعة ${displayTitle}`}
+                        onPress={() =>
+                          router.push({
+                            pathname: "/(tabs)/content",
+                            params: { status: "review" },
+                          })
+                        }
+                        style={[
+                          styles.reviewButton,
+                          { backgroundColor: colors.accent },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.reviewButtonLabel,
+                            { color: colors.primary },
+                          ]}
+                        >
+                          مراجعة
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                );
+              })
+            )}
+          </Panel>
+        </View>
+      </View>
     </Page>
   );
 }
 
 const styles = StyleSheet.create({
   hero: {
-    minHeight: 214,
-    borderRadius: 24,
-    padding: 18,
-    overflow: "hidden",
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 20,
+  },
+  heroPhone: { padding: 16 },
+  heroContent: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "space-between",
+    gap: 16,
   },
-  heroOrb: {
-    position: "absolute",
-    width: 210,
-    height: 210,
-    borderRadius: 105,
-    opacity: 0.08,
-    left: -76,
-    bottom: -115,
+  heroContentPhone: { gap: 8 },
+  heroContentCompact: {
+    flexDirection: "column",
+    alignItems: "flex-start",
+    gap: 12,
   },
-  heroText: { flex: 1, alignItems: "flex-start", gap: 10, zIndex: 1 },
-  heroEyebrow: { fontSize: 12, fontWeight: "800" },
-  heroTitle: { fontSize: 20, fontWeight: "800", textAlign: "right" },
+  heroText: { flex: 1, alignItems: "flex-start", gap: 6 },
+  heroEyebrow: { fontSize: 12, fontWeight: "700" },
+  heroTitle: { fontSize: 22, fontWeight: "800", textAlign: "right" },
+  heroTitlePhone: { fontSize: 18 },
   heroBody: {
     alignSelf: "stretch",
     fontSize: 13,
-    lineHeight: 19,
-    textAlign: "left",
-    maxWidth: 220,
-  },
-  heroIllustration: {
-    width: 82,
-    height: 82,
-    borderRadius: 26,
-    alignItems: "center",
-    justifyContent: "center",
-    transform: [{ rotate: "-8deg" }],
-  },
-  heroMiniBadge: {
-    width: 27,
-    height: 27,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "absolute",
-    top: -5,
-    right: -5,
+    lineHeight: 20,
+    textAlign: "right",
+    maxWidth: 560,
   },
   metricsRow: { flexDirection: "row", gap: 8 },
+  contentGrid: { gap: 18 },
+  contentGridWide: { flexDirection: "row", alignItems: "flex-start" },
+  contentColumn: { flex: 1, minWidth: 0 },
   metricPressable: { flex: 1 },
   metricCard: {
     flex: 1,

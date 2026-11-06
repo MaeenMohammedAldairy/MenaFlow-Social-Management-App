@@ -13,12 +13,14 @@ export function Page({
   refreshControl,
   bottomPadding,
   onScroll,
+  contentMaxWidth,
 }: {
   children: React.ReactNode;
   scroll?: boolean;
   refreshControl?: React.ReactElement<RefreshControlProps>;
   bottomPadding?: number;
   onScroll?: ScrollViewProps['onScroll'];
+  contentMaxWidth?: number;
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -27,6 +29,8 @@ export function Page({
     <View
       style={[
         styles.pageContent,
+        contentMaxWidth ? styles.constrainedContent : null,
+        contentMaxWidth ? { maxWidth: contentMaxWidth } : null,
         {
           paddingTop:
             Platform.OS === 'web'
@@ -210,6 +214,7 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   scrollContent: { flexGrow: 1 },
   pageContent: { paddingHorizontal: 18, gap: 18 },
+  constrainedContent: { width: '100%', alignSelf: 'center' },
   brandHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 38 },
   brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   brandMark: { width: 29, height: 29, borderRadius: 9 },
