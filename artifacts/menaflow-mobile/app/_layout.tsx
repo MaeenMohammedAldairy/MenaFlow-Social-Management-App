@@ -86,6 +86,7 @@ function AppNavigator() {
     <Stack screenOptions={{ headerBackTitle: "رجوع" }}>
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="sso-callback" options={{ headerShown: false }} />
       <Stack.Screen name="product-catalog" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="connect-accounts" options={{ headerShown: false }} />

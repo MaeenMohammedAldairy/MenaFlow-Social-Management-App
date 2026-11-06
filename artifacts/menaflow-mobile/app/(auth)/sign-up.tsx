@@ -32,7 +32,7 @@ export default function SignUpScreen() {
     acceptedTerms &&
     !loading;
 
-  if (isSignedIn) return <Redirect href="/(tabs)" />;
+  if (isSignedIn) return <Redirect href="/" />;
 
   const startSignUp = async () => {
     setErrorMessage('');
@@ -79,7 +79,7 @@ export default function SignUpScreen() {
       }
       if (signUp.status === 'complete') {
         await signUp.finalize({
-          navigate: () => router.replace('/(tabs)'),
+          navigate: () => router.replace('/'),
         });
       } else {
         setErrorMessage('لم يكتمل التحقق. أعد المحاولة أو اطلب رمزاً جديداً.');

@@ -39,11 +39,11 @@ export default function SignInScreen() {
       factor.strategy === 'phone_code',
   );
 
-  if (isSignedIn) return <Redirect href="/(tabs)" />;
+  if (isSignedIn) return <Redirect href="/" />;
 
   const finalizeSignIn = async () => {
     await signIn.finalize({
-      navigate: () => router.replace('/(tabs)'),
+      navigate: () => router.replace('/'),
     });
   };
 
@@ -253,7 +253,7 @@ export default function SignInScreen() {
       const activated = await activateOAuthSession(
         createdSessionId,
         setActive,
-        () => router.replace('/(tabs)'),
+        () => router.replace('/'),
       );
       if (!activated) {
         setErrorMessage('تم إيقاف تسجيل الدخول قبل اكتماله.');
