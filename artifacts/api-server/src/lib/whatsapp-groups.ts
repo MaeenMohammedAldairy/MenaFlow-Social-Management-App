@@ -1,3 +1,5 @@
+import { asRecord as record } from "./value-utils.ts";
+
 export type WhatsAppGroupKind =
   | "community"
   | "announcement"
@@ -11,12 +13,6 @@ export interface WhatsAppGroup {
   kind: WhatsAppGroupKind;
   name: string;
   communityParentJid?: string;
-}
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function asBoolean(value: unknown): boolean | null {
@@ -43,14 +39,26 @@ export function normalizeEvolutionGroups(
     directGroups ?? bodyGroups ?? bodyDataGroups ?? nestedDataGroups ?? null;
   if (!groups) throw new Error("EVOLUTION_API_INVALID_GROUPS_RESPONSE");
 
-  return groups.flatMap((entry: unknown): WhatsAppGroup[] => {
+  let validGroupCount = 0;
+  const normalizedGroups = groups.flatMap((entry: unknown): WhatsAppGroup[] => {
     const group = record(entry);
-    if (typeof group?.id !== "string" || !/^[0-9]+(?:-[0-9]+)?@g\.us$/.test(group.id)) {
+    if (!group || typeof group.id !== "string") {
+      throw new Error("EVOLUTION_API_INVALID_GROUPS_RESPONSE");
+    }
+    if (!group.id.endsWith("@g.us")) {
       return [];
     }
+    if (!/^[0-9]+(?:-[0-9]+)?@g\.us$/.test(group.id)) {
+      throw new Error("EVOLUTION_API_INVALID_GROUPS_RESPONSE");
+    }
+    validGroupCount += 1;
     const announce = asBoolean(group.announce);
     const isCommunity = asBoolean(group.isCommunity) === true;
-    if (isCommunity || announce !== true) return [];
+    if (isCommunity) return [];
+    if (announce === null) {
+      throw new Error("EVOLUTION_API_INVALID_GROUPS_RESPONSE");
+    }
+    if (announce !== true) return [];
     const communityParentJid =
       typeof group.linkedParent === "string" && group.linkedParent.trim()
         ? group.linkedParent.trim()
@@ -66,6 +74,10 @@ export function normalizeEvolutionGroups(
       communityParentJid,
     }];
   });
+  if (groups.length > 0 && validGroupCount === 0) {
+    throw new Error("EVOLUTION_API_INVALID_GROUPS_RESPONSE");
+  }
+  return normalizedGroups;
 }
 
 export function selectEvolutionGroups(

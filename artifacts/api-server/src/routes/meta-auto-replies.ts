@@ -10,9 +10,11 @@ import {
 } from "@workspace/db";
 import { requestOwnerId } from "../lib/owner-access";
 import {
+  metaAutoReplyPermission,
   missingMetaIntegrationPermissions,
   type MetaIntegration,
 } from "../lib/meta-oauth";
+import { isRecord } from "../lib/value-utils.ts";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 const router = Router();
@@ -38,10 +40,6 @@ type ParsedSettings = {
   tone: "friendly_professional" | "concise" | "formal";
   instructions: string;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
 
 function parseSettings(value: unknown): ParsedSettings | null {
   if (!isRecord(value)) return null;
@@ -80,20 +78,6 @@ function parseSettings(value: unknown): ParsedSettings | null {
     tone,
     instructions: instructions.trim(),
   };
-}
-
-function requiredPermission(
-  platform: MetaIntegration,
-  kind: "message" | "comment",
-): string {
-  if (kind === "message") {
-    return platform === "facebook"
-      ? "pages_messaging"
-      : "instagram_manage_messages";
-  }
-  return platform === "facebook"
-    ? "pages_manage_engagement"
-    : "instagram_manage_comments";
 }
 
 async function integrationReadiness(
@@ -135,8 +119,8 @@ async function integrationReadiness(
   const permissions = connection
     ? missingMetaIntegrationPermissions(platform, connection.grantedPermissions)
     : [];
-  const messagePermission = requiredPermission(platform, "message");
-  const commentPermission = requiredPermission(platform, "comment");
+  const messagePermission = metaAutoReplyPermission(platform, "message");
+  const commentPermission = metaAutoReplyPermission(platform, "comment");
   const integrationReady = Boolean(
     accountId && tokenReady && subscriptionReady && webhookConfigured,
   );

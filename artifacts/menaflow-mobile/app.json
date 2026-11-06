@@ -7,29 +7,39 @@
     "icon": "./assets/images/icon.png",
     "scheme": "menaflow-mobile",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "backgroundColor": "#F2FBFA",
-      "image": "./assets/images/icon.png",
-      "resizeMode": "contain"
-    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.menaflow.mobile"
+      "bundleIdentifier": "com.menaflow.mobile",
+      "infoPlist": {
+        "CFBundleLocalizations": ["ar"]
+      }
     },
     "android": {
       "package": "com.menaflow.mobile",
+      "supportsRTL": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#F2FBFA"
+        "backgroundColor": "#F5F7F6"
       }
     },
     "web": {
-      "favicon": "./assets/images/icon.png"
+      "favicon": "./assets/images/icon.png",
+      "lang": "ar",
+      "dir": "rtl"
     },
     "plugins": [
       "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F5F7F6",
+          "image": "./assets/images/icon.png",
+          "resizeMode": "contain"
+        }
+      ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "./plugins/with-preview-api-network-security"
     ],
     "experiments": {
       "typedRoutes": true,

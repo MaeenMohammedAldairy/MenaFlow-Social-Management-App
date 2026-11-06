@@ -7,24 +7,11 @@ import {
   menaMetaInboxItems,
   menaMetaWebhookSubscriptions,
 } from "@workspace/db";
-import { metaString } from "../lib/meta-inbox-utils";
+import { metaString, metaWebhookCallbackUrl } from "../lib/meta-inbox-utils";
 import { requestOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 const router = Router();
-
-function webhookCallbackUrl(): string | null {
-  const configuredRedirect = process.env.MENA_FACEBOOK_REDIRECT_URI?.trim();
-  if (!configuredRedirect) return null;
-  try {
-    const url = new URL(configuredRedirect);
-    url.pathname = "/api/social/meta/webhook";
-    url.search = "";
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
 
 router.get("/social/meta-inbox", requireWorkspace, async (req, res) => {
   const ownerId = requestOwnerId(req);
@@ -87,7 +74,10 @@ router.get("/social/meta-inbox", requireWorkspace, async (req, res) => {
       verificationConfigured: Boolean(
         process.env.MENA_META_WEBHOOK_VERIFY_TOKEN?.trim(),
       ),
-      callbackUrl: webhookCallbackUrl(),
+      callbackUrl: metaWebhookCallbackUrl(
+        process.env.MENA_PUBLIC_MEDIA_BASE_URL,
+        process.env.MENA_FACEBOOK_REDIRECT_URI,
+      ),
       lastEventAt: lastEvent?.lastEventAt?.toISOString() ?? null,
       accounts: {
         facebook: connection?.facebook ?? null,
@@ -119,6 +109,7 @@ router.get("/social/meta-inbox", requireWorkspace, async (req, res) => {
       occurredAt: item.occurredAt.toISOString(),
       replyText: item.replyText,
       repliedAt: item.repliedAt?.toISOString() ?? null,
+      replyStatus: item.replyStatus,
       autoReplyStatus,
     })),
   });

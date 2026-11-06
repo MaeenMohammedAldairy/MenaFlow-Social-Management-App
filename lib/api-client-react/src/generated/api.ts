@@ -26,12 +26,13 @@ import type {
   AuthAccessResponse,
   CreatePostInput,
   DeleteMetaConnectionParams,
+  DeleteWhatsAppConnectionParams,
   GetKnownPostIds200,
-  GetKnownPostIdsBody,
   GetPostsPage200,
   GetPostsPageParams,
   GetWhatsAppConnectionStatusParams,
   HealthStatus,
+  KnownPostIdsInput,
   MetaConnectInput,
   MetaConnectResponse,
   MetaDisconnectResponse,
@@ -40,6 +41,7 @@ import type {
   PostDeleteResult,
   PostItem,
   SocialConnectionsResponse,
+  SubscriptionOverview,
   TestWhatsAppAutoReply200,
   UpdatePostInput,
   WhatsAppAutoReplySettings,
@@ -257,7 +259,7 @@ export const getGetOwnerAccessUrl = () => {
 }
 
 /**
- * @summary Check whether the signed-in user is the MenaFlow owner
+ * @summary Get access and onboarding status for the signed-in user
  */
 export const getOwnerAccess = async ( options?: Parameters<typeof customFetch>[1]): Promise<AuthAccessResponse> => {
 
@@ -304,7 +306,7 @@ export type GetOwnerAccessQueryError = ErrorType<ApiError>
 
 
 /**
- * @summary Check whether the signed-in user is the MenaFlow owner
+ * @summary Get access and onboarding status for the signed-in user
  */
 
 export function useGetOwnerAccess<TData = Awaited<ReturnType<typeof getOwnerAccess>>, TError = ErrorType<ApiError>>(
@@ -313,6 +315,83 @@ export function useGetOwnerAccess<TData = Awaited<ReturnType<typeof getOwnerAcce
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetOwnerAccessQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSubscriptionUrl = () => {
+
+
+
+
+  return `/api/subscription`
+}
+
+/**
+ * @summary Get the current workspace plan and monthly usage
+ */
+export const getSubscription = async ( options?: Parameters<typeof customFetch>[1]): Promise<SubscriptionOverview> => {
+
+  return customFetch<SubscriptionOverview>(getGetSubscriptionUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSubscriptionQueryKey = () => {
+    return [
+    `/api/subscription`
+    ] as const;
+    }
+
+
+export const getGetSubscriptionQueryOptions = <TData = Awaited<ReturnType<typeof getSubscription>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubscription>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSubscriptionQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSubscription>>> = ({ signal }) => getSubscription({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSubscription>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSubscriptionQueryResult = NonNullable<Awaited<ReturnType<typeof getSubscription>>>
+export type GetSubscriptionQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get the current workspace plan and monthly usage
+ */
+
+export function useGetSubscription<TData = Awaited<ReturnType<typeof getSubscription>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSubscription>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSubscriptionQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -896,7 +975,7 @@ export const getPostWhatsAppPairingCodeUrl = () => {
 }
 
 /**
- * @summary Reuse or create a workspace Evolution instance and request a pairing code
+ * @summary Reuse or create a workspace Evolution instance and request phone-code or QR pairing
  */
 export const postWhatsAppPairingCode = async (whatsAppPairingCodeInput: WhatsAppPairingCodeInput, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppPairingCodeResponse> => {
 
@@ -962,7 +1041,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type PostWhatsAppPairingCodeMutationVariables = {data: BodyType<WhatsAppPairingCodeInput>}
 
     /**
- * @summary Reuse or create a workspace Evolution instance and request a pairing code
+ * @summary Reuse or create a workspace Evolution instance and request phone-code or QR pairing
  */
 export const usePostWhatsAppPairingCode = <TError = ErrorType<ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof postWhatsAppPairingCode>>, TError,PostWhatsAppPairingCodeMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1321,7 +1400,7 @@ export const getGetWhatsAppGroupsUrl = () => {
 }
 
 /**
- * @summary Fetch and verify WhatsApp groups for the owner's connected account
+ * @summary Fetch WhatsApp announcement groups for the owner's connected account
  */
 export const getWhatsAppGroups = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppGroupsResponse> => {
 
@@ -1368,7 +1447,7 @@ export type GetWhatsAppGroupsQueryError = ErrorType<ApiError>
 
 
 /**
- * @summary Fetch and verify WhatsApp groups for the owner's connected account
+ * @summary Fetch WhatsApp announcement groups for the owner's connected account
  */
 
 export function useGetWhatsAppGroups<TData = Awaited<ReturnType<typeof getWhatsAppGroups>>, TError = ErrorType<ApiError>>(
@@ -1475,7 +1554,7 @@ export const getSaveWhatsAppGroupSelectionsUrl = () => {
 }
 
 /**
- * @summary Save selections after revalidating send permissions with Evolution API
+ * @summary Save selected announcement group JIDs for the current WhatsApp instance
  */
 export const saveWhatsAppGroupSelections = async (whatsAppGroupSelectionsInput: WhatsAppGroupSelectionsInput, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppGroupSelectionsResponse> => {
 
@@ -1541,7 +1620,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SaveWhatsAppGroupSelectionsMutationVariables = {data: BodyType<WhatsAppGroupSelectionsInput>}
 
     /**
- * @summary Save selections after revalidating send permissions with Evolution API
+ * @summary Save selected announcement group JIDs for the current WhatsApp instance
  */
 export const useSaveWhatsAppGroupSelections = <TError = ErrorType<ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveWhatsAppGroupSelections>>, TError,SaveWhatsAppGroupSelectionsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -1554,20 +1633,27 @@ export const useSaveWhatsAppGroupSelections = <TError = ErrorType<ApiError>,
       return useMutation(getSaveWhatsAppGroupSelectionsMutationOptions(options));
     }
 
-export const getDeleteWhatsAppConnectionUrl = () => {
+export const getDeleteWhatsAppConnectionUrl = (params?: DeleteWhatsAppConnectionParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/social/whatsapp`
+  return stringifiedParams.length > 0 ? `/api/social/whatsapp?${stringifiedParams}` : `/api/social/whatsapp`
 }
 
 /**
- * @summary Disconnect WhatsApp account
+ * @summary Disconnect WhatsApp or cancel a pending pairing
  */
-export const deleteWhatsAppConnection = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppDisconnectResult> => {
+export const deleteWhatsAppConnection = async (params?: DeleteWhatsAppConnectionParams, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppDisconnectResult> => {
 
-  return customFetch<WhatsAppDisconnectResult>(getDeleteWhatsAppConnectionUrl(),
+  return customFetch<WhatsAppDisconnectResult>(getDeleteWhatsAppConnectionUrl(params),
   {
     ...options,
     method: 'DELETE'
@@ -1583,8 +1669,8 @@ export const deleteWhatsAppConnection = async ( options?: Parameters<typeof cust
 export const getDeleteWhatsAppConnectionMutationKey = () => ['deleteWhatsAppConnection'] as const;
 
 export const getDeleteWhatsAppConnectionMutationOptions = <TError = ErrorType<ApiError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, TError,DeleteWhatsAppConnectionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, TError,DeleteWhatsAppConnectionMutationVariables, TContext> => {
 
 const mutationKey = getDeleteWhatsAppConnectionMutationKey();
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -1596,10 +1682,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, DeleteWhatsAppConnectionMutationVariables> = (props) => {
+          const {params} = props ?? {};
 
-
-          return  deleteWhatsAppConnection(requestOptions)
+          return  deleteWhatsAppConnection(params,requestOptions)
         }
 
 
@@ -1612,17 +1698,17 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type DeleteWhatsAppConnectionMutationResult = NonNullable<Awaited<ReturnType<typeof deleteWhatsAppConnection>>>
 
     export type DeleteWhatsAppConnectionMutationError = ErrorType<ApiError>
-
+    export type DeleteWhatsAppConnectionMutationVariables = {params?: DeleteWhatsAppConnectionParams}
 
     /**
- * @summary Disconnect WhatsApp account
+ * @summary Disconnect WhatsApp or cancel a pending pairing
  */
 export const useDeleteWhatsAppConnection = <TError = ErrorType<ApiError>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteWhatsAppConnection>>, TError,DeleteWhatsAppConnectionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof deleteWhatsAppConnection>>,
         TError,
-        void,
+        DeleteWhatsAppConnectionMutationVariables,
         TContext
       > => {
       return useMutation(getDeleteWhatsAppConnectionMutationOptions(options));
@@ -1888,7 +1974,7 @@ export const getGetKnownPostIdsUrl = () => {
 /**
  * @summary Check cached post IDs in the active workspace
  */
-export const getKnownPostIds = async (getKnownPostIdsBody: GetKnownPostIdsBody, options?: Parameters<typeof customFetch>[1]): Promise<GetKnownPostIds200> => {
+export const getKnownPostIds = async (knownPostIdsInput: KnownPostIdsInput, options?: Parameters<typeof customFetch>[1]): Promise<GetKnownPostIds200> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -1909,7 +1995,7 @@ return customFetch<GetKnownPostIds200>(getGetKnownPostIdsUrl(),
     ...options,
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(getKnownPostIdsBody)
+    body: JSON.stringify(knownPostIdsInput)
   }
 );}
 
@@ -1947,9 +2033,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type GetKnownPostIdsMutationResult = NonNullable<Awaited<ReturnType<typeof getKnownPostIds>>>
-    export type GetKnownPostIdsMutationBody = BodyType<GetKnownPostIdsBody>
+    export type GetKnownPostIdsMutationBody = BodyType<KnownPostIdsInput>
     export type GetKnownPostIdsMutationError = ErrorType<ApiError>
-    export type GetKnownPostIdsMutationVariables = {data: BodyType<GetKnownPostIdsBody>}
+    export type GetKnownPostIdsMutationVariables = {data: BodyType<KnownPostIdsInput>}
 
     /**
  * @summary Check cached post IDs in the active workspace

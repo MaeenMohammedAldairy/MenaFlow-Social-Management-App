@@ -17,7 +17,9 @@ export default function MetaOAuthResultScreen() {
     reason?: string;
     detail?: string;
   }>();
-  const connected = status === 'facebook_connected';
+  const connected =
+    status === 'facebook_connected' || status === 'instagram_connected';
+  const connectedInstagram = status === 'instagram_connected';
 
   useEffect(() => {
     if (connected) {
@@ -47,20 +49,24 @@ export default function MetaOAuthResultScreen() {
           color={connected ? colors.primary : colors.mutedForeground}
         />
         <Text style={[styles.title, { color: colors.foreground }]}>
-          {connected ? 'اكتمل ربط الحساب' : 'لم يكتمل ربط الحساب'}
+          {connected
+            ? connectedInstagram
+              ? 'اكتمل ربط Instagram'
+              : 'اكتمل ربط Facebook'
+            : 'لم يكتمل ربط الحساب'}
         </Text>
         <Text style={[styles.body, { color: colors.mutedForeground }]}>
           {connected
-            ? detail || 'يمكنك العودة إلى مصادر المحتوى لمراجعة حالة حساباتك.'
+            ? detail || 'يمكنك العودة إلى حساباتك لمراجعة حالة الاتصال.'
             : metaOAuthErrorMessage(reason, detail)}
         </Text>
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.replace('/(tabs)/sources')}
+          onPress={() => router.replace('/connect-accounts')}
           style={[styles.button, { backgroundColor: colors.primary }]}
         >
           <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
-            العودة إلى مصادر المحتوى
+            العودة إلى حسابات التواصل
           </Text>
         </Pressable>
       </Panel>
@@ -71,7 +77,7 @@ export default function MetaOAuthResultScreen() {
 const styles = StyleSheet.create({
   panel: { alignItems: 'center', gap: 14, marginTop: 36 },
   title: { fontSize: 19, fontWeight: '800', textAlign: 'center' },
-  body: { fontSize: 13, lineHeight: 20, textAlign: 'center' },
+  body: { alignSelf: 'stretch', fontSize: 13, lineHeight: 20, textAlign: 'left' },
   button: { borderRadius: 15, paddingVertical: 12, paddingHorizontal: 20 },
   buttonText: { fontSize: 13, fontWeight: '800' },
 });

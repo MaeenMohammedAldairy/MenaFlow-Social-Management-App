@@ -75,15 +75,27 @@ function AuthenticatedOnboarding() {
     mutationFn: (action: OnboardingAction) => saveOnboardingProgress(action),
     onSuccess: (next: OnboardingStatus) => {
       queryClient.setQueryData(queryKey, next);
-      if (next.completed) router.replace("/(tabs)/sources");
     },
   });
   const compact = height < 760 || width < 380;
   const slide = status.data?.currentStep ?? 0;
   const currentSlide = slides[Math.min(slide, slides.length - 1)];
+  const slideNumber = ["١", "٢", "٣"][Math.min(slide, slides.length - 1)];
   const background = colors.background;
-  const submitProgress = (action: OnboardingAction) => {
-    if (!progress.isPending) progress.mutate(action);
+  const completed = status.data?.completed === true;
+  const continueToWorkspace = (socialSetupComplete: boolean) => {
+    router.replace(
+      socialSetupComplete ? "/(tabs)" : "/connect-accounts",
+    );
+  };
+  const submitProgress = async (action: OnboardingAction) => {
+    if (progress.isPending) return;
+    try {
+      const next = await progress.mutateAsync(action);
+      if (next.completed) continueToWorkspace(next.socialAccountsCompleted);
+    } catch {
+      // The mutation state exposes a localized retry message below.
+    }
   };
 
   if (!isLoaded) return <LoadingScreen />;
@@ -93,19 +105,29 @@ function AuthenticatedOnboarding() {
     return (
       <MessageScreen
         title="تعذر تحميل الإعداد الأولي"
-        description="لم نتمكن من استعادة تقدمك. تحقق من اتصال الإنترنت ثم أعد المحاولة."
+        description="تعذّر الاتصال بخادم التطبيق لاستعادة تقدمك. تأكد من تشغيل خادم API واتصالك بالشبكة، ثم أعد المحاولة."
         actionLabel="إعادة المحاولة"
         onPress={() => void status.refetch()}
         busy={status.isFetching}
       />
     );
   }
-  if (status.data.completed) {
+  if (completed) {
     return (
-      <Redirect
-        href={
-          status.data.socialAccountsCompleted ? "/(tabs)" : "/(tabs)/sources"
+      <MessageScreen
+        title="اكتمل الإعداد الأولي"
+        description={
+          status.data.socialAccountsCompleted
+            ? "أصبحت مساحة العمل جاهزة. انتقل إلى لوحة التحكم للبدء."
+            : "خطوة أخيرة: اربط حساباتك الاجتماعية لإكمال إعداد مساحة العمل."
         }
+        actionLabel={
+          status.data.socialAccountsCompleted
+            ? "الانتقال إلى لوحة التحكم"
+            : "ربط الحسابات الاجتماعية"
+        }
+        onPress={() => continueToWorkspace(status.data.socialAccountsCompleted)}
+        busy={false}
       />
     );
   }
@@ -116,8 +138,22 @@ function AuthenticatedOnboarding() {
 
   return (
     <View style={[styles.root, { backgroundColor: background }]}>
-      <View pointerEvents="none" style={[styles.glow, styles.glowTop]} />
-      <View pointerEvents="none" style={[styles.glow, styles.glowBottom]} />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.glow,
+          styles.glowTop,
+          { backgroundColor: colors.accent },
+        ]}
+      />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.glow,
+          styles.glowBottom,
+          { backgroundColor: colors.greenSoft },
+        ]}
+      />
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
@@ -136,58 +172,39 @@ function AuthenticatedOnboarding() {
             {
               backgroundColor: colors.card,
               borderColor: colors.border,
-              minHeight: compact ? 640 : 680,
+              minHeight: compact ? 620 : 660,
             },
           ]}
         >
-          <View style={styles.statusBar}>
-            <Text style={[styles.statusTime, { color: colors.foreground }]}>
-              9:41
-            </Text>
-            <View style={styles.statusMarks}>
-              <View
-                style={[
-                  styles.signalMark,
-                  { backgroundColor: colors.foreground },
-                ]}
-              />
-              <View
-                style={[
-                  styles.signalMark,
-                  styles.signalMarkMedium,
-                  { backgroundColor: colors.foreground },
-                ]}
-              />
-              <View
-                style={[
-                  styles.signalMark,
-                  styles.signalMarkSmall,
-                  { backgroundColor: colors.foreground },
-                ]}
-              />
-              <View
-                style={[styles.battery, { borderColor: colors.foreground }]}
-              >
-                <View
-                  style={[
-                    styles.batteryFill,
-                    { backgroundColor: colors.foreground },
-                  ]}
-                />
-              </View>
-            </View>
-          </View>
-
           <View style={styles.brand}>
-            <Image
-              source={require("../assets/images/icon.png")}
-              style={styles.logo}
-              resizeMode="contain"
-              accessibilityLabel="شعار MenaFlow"
-            />
-            <Text style={[styles.brandName, { color: colors.foreground }]}>
-              MenaFlow
-            </Text>
+            <View style={styles.brandIdentity}>
+              <Image
+                source={require("../assets/images/icon.png")}
+                style={styles.logo}
+                resizeMode="contain"
+                accessibilityLabel="شعار MenaFlow"
+              />
+              <Text style={[styles.brandName, { color: colors.foreground }]}>
+                MenaFlow
+              </Text>
+            </View>
+            <View
+              style={[
+                styles.stepBadge,
+                { backgroundColor: colors.accent, borderColor: colors.border },
+              ]}
+              accessibilityLabel={`الشريحة ${slide + 1} من ${slides.length}`}
+            >
+              <Text style={[styles.stepNumber, { color: colors.primary }]}>
+                {slideNumber}
+              </Text>
+              <View
+                style={[styles.stepDivider, { backgroundColor: colors.border }]}
+              />
+              <Text style={[styles.stepTotal, { color: colors.mutedForeground }]}>
+                ٣
+              </Text>
+            </View>
           </View>
 
           <SlideArtwork kind={currentSlide.artwork} />
@@ -320,7 +337,10 @@ function SlideArtwork({ kind }: { kind: (typeof slides)[number]["artwork"] }) {
             : "معاينة منشور وحسابات اجتماعية متصلة"
       }
       accessible
-      style={styles.artwork}
+      style={[
+        styles.artwork,
+        { backgroundColor: colors.secondary, borderColor: colors.border },
+      ]}
     >
       <View style={[styles.artHalo, { backgroundColor: colors.accent }]} />
       <View style={[styles.artOrbit, { borderColor: colors.border }]} />
@@ -524,7 +544,10 @@ function DashboardCard() {
 function RobotIllustration() {
   const colors = useColors();
   return (
-    <LinearGradient colors={["#E5FFF6", "#BDF6E4"]} style={styles.robotHalo}>
+    <LinearGradient
+      colors={[colors.accent, colors.greenSoft]}
+      style={styles.robotHalo}
+    >
       <View style={[styles.robotEar, styles.robotEarLeft]} />
       <View style={[styles.robotEar, styles.robotEarRight]} />
       <View style={styles.robotHead}>
@@ -606,7 +629,6 @@ const styles = StyleSheet.create({
     width: 350,
     height: 350,
     borderRadius: 175,
-    backgroundColor: "#E1F7F8",
   },
   glowTop: { top: -235, left: -130 },
   glowBottom: { bottom: -250, right: -125 },
@@ -633,31 +655,31 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 5,
   },
-  statusBar: {
+  brand: {
     width: "100%",
-    height: 22,
+    minHeight: 48,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 2,
+    justifyContent: "space-between",
+    marginTop: 2,
   },
-  statusTime: { fontSize: 12, fontWeight: "900" },
-  statusMarks: { flexDirection: "row", alignItems: "center", gap: 2 },
-  signalMark: { width: 3, height: 6, borderRadius: 2 },
-  signalMarkMedium: { height: 8 },
-  signalMarkSmall: { height: 10 },
-  battery: {
-    width: 19,
-    height: 9,
-    borderRadius: 3,
+  brandIdentity: { flexDirection: "row", alignItems: "center", gap: 7 },
+  logo: { width: 43, height: 38 },
+  brandName: { fontSize: 18, fontWeight: "900" },
+  stepBadge: {
+    minWidth: 58,
+    height: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    borderRadius: 16,
     borderWidth: 1,
-    marginLeft: 4,
-    padding: 1,
   },
-  batteryFill: { flex: 1, borderRadius: 2 },
-  brand: { alignItems: "center", marginTop: 2 },
-  logo: { width: 60, height: 48 },
-  brandName: { fontSize: 20, fontWeight: "900", marginTop: -4 },
+  stepNumber: { fontSize: 12, fontWeight: "900" },
+  stepDivider: { width: 1, height: 13 },
+  stepTotal: { fontSize: 11, fontWeight: "700" },
   artwork: {
     width: "100%",
     minHeight: 245,
@@ -665,6 +687,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginTop: 5,
+    borderRadius: 26,
+    borderWidth: 1,
+    overflow: "hidden",
   },
   artHalo: {
     position: "absolute",
@@ -877,7 +902,7 @@ const styles = StyleSheet.create({
     height: 83,
     borderRadius: 13,
     overflow: "hidden",
-    alignItems: "flex-end",
+    alignItems: "flex-start",
     justifyContent: "flex-start",
     padding: 9,
   },
@@ -931,7 +956,13 @@ const styles = StyleSheet.create({
   phoneFacebook: { top: 44, left: 3 },
   phoneInstagram: { top: 6, right: 28 },
   phoneWhatsapp: { bottom: 20, right: 7 },
-  copy: { width: "100%", alignItems: "center", gap: 7, paddingHorizontal: 2 },
+  copy: {
+    width: "100%",
+    alignItems: "center",
+    gap: 7,
+    paddingHorizontal: 8,
+    paddingTop: 3,
+  },
   title: {
     fontSize: 21,
     lineHeight: 31,
@@ -939,6 +970,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   description: {
+    alignSelf: "stretch",
     fontSize: 12,
     lineHeight: 20,
     textAlign: "center",
@@ -953,7 +985,7 @@ const styles = StyleSheet.create({
   },
   dot: { width: 9, height: 9, borderRadius: 5 },
   activeDot: { width: 11, height: 11 },
-  error: { fontSize: 12, lineHeight: 19, textAlign: "center", marginBottom: 8 },
+  error: { fontSize: 12, lineHeight: 19, textAlign: "left", marginBottom: 8 },
   primaryButton: {
     width: "100%",
     minHeight: 48,
@@ -998,5 +1030,5 @@ const styles = StyleSheet.create({
     gap: 15,
   },
   messageTitle: { fontSize: 21, fontWeight: "900", textAlign: "center" },
-  messageDescription: { fontSize: 13, lineHeight: 21, textAlign: "center" },
+  messageDescription: { fontSize: 13, lineHeight: 21, textAlign: "left" },
 });

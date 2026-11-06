@@ -7,11 +7,15 @@
  */
 import type { WhatsAppPairingCodeResponseState } from './whatsAppPairingCodeResponseState';
 
+/**
+ * At least one of pairingCode or qrCodeBase64 is returned.
+ */
 export interface WhatsAppPairingCodeResponse {
   instanceName: string;
   phoneNumber: string;
-  pairingCode: string;
-  /** Optional QR image returned by Evolution for scanning when phone-number pairing is rejected. */
+  /** Optional phone-number pairing code. */
+  pairingCode?: string;
+  /** Optional QR image returned by Evolution for scanning when phone-number pairing is unavailable. */
   qrCodeBase64?: string;
   state: WhatsAppPairingCodeResponseState;
 }

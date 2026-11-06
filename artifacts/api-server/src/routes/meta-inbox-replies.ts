@@ -1,12 +1,22 @@
 import { and, eq } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
-import { db, menaMetaConnections, menaMetaInboxItems } from "@workspace/db";
+import {
+  db,
+  menaMetaAutoReplyJobs,
+  menaMetaConnections,
+  menaMetaInboxItems,
+} from "@workspace/db";
 import {
   metaPageAccessToken,
   MetaInboxGraphError,
   sendMetaInboxReply,
 } from "../lib/meta-inbox-graph";
-import { menaMetaAutoReplyJobs } from "@workspace/db";
+import {
+  confirmMetaInboxReplyNotSent,
+  completeMetaInboxReply,
+  releaseMetaInboxReplyReservation,
+  reserveMetaInboxReply,
+} from "../lib/meta-inbox-reply-reservation";
 import { metaString } from "../lib/meta-inbox-utils";
 import { requestOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
@@ -17,7 +27,7 @@ import {
 
 const router = Router();
 
-async function reserveManualReply(
+async function reserveManualAutoReply(
   workspaceId: string,
   itemId: string,
 ): Promise<boolean> {
@@ -221,10 +231,39 @@ router.post(
         );
     }
 
-    if (!(await reserveManualReply(workspaceId, item.id))) {
+    if (!(await reserveManualAutoReply(workspaceId, item.id))) {
       res.status(409).json({
         error: "يجري تجهيز رد آلي لهذه الرسالة. انتظر لحظات ثم حدّث الوارد.",
         code: "META_AUTO_REPLY_IN_PROGRESS",
+      });
+      return;
+    }
+
+    const reservation = await reserveMetaInboxReply(workspaceId, item.id);
+    if (reservation !== "reserved") {
+      if (reservation === "unknown") {
+        await markAutomaticReplyUnknown(workspaceId, item.id);
+      }
+      if (reservation === "missing") {
+        res
+          .status(404)
+          .json({ error: "لم يتم العثور على الرسالة أو التعليق." });
+        return;
+      }
+      const error =
+        reservation === "unknown"
+          ? "نتيجة محاولة الرد السابقة غير مؤكدة. تحقق من المحادثة قبل محاولة أخرى."
+          : reservation === "in_progress"
+            ? "يجري إرسال رد لهذه الرسالة أو التعليق. انتظر لحظات ثم حدّث الوارد."
+            : "تم الرد على هذه الرسالة أو التعليق بالفعل.";
+      res.status(409).json({
+        error,
+        code:
+          reservation === "unknown"
+            ? "META_SEND_RESULT_UNKNOWN"
+            : reservation === "in_progress"
+              ? "META_REPLY_IN_PROGRESS"
+              : "META_ITEM_ALREADY_REPLIED",
       });
       return;
     }
@@ -245,15 +284,21 @@ router.post(
       const replyExternalId =
         metaString(result.message_id) ?? metaString(result.id) ?? null;
       const repliedAt = new Date();
-      await db
-        .update(menaMetaInboxItems)
-        .set({ replyText: text, replyExternalId, repliedAt })
-        .where(
-          and(
-            eq(menaMetaInboxItems.id, item.id),
-            eq(menaMetaInboxItems.workspaceId, workspaceId),
-          ),
-        );
+      const saved = await completeMetaInboxReply(workspaceId, item.id, {
+        text,
+        externalId: replyExternalId,
+        repliedAt,
+      });
+      if (!saved) {
+        await releaseMetaInboxReplyReservation(workspaceId, item.id, "unknown");
+        await markAutomaticReplyUnknown(workspaceId, item.id);
+        res.status(502).json({
+          error:
+            "أرسلت Meta الرد، لكن تعذر حفظه محليًا. تحقق من المحادثة قبل إعادة المحاولة.",
+          code: "META_SEND_RESULT_UNKNOWN",
+        });
+        return;
+      }
       res.json({
         sent: true,
         itemId: item.id,
@@ -266,11 +311,32 @@ router.post(
         manualSendAccepted ||
         (error instanceof MetaInboxGraphError &&
           (error.networkFailure ||
-            (error.status !== undefined && error.status >= 500)));
+            error.status === undefined ||
+            error.status >= 500 ||
+            (error.status >= 200 &&
+              error.status < 300 &&
+              error.code === undefined)));
+      await releaseMetaInboxReplyReservation(
+        workspaceId,
+        item.id,
+        ambiguousSend ? "unknown" : "available",
+      );
       if (ambiguousSend) {
         await markAutomaticReplyUnknown(workspaceId, item.id);
       } else {
         await restoreAutomaticReply(workspaceId, item.id);
+      }
+      if (manualSendAccepted) {
+        console.warn("Meta inbox reply accepted but local save failed:", {
+          platform: item.platform,
+          kind: item.kind,
+        });
+        res.status(502).json({
+          error:
+            "أرسلت Meta الرد، لكن تعذر حفظه محليًا. تحقق من المحادثة قبل إعادة المحاولة.",
+          code: "META_SEND_RESULT_UNKNOWN",
+        });
+        return;
       }
       if (error instanceof MetaInboxGraphError) {
         console.warn("Meta inbox reply failed:", {
@@ -282,7 +348,11 @@ router.post(
         });
         const resultUnknown =
           error.networkFailure ||
-          (error.status !== undefined && error.status >= 500);
+          error.status === undefined ||
+          error.status >= 500 ||
+          (error.status >= 200 &&
+            error.status < 300 &&
+            error.code === undefined);
         res.status(resultUnknown ? 502 : 422).json({
           error: resultUnknown
             ? "نتيجة إرسال الرد غير مؤكدة. حدّث الوارد وتحقق من حالة الرد قبل المحاولة مجددًا."
@@ -296,6 +366,35 @@ router.post(
       }
       throw error;
     }
+  },
+);
+
+router.post(
+  "/social/meta-inbox/items/:id/retry-confirmation",
+  requireWorkspace,
+  async (req: Request, res: Response) => {
+    const ownerId = requestOwnerId(req);
+    const workspaceId = requestWorkspaceId(req);
+    if (!ownerId) {
+      res.status(401).json({ error: "سجّل الدخول أولاً." });
+      return;
+    }
+    const itemId = metaString(req.params.id);
+    if (!itemId) {
+      res.status(400).json({ error: "معرّف الرسالة أو التعليق غير صالح." });
+      return;
+    }
+
+    const cleared = await confirmMetaInboxReplyNotSent(workspaceId, itemId);
+    if (!cleared) {
+      res.status(409).json({
+        error:
+          "لا توجد محاولة غير مؤكدة لهذا العنصر، أو أنه تم الرد عليه بالفعل.",
+        code: "META_REPLY_NOT_UNKNOWN",
+      });
+      return;
+    }
+    res.json({ cleared: true });
   },
 );
 

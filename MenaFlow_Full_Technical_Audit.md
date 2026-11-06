@@ -37,10 +37,10 @@ MenaFlow في حالته الحالية عبارة عن تطبيق جوّال/م
 | Meta | Facebook Graph API وOAuth مركزي يربط صفحة Facebook وحساب Instagram الاحترافي المرتبط بها. |
 | WhatsApp | Evolution API، وليس WhatsApp Business Platform Cloud API الرسمية. يتم استيراد الرسائل/المجموعات عبر مزامنة وWebhook. |
 | تخزين الوسائط | نظام ملفات محلي تحت `artifacts/api-server/storage/whatsapp` مع بيانات وصفية في PostgreSQL؛ لا يظهر مخزن كائنات دائم مستقل. |
-| التشغيل | workspace بـ pnpm. API منفصل عن تطبيق Expo. وثائق `replit.md` توضح إعدادات مقصودة، لكن ملفات `.replit` و`.replitignore` محذوفة في نسخة العمل الحالية. |
+| التشغيل | workspace بـ pnpm. API منفصل عن تطبيق Expo. إعدادات التشغيل والتوزيع موثقة في ملفات المشروع. |
 | الاختبارات | اختبارات Node للمكتبات المساعدة؛ لا توجد ضمن السكربتات المعلنة اختبارات API/DB متكاملة أو اختبارات واجهة آلية. |
 
-**إصدارات الأساس كما تعلنها ملفات المشروع:** Node.js 24 في `replit.md`، TypeScript 5.9 في الجذر/الخادم و6.0.3 لتطبيق Expo، Express 5، Expo SDK 57، React 19.2.3، React Native 0.86.3، PostgreSQL/Drizzle. إصدار Node المتاح أثناء التدقيق كان `v22.13.0`، لا الإصدار الموصى به في الوثائق.
+**إصدارات الأساس كما تعلنها ملفات المشروع:** Node.js 24 في وثائق النشر، TypeScript 5.9 في الجذر/الخادم و6.0.3 لتطبيق Expo، Express 5، Expo SDK 57، React 19.2.3، React Native 0.86.3، PostgreSQL/Drizzle. إصدار Node المتاح أثناء التدقيق كان `v22.13.0`، لا الإصدار الموصى به في الوثائق.
 
 ## 3. خريطة معمارية مبسطة
 
@@ -141,7 +141,7 @@ Drizzle يعرف جداول `mena_posts`, `mena_content_settings`, `mena_content
 
 ## 11. تحليل Instagram
 
-الربط ليس OAuth مستقلًا: يبحث التطبيق عن `instagram_business_account` ضمن صفحة Facebook ويحفظ معرف الحساب والاسم. النشر يستخدم Graph API لإنشاء container، ينتظر حالته، ثم يستدعي `media_publish`، ويدعم صور JPEG وفيديو MP4 وألبومات ضمن الحدود التي يطبقها الكود. لوسائط WhatsApp يستخدم روابط موقعة تتطلب أصل HTTPS عام، مع fallback domains موثق في `replit.md` وأداة tunnel محلية مؤقتة للتطوير.
+الربط ليس OAuth مستقلًا: يبحث التطبيق عن `instagram_business_account` ضمن صفحة Facebook ويحفظ معرف الحساب والاسم. النشر يستخدم Graph API لإنشاء container، ينتظر حالته، ثم يستدعي `media_publish`، ويدعم صور JPEG وفيديو MP4 وألبومات ضمن الحدود التي يطبقها الكود. لوسائط WhatsApp يستخدم روابط موقعة تتطلب أصل HTTPS عام، مع نطاق عام مضبوط صراحة أو أداة tunnel محلية مؤقتة للتطوير.
 
 **فجوة واضحة:** قائمة OAuth في `routes/meta.ts` لا تتضمن `instagram_content_publish`، مع أن التنفيذ يستدعي نشر محتوى Instagram. يلزم طلبها ومراجعة صلاحيات التطبيق/النوع والحساب لدى Meta قبل ادعاء توفر النشر (BUG-002). لا يوجد اتصال نشر تجريبي في هذا التدقيق.
 
@@ -210,7 +210,7 @@ Drizzle يعرف جداول `mena_posts`, `mena_content_settings`, `mena_content
 - `.env.example` يسرد أسماء متغيرات DB/Clerk/Meta/Evolution/AI/media؛ **حالة ضبط قيم التشغيل الفعلية تعذر التحقق منها**. وجود الأسماء في المثال ليس دليلًا على تهيئة الخدمة.
 - وثائق التشغيل تحدد `MENA_PUBLIC_MEDIA_BASE_URL` أو domain عام وروابط HTTPS لتتمكن Meta من جلب وسائط Instagram؛ وتوثق tunnel مؤقتًا للتطوير. لم أختبر أي عنوان أو خدمة.
 - تخزين الوسائط محلي تحت مجلد المشروع؛ استمراريته عبر إعادة النشر/تعدد نسخ الخادم غير مثبتة. لا يوجد إعداد تخزين دائم/سحابي ظاهر.
-- لا توجد في الحالة الحالية ملفات Docker أو Compose أو GitHub Actions أو ملفات `.replit`؛ ملفا `.replit` و`.replitignore` ظاهران كحذف في حالة Git. `replit.md` وثيقة تشغيل فقط ولا تكفي لإثبات نشر قائم.
+- لا توجد في الحالة الحالية ملفات Docker أو Compose أو GitHub Actions أو إعدادات نشر مخصصة.
 - التسجيل عبر Pino موجود؛ لا يظهر تكامل مراقبة أخطاء/تنبيهات أو لوحة تشغيل.
 
 ## 19. خريطة المشكلات والأولويات
@@ -276,7 +276,7 @@ Drizzle يعرف جداول `mena_posts`, `mena_content_settings`, `mena_content
 ## 24. الملفات المهمة وأدوارها
 
 - `package.json`, `pnpm-workspace.yaml`: أوامر workspace والاختبارات والبناء.
-- `replit.md`, `.env.example`: وثائق التشغيل وأسماء متغيرات البيئة المثال؛ لا تحتوي هذه المراجعة على قيم تشغيل فعلية.
+- `.env.example`: أسماء متغيرات البيئة المثال؛ لا تحتوي هذه المراجعة على قيم تشغيل فعلية.
 - `artifacts/menaflow-mobile/app`: المسارات والشاشات؛ `context/StudioContext.tsx` حالة المحتوى/التزامن.
 - `artifacts/api-server/src/app.ts`, `src/index.ts`: middleware وتشغيل HTTP وpolling queue.
 - `artifacts/api-server/src/routes`: API للمصادقة والوصول وMeta وWhatsApp والمنشورات وAI والتفاصيل.

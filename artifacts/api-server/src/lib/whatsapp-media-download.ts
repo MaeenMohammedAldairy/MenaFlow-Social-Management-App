@@ -35,6 +35,8 @@ import {
   storeMediaObject,
   thumbnailObjectPath,
 } from "./whatsapp-media-storage";
+import { requeueWhatsAppProductMessage } from "./whatsapp-product-extraction";
+import { asRecord } from "./value-utils.ts";
 
 const MEDIA_ROOT = resolveWhatsAppMediaStorageRoot();
 const MAX_DOWNLOAD_ATTEMPTS = 5;
@@ -63,12 +65,6 @@ function sourceMediaHash(value: string | null): string | null {
   if (!/^[a-z0-9+/_-]+={0,2}$/i.test(normalized)) return null;
   const bytes = Buffer.from(normalized.replace(/-/g, "+").replace(/_/g, "/"), "base64");
   return bytes.length === 32 ? bytes.toString("hex") : null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
 }
 
 function mediaBuffer(payload: Record<string, unknown>): Buffer | null {
@@ -246,6 +242,7 @@ async function storeMedia(
     existing.downloadStatus === "stored" &&
     await hasUsableFile(existing.storagePath, existing.storageProvider)
   ) {
+    await requeueWhatsAppProductMessage(message.workspaceId, message.id);
     return "stored";
   }
 
@@ -326,6 +323,7 @@ async function storeMedia(
             updatedAt: new Date(),
           })
           .where(identity);
+        await requeueWhatsAppProductMessage(message.workspaceId, message.id);
         return "stored";
       }
     }
@@ -398,6 +396,7 @@ async function storeMedia(
       .where(identity)
       .returning({ id: menaWhatsAppMessageMedia.id });
     if (!stored) throw new Error("MEDIA_STORAGE_CONFLICT_WORKSPACE_MISMATCH");
+    await requeueWhatsAppProductMessage(message.workspaceId, message.id);
     console.info("WhatsApp media stored", {
       messageId: message.id,
       mediaIndex,

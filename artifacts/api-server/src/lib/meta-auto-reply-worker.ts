@@ -5,7 +5,7 @@ import {
   desc,
   eq,
   inArray,
-  isNull,
+  isNotNull,
   lt,
   lte,
   or,
@@ -17,33 +17,52 @@ import {
   menaMetaAutoReplySettings,
   menaMetaConnections,
   menaMetaInboxItems,
+  productPosts,
+  products,
   menaWhatsAppMessageMedia,
   posts,
 } from "@workspace/db";
 import {
-  analyzeMetaAutoReplyImages,
   generateMetaAutoReply,
-  matchMetaAutoReplyImageToPosts,
+  matchMetaAutoReplyProduct,
   metaPostSearchTerms,
   metaAutoReplyEnabled,
+  metaBusinessInfoRequested,
+  metaPostSearchText,
   requestedMetaProductImages,
+  formatMetaAutoReplyPrice,
   retryMetaAutoReplyGeneration,
+  buildMetaAutoReplyConversationContext,
+  hasPreviousMetaAutoReplyInteraction,
+  type MetaAutoReplyConversationEvent,
 } from "./meta-auto-reply";
 import { signedWhatsAppMediaUrl } from "./meta-publishing";
+import { workspaceMediaKey } from "./product-utils.ts";
 import {
   getMetaPublishedPosts,
   metaPageAccessToken,
   MetaInboxGraphError,
-  type MetaPublishedPost,
+  getMetaPageBusinessInfo,
   sendMetaInboxReply,
 } from "./meta-inbox-graph";
-import { missingMetaIntegrationPermissions } from "./meta-oauth";
+import {
+  metaAutoReplyPermission,
+  missingMetaIntegrationPermissions,
+} from "./meta-oauth";
 import { logger } from "./logger";
+import {
+  completeMetaInboxReply,
+  releaseMetaInboxReplyReservation,
+  reserveMetaInboxReply,
+} from "./meta-inbox-reply-reservation";
 
 const leaseMs = 90_000;
 const maxAttempts = 3;
 const messageReplyWindowMs = 24 * 60 * 60 * 1000;
-const maxImageBytes = 5 * 1024 * 1024;
+// Meta allows replying to a comment only within a limited time after it was
+// created; attempting to reply later returns an error, so skip stale comments
+// instead of burning AI calls and send attempts that can never succeed.
+const commentReplyWindowMs = 24 * 60 * 60 * 1000;
 let processing = false;
 
 function isMetaCdnUrl(url: URL): boolean {
@@ -60,90 +79,61 @@ function isMetaCdnUrl(url: URL): boolean {
   );
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
-async function downloadMetaImage(
-  value: unknown,
-): Promise<{ mimeType: string; buffer: Buffer } | null> {
-  if (typeof value !== "string") return null;
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    return null;
-  }
-  if (!isMetaCdnUrl(url)) return null;
-
-  const response = await fetch(url, {
-    redirect: "error",
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) return null;
-  const mimeType = response.headers
-    .get("content-type")
-    ?.split(";")[0]
-    ?.trim()
-    .toLowerCase();
-  if (
-    !mimeType ||
-    !["image/jpeg", "image/png", "image/webp"].includes(mimeType)
-  ) {
-    return null;
-  }
-  const length = Number(response.headers.get("content-length") ?? 0);
-  if (length > maxImageBytes || !response.body) return null;
-
-  const reader = response.body.getReader();
-  const chunks: Buffer[] = [];
-  let total = 0;
-  while (true) {
-    const { done, value: chunk } = await reader.read();
-    if (done) break;
-    total += chunk.byteLength;
-    if (total > maxImageBytes) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(Buffer.from(chunk));
-  }
-  return total > 0 ? { mimeType, buffer: Buffer.concat(chunks) } : null;
-}
-
-async function incomingImages(
-  item: typeof menaMetaInboxItems.$inferSelect,
-): Promise<Array<{ mimeType: string; buffer: Buffer }>> {
-  if (item.kind !== "message") return [];
-  const media = Array.isArray(item.metadata.media) ? item.metadata.media : [];
-  const imageUrls = media.flatMap((value) => {
-    const attachment = record(value);
-    return attachment?.type === "image" && typeof attachment.url === "string"
-      ? [attachment.url]
-      : [];
-  });
-  const images = [];
-  for (const url of imageUrls.slice(0, 2)) {
-    try {
-      const image = await downloadMetaImage(url);
-      if (image) images.push(image);
-    } catch (error) {
-      logger.warn(
-        {
-          platform: item.platform,
-          errorCode:
-            error instanceof Error ? error.name : "IMAGE_DOWNLOAD_FAILED",
-        },
-        "Unable to download Meta image for automatic reply analysis",
-      );
-    }
-  }
-  return images;
-}
-
 type RelevantPost = { title: string; body: string; mediaUrls: string[] };
+
+async function findRelevantCatalogProduct(
+  workspaceId: string,
+  item: typeof menaMetaInboxItems.$inferSelect,
+  conversationText: string,
+): Promise<typeof products.$inferSelect | null> {
+  if (item.kind === "comment" && item.parentId) {
+    const linkedProducts = await db
+      .select({ product: products })
+      .from(productPosts)
+      .innerJoin(
+        posts,
+        and(
+          eq(posts.workspaceId, productPosts.workspaceId),
+          eq(posts.id, productPosts.postId),
+        ),
+      )
+      .innerJoin(
+        products,
+        and(
+          eq(products.workspaceId, productPosts.workspaceId),
+          eq(products.id, productPosts.productId),
+        ),
+      )
+      .where(
+        and(
+          eq(productPosts.workspaceId, workspaceId),
+          sql`${posts.publishResults}->${item.platform}->>'postId' = ${item.parentId}`,
+          eq(products.status, "active"),
+          isNotNull(products.verifiedAt),
+        ),
+      )
+      .limit(50);
+    if (linkedProducts.length === 1) return linkedProducts[0]?.product ?? null;
+    return matchMetaAutoReplyProduct(
+      linkedProducts.map(({ product }) => product),
+      conversationText,
+    );
+  }
+  if (item.kind !== "message") return null;
+  const candidates = await db
+    .select()
+    .from(products)
+    .where(
+      and(
+        eq(products.workspaceId, workspaceId),
+        eq(products.status, "active"),
+        isNotNull(products.verifiedAt),
+      ),
+    )
+    .orderBy(desc(products.updatedAt))
+    .limit(500);
+  return matchMetaAutoReplyProduct(candidates, conversationText);
+}
 
 function rankRelevantPost(
   candidates: Array<{ title: string; body: string; mediaUrls: unknown }>,
@@ -234,7 +224,6 @@ async function findRelevantMetaPost(
   item: typeof menaMetaInboxItems.$inferSelect,
   accessToken: string,
   conversationText: string,
-  customerImage?: { mimeType: string; buffer: Buffer },
 ): Promise<RelevantPost | null> {
   const posts = await getMetaPublishedPosts({
     platform: item.platform,
@@ -252,46 +241,14 @@ async function findRelevantMetaPost(
       : null;
   }
   if (item.kind !== "message") return null;
-  const textMatch = rankRelevantPost(posts, conversationText);
-  if (textMatch || !customerImage) return textMatch;
-
-  const imageCandidates: Array<{
-    post: MetaPublishedPost;
-    image: { mimeType: string; buffer: Buffer };
-  }> = [];
-  for (const post of posts
-    .filter(({ mediaUrls }) => mediaUrls.length > 0)
-    .slice(0, 3)) {
-    let image: { mimeType: string; buffer: Buffer } | null = null;
-    try {
-      image = await downloadMetaImage(post.mediaUrls[0]);
-    } catch (error) {
-      logger.warn(
-        {
-          platform: item.platform,
-          errorCode:
-            error instanceof Error ? error.name : "IMAGE_DOWNLOAD_FAILED",
-        },
-        "Unable to download a published Meta post image for matching",
-      );
-    }
-    if (image) imageCandidates.push({ post, image });
-  }
-  const matchedIndex = await matchMetaAutoReplyImageToPosts(
-    customerImage,
-    imageCandidates.map(({ image }) => ({ image })),
-  );
-  const match =
-    matchedIndex === null ? null : imageCandidates[matchedIndex]?.post;
-  return match
-    ? { title: match.title, body: match.body, mediaUrls: match.mediaUrls }
-    : null;
+  return rankRelevantPost(posts, conversationText);
 }
 
 async function publishedPostImageUrls(
   workspaceId: string,
   mediaUrls: string[],
 ): Promise<string[]> {
+  const mediaKey = workspaceMediaKey(workspaceId);
   const directUrls = mediaUrls.filter((value) => {
     try {
       const url = new URL(value);
@@ -301,6 +258,33 @@ async function publishedPostImageUrls(
       );
     } catch {
       return false;
+    }
+  });
+  const productMediaIds = mediaUrls.filter((value) => {
+    const match =
+      /^product-media-image-([a-f0-9]{16})-[a-f0-9-]{36}-(?:jpg|png|webp|heic|heif)$/.exec(
+        value,
+      );
+    return match?.[1] === mediaKey;
+  });
+  const productImages = productMediaIds.flatMap((mediaId) => {
+    try {
+      const url = new URL(
+        signedWhatsAppMediaUrl(mediaId, true, "thumbnail"),
+      );
+      url.pathname = `/api/social/products/public-media/${encodeURIComponent(mediaId)}`;
+      return [url.toString()];
+    } catch (error) {
+      logger.warn(
+        {
+          workspaceId,
+          mediaId,
+          errorCode:
+            error instanceof Error ? error.message : "MEDIA_URL_UNAVAILABLE",
+        },
+        "Unable to create product image URL for Meta reply",
+      );
+      return [];
     }
   });
   const mediaIds = mediaUrls.filter((value) => !/^https?:\/\//i.test(value));
@@ -342,7 +326,10 @@ async function publishedPostImageUrls(
         return [];
       }
     });
-  return [...new Set([...directUrls, ...localImages])].slice(0, 3);
+  return [...new Set([...directUrls, ...productImages, ...localImages])].slice(
+    0,
+    3,
+  );
 }
 
 function accountContactInfo(
@@ -357,20 +344,6 @@ function accountContactInfo(
     return `حساب Instagram @${username}: https://www.instagram.com/${encodeURIComponent(username)}/`;
   }
   return "يمكن التواصل عبر الرسائل الخاصة لحساب Instagram المرتبط.";
-}
-
-function permissionFor(
-  platform: "facebook" | "instagram",
-  kind: "message" | "comment",
-): string {
-  if (kind === "message") {
-    return platform === "facebook"
-      ? "pages_messaging"
-      : "instagram_manage_messages";
-  }
-  return platform === "facebook"
-    ? "pages_manage_engagement"
-    : "instagram_manage_comments";
 }
 
 async function markJob(
@@ -399,6 +372,18 @@ async function markJob(
 
 async function claimNextJob() {
   const now = new Date();
+  await db
+    .update(menaMetaInboxItems)
+    .set({ replyStatus: "unknown", replyAttemptStartedAt: null })
+    .where(
+      and(
+        eq(menaMetaInboxItems.replyStatus, "sending"),
+        lt(
+          menaMetaInboxItems.replyAttemptStartedAt,
+          new Date(now.getTime() - leaseMs),
+        ),
+      ),
+    );
   await db
     .update(menaMetaAutoReplyJobs)
     .set({
@@ -529,14 +514,16 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
     return;
   }
   if (
-    item.kind === "message" &&
-    Date.now() - item.occurredAt.getTime() > messageReplyWindowMs
+    Date.now() - item.occurredAt.getTime() >
+    (item.kind === "message" ? messageReplyWindowMs : commentReplyWindowMs)
   ) {
     await markJob(
       job.id,
       job.workspaceId,
       "skipped",
-      "META_MESSAGE_WINDOW_EXPIRED",
+      item.kind === "message"
+        ? "META_MESSAGE_WINDOW_EXPIRED"
+        : "META_COMMENT_WINDOW_EXPIRED",
     );
     return;
   }
@@ -549,7 +536,7 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
     await markJob(job.id, job.workspaceId, "skipped", "AUTOMATION_DISABLED");
     return;
   }
-  const permission = permissionFor(item.platform, item.kind);
+  const permission = metaAutoReplyPermission(item.platform, item.kind);
   const missing = missingMetaIntegrationPermissions(
     item.platform,
     connection.grantedPermissions,
@@ -604,52 +591,87 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
     }
     contextConditions.push(eq(menaMetaInboxItems.actorId, item.actorId));
   }
-  const [previousCustomerMessage] =
-    item.kind === "message"
-      ? await db
-          .select({ id: menaMetaInboxItems.id })
-          .from(menaMetaInboxItems)
-          .where(
-            and(
-              ...contextConditions,
-              eq(menaMetaInboxItems.kind, item.kind),
-              lt(menaMetaInboxItems.occurredAt, item.occurredAt),
-            ),
-          )
-          .limit(1)
-      : [undefined];
+  const eventBeforeCurrent = or(
+    lt(menaMetaInboxItems.occurredAt, item.occurredAt),
+    and(
+      eq(menaMetaInboxItems.occurredAt, item.occurredAt),
+      lt(menaMetaInboxItems.createdAt, item.createdAt),
+    ),
+    and(
+      eq(menaMetaInboxItems.occurredAt, item.occurredAt),
+      eq(menaMetaInboxItems.createdAt, item.createdAt),
+      lt(menaMetaInboxItems.id, item.id),
+    ),
+  );
+  const [previousInteraction] = await db
+    .select()
+    .from(menaMetaInboxItems)
+    .where(
+      and(
+        ...contextConditions,
+        eq(menaMetaInboxItems.kind, item.kind),
+        eventBeforeCurrent,
+      ),
+    )
+    .limit(1);
   const conversation = await db
     .select({
+      id: menaMetaInboxItems.id,
+      workspaceId: menaMetaInboxItems.workspaceId,
+      platform: menaMetaInboxItems.platform,
+      conversationId: menaMetaInboxItems.conversationId,
+      kind: menaMetaInboxItems.kind,
+      actorId: menaMetaInboxItems.actorId,
       text: menaMetaInboxItems.text,
       replyText: menaMetaInboxItems.replyText,
+      occurredAt: menaMetaInboxItems.occurredAt,
+      createdAt: menaMetaInboxItems.createdAt,
     })
     .from(menaMetaInboxItems)
-    .where(and(...contextConditions))
-    .orderBy(desc(menaMetaInboxItems.occurredAt))
+    .where(
+      and(
+        ...contextConditions,
+        eq(menaMetaInboxItems.kind, item.kind),
+        or(
+          lt(menaMetaInboxItems.occurredAt, item.occurredAt),
+          and(
+            eq(menaMetaInboxItems.occurredAt, item.occurredAt),
+            lt(menaMetaInboxItems.createdAt, item.createdAt),
+          ),
+          and(
+            eq(menaMetaInboxItems.occurredAt, item.occurredAt),
+            eq(menaMetaInboxItems.createdAt, item.createdAt),
+            lte(menaMetaInboxItems.id, item.id),
+          ),
+        ),
+      ),
+    )
+    .orderBy(
+      desc(menaMetaInboxItems.occurredAt),
+      desc(menaMetaInboxItems.createdAt),
+      desc(menaMetaInboxItems.id),
+    )
     .limit(30);
-  const context = conversation
-    .reverse()
-    .flatMap(({ text, replyText }) => [
-      { role: "customer" as const, text: text.slice(0, 2000) },
-      ...(replyText ? [{ role: "business" as const, text: replyText }] : []),
-    ]);
-  const customerImageInputs = await incomingImages(item);
-  let imageAnalysis: string | null = null;
-  if (customerImageInputs.length > 0) {
-    try {
-      imageAnalysis = await analyzeMetaAutoReplyImages(customerImageInputs);
-    } catch (error) {
-      logger.warn(
-        {
-          workspaceId: job.workspaceId,
-          jobId: job.id,
-          errorCode:
-            error instanceof Error ? error.message : "IMAGE_ANALYSIS_FAILED",
-        },
-        "Unable to analyze customer image for Meta automatic reply",
-      );
-    }
-  }
+  const currentEvent: MetaAutoReplyConversationEvent = {
+    id: item.id,
+    workspaceId: job.workspaceId,
+    platform: item.platform,
+    conversationId: item.conversationId,
+    kind: item.kind,
+    actorId: item.actorId,
+    text: item.text,
+    replyText: item.replyText,
+    occurredAt: item.occurredAt,
+    createdAt: item.createdAt,
+  };
+  const context = buildMetaAutoReplyConversationContext(
+    currentEvent,
+    conversation,
+  );
+  const isFirstCustomerMessage = !hasPreviousMetaAutoReplyInteraction(
+    currentEvent,
+    previousInteraction ? [previousInteraction] : [],
+  );
   let accessToken: string | null = null;
   const getAccessToken = async (): Promise<string> => {
     if (accessToken) return accessToken;
@@ -673,15 +695,12 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
     accessToken = token.accessToken;
     return accessToken;
   };
-  const searchText = [
-    context
-      .filter((turn) => turn.role === "customer")
-      .map((turn) => turn.text)
-      .join("\n"),
-    imageAnalysis ?? "",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const searchText = metaPostSearchText(item.text, context);
+  const matchingProduct = await findRelevantCatalogProduct(
+    job.workspaceId,
+    item,
+    searchText,
+  );
   let post = await findRelevantPost(job.workspaceId, item, searchText);
   if (!post) {
     const readPermission =
@@ -695,7 +714,6 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
           item,
           await getAccessToken(),
           searchText,
-          customerImageInputs[0],
         );
       } catch (error) {
         logger.warn(
@@ -729,19 +747,71 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
   const wantsProductImages =
     item.kind === "message" && requestedMetaProductImages(item.text, context);
   const productImageUrls =
-    wantsProductImages && post
-      ? await publishedPostImageUrls(job.workspaceId, post.mediaUrls)
+    wantsProductImages && (matchingProduct?.mediaUrls.length || post)
+      ? await publishedPostImageUrls(
+          job.workspaceId,
+          matchingProduct?.mediaUrls.length
+            ? matchingProduct.mediaUrls
+            : (post?.mediaUrls ?? []),
+        )
       : [];
+  let pageBusinessInfo: string | null = null;
+  if (metaBusinessInfoRequested(item.text)) {
+    const readPermission =
+      item.platform === "facebook"
+        ? "pages_read_engagement"
+        : "instagram_basic";
+    if (connection.grantedPermissions.includes(readPermission)) {
+      try {
+        pageBusinessInfo = await getMetaPageBusinessInfo({
+          platform: item.platform,
+          pageId: connection.pageId,
+          instagramUserId: connection.instagramUserId,
+          accessToken: await getAccessToken(),
+        });
+      } catch (error) {
+        logger.warn(
+          {
+            workspaceId: job.workspaceId,
+            jobId: job.id,
+            platform: item.platform,
+            errorCode:
+              error instanceof Error
+                ? error.name
+                : "META_PROFILE_LOOKUP_FAILED",
+            ...(error instanceof MetaInboxGraphError
+              ? { graphStatus: error.status, graphCode: error.code }
+              : {}),
+          },
+          "Unable to load Meta business profile information for automatic reply",
+        );
+      }
+    } else {
+      logger.warn(
+        {
+          workspaceId: job.workspaceId,
+          jobId: job.id,
+          platform: item.platform,
+          requiredPermission: readPermission,
+        },
+        "Meta business profile lookup skipped because its read permission is not granted",
+      );
+    }
+  }
 
   let externalSendStarted = false;
+  let externalSendSucceeded = false;
   try {
     const reply = await generateMetaAutoReply({
+      workspaceId: job.workspaceId,
       context,
       post,
-      contactInfo: accountContactInfo(item.platform, connection),
-      imageAnalysis,
+      contactInfo: metaBusinessInfoRequested(item.text)
+        ? accountContactInfo(item.platform, connection)
+        : "",
+      pageBusinessInfo,
       productImagesWillBeSent: productImageUrls.length > 0,
-      isFirstCustomerMessage: !previousCustomerMessage,
+      isFirstCustomerMessage,
       platform: item.platform,
       kind: item.kind,
       settings: {
@@ -749,6 +819,18 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
         tone: settings.tone,
         instructions: settings.instructions,
       },
+      matchingProduct: matchingProduct
+        ? {
+            sku: matchingProduct.sku,
+            name: matchingProduct.name,
+            aliases: matchingProduct.aliases,
+            description: matchingProduct.description,
+            price: formatMetaAutoReplyPrice(matchingProduct.price),
+            currency: matchingProduct.currency,
+            availability: matchingProduct.availability,
+            verifiedAt: matchingProduct.verifiedAt?.toISOString() ?? "",
+          }
+        : null,
     });
     const [latestSettings] = await db
       .select()
@@ -777,6 +859,27 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       await markJob(job.id, job.workspaceId, "skipped", "ITEM_ALREADY_REPLIED");
       return;
     }
+    const reservation = await reserveMetaInboxReply(job.workspaceId, item.id);
+    if (reservation !== "reserved") {
+      if (reservation === "in_progress") {
+        await markJob(
+          job.id,
+          job.workspaceId,
+          "skipped",
+          "MANUAL_REPLY_IN_PROGRESS",
+        );
+        return;
+      }
+      await markJob(
+        job.id,
+        job.workspaceId,
+        reservation === "unknown" ? "unknown" : "skipped",
+        reservation === "unknown"
+          ? "META_SEND_RESULT_UNKNOWN"
+          : "ITEM_ALREADY_REPLIED",
+      );
+      return;
+    }
     const [sending] = await db
       .update(menaMetaAutoReplyJobs)
       .set({
@@ -791,12 +894,18 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
         ),
       )
       .returning({ id: menaMetaAutoReplyJobs.id });
-    if (!sending) return;
+    if (!sending) {
+      await releaseMetaInboxReplyReservation(
+        job.workspaceId,
+        item.id,
+        "available",
+      );
+      return;
+    }
 
     const pageAccessToken = await getAccessToken();
     externalSendStarted = true;
-    const replyText =
-      productImageUrls.length > 0 ? "تفضل صور المنتج المتوفرة." : reply;
+    const replyText = reply;
     const replyExternalIds: string[] = [];
     for (const imageUrl of productImageUrls) {
       externalSendStarted = true;
@@ -816,6 +925,7 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
           imageResult.message_id) ||
         (typeof imageResult.id === "string" && imageResult.id);
       if (id) replyExternalIds.push(id);
+      externalSendSucceeded = true;
     }
     externalSendStarted = true;
     const result = await sendMetaInboxReply({
@@ -832,18 +942,28 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       (typeof result.message_id === "string" && result.message_id) ||
       (typeof result.id === "string" && result.id);
     if (textReplyExternalId) replyExternalIds.push(textReplyExternalId);
+    externalSendSucceeded = true;
     const replyExternalId = replyExternalIds.join(",").slice(0, 1000) || null;
     const repliedAt = new Date();
-    await db
-      .update(menaMetaInboxItems)
-      .set({ replyText, replyExternalId, repliedAt })
-      .where(
-        and(
-          eq(menaMetaInboxItems.id, item.id),
-          eq(menaMetaInboxItems.workspaceId, job.workspaceId),
-          isNull(menaMetaInboxItems.replyText),
-        ),
+    const saved = await completeMetaInboxReply(job.workspaceId, item.id, {
+      text: replyText,
+      externalId: replyExternalId,
+      repliedAt,
+    });
+    if (!saved) {
+      await releaseMetaInboxReplyReservation(
+        job.workspaceId,
+        item.id,
+        "unknown",
       );
+      await markJob(
+        job.id,
+        job.workspaceId,
+        "unknown",
+        "META_SEND_RESULT_UNKNOWN",
+      );
+      return;
+    }
     await markJob(job.id, job.workspaceId, "sent");
   } catch (error) {
     if (
@@ -852,6 +972,11 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       (error.networkFailure ||
         (error.status !== undefined && error.status >= 500))
     ) {
+      await releaseMetaInboxReplyReservation(
+        job.workspaceId,
+        item.id,
+        "unknown",
+      );
       await markJob(
         job.id,
         job.workspaceId,
@@ -862,8 +987,14 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
     }
     if (
       externalSendStarted &&
-      !(error instanceof MetaInboxGraphError && error.status === 429)
+      (externalSendSucceeded ||
+        !(error instanceof MetaInboxGraphError && error.status === 429))
     ) {
+      await releaseMetaInboxReplyReservation(
+        job.workspaceId,
+        item.id,
+        "unknown",
+      );
       await markJob(
         job.id,
         job.workspaceId,
@@ -872,6 +1003,11 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       );
       return;
     }
+    await releaseMetaInboxReplyReservation(
+      job.workspaceId,
+      item.id,
+      "available",
+    );
     await retryOrFail(job, error);
   }
 }

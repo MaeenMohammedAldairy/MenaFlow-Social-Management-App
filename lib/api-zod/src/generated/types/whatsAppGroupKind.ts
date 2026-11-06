@@ -10,8 +10,5 @@ export type WhatsAppGroupKind = typeof WhatsAppGroupKind[keyof typeof WhatsAppGr
 
 
 export const WhatsAppGroupKind = {
-  community: 'community',
   announcement: 'announcement',
-  group: 'group',
-  unknown: 'unknown',
 } as const;

@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   },
   filePreview: {
     alignSelf: "flex-end",
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 8,
     borderRadius: 10,

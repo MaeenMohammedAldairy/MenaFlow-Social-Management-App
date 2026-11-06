@@ -134,100 +134,125 @@ export async function reconcileWhatsAppGroupDirectory(
       }));
     }
 
-    const identities = new Map<string, WhatsAppGroupIdentity>();
-    for (const candidate of candidates) {
-      const [alias] = await transaction
-        .select()
-        .from(menaWhatsAppGroupJids)
-        .where(
-          and(
-            eq(menaWhatsAppGroupJids.workspaceId, workspaceId),
-            eq(menaWhatsAppGroupJids.instanceName, instanceName),
-            eq(menaWhatsAppGroupJids.groupJid, candidate.groupJid),
-          ),
-        )
-        .limit(1);
-      let identity: WhatsAppGroupIdentity;
-      if (alias) {
-        const [updated] = await transaction
-          .update(menaWhatsAppGroups)
-          .set({
-            kind: candidate.kind,
-            name: candidate.name,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(menaWhatsAppGroups.id, alias.groupId),
-              eq(menaWhatsAppGroups.workspaceId, workspaceId),
-              eq(menaWhatsAppGroups.instanceName, instanceName),
-            ),
-          )
-          .returning();
-        if (!updated) throw new Error("WHATSAPP_GROUP_IDENTITY_NOT_FOUND");
-        identity = { ...updated, groupJid: candidate.groupJid };
-        await transaction
-          .update(menaWhatsAppGroupJids)
-          .set({ kind: candidate.kind, updatedAt: new Date() })
-          .where(
-            and(
-              eq(menaWhatsAppGroupJids.workspaceId, workspaceId),
-              eq(menaWhatsAppGroupJids.instanceName, instanceName),
-              eq(menaWhatsAppGroupJids.groupJid, candidate.groupJid),
-            ),
-          );
-      } else {
-        const [created] = await transaction
-          .insert(menaWhatsAppGroups)
-          .values({
-            id: randomUUID(),
+    const identityByJid = new Map(
+      candidates.map((candidate) => {
+        const existing = existingByJid.get(candidate.groupJid);
+        return [
+          candidate.groupJid,
+          {
+            id: existing?.id ?? randomUUID(),
             workspaceId,
             ownerId,
             instanceName,
             kind: candidate.kind,
             name: candidate.name,
-          })
-          .returning();
-        if (!created) throw new Error("WHATSAPP_GROUP_IDENTITY_CREATE_FAILED");
-        await transaction.insert(menaWhatsAppGroupJids).values({
+            parentGroupId: null,
+            groupJid: candidate.groupJid,
+          },
+        ] as const;
+      }),
+    );
+    const missingCandidates = candidates.filter(
+      (candidate) => !existingByJid.has(candidate.groupJid),
+    );
+    const now = new Date();
+    if (missingCandidates.length > 0) {
+      await transaction.insert(menaWhatsAppGroups).values(
+        missingCandidates.map((candidate) => ({
+          id: identityByJid.get(candidate.groupJid)!.id,
+          workspaceId,
+          ownerId,
+          instanceName,
+          kind: candidate.kind,
+          name: candidate.name,
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
+      await transaction.insert(menaWhatsAppGroupJids).values(
+        missingCandidates.map((candidate) => ({
           workspaceId,
           instanceName,
           groupJid: candidate.groupJid,
-          groupId: created.id,
+          groupId: identityByJid.get(candidate.groupJid)!.id,
           kind: candidate.kind,
-        });
-        identity = { ...created, groupJid: candidate.groupJid };
-      }
-      identities.set(candidate.groupJid, identity);
+          createdAt: now,
+          updatedAt: now,
+        })),
+      );
     }
 
-    for (const candidate of candidates) {
-      const identity = identities.get(candidate.groupJid);
+    const kindCases = candidates.map((candidate) => {
+      const identity = identityByJid.get(candidate.groupJid);
+      if (!identity) throw new Error("WHATSAPP_GROUP_IDENTITY_CREATE_FAILED");
+      return sql`WHEN ${identity.id} THEN ${candidate.kind}`;
+    });
+    const nameCases = candidates.map((candidate) => {
+      const identity = identityByJid.get(candidate.groupJid);
+      if (!identity) throw new Error("WHATSAPP_GROUP_IDENTITY_CREATE_FAILED");
+      return sql`WHEN ${identity.id} THEN ${candidate.name}`;
+    });
+    const parentCases = candidates.map((candidate) => {
+      const identity = identityByJid.get(candidate.groupJid);
       if (!identity) throw new Error("WHATSAPP_GROUP_IDENTITY_CREATE_FAILED");
       const parentGroupId = candidate.parentJid
-        ? identities.get(candidate.parentJid)?.id
+        ? identityByJid.get(candidate.parentJid)?.id
         : null;
       if (candidate.parentJid && !parentGroupId) {
         throw new Error("WHATSAPP_GROUP_PARENT_IDENTITY_NOT_FOUND");
       }
-      const [updated] = await transaction
-        .update(menaWhatsAppGroups)
-        .set({ parentGroupId, updatedAt: new Date() })
-        .where(
-          and(
-            eq(menaWhatsAppGroups.id, identity.id),
-            eq(menaWhatsAppGroups.workspaceId, workspaceId),
-            eq(menaWhatsAppGroups.instanceName, instanceName),
-          ),
-        )
-        .returning();
-      if (!updated) throw new Error("WHATSAPP_GROUP_IDENTITY_NOT_FOUND");
-      identities.set(candidate.groupJid, {
-        ...updated,
-        groupJid: candidate.groupJid,
-      });
+      return sql`WHEN ${identity.id} THEN ${parentGroupId}`;
+    });
+    const groupIds = [...identityByJid.values()].map(({ id }) => id);
+    const updatedGroups = await transaction
+      .update(menaWhatsAppGroups)
+      .set({
+        kind: sql`CASE ${menaWhatsAppGroups.id} ${sql.join(kindCases, sql` `)} ELSE ${menaWhatsAppGroups.kind} END`,
+        name: sql`CASE ${menaWhatsAppGroups.id} ${sql.join(nameCases, sql` `)} ELSE ${menaWhatsAppGroups.name} END`,
+        parentGroupId: sql`CASE ${menaWhatsAppGroups.id} ${sql.join(parentCases, sql` `)} ELSE ${menaWhatsAppGroups.parentGroupId} END`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(menaWhatsAppGroups.workspaceId, workspaceId),
+          eq(menaWhatsAppGroups.instanceName, instanceName),
+          inArray(menaWhatsAppGroups.id, groupIds),
+        ),
+      )
+      .returning({ id: menaWhatsAppGroups.id });
+    if (updatedGroups.length !== candidates.length) {
+      throw new Error("WHATSAPP_GROUP_IDENTITY_NOT_FOUND");
     }
 
-    return [...identities.values()];
+    const jidCases = candidates.map(
+      (candidate) => sql`WHEN ${candidate.groupJid} THEN ${candidate.kind}`,
+    );
+    await transaction
+      .update(menaWhatsAppGroupJids)
+      .set({
+        kind: sql`CASE ${menaWhatsAppGroupJids.groupJid} ${sql.join(jidCases, sql` `)} ELSE ${menaWhatsAppGroupJids.kind} END`,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(menaWhatsAppGroupJids.workspaceId, workspaceId),
+          eq(menaWhatsAppGroupJids.instanceName, instanceName),
+          inArray(
+            menaWhatsAppGroupJids.groupJid,
+            candidates.map((candidate) => candidate.groupJid),
+          ),
+        ),
+      );
+
+    return candidates.map((candidate) => {
+      const identity = identityByJid.get(candidate.groupJid);
+      if (!identity) throw new Error("WHATSAPP_GROUP_IDENTITY_CREATE_FAILED");
+      return {
+        ...identity,
+        parentGroupId: candidate.parentJid
+          ? (identityByJid.get(candidate.parentJid)?.id ?? null)
+          : null,
+      };
+    });
   });
 }

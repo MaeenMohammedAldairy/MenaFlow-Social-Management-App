@@ -6,10 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type GetKnownPostIdsBody = {
+export interface KnownPostIdsInput {
   /**
      * @maxItems 1000
      * @items.maxLength 150
      */
   ids: string[];
-};
+}

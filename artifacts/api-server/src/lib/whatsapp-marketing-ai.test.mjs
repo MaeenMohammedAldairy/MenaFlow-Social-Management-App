@@ -33,16 +33,14 @@ test("generates and normalizes a draft through the configured OpenAI provider", 
   };
 
   try {
-    const result = await generateDraft("تفاصيل عرض تجريبي", [
-      { mimeType: "image/jpeg", buffer: Buffer.from("synthetic image bytes") },
-    ]);
+    const result = await generateDraft("تفاصيل عرض تجريبي");
 
     assert.equal(request.url, "https://api.openai.com/v1/chat/completions");
     assert.equal(request.options.headers.Authorization, "Bearer test-openai-key");
     const payload = JSON.parse(request.options.body);
     assert.equal(payload.model, "test-model");
-    assert.match(payload.messages[1].content[0].text, /تفاصيل عرض تجريبي/);
-    assert.match(payload.messages[1].content[1].image_url.url, /^data:image\/jpeg;base64,/);
+    assert.match(payload.messages[1].content, /تفاصيل عرض تجريبي/);
+    assert.doesNotMatch(request.options.body, /image_url|inlineData|base64/);
     assert.equal(result.model, "test-model");
     assert.deepEqual(result.draft, {
       eligible: true,

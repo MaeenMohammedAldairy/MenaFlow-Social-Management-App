@@ -1,6 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-
-type RecordValue = Record<string, unknown>;
+import { asRecord as record } from "./value-utils.ts";
 
 export type MetaInboxEvent = {
   platform: "facebook" | "instagram";
@@ -20,12 +19,6 @@ export type MetaInboxMedia = {
   url: string | null;
   thumbnailUrl: string | null;
 };
-
-function record(value: unknown): RecordValue | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as RecordValue)
-    : null;
-}
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -79,6 +72,12 @@ export function verifyMetaWebhookSignature(
   return (
     provided.length === expected.length && timingSafeEqual(provided, expected)
   );
+}
+
+export function resolveUniqueMetaConnection<T>(
+  connections: readonly T[],
+): T | null {
+  return connections.length === 1 ? connections[0] ?? null : null;
 }
 
 export function parseMetaWebhookEvents(

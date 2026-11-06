@@ -13,11 +13,11 @@
 # chain attacks, which have been the #1 vector for npm ecosystem compromises.
 #
 # If you absolutely need to install a package before the 1-day window has
-# passed (e.g. an urgent security bugfix), you can add it to the
-# `minimumReleaseAgeExclude` allowlist below. Only consider doing this for
-# packages released by trusted organizations with an impeccable security
-# posture (e.g. Replit packsges, react from Meta, typescript from Microsoft). Even then,
-# remove the exclusion once the 1-day window has passed.
+# passed (e.g. an urgent security bugfix), you can add a narrowly scoped
+# exception here. Only consider doing this for packages released by trusted
+# organizations with an impeccable security posture (e.g. react from Meta,
+# TypeScript from Microsoft). Even then, remove the exclusion once the 1-day
+# window has passed.
 #
 # Example:
 #   minimumReleaseAgeExclude:
@@ -27,13 +27,6 @@
 # ============================================================================
 minimumReleaseAge: 1440
 
-minimumReleaseAgeExclude:
-  # Exclude @replit scoped packages from the minimum release age check.
-  # These are published by Replit and trusted — the supply-chain attack vector
-  # this setting guards against does not apply to our own packages.
-  - '@replit/*'
-  - stripe-replit-sync
-
 packages:
   - artifacts/*
   - lib/*
@@ -41,9 +34,6 @@ packages:
   - scripts
 
 catalog:
-  '@replit/vite-plugin-cartographer': ^0.5.21
-  '@replit/vite-plugin-dev-banner': ^0.1.1
-  '@replit/vite-plugin-runtime-error-modal': ^0.0.6
   '@tailwindcss/vite': ^4.1.14
   '@tanstack/react-query': ^5.90.21
   '@types/node': ^25.3.3
@@ -69,7 +59,6 @@ catalog:
 autoInstallPeers: false
 
 overrides:
-  # replit uses linux-x64 only, we can exclude all other platforms
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
   "esbuild>@esbuild/freebsd-arm64": "-"
@@ -156,4 +145,7 @@ overrides:
   js-yaml: '4.3.2'
 
 allowBuilds:
+  browser-tabs-lock: false
+  core-js: false
+  esbuild: true
   sharp: true

@@ -2,7 +2,9 @@ import {
   and,
   asc,
   eq,
+  gte,
   inArray,
+  isNull,
   isNotNull,
   or,
   sql,
@@ -17,6 +19,7 @@ import {
   menaWhatsAppGroupSelections,
   menaWhatsAppMessages,
   menaWhatsAppSyncStates,
+  whatsappProductExtractionJobs,
 } from "@workspace/db";
 import { createHash, randomUUID } from "node:crypto";
 import { enqueueWhatsAppMessage } from "../lib/whatsapp-marketing";
@@ -34,6 +37,7 @@ import {
   filterHistoryRecordsForGroup,
   isWhatsAppMessageWebhookEvent,
   normalizeWhatsAppWebhookEventName,
+  normalizeRemoteJid,
 } from "../lib/whatsapp-message-scope";
 import { isWhatsAppOptOutMessage } from "../lib/whatsapp-opt-out";
 import {
@@ -49,7 +53,11 @@ import {
 import {
   buildWhatsAppHistoryQuery,
   extractWhatsAppHistoryRecords,
-  filterWhatsAppHistoryAfter,
+  filterWhatsAppHistoryFrom,
+  getWhatsAppHistoryMessageId,
+  getWhatsAppHistoryTimestamp,
+  isWhatsAppHistoryPageBeforeCursor,
+  isWhatsAppHistoryCandidate,
   parseWhatsAppHistoryTimestamp,
 } from "../lib/whatsapp-history";
 import {
@@ -61,10 +69,12 @@ import {
   sendWhatsAppAutoReply,
 } from "../lib/whatsapp-auto-reply";
 import { isDirectIncomingWhatsAppMessage } from "../lib/whatsapp-auto-reply-policy";
-import { asRecord, queryString } from "./whatsapp-route-utils";
+import { asRecord, queryString } from "./value-utils.ts";
 import { resolveMessageSenderId } from "../lib/whatsapp-marketing-safety";
 
 export const WHATSAPP_SYNC_STALE_THRESHOLD_MS = 10 * 60 * 1000;
+export const DEFAULT_WHATSAPP_HISTORY_IMPORT_LIMIT = 500;
+export const MAX_WHATSAPP_HISTORY_IMPORT_LIMIT = 100_000;
 
 const activeWhatsAppSyncCounts = new Map<string, number>();
 
@@ -79,22 +89,6 @@ function stripInlineMediaData(value: unknown): unknown {
       )
       .map(([key, nested]) => [key, stripInlineMediaData(nested)]),
   );
-}
-
-function normalizeRemoteJid(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function normalizeMediaType(value: unknown): string {
-  if (typeof value !== "string" || value.trim().length === 0) return "unknown";
-  const normalized = value.trim().toLowerCase();
-  if (normalized.startsWith("image/")) return "image";
-  if (normalized.startsWith("video/")) return "video";
-  if (normalized.startsWith("audio/")) return "audio";
-  if (normalized.startsWith("application/")) return "document";
-  return "media";
 }
 
 function arrayFromUnknown(value: unknown): unknown[] {
@@ -763,6 +757,27 @@ async function persistImportedMessage(
           },
         });
     }
+    if (saved && effectiveRow.messageStatus === "received") {
+      const extractionMessageIds = new Set([saved.id, ...relatedMessageIds]);
+      const now = new Date();
+      await transaction
+        .insert(whatsappProductExtractionJobs)
+        .values([...extractionMessageIds].map((messageId) => ({
+          id: createHash("sha256")
+            .update(`whatsapp-product:${workspaceId}:${messageId}`)
+            .digest("hex"),
+          ownerId,
+          workspaceId,
+          messageId,
+          status: "pending" as const,
+          stage: "received" as const,
+          attempts: 0,
+          nextRunAt: now,
+          createdAt: now,
+          updatedAt: now,
+        })))
+        .onConflictDoNothing();
+    }
     return saved ?? null;
   });
 
@@ -780,34 +795,92 @@ async function fetchHistoryForGroup(
   instanceName: string,
   groupJid: string,
   pageSize = 100,
+  beforeCursor?: Date,
+  maxNewMessages?: number,
+  fullyPersistedMessageIds: ReadonlySet<string> = new Set(),
 ): Promise<unknown[]> {
   const matchingRecords = new Map<string, unknown>();
   let receivedRecordCount = 0;
+  let newMessageCount = 0;
   for (const jidField of ["remoteJid", "remoteJidAlt"] as const) {
-    const response = await evolutionRequest(
-      `chat/findMessages/${encodeURIComponent(instanceName)}`,
-      {
-        method: "POST",
-        body: JSON.stringify(
-          buildWhatsAppHistoryQuery(groupJid, pageSize, jidField),
-        ),
-      },
-      30_000,
-    );
-    const records = extractWhatsAppHistoryRecords(response);
-    if (!records) {
-      throw new Error("EVOLUTION_HISTORY_INVALID_RESPONSE");
+    if (
+      maxNewMessages !== undefined &&
+      newMessageCount >= maxNewMessages
+    ) {
+      break;
     }
-    receivedRecordCount += records.length;
-    const matching = filterHistoryRecordsForGroup(records, groupJid);
-    for (const record of matching) {
-      const envelope = asRecord(record);
-      const key = asRecord(envelope?.key);
-      const recordId =
-        typeof key?.id === "string"
+    const seenPageRecordIds = new Set<string>();
+    for (let page = 1; page <= 1000; page += 1) {
+      const response = await evolutionRequest(
+        `chat/findMessages/${encodeURIComponent(instanceName)}`,
+        {
+          method: "POST",
+          body: JSON.stringify(
+            buildWhatsAppHistoryQuery(groupJid, pageSize, jidField, page),
+          ),
+        },
+        30_000,
+      );
+      const records = extractWhatsAppHistoryRecords(response);
+      if (!records) {
+        throw new Error("EVOLUTION_HISTORY_INVALID_RESPONSE");
+      }
+      receivedRecordCount += records.length;
+      const pageRecordIds = records.map((record) => {
+        const envelope = asRecord(record);
+        const key = asRecord(envelope?.key);
+        return typeof key?.id === "string"
           ? `${String(key.fromMe)}:${key.id}`
           : JSON.stringify(record);
-      matchingRecords.set(recordId, record);
+      });
+      const newPageRecordIds = pageRecordIds.filter(
+        (recordId) => !seenPageRecordIds.has(recordId),
+      );
+      for (const recordId of newPageRecordIds) {
+        seenPageRecordIds.add(recordId);
+      }
+      if (records.length >= pageSize && newPageRecordIds.length === 0) {
+        throw new Error("EVOLUTION_HISTORY_PAGINATION_STALLED");
+      }
+      const matching = filterHistoryRecordsForGroup(records, groupJid);
+      if (
+        beforeCursor &&
+        isWhatsAppHistoryPageBeforeCursor(matching, beforeCursor)
+      ) {
+        break;
+      }
+      for (const record of matching) {
+        const envelope = asRecord(record);
+        const key = asRecord(envelope?.key);
+        const recordId =
+          typeof key?.id === "string"
+            ? `${String(key.fromMe)}:${key.id}`
+            : JSON.stringify(record);
+        const isNewRecord = !matchingRecords.has(recordId);
+        matchingRecords.set(recordId, record);
+        if (isNewRecord && isWhatsAppHistoryCandidate(
+          record,
+          fullyPersistedMessageIds,
+        )) {
+          newMessageCount += 1;
+        }
+        if (
+          maxNewMessages !== undefined &&
+          newMessageCount >= maxNewMessages
+        ) {
+          break;
+        }
+      }
+      if (
+        maxNewMessages !== undefined &&
+        newMessageCount >= maxNewMessages
+      ) {
+        break;
+      }
+      if (records.length < pageSize) break;
+      if (page === 1000) {
+        throw new Error("EVOLUTION_HISTORY_PAGINATION_LIMIT");
+      }
     }
   }
   if (receivedRecordCount > 0 && matchingRecords.size === 0) {
@@ -824,6 +897,7 @@ export async function syncGroupHistory(
   groupId: string,
   includeHistory = true,
   respectAutoSync = false,
+  historyLimit = DEFAULT_WHATSAPP_HISTORY_IMPORT_LIMIT,
 ): Promise<{
   imported: number;
   skipped: number;
@@ -851,29 +925,63 @@ export async function syncGroupHistory(
     groupId,
   );
   let syncStartedAt = new Date();
-  if (!includeHistory) {
-    const [latestMessage] = await db
-      .select({
-        messageTimestamp: sql<Date | null>`max(${menaWhatsAppMessages.messageTimestamp})`,
-      })
-      .from(menaWhatsAppMessages)
-      .where(
-        and(
-          eq(menaWhatsAppMessages.workspaceId, workspaceId),
-          eq(menaWhatsAppMessages.instanceName, instanceName),
-          eq(menaWhatsAppMessages.groupId, groupId),
-        ),
-      );
-    if (latestMessage?.messageTimestamp) {
-      syncStartedAt = new Date(latestMessage.messageTimestamp);
-    }
+  const [latestMessage] = await db
+    .select({
+      messageTimestamp: sql<Date | null>`max(${menaWhatsAppMessages.messageTimestamp})`,
+    })
+    .from(menaWhatsAppMessages)
+    .where(
+      and(
+        eq(menaWhatsAppMessages.workspaceId, workspaceId),
+        eq(menaWhatsAppMessages.instanceName, instanceName),
+        eq(menaWhatsAppMessages.groupId, groupId),
+      ),
+    );
+  const persistedCursor =
+    latestMessage?.messageTimestamp ??
+    (syncState.lastCursor ? new Date(syncState.lastCursor) : null);
+  if (persistedCursor && Number.isFinite(persistedCursor.getTime())) {
+    syncStartedAt = persistedCursor;
   }
+  const historyCursor = includeHistory ? undefined : syncStartedAt;
+  const existingMessages = await db
+    .select({
+      remoteMessageId: menaWhatsAppMessages.remoteMessageId,
+      mediaDownloadStatus: menaWhatsAppMessages.mediaDownloadStatus,
+    })
+    .from(menaWhatsAppMessages)
+    .where(
+      and(
+        eq(menaWhatsAppMessages.workspaceId, workspaceId),
+        eq(menaWhatsAppMessages.instanceName, instanceName),
+        eq(menaWhatsAppMessages.groupId, groupId),
+        ...(includeHistory
+          ? []
+          : [
+              or(
+                gte(menaWhatsAppMessages.messageTimestamp, syncStartedAt),
+                isNull(menaWhatsAppMessages.messageTimestamp),
+              ),
+            ]),
+      ),
+    );
+  const fullyPersistedMessageIds = new Set(
+    existingMessages
+      .filter(
+        (message) =>
+          message.mediaDownloadStatus !== "pending" &&
+          message.mediaDownloadStatus !== "failed",
+      )
+      .map((message) => message.remoteMessageId),
+  );
   activeWhatsAppSyncCounts.set(
     syncState.id,
     (activeWhatsAppSyncCounts.get(syncState.id) ?? 0) + 1,
   );
   const stats = { imported: 0, skipped: 0, failed: 0, status: "running" };
   const runStartedAt = Date.now();
+  let fetchedHistoryCount = 0;
+  let alreadyPersistedCount = 0;
   const logSyncResult = (fetchedCount: number) => {
     console.info("WhatsApp historical sync completed", {
       workspaceId,
@@ -881,6 +989,7 @@ export async function syncGroupHistory(
       groupJid,
       status: stats.status,
       fetchedCount,
+      alreadyPersistedCount,
       importedCount: stats.imported,
       skippedCount: stats.skipped,
       failedCount: stats.failed,
@@ -911,33 +1020,51 @@ export async function syncGroupHistory(
 
     if (await cancelIfAutoSyncDisabled()) return stats;
 
-    let messages = await fetchHistoryForGroup(instanceName, groupJid, 100);
+    let messages = await fetchHistoryForGroup(
+      instanceName,
+      groupJid,
+      100,
+      historyCursor,
+      includeHistory ? historyLimit : undefined,
+      fullyPersistedMessageIds,
+    );
+    fetchedHistoryCount = messages.length;
     if (!includeHistory) {
-      messages = filterWhatsAppHistoryAfter(messages, syncStartedAt);
+      messages = filterWhatsAppHistoryFrom(messages, syncStartedAt);
     }
+    const candidateMessageCount = messages.length;
+    messages = messages.filter((message) => {
+      const messageId = getWhatsAppHistoryMessageId(message);
+      return !messageId || !fullyPersistedMessageIds.has(messageId);
+    });
+    alreadyPersistedCount = candidateMessageCount - messages.length;
     if (await cancelIfAutoSyncDisabled()) return stats;
     if (messages.length === 0) {
-      stats.status = includeHistory ? "empty" : "complete";
+      stats.status =
+        includeHistory && fetchedHistoryCount === 0 ? "empty" : "complete";
       await updateSyncState(workspaceId, instanceName, groupJid, groupId, {
         status: stats.status,
         lastSyncedAt: new Date(),
         importedCount: 0,
         skippedCount: 0,
         failedCount: 0,
-        lastError: includeHistory ? "EVOLUTION_HISTORY_EMPTY" : null,
+        lastError: stats.status === "empty" ? "EVOLUTION_HISTORY_EMPTY" : null,
         completedAt: new Date(),
       });
-      logSyncResult(0);
+      logSyncResult(fetchedHistoryCount);
       return stats;
     }
 
     let firstFailureCode: string | null = null;
+    let latestCursor = persistedCursor;
+    let latestMessageId = syncState.lastMessageId;
     for (const [index, message] of messages.entries()) {
       if (await cancelIfAutoSyncDisabled()) return stats;
       const candidate = asRecord(message);
       if (!candidate) {
         stats.skipped += 1;
       } else {
+        const messageTimestamp = getWhatsAppHistoryTimestamp(candidate);
         try {
           const result = await persistImportedMessage(
             workspaceId,
@@ -948,6 +1075,14 @@ export async function syncGroupHistory(
           );
           if (result.imported) {
             stats.imported += 1;
+            if (
+              messageTimestamp &&
+              (!latestCursor ||
+                messageTimestamp.getTime() >= latestCursor.getTime())
+            ) {
+              latestCursor = messageTimestamp;
+              latestMessageId = getWhatsAppHistoryMessageId(candidate);
+            }
           } else {
             stats.skipped += 1;
             if (result.reason === "WHATSAPP_CONNECTION_NOT_FOUND") {
@@ -1011,10 +1146,16 @@ export async function syncGroupHistory(
       stats.failed > 0 || (stats.imported === 0 && stats.skipped > 0)
         ? "partial"
         : "complete";
+    const cursorUpdates = latestCursor
+      ? {
+          lastCursor: latestCursor.toISOString(),
+          lastMessageId: latestMessageId,
+        }
+      : {};
     await updateSyncState(workspaceId, instanceName, groupJid, groupId, {
       status,
       lastSyncedAt: new Date(),
-      lastMessageId: null,
+      ...cursorUpdates,
       importedCount: stats.imported,
       skippedCount: stats.skipped,
       failedCount: stats.failed,
@@ -1027,7 +1168,7 @@ export async function syncGroupHistory(
       completedAt: new Date(),
     });
     stats.status = status;
-    logSyncResult(messages.length);
+    logSyncResult(fetchedHistoryCount);
     return stats;
   } catch (error) {
     if (await cancelIfAutoSyncDisabled()) return stats;
@@ -1174,39 +1315,69 @@ export async function processWebhookEvent(
         .returning({ id: menaWhatsAppAutoReplyEvents.id });
       if (claim) {
         try {
-          const reply = await generateWhatsAppAutoReply(customerMessage, {
-            language:
-              connection.autoReplyLanguage === "match_customer"
-                ? "match_customer"
-                : "ar",
-            tone:
-              connection.autoReplyTone === "concise" ||
-              connection.autoReplyTone === "formal"
-                ? connection.autoReplyTone
-                : "friendly_professional",
-            instructions: connection.autoReplyInstructions ?? "",
-          });
-          const replyMessageId = await sendWhatsAppAutoReply(
-            instanceName,
-            eventRemoteJid!,
-            reply,
-          );
-          await db
-            .update(menaWhatsAppAutoReplyEvents)
-            .set({
-              status: "sent",
-              replyMessageId,
-              completedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(menaWhatsAppAutoReplyEvents.id, claim.id),
-                eq(
-                  menaWhatsAppAutoReplyEvents.workspaceId,
-                  connection.workspaceId,
-                ),
-              ),
+          // Re-check the toggle after generation so a merchant who disabled
+          // auto replies while the AI call was running never gets a reply sent.
+          const [latestConnection] = await db
+            .select({ autoReplyEnabled: menaWhatsAppConnections.autoReplyEnabled })
+            .from(menaWhatsAppConnections)
+            .where(eq(menaWhatsAppConnections.workspaceId, connection.workspaceId))
+            .limit(1);
+          if (latestConnection?.autoReplyEnabled) {
+            const reply = await generateWhatsAppAutoReply(
+              connection.workspaceId,
+              customerMessage,
+              {
+                language:
+                  connection.autoReplyLanguage === "match_customer"
+                    ? "match_customer"
+                    : "ar",
+                tone:
+                  connection.autoReplyTone === "concise" ||
+                  connection.autoReplyTone === "formal"
+                    ? connection.autoReplyTone
+                    : "friendly_professional",
+                instructions: connection.autoReplyInstructions ?? "",
+              },
             );
+            const replyMessageId = await sendWhatsAppAutoReply(
+              instanceName,
+              eventRemoteJid!,
+              reply,
+            );
+            await db
+              .update(menaWhatsAppAutoReplyEvents)
+              .set({
+                status: "sent",
+                replyMessageId,
+                completedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(menaWhatsAppAutoReplyEvents.id, claim.id),
+                  eq(
+                    menaWhatsAppAutoReplyEvents.workspaceId,
+                    connection.workspaceId,
+                  ),
+                ),
+              );
+          } else {
+            await db
+              .update(menaWhatsAppAutoReplyEvents)
+              .set({
+                status: "failed",
+                errorCode: "AUTO_REPLY_DISABLED",
+                completedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(menaWhatsAppAutoReplyEvents.id, claim.id),
+                  eq(
+                    menaWhatsAppAutoReplyEvents.workspaceId,
+                    connection.workspaceId,
+                  ),
+                ),
+              );
+          }
         } catch (error) {
           const errorCode =
             error instanceof EvolutionApiError

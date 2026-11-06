@@ -5,8 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { WhatsAppGroup } from './whatsAppGroup';
+import type { WhatsAppGroupOption } from './whatsAppGroupOption';
 
 export interface WhatsAppGroupsResponse {
-  groups: WhatsAppGroup[];
+  groups: WhatsAppGroupOption[];
 }

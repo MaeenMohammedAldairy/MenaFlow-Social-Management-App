@@ -1,3 +1,5 @@
+import { asRecord } from "./value-utils.ts";
+
 export type ManageableFacebookPage = {
   id: string;
   name: string;
@@ -146,12 +148,6 @@ export function buildMetaPageListUrl(
     access_token: userAccessToken,
   }).toString();
   return url;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : undefined;
 }
 
 export function inspectMetaPageList(payload: unknown): {

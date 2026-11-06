@@ -1,9 +1,56 @@
+import { isRecord } from "./value-utils.ts";
+
 export type MetaPermission = {
   permission?: string;
   status?: string;
 };
 
 export type MetaIntegration = "facebook" | "instagram";
+
+export type MetaAutoReplyKind = "message" | "comment";
+
+export type MetaConnectionOwnershipConflict =
+  | "facebook_page"
+  | "instagram_account";
+
+export function canManageMetaConnections(role: string): boolean {
+  return role === "owner";
+}
+
+export function normalizeMetaAccountId(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") throw new Error("INVALID_META_ACCOUNT_ID");
+  const normalized = value.trim();
+  if (!normalized) throw new Error("INVALID_META_ACCOUNT_ID");
+  return normalized;
+}
+
+export function metaConnectionConflictFromError(
+  error: unknown,
+): MetaConnectionOwnershipConflict | null {
+  if (!isRecord(error)) return null;
+  const candidates = [error, error.cause].filter(isRecord);
+  for (const candidate of candidates) {
+    if (candidate.code !== "23505") continue;
+    if (candidate.constraint === "mena_meta_connections_page_id_key") {
+      return "facebook_page";
+    }
+    if (
+      candidate.constraint === "mena_meta_connections_instagram_user_id_key"
+    ) {
+      return "instagram_account";
+    }
+  }
+  return null;
+}
+
+export function metaConnectionConflictDetail(
+  account: MetaConnectionOwnershipConflict,
+): string {
+  return account === "facebook_page"
+    ? "صفحة Facebook هذه مرتبطة بالفعل بمساحة عمل أخرى."
+    : "حساب Instagram هذا مرتبط بالفعل بمساحة عمل أخرى.";
+}
 
 export const META_BASE_OAUTH_SCOPES = [
   "pages_show_list",
@@ -60,6 +107,57 @@ export function missingMetaIntegrationPermissions(
   return META_INTEGRATION_SCOPES[integration].filter(
     (permission) => !granted.has(permission),
   );
+}
+
+export function metaAuthorizationStatus(
+  connection: {
+    authorizationVerifiedAt: Date | null;
+    accessTokenExpiresAt: Date | null;
+    grantedPermissions: string[];
+  },
+  integration: MetaIntegration,
+  now = new Date(),
+) {
+  const missingPermissions = connection.authorizationVerifiedAt
+    ? missingMetaIntegrationPermissions(
+        integration,
+        connection.grantedPermissions,
+      )
+    : [];
+  const tokenExpired =
+    connection.accessTokenExpiresAt !== null &&
+    connection.accessTokenExpiresAt <= now;
+  const authorizationReason = tokenExpired
+    ? "token_expired"
+    : !connection.authorizationVerifiedAt
+      ? "permissions_unverified"
+      : missingPermissions.length > 0
+        ? "permissions_missing"
+        : null;
+
+  return {
+    authorizationStatus: authorizationReason
+      ? "needs_reauthorization"
+      : "ready",
+    authorizationReason,
+    missingPermissions,
+    accessTokenExpiresAt:
+      connection.accessTokenExpiresAt?.toISOString() ?? null,
+  } as const;
+}
+
+export function metaAutoReplyPermission(
+  integration: MetaIntegration,
+  kind: MetaAutoReplyKind,
+): string {
+  if (kind === "message") {
+    return integration === "facebook"
+      ? "pages_messaging"
+      : "instagram_manage_messages";
+  }
+  return integration === "facebook"
+    ? "pages_manage_engagement"
+    : "instagram_manage_comments";
 }
 
 export function hasGrantedMetaPageListPermission(

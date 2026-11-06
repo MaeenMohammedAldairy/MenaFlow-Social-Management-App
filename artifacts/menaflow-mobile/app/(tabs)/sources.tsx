@@ -13,17 +13,17 @@ import {
   getOnboardingStatus,
   getOnboardingStatusQueryKey,
   getSocialConnections,
-  type OnboardingStatus,
   type WhatsAppGroupMessagesResponse,
   type WhatsAppMessage,
   type WhatsAppSyncStatusResponse,
+  type WhatsAppGroupOption,
   postMetaConnect,
   postWhatsAppPairingCode,
   saveWhatsAppGroupSelections,
   triggerWhatsAppSyncNow,
   updateWhatsAppSyncSettings,
-  type WhatsAppGroup,
 } from "@workspace/api-client-react";
+import { hasEligibleSocialConnection } from "@workspace/api-zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -73,6 +73,10 @@ import {
 import { isLocalAuthDisabled } from "@/constants/auth";
 
 WebBrowser.maybeCompleteAuthSession();
+
+const WHATSAPP_PAIRING_TIMEOUT_MS = 2 * 60 * 1000;
+const WHATSAPP_PAIRING_POLL_INTERVAL_MS = 3_000;
+const WHATSAPP_PAIRING_MAX_RETRY_DELAY_MS = 15_000;
 
 const deviceCountry = (() => {
   const locale = Intl.DateTimeFormat().resolvedOptions().locale;
@@ -147,17 +151,56 @@ type DisconnectDialogState = {
   message?: string;
 };
 
-export default function SourcesScreen() {
-  if (isLocalAuthDisabled) return <SourcesContent userId={null} />;
-  return <AuthenticatedSourcesScreen />;
+export default function SourcesScreen({
+  initialView,
+}: {
+  initialView?: "publishing" | "onboarding";
+} = {}) {
+  const forcePublishing = initialView !== undefined;
+  const includeWhatsApp = initialView === "onboarding";
+  if (isLocalAuthDisabled) {
+    return (
+      <SourcesContent
+        userId={null}
+        forcePublishing={forcePublishing}
+        includeWhatsApp={includeWhatsApp}
+      />
+    );
+  }
+  return (
+    <AuthenticatedSourcesScreen
+      forcePublishing={forcePublishing}
+      includeWhatsApp={includeWhatsApp}
+    />
+  );
 }
 
-function AuthenticatedSourcesScreen() {
+function AuthenticatedSourcesScreen({
+  forcePublishing,
+  includeWhatsApp,
+}: {
+  forcePublishing: boolean;
+  includeWhatsApp: boolean;
+}) {
   const { userId } = useAuth();
-  return <SourcesContent userId={userId ?? null} />;
+  return (
+    <SourcesContent
+      userId={userId ?? null}
+      forcePublishing={forcePublishing}
+      includeWhatsApp={includeWhatsApp}
+    />
+  );
 }
 
-function SourcesContent({ userId }: { userId: string | null }) {
+function SourcesContent({
+  userId,
+  forcePublishing,
+  includeWhatsApp,
+}: {
+  userId: string | null;
+  forcePublishing: boolean;
+  includeWhatsApp: boolean;
+}) {
   const colors = useColors();
   const { width } = useWindowDimensions();
   const compactLayout = width < 560;
@@ -166,18 +209,25 @@ function SourcesContent({ userId }: { userId: string | null }) {
     ...getGetSocialConnectionsQueryKey(),
     userId ?? "local",
   ] as const;
-  const whatsappGroupSelectionsQueryKey = [
-    "whatsappGroupSelections",
-    userId ?? "local",
-  ] as const;
-  const whatsappGroupsQueryKey = ["whatsappGroups", userId ?? "local"] as const;
   const whatsappSyncStatusQueryKey = [
     "whatsappSyncStatus",
     userId ?? "local",
   ] as const;
   const { refreshPosts } = useStudio();
-  const { connect: requestedConnect, reconnect: requestedReconnect } =
-    useLocalSearchParams<{ connect?: string; reconnect?: string }>();
+  const {
+    connect: requestedConnect,
+    reconnect: requestedReconnect,
+    view,
+  } = useLocalSearchParams<{
+    connect?: string;
+    reconnect?: string;
+    view?: string;
+  }>();
+  const isPublishingAccounts =
+    forcePublishing ||
+    view === "publishing" ||
+    requestedConnect === "facebook" ||
+    requestedConnect === "instagram";
   const [busySources, setBusySources] = useState<Record<SourceKey, boolean>>({
     facebook: false,
     instagram: false,
@@ -201,6 +251,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
     Record<string, number>
   >({});
   const [syncPreviousMessages, setSyncPreviousMessages] = useState(false);
+  const [historyMessageLimit, setHistoryMessageLimit] = useState("500");
   const [disconnectingSource, setDisconnectingSource] =
     useState<SourceKey | null>(null);
   const disconnectInFlightRef = useRef(false);
@@ -224,16 +275,19 @@ function SourcesContent({ userId }: { userId: string | null }) {
   const [countryPickerOpen, setCountryPickerOpen] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
   const [whatsappError, setWhatsappError] = useState("");
+  const [whatsappPairingTimedOut, setWhatsappPairingTimedOut] = useState(false);
+  const [whatsappPollingRestart, setWhatsappPollingRestart] = useState(0);
   const [whatsappSetupOpen, setWhatsappSetupOpen] = useState(false);
   const [whatsappSetupInitialized, setWhatsappSetupInitialized] =
     useState(false);
   const [groupPickerOpen, setGroupPickerOpen] = useState(false);
+  const [groupsFetchEnabled, setGroupsFetchEnabled] = useState(false);
   const [groupSearch, setGroupSearch] = useState("");
   const [groupSearchSelection, setGroupSearchSelection] = useState<string[]>(
     [],
   );
   const [selectedWhatsAppGroups, setSelectedWhatsAppGroups] = useState<
-    WhatsAppGroup[]
+    WhatsAppGroupOption[]
   >([]);
   const [whatsappSetupError, setWhatsappSetupError] = useState("");
   const [groupMessagesOpen, setGroupMessagesOpen] = useState(false);
@@ -292,11 +346,36 @@ function SourcesContent({ userId }: { userId: string | null }) {
         : false,
   });
   const connections = connectionsQuery.data;
-  const hasConnectedSocialAccount = Boolean(
-    connections?.facebook ||
-    connections?.instagram ||
-    connections?.whatsapp?.connectionState === "connected",
-  );
+  const eligibleSocialAccount =
+    connections?.facebook?.authorizationStatus === "ready"
+      ? {
+          platform: "Facebook",
+          accountName: connections.facebook.accountName,
+        }
+      : connections?.instagram?.authorizationStatus === "ready"
+        ? {
+            platform: "Instagram",
+            accountName: `@${connections.instagram.accountName}`,
+          }
+        : connections?.whatsapp?.connectionState === "connected"
+          ? {
+              platform: "WhatsApp",
+              accountName: connections.whatsapp.accountName,
+            }
+          : null;
+  const whatsappGroupSelectionsQueryKey = [
+    "whatsappGroupSelections",
+    userId ?? "local",
+    connections?.whatsapp?.instanceName ?? "no-connection",
+  ] as const;
+  const whatsappGroupsQueryKey = [
+    "whatsappGroups",
+    userId ?? "local",
+    connections?.whatsapp?.instanceName ?? "no-connection",
+  ] as const;
+  const hasConnectedSocialAccount = connections
+    ? hasEligibleSocialConnection(connections)
+    : false;
   const onboardingQuery = useQuery({
     queryKey: getOnboardingStatusQueryKey(userId),
     queryFn: () => getOnboardingStatus(),
@@ -309,10 +388,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
   const completeSocialSetup = useMutation({
     mutationFn: markSocialAccountsSetupComplete,
     onSuccess: (status) => {
-      queryClient.setQueriesData<OnboardingStatus>(
-        { queryKey: getOnboardingStatusQueryKey(null).slice(0, 1) },
-        status,
-      );
+      queryClient.setQueryData(getOnboardingStatusQueryKey(userId), status);
       router.replace("/(tabs)");
     },
   });
@@ -324,9 +400,24 @@ function SourcesContent({ userId }: { userId: string | null }) {
   });
   const groupsQuery = useQuery({
     queryKey: whatsappGroupsQueryKey,
-    queryFn: getWhatsAppGroups,
-    enabled: groupPickerOpen && Boolean(connections?.whatsapp),
+    queryFn: async ({ signal }) => {
+      try {
+        return await getWhatsAppGroups({ signal });
+      } catch (error) {
+        setGroupsFetchEnabled(false);
+        throw error;
+      }
+    },
+    enabled:
+      groupPickerOpen &&
+      groupsFetchEnabled &&
+      connections?.whatsapp?.connectionState === "connected" &&
+      Boolean(connections.whatsapp.instanceName),
     retry: false,
+    retryOnMount: false,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     staleTime: 5 * 60 * 1000,
   });
   const displayedMessageGroups = useMemo(
@@ -371,11 +462,36 @@ function SourcesContent({ userId }: { userId: string | null }) {
 
   useEffect(() => {
     const instanceName = whatsappInput?.instanceName;
-    if (!instanceName || !whatsappInput.pairingCode) return;
+    if (
+      !instanceName ||
+      (!whatsappInput.pairingCode && !whatsappInput.qrCodeBase64)
+    )
+      return;
 
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     let disconnectedChecks = 0;
+    let consecutiveErrors = 0;
+    let checkConnection: () => Promise<void>;
+    const startedAt = Date.now();
+    const stopWaiting = (message: string) => {
+      if (!active) return;
+      setWhatsappPairingTimedOut(true);
+      setWhatsappError(message);
+    };
+    const scheduleNextCheck = (delay: number) => {
+      const remaining = WHATSAPP_PAIRING_TIMEOUT_MS - (Date.now() - startedAt);
+      if (remaining <= 0) {
+        stopWaiting(
+          "توقف التحقق بعد دقيقتين دون تأكيد الربط. يمكنك التحقق مجددًا أو طلب رمز جديد.",
+        );
+        return;
+      }
+      timer = setTimeout(
+        () => void checkConnection(),
+        Math.min(delay, remaining),
+      );
+    };
     const completeConnection = async () => {
       await queryClient.invalidateQueries({
         queryKey: getGetSocialConnectionsQueryKey(),
@@ -383,15 +499,39 @@ function SourcesContent({ userId }: { userId: string | null }) {
       if (!active) return;
       setWhatsappInput(null);
       setWhatsappSetupInitialized(false);
-      router.push("../whatsapp-setup");
+      router.push({
+        pathname: "/whatsapp-setup",
+        params: includeWhatsApp ? { returnTo: "connect-accounts" } : undefined,
+      });
     };
-    const checkConnection = async () => {
+    checkConnection = async () => {
+      if (!active) return;
+      if (Date.now() - startedAt >= WHATSAPP_PAIRING_TIMEOUT_MS) {
+        stopWaiting(
+          "توقف التحقق بعد دقيقتين دون تأكيد الربط. يمكنك التحقق مجددًا أو طلب رمز جديد.",
+        );
+        return;
+      }
       try {
         const status = await getWhatsAppConnectionStatus({ instanceName });
         if (!active) return;
+        consecutiveErrors = 0;
+        setWhatsappPairingTimedOut(false);
+        setWhatsappError("");
         if (status.state === "connected") {
-          setWhatsappError("");
           await completeConnection();
+          return;
+        }
+        if (status.state === "unavailable") {
+          stopWaiting(
+            "تعذر التحقق من حالة واتساب. تحقق مجددًا أو اطلب رمز ربط جديدًا.",
+          );
+          return;
+        }
+        if (status.state === "failed") {
+          stopWaiting(
+            "تعذر تجهيز جلسة الربط. أعد المحاولة أو اطلب رمز ربط جديدًا.",
+          );
           return;
         }
         if (status.state === "disconnected") {
@@ -416,37 +556,71 @@ function SourcesContent({ userId }: { userId: string | null }) {
             );
           }
           if (!active) return;
-          setWhatsappError(
-            disconnectedChecks >= 4
-              ? "لم يكتمل الربط بعد. إذا كان واتساب متصلًا، انتظر قليلًا؛ وإلا امسح رمز QR أو اطلب رمزًا جديدًا."
-              : "",
-          );
-        } else {
-          disconnectedChecks = 0;
-          setWhatsappError("");
+          if (disconnectedChecks >= 4) {
+            setWhatsappError(
+              "لم يؤكد واتساب الربط بعد. أكمل الخطوات على هاتفك أو اطلب رمزًا جديدًا.",
+            );
+          }
         }
       } catch (err: unknown) {
         if (!active) return;
         const message =
           err instanceof Error ? err.message : "تعذّر التحقق من حالة الربط.";
         setWhatsappError(message);
-        if (
+        const statusCode =
           err &&
           typeof err === "object" &&
           "status" in err &&
-          err.status === 404
-        )
+          typeof err.status === "number"
+            ? err.status
+            : null;
+        if (statusCode === 404) {
+          stopWaiting(
+            "انتهت جلسة الربط أو لم تعد موجودة. اطلب رمزًا جديدًا للمتابعة.",
+          );
           return;
+        }
+        if (
+          statusCode !== null &&
+          statusCode !== 408 &&
+          statusCode !== 429 &&
+          statusCode < 500
+        ) {
+          stopWaiting(message);
+          return;
+        }
+        consecutiveErrors += 1;
       }
-      if (active) timer = setTimeout(checkConnection, 3000);
+      if (active) {
+        const retryDelay =
+          consecutiveErrors === 0
+            ? WHATSAPP_PAIRING_POLL_INTERVAL_MS
+            : Math.min(
+                WHATSAPP_PAIRING_POLL_INTERVAL_MS *
+                  2 ** (consecutiveErrors - 1),
+                WHATSAPP_PAIRING_MAX_RETRY_DELAY_MS,
+              );
+        scheduleNextCheck(retryDelay);
+      }
     };
 
-    timer = setTimeout(checkConnection, 3000);
+    setWhatsappPairingTimedOut(false);
+    timer = setTimeout(
+      () => void checkConnection(),
+      whatsappPollingRestart === 0 ? WHATSAPP_PAIRING_POLL_INTERVAL_MS : 0,
+    );
     return () => {
       active = false;
       clearTimeout(timer);
     };
-  }, [queryClient, whatsappInput?.instanceName, whatsappInput?.pairingCode]);
+  }, [
+    includeWhatsApp,
+    queryClient,
+    whatsappPollingRestart,
+    whatsappInput?.instanceName,
+    whatsappInput?.pairingCode,
+    whatsappInput?.qrCodeBase64,
+  ]);
 
   // ─── Meta OAuth flow (user-initiated, no fallback to test accounts) ──────────
   const connectMeta = async (platform: "facebook" | "instagram") => {
@@ -468,12 +642,19 @@ function SourcesContent({ userId }: { userId: string | null }) {
           queryKey: getGetSocialConnectionsQueryKey(),
         });
         const status = new URL(result.url).searchParams.get("status");
-        if (status === "facebook_connected") {
+        if (
+          status === "facebook_connected" ||
+          status === "instagram_connected"
+        ) {
           const detail = new URL(result.url).searchParams.get("detail");
           Alert.alert(
-            "تم ربط فيسبوك ✓",
+            platform === "instagram"
+              ? "تم ربط Instagram ✓"
+              : "تم ربط فيسبوك ✓",
             detail ||
-              "تم تحديث اتصال صفحة Facebook وحساب Instagram المهني المرتبط بها إن وُجد.",
+              (platform === "instagram"
+                ? "تم ربط حساب Instagram الاحترافي وصفحة Facebook المرتبطة به."
+                : "تم تحديث اتصال صفحة Facebook وحساب Instagram المهني المرتبط بها إن وُجد."),
           );
         } else if (status === "error") {
           const resultUrl = new URL(result.url);
@@ -548,6 +729,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
   // ─── WhatsApp connect (user enters their own instance/phone) ──────────────────
   const connectWhatsApp = () => {
     setWhatsappError("");
+    setWhatsappPairingTimedOut(false);
     const savedPhone = connections?.whatsapp?.phoneNumber
       ? parseWhatsAppPhoneNumber(
           connections.whatsapp.phoneNumber,
@@ -608,7 +790,9 @@ function SourcesContent({ userId }: { userId: string | null }) {
         instanceName: pairing.instanceName,
         pairingCode: pairing.pairingCode,
         qrCodeBase64: pairing.qrCodeBase64,
+        showQrCode: !pairing.pairingCode && Boolean(pairing.qrCodeBase64),
       });
+      setWhatsappPollingRestart((current) => current + 1);
     } catch (err: unknown) {
       const status =
         err && typeof err === "object" && "status" in err
@@ -660,6 +844,34 @@ function SourcesContent({ userId }: { userId: string | null }) {
     }
   };
 
+  const cancelWhatsAppPairing = async () => {
+    if (!whatsappInput?.pairingCode) {
+      setWhatsappInput(null);
+      return;
+    }
+    if (busySources.whatsapp || whatsappConnectInFlight.current) return;
+
+    whatsappConnectInFlight.current = true;
+    setSourceBusy("whatsapp", true);
+    setWhatsappError("");
+    try {
+      await deleteWhatsAppConnection({ cancelPairing: true });
+      await queryClient.invalidateQueries({
+        queryKey: getGetSocialConnectionsQueryKey(),
+      });
+      setWhatsappInput(null);
+    } catch (error) {
+      setWhatsappError(
+        error instanceof Error && error.message.includes("تم تأكيد")
+          ? error.message
+          : "تعذر إلغاء محاولة الربط. تحقق من الاتصال وحاول مرة أخرى.",
+      );
+    } finally {
+      whatsappConnectInFlight.current = false;
+      setSourceBusy("whatsapp", false);
+    }
+  };
+
   const disconnectWhatsApp = () => {
     setDisconnectDialog({
       platform: "whatsapp",
@@ -696,8 +908,12 @@ function SourcesContent({ userId }: { userId: string | null }) {
         (current: typeof connections) =>
           current ? { ...current, whatsapp: null } : current,
       );
-      queryClient.removeQueries({ queryKey: whatsappGroupSelectionsQueryKey });
-      queryClient.removeQueries({ queryKey: whatsappGroupsQueryKey });
+      queryClient.removeQueries({
+        queryKey: ["whatsappGroupSelections", userId ?? "local"],
+      });
+      queryClient.removeQueries({
+        queryKey: ["whatsappGroups", userId ?? "local"],
+      });
       queryClient.removeQueries({ queryKey: whatsappSyncStatusQueryKey });
       setSelectedWhatsAppGroups([]);
       setGroupSearchSelection([]);
@@ -709,6 +925,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
       setActiveGroupName("");
       setGroupMessagesOpen(false);
       setGroupPickerOpen(false);
+      setGroupsFetchEnabled(false);
       setWhatsappSetupOpen(false);
       setWhatsappSetupInitialized(false);
       await queryClient.invalidateQueries({
@@ -749,11 +966,15 @@ function SourcesContent({ userId }: { userId: string | null }) {
   const openWhatsAppSetup = () => {
     setWhatsappSetupError("");
     setWhatsappSetupInitialized(false);
-    router.push("../whatsapp-setup");
+    router.push({
+      pathname: "/whatsapp-setup",
+      params: includeWhatsApp ? { returnTo: "connect-accounts" } : undefined,
+    });
   };
 
   const openGroupPicker = () => {
     setGroupSearch("");
+    setGroupsFetchEnabled(true);
     setGroupSearchSelection(
       selectedWhatsAppGroups.map((group) => group.groupJid),
     );
@@ -775,6 +996,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
       availableGroups.filter((group) => selected.has(group.groupJid)),
     );
     setGroupPickerOpen(false);
+    setGroupsFetchEnabled(false);
   };
 
   const saveWhatsAppSetup = async () => {
@@ -789,6 +1011,9 @@ function SourcesContent({ userId }: { userId: string | null }) {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: whatsappGroupSelectionsQueryKey,
+        }),
+        queryClient.invalidateQueries({
+          queryKey: whatsappGroupsQueryKey,
         }),
         queryClient.invalidateQueries({
           queryKey: whatsappSyncStatusQueryKey,
@@ -871,12 +1096,26 @@ function SourcesContent({ userId }: { userId: string | null }) {
       );
       return;
     }
+    const parsedHistoryLimit = Number(historyMessageLimit);
+    if (
+      syncPreviousMessages &&
+      (!Number.isInteger(parsedHistoryLimit) ||
+        parsedHistoryLimit < 1 ||
+        parsedHistoryLimit > 100_000)
+    ) {
+      setSyncNotice("أدخل عدداً صحيحاً من 1 إلى 100000 لكل مجموعة.");
+      return;
+    }
     setSyncNotice(null);
     syncRequestInFlightRef.current = true;
     const submittedAt = Date.now();
     try {
       setSyncingWhatsApp(true);
-      const result = await triggerWhatsAppSyncNow(syncPreviousMessages);
+      const result = await triggerWhatsAppSyncNow(
+        syncPreviousMessages,
+        undefined,
+        syncPreviousMessages ? parsedHistoryLimit : undefined,
+      );
       if (result.status === "no_sync_options") {
         setSyncNotice(
           "لتبدأ المزامنة، فعّل خيارًا واحدًا على الأقل: مزامنة الرسائل أو الصور أو الفيديوهات.",
@@ -943,7 +1182,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
           Alert.alert(
             "بدأت المزامنة",
             syncPreviousMessages
-              ? `بدأ استيراد الرسائل السابقة والجديدة حسب الخيارات المحددة من ${result.groups.length} مجموعة. تابع حالة كل مجموعة في هذا القسم.`
+              ? `بدأ استيراد ما يصل إلى ${parsedHistoryLimit} رسالة غير محفوظة من السجل لكل مجموعة، من ${result.groups.length} مجموعة. تابع حالة كل مجموعة في هذا القسم.`
               : `بدأ استيراد الرسائل الجديدة فقط حسب الخيارات المحددة من ${result.groups.length} مجموعة. تابع حالة كل مجموعة في هذا القسم.`,
           );
         }
@@ -1059,15 +1298,16 @@ function SourcesContent({ userId }: { userId: string | null }) {
   };
 
   useEffect(() => {
-    if (
-      !groupMessagesOpen ||
-      !activeGroupJid ||
-      !displayedMessageGroups.some((group) => group.mediaPending)
-    ) return;
+    if (!groupMessagesOpen || !activeGroupJid) return;
 
+    const refreshInterval = displayedMessageGroups.some(
+      (group) => group.mediaPending,
+    )
+      ? 5000
+      : 30000;
     const refreshTimer = setInterval(() => {
       void loadGroupMessages(activeGroupJid, groupMessagesPage);
-    }, 5000);
+    }, refreshInterval);
     return () => clearInterval(refreshTimer);
   }, [
     activeGroupJid,
@@ -1178,15 +1418,12 @@ function SourcesContent({ userId }: { userId: string | null }) {
 
   // ─── Status helpers ──────────────────────────────────────────────────────────
   const isConnected = (key: SourceKey): boolean => {
-    if (key === "facebook") return Boolean(connections?.facebook);
-    if (key === "instagram") return Boolean(connections?.instagram);
-    if (key === "whatsapp") {
-      if (!connections?.whatsapp) return false;
-      if (connections.whatsapp.connectionState !== undefined) {
-        return connections.whatsapp.connectionState === "connected";
-      }
-      return connections.whatsapp.connected ?? true;
-    }
+    if (key === "facebook")
+      return connections?.facebook?.authorizationStatus === "ready";
+    if (key === "instagram")
+      return connections?.instagram?.authorizationStatus === "ready";
+    if (key === "whatsapp")
+      return connections?.whatsapp?.connectionState === "connected";
     return false;
   };
 
@@ -1225,6 +1462,9 @@ function SourcesContent({ userId }: { userId: string | null }) {
       }
       if (connections.whatsapp.connectionState === "unavailable") {
         return "الحساب محفوظ · تعذّر التحقق من الاتصال الآن";
+      }
+      if (connections.whatsapp.connectionState === "failed") {
+        return "تعذر إعداد الاتصال · أعد محاولة الربط";
       }
       return connections.whatsapp.connectionState === "missing"
         ? "الحساب محفوظ · نسخة الخادم غير موجودة"
@@ -1283,7 +1523,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
       key === "whatsapp" &&
       connections?.whatsapp?.connectionState === "connecting"
     ) {
-      return "جارٍ استعادة الاتصال…";
+      return "متابعة ربط واتساب";
     }
     if (key === "whatsapp" && connections?.whatsapp) return "إعادة الربط";
     if (
@@ -1343,14 +1583,18 @@ function SourcesContent({ userId }: { userId: string | null }) {
       <BrandHeader showBell />
       <PageTitle
         title={
-          socialSetupPending
+          socialSetupPending && isPublishingAccounts
             ? "اربط حساباتك الاجتماعية مع MenaFlow"
-            : "مصادر المحتوى"
+            : isPublishingAccounts
+              ? "حسابات النشر"
+              : "مصادر المحتوى"
         }
         subtitle={
-          socialSetupPending
-            ? "يساعدك الربط على إدارة المحتوى والرسائل من مكان واحد. اختر المنصات التي تستخدمها."
-            : "اربط حساباتك الخاصة لتجهيز المحتوى ومتابعة الحسابات والنشر."
+          socialSetupPending && isPublishingAccounts
+            ? "اختر منصة واحدة للبدء. يمكنك إضافة البقية لاحقًا."
+            : isPublishingAccounts
+              ? "أدر حسابات فيسبوك وإنستغرام المستخدمة للنشر ومتابعة أدائها."
+              : "أدر مصادر المحتوى الوارد ومزامنة الرسائل والوسائط."
         }
       />
 
@@ -1390,7 +1634,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
                 style={[styles.requirementTitle, { color: colors.foreground }]}
               >
                 {hasConnectedSocialAccount
-                  ? "تم استيفاء شرط المتابعة"
+                  ? `تم ربط ${eligibleSocialAccount?.platform} بنجاح`
                   : "خطوة مطلوبة لإكمال الإعداد"}
               </Text>
               <StatusPill
@@ -1398,30 +1642,86 @@ function SourcesContent({ userId }: { userId: string | null }) {
                   connectionsQuery.isPending
                     ? "جارٍ التحقق"
                     : hasConnectedSocialAccount
-                      ? "تم الربط"
+                      ? "جاهز للمتابعة"
                       : "مطلوب حساب واحد"
                 }
                 tone={hasConnectedSocialAccount ? "green" : "muted"}
               />
             </View>
-            <Text
-              style={[styles.requirementBody, { color: colors.foreground }]}
-            >
-              اربط حسابًا اجتماعيًا واحدًا على الأقل بنجاح للمتابعة إلى لوحة
-              التحكم.
-            </Text>
-            <Text
-              style={[
-                styles.requirementHint,
-                { color: colors.mutedForeground },
-              ]}
-            >
+            <Text style={[styles.requirementBody, { color: colors.foreground }]}>
               {connectionsQuery.isError
-                ? "تعذر التحقق من حالة الربط. حدّث الحالة بعد المحاولة."
-                : hasConnectedSocialAccount
-                  ? "يمكنك الآن المتابعة إلى لوحة التحكم."
-                  : "اختر أي منصة متاحة أدناه؛ لا يلزم ربط جميع المنصات."}
+                ? "تعذر التحقق من الحسابات. أعد المحاولة."
+                : eligibleSocialAccount
+                  ? `${eligibleSocialAccount.accountName} جاهز للمتابعة.`
+                  : "اربط منصة واحدة؛ البقية اختيارية."}
             </Text>
+            {socialSetupPending && isPublishingAccounts && (
+              <>
+                {completeSocialSetup.isError && (
+                  <Text
+                    style={[
+                      styles.error,
+                      { color: colors.destructive, textAlign: "center" },
+                    ]}
+                  >
+                    تعذر حفظ حالة الإعداد. تحقق من اتصال الإنترنت ثم أعد المحاولة.
+                  </Text>
+                )}
+                {hasConnectedSocialAccount && !connectionsQuery.isError && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ busy: completeSocialSetup.isPending }}
+                    disabled={completeSocialSetup.isPending}
+                    onPress={() => completeSocialSetup.mutate()}
+                    style={[
+                      styles.onboardingContinue,
+                      {
+                        backgroundColor: colors.primary,
+                        alignSelf: "stretch",
+                        marginTop: 6,
+                        opacity: completeSocialSetup.isPending ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    {completeSocialSetup.isPending ? (
+                      <ActivityIndicator color={colors.primaryForeground} />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.onboardingContinueText,
+                          { color: colors.primaryForeground },
+                        ]}
+                      >
+                        المتابعة إلى لوحة التحكم
+                      </Text>
+                    )}
+                  </Pressable>
+                )}
+              </>
+            )}
+            {!isPublishingAccounts && (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => router.push("/connect-accounts")}
+                style={[
+                  styles.onboardingContinue,
+                  {
+                    backgroundColor: colors.primary,
+                    alignSelf: "flex-start",
+                    marginTop: 12,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.onboardingContinueText,
+                    { color: colors.primaryForeground },
+                  ]}
+                >
+                  فتح حسابات النشر
+                </Text>
+              </Pressable>
+            )}
           </View>
         </Panel>
       )}
@@ -1458,6 +1758,23 @@ function SourcesContent({ userId }: { userId: string | null }) {
 
       <SourcesConnectionsPanel
         compactLayout={compactLayout}
+        sourceKeys={
+          isPublishingAccounts
+            ? includeWhatsApp
+              ? ["facebook", "instagram", "whatsapp"]
+              : ["facebook", "instagram"]
+            : ["whatsapp"]
+        }
+        sectionTitle={
+          includeWhatsApp
+            ? "المنصات"
+            : isPublishingAccounts
+              ? "حسابات النشر"
+              : "مصادر استيراد المحتوى"
+        }
+        refreshLabel={
+          isPublishingAccounts ? "تحديث حالة الحسابات" : "تحديث حالة المصادر"
+        }
         connections={connections}
         busySources={busySources}
         disconnectingSource={disconnectingSource}
@@ -1465,7 +1782,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
           connectionsQuery.isError
             ? connectionsQuery.error instanceof Error
               ? connectionsQuery.error.message
-              : "تعذر تحميل حالة الحسابات. تحقق من تشغيل الخادم وحاول التحديث."
+              : "تعذر تحميل حالة المصادر. تحقق من تشغيل الخادم وحاول التحديث."
             : null
         }
         isConnected={isConnected}
@@ -1479,50 +1796,9 @@ function SourcesContent({ userId }: { userId: string | null }) {
         onRefresh={() => void connectionsQuery.refetch()}
       />
 
-      {socialSetupPending && (
-        <View style={styles.onboardingActions}>
-          {completeSocialSetup.isError && (
-            <Text
-              style={[
-                styles.error,
-                { color: colors.destructive, textAlign: "center" },
-              ]}
-            >
-              تعذر حفظ حالة الإعداد. تحقق من اتصال الإنترنت ثم أعد المحاولة.
-            </Text>
-          )}
-          {hasConnectedSocialAccount && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ busy: completeSocialSetup.isPending }}
-              disabled={completeSocialSetup.isPending}
-              onPress={() => completeSocialSetup.mutate()}
-              style={[
-                styles.onboardingContinue,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: completeSocialSetup.isPending ? 0.7 : 1,
-                },
-              ]}
-            >
-              {completeSocialSetup.isPending ? (
-                <ActivityIndicator color={colors.primaryForeground} />
-              ) : (
-                <Text
-                  style={[
-                    styles.onboardingContinueText,
-                    { color: colors.primaryForeground },
-                  ]}
-                >
-                  المتابعة إلى لوحة التحكم
-                </Text>
-              )}
-            </Pressable>
-          )}
-        </View>
-      )}
-
-      {connections?.whatsapp && isConnected("whatsapp") ? (
+      {!isPublishingAccounts &&
+      connections?.whatsapp &&
+      isConnected("whatsapp") ? (
         <WhatsAppSyncStatusPanel
           status={syncStatusQuery.data}
           groups={visibleSyncGroups}
@@ -1533,9 +1809,13 @@ function SourcesContent({ userId }: { userId: string | null }) {
           syncNotice={syncNotice}
           syncPreviousMessages={syncPreviousMessages}
           onSyncPreviousMessagesChange={setSyncPreviousMessages}
+          historyMessageLimit={historyMessageLimit}
+          onHistoryMessageLimitChange={setHistoryMessageLimit}
           onUpdateSetting={(setting, enabled) =>
             void updateSyncSetting(setting, enabled)
           }
+          onManageGroups={openWhatsAppSetup}
+          onRefresh={() => void syncStatusQuery.refetch()}
           onOpenGroupMessages={(groupJid, groupName) =>
             void openGroupMessages(groupJid, groupName)
           }
@@ -1549,6 +1829,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
         isExistingConnection={Boolean(connections?.whatsapp)}
         busy={Boolean(busySources.whatsapp)}
         error={whatsappError}
+        pairingTimedOut={whatsappPairingTimedOut}
         formattedInternationalPhone={
           whatsappInput?.phoneNumber
             ? parseWhatsAppPhoneNumber(
@@ -1572,7 +1853,12 @@ function SourcesContent({ userId }: { userId: string | null }) {
           setWhatsappError("");
           void submitWhatsAppConnection(requestNewCode);
         }}
-        onClose={() => setWhatsappInput(null)}
+        onCheckAgain={() => {
+          setWhatsappError("");
+          setWhatsappPairingTimedOut(false);
+          setWhatsappPollingRestart((current) => current + 1);
+        }}
+        onClose={() => void cancelWhatsAppPairing()}
       />
 
       <CountryPickerModal
@@ -1622,9 +1908,15 @@ function SourcesContent({ userId }: { userId: string | null }) {
         selection={groupSearchSelection}
         onToggleGroup={toggleGroupSelection}
         onSetSelection={setGroupSearchSelection}
-        onRefetch={() => void groupsQuery.refetch()}
+        onRefetch={() => {
+          setGroupsFetchEnabled(true);
+          void groupsQuery.refetch();
+        }}
         onConfirm={confirmGroupSelection}
-        onClose={() => setGroupPickerOpen(false)}
+        onClose={() => {
+          setGroupPickerOpen(false);
+          setGroupsFetchEnabled(false);
+        }}
       />
 
       <WhatsAppGroupMessagesModal
@@ -1671,7 +1963,7 @@ function SourcesContent({ userId }: { userId: string | null }) {
 
 const styles = StyleSheet.create({
   setupRequirement: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
     borderWidth: 1,
@@ -1684,10 +1976,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  requirementCopy: { flex: 1, alignItems: "flex-end", gap: 7 },
+  requirementCopy: { flex: 1, alignItems: "flex-start", gap: 7 },
   requirementTitleRow: {
     width: "100%",
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     flexWrap: "wrap",
@@ -1699,13 +1991,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     fontWeight: "700",
-    textAlign: "right",
+    textAlign: "left",
   },
   requirementHint: {
     width: "100%",
-    fontSize: 12,
-    lineHeight: 19,
-    textAlign: "right",
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "left",
   },
   onboardingActions: { alignItems: "stretch", gap: 12, paddingTop: 2 },
   onboardingContinue: {
@@ -1716,5 +2008,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   onboardingContinueText: { fontSize: 13, fontWeight: "800" },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  error: { fontSize: 12, lineHeight: 18, textAlign: "left" },
 });

@@ -13,4 +13,6 @@ export const WhatsAppConnectionStatusState = {
   connecting: 'connecting',
   connected: 'connected',
   disconnected: 'disconnected',
+  failed: 'failed',
+  unavailable: 'unavailable',
 } as const;

@@ -1,4 +1,5 @@
 import { customFetch } from "./custom-fetch";
+import type { WhatsAppGroupOption } from "./generated/api.schemas";
 
 export interface WhatsAppGroup {
   groupJid: string;
@@ -11,7 +12,7 @@ export interface WhatsAppGroup {
 }
 
 export interface WhatsAppGroupsResponse {
-  groups: WhatsAppGroup[];
+  groups: WhatsAppGroupOption[];
 }
 
 export interface WhatsAppGroupSelectionsResponse {
@@ -48,6 +49,7 @@ export interface WhatsAppSyncTriggerResponse {
     | "no_linked_announcement_groups"
     | "no_sync_options";
   includeHistory?: boolean;
+  historyLimit?: number;
   groups: Array<{ groupJid: string; groupName: string }>;
 }
 
@@ -198,6 +200,7 @@ export async function updateWhatsAppSyncSettings(
 export async function triggerWhatsAppSyncNow(
   includeHistory = false,
   options?: Parameters<typeof customFetch>[1],
+  historyLimit?: number,
 ): Promise<WhatsAppSyncTriggerResponse> {
   return customFetch<WhatsAppSyncTriggerResponse>(
     "/api/social/whatsapp/sync-now",
@@ -208,7 +211,12 @@ export async function triggerWhatsAppSyncNow(
         "Content-Type": "application/json",
         ...options?.headers,
       },
-      body: JSON.stringify({ includeHistory }),
+      body: JSON.stringify({
+        includeHistory,
+        ...(includeHistory && historyLimit !== undefined
+          ? { historyLimit }
+          : {}),
+      }),
     },
   );
 }

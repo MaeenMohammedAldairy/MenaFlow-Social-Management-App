@@ -28,6 +28,12 @@ import {
 import { StudioProvider } from "@/context/StudioContext";
 import { Platform, I18nManager } from "react-native";
 import { isLocalAuthDisabled } from "@/constants/auth";
+import { applyAppearanceMode, readAppearanceMode } from "@/lib/appearance";
+
+if (Platform.OS === "web" && typeof document !== "undefined") {
+  document.documentElement.lang = "ar";
+  document.documentElement.dir = "rtl";
+}
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
@@ -41,6 +47,7 @@ queryClient.setQueryDefaults(getGetOnboardingStatusQueryKey(), {
   refetchOnWindowFocus: false,
 });
 const configuredPublicDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
+const isPreviewBuild = process.env.EXPO_PUBLIC_APP_VARIANT === "preview";
 if (!__DEV__ && !configuredPublicDomain) {
   throw new Error("Missing EXPO_PUBLIC_DOMAIN for a production API build.");
 }
@@ -52,6 +59,7 @@ if (publicDomain) {
   );
   if (
     !__DEV__ &&
+    !isPreviewBuild &&
     (apiUrl.protocol !== "https:" ||
       ["localhost", "127.0.0.1", "[::1]"].includes(apiUrl.hostname))
   ) {
@@ -75,15 +83,23 @@ const clerkProxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
 function AppNavigator() {
   return (
-    <Stack screenOptions={{ headerBackTitle: "Back" }}>
+    <Stack screenOptions={{ headerBackTitle: "رجوع" }}>
       <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="product-catalog" options={{ headerShown: false }} />
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+      <Stack.Screen name="connect-accounts" options={{ headerShown: false }} />
       <Stack.Screen name="whatsapp-setup" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="inbox/[conversationId]"
+        options={{ headerShown: false }}
+      />
       <Stack.Screen
         name="compose"
         options={{ headerShown: false, presentation: "modal" }}
       />
+      <Stack.Screen name="account/profile" options={{ headerShown: false }} />
+      <Stack.Screen name="account/[platform]" options={{ headerShown: false }} />
       <Stack.Screen name="oauth/meta" options={{ headerShown: false }} />
     </Stack>
   );
@@ -132,10 +148,27 @@ export default function RootLayout() {
   }, [fontsLoaded, fontError]);
 
   useEffect(() => {
-    if (Platform.OS !== "web" && !I18nManager.isRTL) {
+    if (Platform.OS === "web") return;
+    if (!I18nManager.isRTL) {
       I18nManager.allowRTL(true);
       I18nManager.forceRTL(true);
     }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    readAppearanceMode()
+      .then((mode) => {
+        if (active) {
+          applyAppearanceMode(mode);
+        }
+      })
+      .catch((error) => {
+        console.error("Unable to load appearance preference:", error);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   if (!fontsLoaded && !fontError) return null;
@@ -149,7 +182,7 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
-          <GestureHandlerRootView>
+          <GestureHandlerRootView style={{ flex: 1, direction: "rtl" }}>
             <KeyboardProvider>
               {isLocalAuthDisabled ? (
                 <StudioProvider>

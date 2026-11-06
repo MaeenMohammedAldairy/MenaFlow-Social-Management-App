@@ -142,17 +142,49 @@ export function whatsappMediaExpiryFromUrl(mediaUrl: string): number | null {
   }
 }
 
+export function mediaUrlForApp(mediaUrl: string): string {
+  const configuredDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
+  if (!configuredDomain) return mediaUrl;
+
+  try {
+    const mediaUrlObject = new URL(mediaUrl);
+    if (
+      !/^\/api\/social\/(?:whatsapp|products)\/public-media\/[^/]+$/.test(
+        mediaUrlObject.pathname,
+      )
+    ) {
+      return mediaUrl;
+    }
+    const hasProtocol = /^https?:\/\//i.test(configuredDomain);
+    const apiUrl = new URL(
+      hasProtocol ? configuredDomain : `https://${configuredDomain}`,
+    );
+    if (
+      !hasProtocol &&
+      ["localhost", "127.0.0.1", "[::1]"].includes(apiUrl.hostname)
+    ) {
+      apiUrl.protocol = "http:";
+    }
+    mediaUrlObject.host = apiUrl.host;
+    mediaUrlObject.protocol = apiUrl.protocol;
+    return mediaUrlObject.toString();
+  } catch {
+    return mediaUrl;
+  }
+}
+
 export function mediaPreviewUrl(
   mediaUrl: string,
   thumbnailUrl: string | undefined,
   previewUrls: Record<string, string>,
 ): string {
   const mediaId = whatsappMediaIdFromUrl(mediaUrl);
-  return (
+  const previewUrl = (
     (mediaId ? previewUrls[`${mediaId}:thumbnail`] : undefined) ??
     thumbnailUrl ??
     mediaUrl
   );
+  return mediaUrlForApp(previewUrl);
 }
 
 export function postMediaType(post: Post, mediaUrl: string): string {

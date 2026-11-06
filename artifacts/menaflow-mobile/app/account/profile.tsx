@@ -7,6 +7,7 @@ import { ActionButton, BrandHeader, Page, PageTitle, Panel, SectionTitle } from 
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { useColors } from "@/hooks/useColors";
+import { formatArabicDate } from "@/lib/formatting";
 
 export default function ProfileScreen() {
   if (isLocalAuthDisabled) return <LocalProfileScreen />;
@@ -61,11 +62,11 @@ function AuthenticatedProfileScreen() {
   const emailAddress = user?.primaryEmailAddress;
   const emailVerified = emailAddress?.verification?.status === "verified";
   const accountCreatedAt = user?.createdAt
-    ? new Intl.DateTimeFormat("ar", {
+    ? formatArabicDate(user.createdAt, {
         day: "numeric",
         month: "long",
         year: "numeric",
-      }).format(user.createdAt)
+      }) ?? "غير متاح"
     : "غير متاح";
 
   useEffect(() => {
@@ -254,6 +255,7 @@ function AuthenticatedProfileScreen() {
               accessibilityLabel="البريد الإلكتروني"
               style={[
                 styles.input,
+                styles.emailInput,
                 styles.readOnlyInput,
                 {
                   color: colors.mutedForeground,
@@ -337,18 +339,18 @@ function AuthenticatedProfileScreen() {
 
 const styles = StyleSheet.create({
   panel: { gap: 14 },
-  message: { fontSize: 12, lineHeight: 20, textAlign: "right" },
-  loading: { flexDirection: "row-reverse", alignItems: "center", gap: 9 },
+  message: { fontSize: 12, lineHeight: 20, textAlign: "left" },
+  loading: { flexDirection: "row", alignItems: "center", gap: 9 },
   empty: { gap: 14 },
-  identity: { flexDirection: "row-reverse", alignItems: "center", gap: 12, marginBottom: 4 },
-  identityCopy: { flex: 1, alignItems: "flex-end", gap: 4 },
+  identity: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 },
+  identityCopy: { flex: 1, alignItems: "flex-start", gap: 4 },
   identityName: { fontSize: 16, fontWeight: "800", textAlign: "right" },
-  identityEmail: { fontSize: 11, textAlign: "right" },
+  identityEmail: { fontSize: 11, textAlign: "left", writingDirection: "ltr" },
   avatar: { width: 62, height: 62, borderRadius: 31 },
   avatarFallback: { alignItems: "center", justifyContent: "center" },
-  statusRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { fontSize: 12, fontWeight: "700", textAlign: "right" },
+  statusText: { fontSize: 12, fontWeight: "700", textAlign: "left" },
   label: { fontSize: 12, fontWeight: "700", textAlign: "right", marginBottom: -8 },
   input: {
     minHeight: 46,
@@ -359,21 +361,23 @@ const styles = StyleSheet.create({
     fontFamily: "Cairo_400Regular",
     fontSize: 13,
     textAlign: "right",
+    writingDirection: "rtl",
     outlineStyle: "none",
   } as never,
+  emailInput: { textAlign: "left", writingDirection: "ltr" },
   readOnlyInput: { opacity: 0.86 },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
-  success: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  error: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  success: { fontSize: 12, lineHeight: 18, textAlign: "left" },
   infoRow: {
     minHeight: 42,
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 10,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
   },
-  infoLabel: { flexDirection: "row-reverse", alignItems: "center", gap: 7 },
+  infoLabel: { flexDirection: "row", alignItems: "center", gap: 7 },
   infoTitle: { fontSize: 11, textAlign: "right" },
   infoValue: { flexShrink: 1, fontSize: 11, fontWeight: "700", textAlign: "left" },
   saveButton: {

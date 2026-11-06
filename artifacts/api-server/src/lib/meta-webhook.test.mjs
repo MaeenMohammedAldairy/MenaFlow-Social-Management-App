@@ -3,8 +3,19 @@ import { createHmac } from "node:crypto";
 import test from "node:test";
 import {
   parseMetaWebhookEvents,
+  resolveUniqueMetaConnection,
   verifyMetaWebhookSignature,
 } from "./meta-webhook.ts";
+
+test("resolves only a single Meta connection candidate", () => {
+  const connection = { workspaceId: "workspace-1" };
+  assert.equal(resolveUniqueMetaConnection([]), null);
+  assert.equal(resolveUniqueMetaConnection([connection]), connection);
+  assert.equal(
+    resolveUniqueMetaConnection([connection, { workspaceId: "workspace-2" }]),
+    null,
+  );
+});
 
 test("verifies Meta webhook signatures against the exact request body", () => {
   const body = Buffer.from('{"object":"page"}');
@@ -160,4 +171,95 @@ test("extracts secure attachment previews from messages", () => {
       thumbnailUrl: "https://cdn.example.com/preview.jpg",
     },
   ]);
+});
+
+test("ignores duplicate comment ids so re-delivered webhooks do not enqueue twice", () => {
+  const payload = {
+    entry: [
+      {
+        id: "page-1",
+        time: 1_797_000_000,
+        changes: [
+          {
+            field: "feed",
+            value: {
+              item: "comment",
+              verb: "add",
+              comment_id: "comment-dup",
+              post_id: "post-1",
+              from: { id: "person-2", name: "Visitor" },
+              message: "Same comment delivered twice",
+            },
+          },
+        ],
+      },
+    ],
+  };
+  const first = parseMetaWebhookEvents(payload, "facebook");
+  const second = parseMetaWebhookEvents(payload, "facebook");
+  assert.equal(first.length, 1);
+  assert.equal(second.length, 1);
+  assert.equal(first[0]?.externalId, second[0]?.externalId);
+});
+
+test("skips removed comments and non-comment feed items", () => {
+  const events = parseMetaWebhookEvents(
+    {
+      entry: [
+        {
+          id: "page-1",
+          time: 1_797_000_000,
+          changes: [
+            {
+              field: "feed",
+              value: {
+                item: "comment",
+                verb: "remove",
+                comment_id: "comment-gone",
+                post_id: "post-1",
+              },
+            },
+            {
+              field: "feed",
+              value: {
+                item: "post",
+                verb: "add",
+                post_id: "post-new",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    "facebook",
+  );
+  assert.deepEqual(events, []);
+});
+
+test("skips comments written by the page account itself", () => {
+  const events = parseMetaWebhookEvents(
+    {
+      entry: [
+        {
+          id: "page-1",
+          time: 1_797_000_000,
+          changes: [
+            {
+              field: "feed",
+              value: {
+                item: "comment",
+                verb: "add",
+                comment_id: "comment-own",
+                post_id: "post-1",
+                from: { id: "page-1", name: "My Page" },
+                message: "Self reply",
+              },
+            },
+          ],
+        },
+      ],
+    },
+    "facebook",
+  );
+  assert.deepEqual(events, []);
 });

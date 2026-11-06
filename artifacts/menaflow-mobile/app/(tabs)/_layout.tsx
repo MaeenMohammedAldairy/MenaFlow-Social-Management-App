@@ -1,10 +1,10 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Platform, StyleSheet, useColorScheme, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 import { BlurView } from "expo-blur";
 import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
-import { NativeTabs } from "expo-router/unstable-native-tabs";
+import { NativeTabs } from "expo-router/native-tabs";
 import { SymbolView } from "expo-symbols";
 import { OwnerGuard } from "@/components/OwnerGuard";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
@@ -16,6 +16,7 @@ import {
   getOnboardingStatusQueryKey,
   getSocialConnections,
 } from "@workspace/api-client-react";
+import { hasEligibleSocialConnection } from "@workspace/api-zod";
 import { isLocalAuthDisabled } from "@/constants/auth";
 
 // IMPORTANT: iOS 26 uses NativeTabs for native tabs with liquid glass support.
@@ -40,20 +41,9 @@ function NativeTabLayout({ hidden }: { hidden: boolean }) {
         <NativeTabs.Trigger.Icon sf="bubble.left.and.bubble.right" md="forum" />
         <NativeTabs.Trigger.Label>الوارد</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="sources">
-        <NativeTabs.Trigger.Icon
-          sf="point.3.connected.trianglepath.dotted"
-          md="hub"
-        />
-        <NativeTabs.Trigger.Label>المصادر</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="reports">
-        <NativeTabs.Trigger.Icon sf="chart.bar" md="bar_chart" />
-        <NativeTabs.Trigger.Label>التقارير</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="settings">
-        <NativeTabs.Trigger.Icon sf="gearshape" md="settings" />
-        <NativeTabs.Trigger.Label>الإعدادات</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="more">
+        <NativeTabs.Trigger.Icon sf="ellipsis" md="more_horiz" />
+        <NativeTabs.Trigger.Label>المزيد</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -65,6 +55,24 @@ function ClassicTabLayout({ hidden }: { hidden: boolean }) {
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
+
+  useEffect(() => {
+    if (!isWeb || typeof document === "undefined") return;
+
+    const tabList = document.querySelector<HTMLElement>('[role="tablist"]');
+    if (!tabList) return;
+
+    const previousDirection = tabList.getAttribute("dir");
+    tabList.setAttribute("dir", "rtl");
+
+    return () => {
+      if (previousDirection === null) {
+        tabList.removeAttribute("dir");
+      } else {
+        tabList.setAttribute("dir", previousDirection);
+      }
+    };
+  }, [isWeb]);
 
   return (
     <Tabs
@@ -130,31 +138,25 @@ function ClassicTabLayout({ hidden }: { hidden: boolean }) {
         }}
       />
       <Tabs.Screen
-        name="sources"
+        name="more"
         options={{
-          title: "المصادر",
+          title: "المزيد",
           tabBarIcon: ({ color }) => (
-            <Icon name="share-2" size={21} color={color} />
+            <Icon name="more-horizontal" size={21} color={color} />
           ),
         }}
       />
       <Tabs.Screen
         name="reports"
-        options={{
-          title: "التقارير",
-          tabBarIcon: ({ color }) => (
-            <Icon name="bar-chart-2" size={21} color={color} />
-          ),
-        }}
+        options={{ href: null }}
       />
       <Tabs.Screen
         name="settings"
-        options={{
-          title: "الإعدادات",
-          tabBarIcon: ({ color }) => (
-            <Icon name="settings" size={21} color={color} />
-          ),
-        }}
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="sources"
+        options={{ href: null }}
       />
     </Tabs>
   );
@@ -186,11 +188,9 @@ function AuthenticatedTabNavigation() {
     enabled: Boolean(userId),
     retry: false,
   });
-  const hasConnectedSocialAccount = Boolean(
-    connections.data?.facebook ||
-    connections.data?.instagram ||
-    connections.data?.whatsapp?.connectionState === "connected",
-  );
+  const hasConnectedSocialAccount = connections.data
+    ? hasEligibleSocialConnection(connections.data)
+    : false;
   const setupIncomplete =
     onboarding.data?.completed === true &&
     !onboarding.data.socialAccountsCompleted;

@@ -10,7 +10,6 @@ export type AiDraft = {
 
 export async function generateDraft(
   text: string,
-  media: Array<{ mimeType: string; buffer: Buffer }> = [],
 ): Promise<{ draft: AiDraft; model: string }> {
   const prompt = [
     "قيّم رسالة من مجموعة واتساب تجارية وأنشئ منشورين عربيين ملائمين لفيسبوك وإنستغرام.",
@@ -18,51 +17,36 @@ export async function generateDraft(
     "eligible=true فقط إذا كان المحتوى عرضاً/منتجاً/خدمةً تجارية واضحة صالحة للنشر العام.",
     "لا تنشر محادثة أو طلب عميل أو بيانات شخصية أو أرقاماً أو رموز تحقق أو معلومة غير مؤكدة.",
     "لا تخترع سعراً أو خصماً أو ضماناً أو مواصفة أو رابطاً. استخدم الوقائع الصريحة فقط.",
+    "استخدم النص فقط، ولا تحلل الصور أو الفيديوهات أو روابطها.",
     "إذا كان المحتوى غير مؤهل أو ملتبساً اجعل eligible=false واكتب سبباً قصيراً.",
     `نص الرسالة المصدر:\n${text || "(لا يوجد نص)"}`,
   ].join("\n");
 
-  // Build provider-specific payloads (text + optional images)
-  const geminiParts: Array<Record<string, unknown>> = [{ text: prompt }];
-  for (const image of media) {
-    geminiParts.push({
-      inlineData: {
-        mimeType: image.mimeType,
-        data: image.buffer.toString("base64"),
-      },
-    });
-  }
-  const openAiUserContent: Array<Record<string, unknown>> = [{ type: "text", text: prompt }];
-  for (const image of media) {
-    openAiUserContent.push({
-      type: "image_url",
-      image_url: {
-        url: `data:${image.mimeType};base64,${image.buffer.toString("base64")}`,
-        detail: "low",
-      },
-    });
-  }
-
-  const systemInstruction = "حلّل بحذر. لا تستنتج من الصورة بيانات غير ظاهرة بوضوح.";
+  const systemInstruction = "حلّل النص بحذر ولا تستنتج معلومات غير مذكورة فيه.";
   let generatedResult = await callAiProvider({
     openAiMessages: [
       { role: "system", content: systemInstruction },
-      { role: "user", content: openAiUserContent },
+      { role: "user", content: prompt },
     ],
     openAiResponseFormat: { type: "json_object" },
-    geminiContents: [{ parts: geminiParts }],
+    geminiContents: [{ parts: [{ text: prompt }] }],
     geminiSystemInstruction: systemInstruction,
-    geminiResponseMimeType: "application/json",
-    geminiResponseSchema: {
-      type: "OBJECT",
-      properties: {
-        eligible: { type: "BOOLEAN" },
-        title: { type: "STRING" },
-        facebook: { type: "STRING" },
-        instagram: { type: "STRING" },
-        reason: { type: "STRING" },
+    geminiResponseFormat: {
+      text: {
+        mimeType: "application/json",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            eligible: { type: "boolean" },
+            title: { type: "string" },
+            facebook: { type: "string" },
+            instagram: { type: "string" },
+            reason: { type: "string" },
+          },
+          required: ["eligible", "title", "facebook", "instagram", "reason"],
+        },
       },
-      required: ["eligible", "title", "facebook", "instagram", "reason"],
     },
     temperature: 0.2,
     maxTokens: 900,
@@ -129,8 +113,10 @@ export async function generateDraft(
         const repaired = await callAiProvider({
           preferredProvider: "gemini",
           geminiContents: [{ parts: [{ text: prompt }] }],
-          geminiSystemInstruction: "حلّل بحذر. لا تستنتج من الصورة بيانات غير ظاهرة بوضوح.",
-          geminiResponseMimeType: "application/json",
+          geminiSystemInstruction: "حلّل النص بحذر ولا تستنتج معلومات غير مذكورة فيه.",
+          geminiResponseFormat: {
+            text: { mimeType: "application/json" },
+          },
           temperature: 0.2,
           maxTokens: 900,
           timeoutMs: 45_000,

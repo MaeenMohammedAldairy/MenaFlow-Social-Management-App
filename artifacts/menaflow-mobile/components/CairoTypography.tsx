@@ -25,12 +25,38 @@ const fontByWeight: Record<string, string> = {
 function cairoStyle(style: StyleProp<TextStyle>): TextStyle {
   const flattened = StyleSheet.flatten(style);
   const weight = flattened?.fontWeight ?? '400';
+  const writingDirection = flattened?.writingDirection ?? 'rtl';
   return {
     fontFamily: flattened?.fontFamily ?? fontByWeight[String(weight)] ?? 'Cairo_400Regular',
+    writingDirection,
+    ...(flattened?.textAlign === 'left' && writingDirection !== 'ltr'
+      ? { textAlign: 'right' as const }
+      : {}),
   };
 }
 
-export const CairoText = React.forwardRef<NativeText, TextProps>(
+function cairoInputStyle(style: StyleProp<TextStyle>): TextStyle {
+  const flattened = StyleSheet.flatten(style);
+  const writingDirection = flattened?.writingDirection ?? 'rtl';
+  const textAlign = flattened?.textAlign;
+  return {
+    ...cairoStyle(style),
+    writingDirection,
+    textAlign:
+      textAlign === undefined || textAlign === 'auto'
+        ? writingDirection === 'rtl'
+          ? 'right'
+          : 'left'
+        : textAlign === 'left' && writingDirection === 'rtl'
+          ? 'right'
+          : textAlign,
+  };
+}
+
+export const CairoText = React.forwardRef<
+  React.ElementRef<typeof NativeText>,
+  TextProps
+>(
   ({ style, ...props }, ref) => (
     <NativeText ref={ref} {...props} style={[style, cairoStyle(style)]} />
   ),
@@ -40,5 +66,5 @@ export const CairoTextInput = React.forwardRef<
   React.ElementRef<typeof NativeTextInput>,
   TextInputProps
 >(({ style, ...props }, ref) => (
-  <NativeTextInput ref={ref} {...props} style={[style, cairoStyle(style)]} />
+  <NativeTextInput ref={ref} {...props} style={[style, cairoInputStyle(style)]} />
 ));

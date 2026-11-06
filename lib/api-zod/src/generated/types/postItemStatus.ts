@@ -12,6 +12,7 @@ export type PostItemStatus = typeof PostItemStatus[keyof typeof PostItemStatus];
 export const PostItemStatus = {
   draft: 'draft',
   review: 'review',
+  approved: 'approved',
   scheduled: 'scheduled',
   published: 'published',
 } as const;

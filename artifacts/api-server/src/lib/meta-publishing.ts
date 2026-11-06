@@ -9,6 +9,7 @@ import {
   menaWhatsAppMessageMedia,
   menaWhatsAppMessages,
   posts,
+  products,
 } from "@workspace/db";
 import {
   classifyFacebookVerification,
@@ -20,42 +21,44 @@ import {
   resolvePublicMediaBaseUrl,
 } from "./meta-media-url";
 import {
-  decryptMetaTokenForRotation,
   metaTokenEncryptionKey,
 } from "./meta-token-crypto";
+import { metaConnectionAccessToken } from "./meta-connection-token.ts";
 import { getMetaGraphVersion } from "./meta-graph-config";
 import { logger } from "./logger";
 import { makePublishActivityEvent } from "./post-activity";
 import { assertPostWorkspace } from "./workspace-record-access";
 import { selectFacebookPhotoMedia } from "./meta-publishing-media";
 import { readMediaObject, resolveWhatsAppMediaStorageRoot } from "./whatsapp-media-storage";
+import { workspaceMediaKey } from "./product-utils.ts";
 
 const GRAPH_VERSION = getMetaGraphVersion();
 const INSTAGRAM_REQUEST_TIMEOUT_MS = 120_000;
 const INSTAGRAM_PROCESSING_TIMEOUT_MS = 120_000;
 const MEDIA_ROOT = resolveWhatsAppMediaStorageRoot();
+const PRODUCT_MEDIA_ID_PATTERN =
+  /^product-media-(image|video)-([a-f0-9]{16})-([a-f0-9-]{36})-(jpg|png|webp|heic|heif|mp4|mov)$/;
 
-async function metaConnectionAccessToken(
-  connection: typeof menaMetaConnections.$inferSelect,
-): Promise<string> {
-  const decrypted = decryptMetaTokenForRotation(
-    connection.encryptedPageAccessToken,
-  );
-  if (decrypted.rotatedCiphertext) {
-    await db
-      .update(menaMetaConnections)
-      .set({ encryptedPageAccessToken: decrypted.rotatedCiphertext })
-      .where(
-        and(
-          eq(menaMetaConnections.workspaceId, connection.workspaceId),
-          eq(
-            menaMetaConnections.encryptedPageAccessToken,
-            connection.encryptedPageAccessToken,
-          ),
-        ),
-      );
-  }
-  return decrypted.accessToken;
+function productMediaInfo(mediaId: string, workspaceId: string) {
+  const match = PRODUCT_MEDIA_ID_PATTERN.exec(mediaId);
+  if (!match || match[2] !== workspaceMediaKey(workspaceId)) return null;
+  const mediaType = match[1] as "image" | "video";
+  const extension = match[4]!;
+  const mimeType = ({
+    jpg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    heic: "image/heic",
+    heif: "image/heif",
+    mp4: "video/mp4",
+    mov: "video/quicktime",
+  } as const)[extension as "jpg" | "png" | "webp" | "heic" | "heif" | "mp4" | "mov"];
+  return {
+    mediaType,
+    mimeType,
+    fileName: `${match[3]}.${extension}`,
+    storagePath: `product-media/${match[2]}/${match[3]}.${extension}`,
+  };
 }
 
 type ChannelResult = {
@@ -116,11 +119,7 @@ export function signedWhatsAppMediaUrl(
       ? { requestOrigin }
       : {}),
     ...(development
-      ? {
-          replitDevDomain: process.env.REPLIT_DEV_DOMAIN,
-          replitDomains: process.env.REPLIT_DOMAINS,
-          expoPublicDomain: process.env.EXPO_PUBLIC_DOMAIN,
-        }
+      ? { expoPublicDomain: process.env.EXPO_PUBLIC_DOMAIN }
       : {}),
   });
   const localBase = process.env.EXPO_PUBLIC_DOMAIN?.trim();
@@ -265,9 +264,32 @@ async function graphUpload(
 
 async function safeLocalMedia(row: typeof posts.$inferSelect) {
   if (!row.workspaceId) throw new Error("WORKSPACE_CONTEXT_MISSING");
-  if (row.sourceType !== "whatsapp") return [];
-  const mediaIds = Array.isArray(row.mediaUrls) ? row.mediaUrls : [];
-  const media = mediaIds.length > 0
+  const isProductPost = row.sourceType === "product";
+  if (row.sourceType !== "whatsapp" && !isProductPost) return [];
+  let mediaIds = Array.isArray(row.mediaUrls) ? row.mediaUrls : [];
+  if (isProductPost) {
+    const metadata = row.metadata && typeof row.metadata === "object"
+      ? row.metadata
+      : {};
+    const productId = typeof metadata.productId === "string"
+      ? metadata.productId
+      : "";
+    const [product] = productId
+      ? await db
+          .select({ mediaUrls: products.mediaUrls })
+          .from(products)
+          .where(and(
+            eq(products.id, productId),
+            eq(products.workspaceId, row.workspaceId),
+          ))
+          .limit(1)
+      : [];
+    if (!product) throw new Error("PRODUCT_POST_SOURCE_UNAVAILABLE");
+    mediaIds = Array.isArray(product.mediaUrls)
+      ? product.mediaUrls.filter((id): id is string => typeof id === "string")
+      : [];
+  }
+  const whatsAppMedia = mediaIds.length > 0
     ? await db
         .select({ media: menaWhatsAppMessageMedia })
         .from(menaWhatsAppMessageMedia)
@@ -276,16 +298,20 @@ async function safeLocalMedia(row: typeof posts.$inferSelect) {
           and(
             eq(menaWhatsAppMessages.id, menaWhatsAppMessageMedia.messageId),
             eq(menaWhatsAppMessages.workspaceId, row.workspaceId),
-            eq(menaWhatsAppMessages.ownerId, menaWhatsAppMessageMedia.ownerId),
-            eq(menaWhatsAppMessages.instanceName, menaWhatsAppMessageMedia.instanceName),
-            or(
-              eq(menaWhatsAppMessages.groupId, menaWhatsAppMessageMedia.groupId),
-              and(
-                isNull(menaWhatsAppMessages.groupId),
-                isNull(menaWhatsAppMessageMedia.groupId),
-                eq(menaWhatsAppMessages.groupJid, menaWhatsAppMessageMedia.groupJid),
-              ),
-            ),
+            ...(isProductPost
+              ? []
+              : [
+                  eq(menaWhatsAppMessages.ownerId, menaWhatsAppMessageMedia.ownerId),
+                  eq(menaWhatsAppMessages.instanceName, menaWhatsAppMessageMedia.instanceName),
+                  or(
+                    eq(menaWhatsAppMessages.groupId, menaWhatsAppMessageMedia.groupId),
+                    and(
+                      isNull(menaWhatsAppMessages.groupId),
+                      isNull(menaWhatsAppMessageMedia.groupId),
+                      eq(menaWhatsAppMessages.groupJid, menaWhatsAppMessageMedia.groupJid),
+                    ),
+                  ),
+                ]),
           ),
         )
         .where(and(
@@ -294,7 +320,7 @@ async function safeLocalMedia(row: typeof posts.$inferSelect) {
           eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
         ))
         .then((rows) => rows.map(({ media: item }) => item))
-    : row.sourceMessageId
+    : !isProductPost && row.sourceMessageId
       ? await db
           .select({ media: menaWhatsAppMessageMedia })
           .from(menaWhatsAppMessageMedia)
@@ -322,11 +348,39 @@ async function safeLocalMedia(row: typeof posts.$inferSelect) {
           ))
           .then((rows) => rows.map(({ media: item }) => item))
       : [];
-  const orderedMedia = mediaIds.length > 0
-    ? media.sort((left, right) => mediaIds.indexOf(left.id) - mediaIds.indexOf(right.id))
-    : media.sort((left, right) => left.mediaIndex - right.mediaIndex);
-  if (mediaIds.length > 0 && orderedMedia.length !== mediaIds.length) {
-    throw new Error("WHATSAPP_POST_MEDIA_UNAVAILABLE");
+  const productMediaIds = isProductPost
+    ? mediaIds.filter((id) => id.startsWith("product-media-"))
+    : [];
+  const productMedia = [];
+  for (const id of productMediaIds) {
+    const info = productMediaInfo(id, row.workspaceId);
+    if (!info) throw new Error("PRODUCT_MEDIA_UNAVAILABLE");
+    const resolved = path.resolve(MEDIA_ROOT, info.storagePath);
+    if (!resolved.startsWith(`${MEDIA_ROOT}${path.sep}`)) {
+      throw new Error("INVALID_PRODUCT_MEDIA_PATH");
+    }
+    const buffer = process.env.SUPABASE_URL || process.env.SUPABASE_SERVICE_ROLE_KEY
+      ? await readMediaObject(info.storagePath)
+      : await readFile(resolved);
+    productMedia.push({
+      id,
+      ...info,
+      buffer,
+      mediaIndex: mediaIds.indexOf(id),
+      storageProvider:
+        process.env.SUPABASE_URL || process.env.SUPABASE_SERVICE_ROLE_KEY
+          ? "supabase" as const
+          : "local" as const,
+    });
+  }
+  const orderedMedia = [...whatsAppMedia, ...productMedia]
+    .sort((left, right) => mediaIds.indexOf(left.id) - mediaIds.indexOf(right.id));
+  if (
+    mediaIds.length > 0 &&
+    (orderedMedia.length !== mediaIds.length ||
+      mediaIds.some((id) => /^https?:\/\//i.test(id)))
+  ) {
+    throw new Error("PRODUCT_MEDIA_UNAVAILABLE");
   }
   const result = [];
   for (const item of orderedMedia) {
@@ -524,7 +578,13 @@ async function publishInstagram(
   if (media.some((item) => item.mediaType === "video" && item.mimeType?.toLowerCase() !== "video/mp4")) {
     return { status: "failed", reason: "INSTAGRAM_VIDEO_MP4_REQUIRED" };
   }
-  const mediaUrls = media.map((item) => signedWhatsAppMediaUrl(item.id));
+  const mediaUrls = media.map((item) => {
+    const url = new URL(signedWhatsAppMediaUrl(item.id));
+    if (item.id.startsWith("product-media-")) {
+      url.pathname = `/api/social/products/public-media/${encodeURIComponent(item.id)}`;
+    }
+    return url.toString();
+  });
   const childIds: string[] = [];
   if (media.length > 1) {
     for (const [index, item] of media.entries()) {

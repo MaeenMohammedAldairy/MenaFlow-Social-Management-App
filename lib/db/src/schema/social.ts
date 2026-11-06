@@ -14,15 +14,12 @@ import { sql } from "drizzle-orm";
 import { workspaces } from "./workspaces";
 
 export type WhatsAppGroupKind =
-  | "community"
-  | "announcement"
-  | "group"
-  | "unknown";
+  "community" | "announcement" | "group" | "unknown";
 
 export const menaMetaConnections = pgTable(
   "mena_meta_connections",
   {
-    ownerId: text("owner_id").notNull().unique(),
+    ownerId: text("owner_id").notNull(),
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "restrict" }),
@@ -46,7 +43,25 @@ export const menaMetaConnections = pgTable(
       .defaultNow(),
   },
   (table) => [
+    check(
+      "mena_meta_connections_page_id_valid_check",
+      sql`${table.pageId} IS NOT NULL AND btrim(${table.pageId}, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288) || chr(65279)) <> '' AND ${table.pageId} = btrim(${table.pageId}, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288) || chr(65279))`,
+    ),
+    check(
+      "mena_meta_connections_instagram_user_id_valid_check",
+      sql`${table.instagramUserId} IS NULL OR (btrim(${table.instagramUserId}, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288) || chr(65279)) <> '' AND ${table.instagramUserId} = btrim(${table.instagramUserId}, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288) || chr(65279)))`,
+    ),
     uniqueIndex("mena_meta_connections_workspace_key").on(table.workspaceId),
+    uniqueIndex("mena_meta_connections_page_id_key").on(
+      sql`btrim(${table.pageId}, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288) || chr(65279))`,
+    ),
+    uniqueIndex("mena_meta_connections_instagram_user_id_key")
+      .on(
+        sql`btrim(${table.instagramUserId}, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288) || chr(65279))`,
+      )
+      .where(
+        sql`${table.instagramUserId} IS NOT NULL AND btrim(${table.instagramUserId}, chr(9) || chr(10) || chr(11) || chr(12) || chr(13) || chr(32) || chr(160) || chr(5760) || chr(8192) || chr(8193) || chr(8194) || chr(8195) || chr(8196) || chr(8197) || chr(8198) || chr(8199) || chr(8200) || chr(8201) || chr(8202) || chr(8232) || chr(8233) || chr(8239) || chr(8287) || chr(12288) || chr(65279)) <> ''`,
+      ),
   ],
 );
 
@@ -259,11 +274,9 @@ export const menaWhatsAppGroupSelections = pgTable(
       table.ownerId,
       table.groupJid,
     ),
-    uniqueIndex("mena_whatsapp_group_selections_workspace_instance_group_id_key").on(
-      table.workspaceId,
-      table.instanceName,
-      table.groupId,
-    ),
+    uniqueIndex(
+      "mena_whatsapp_group_selections_workspace_instance_group_id_key",
+    ).on(table.workspaceId, table.instanceName, table.groupId),
     index("mena_whatsapp_group_selections_workspace_idx").on(
       table.workspaceId,
       table.instanceName,
@@ -389,7 +402,9 @@ export const menaWhatsAppMessages = pgTable(
       table.groupJid,
       table.remoteMessageId,
     ),
-    uniqueIndex("mena_whatsapp_messages_owner_instance_group_id_remote_id_key").on(
+    uniqueIndex(
+      "mena_whatsapp_messages_owner_instance_group_id_remote_id_key",
+    ).on(
       table.ownerId,
       table.instanceName,
       table.groupId,

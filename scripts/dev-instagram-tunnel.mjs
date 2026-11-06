@@ -93,6 +93,7 @@ try {
       env: {
         ...process.env,
         MENA_PUBLIC_MEDIA_BASE_URL: publicBaseUrl,
+        EXPO_PUBLIC_DOMAIN: publicBaseUrl,
       },
       shell: process.platform === "win32",
       stdio: "inherit",
@@ -108,7 +109,6 @@ try {
         ...process.env,
         EXPO_PUBLIC_DOMAIN: publicBaseUrl,
         MENA_PUBLIC_MEDIA_BASE_URL: publicBaseUrl,
-        REPLIT_DEV_DOMAIN: "",
       },
       shell: process.platform === "win32",
       stdio: "inherit",

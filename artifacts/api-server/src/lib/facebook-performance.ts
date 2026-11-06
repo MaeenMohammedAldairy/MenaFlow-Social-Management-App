@@ -1,3 +1,5 @@
+import { asRecord } from "./value-utils.ts";
+
 type JsonRecord = Record<string, unknown>;
 
 export interface FacebookPerformancePost {
@@ -46,12 +48,6 @@ export interface FacebookPerformanceSummary {
   }>;
 }
 
-function record(value: unknown): JsonRecord {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? value as JsonRecord
-    : {};
-}
-
 function dateValue(value: Date | string | null | undefined): Date | null {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
@@ -63,8 +59,8 @@ function stringValue(value: unknown): string | null {
 }
 
 function resultForFacebook(post: FacebookPerformancePost, accountId: string): JsonRecord | null {
-  const results = record(post.publishResults);
-  const result = record(results.facebook);
+  const results = asRecord(post.publishResults) ?? {};
+  const result = asRecord(results.facebook) ?? {};
   const resultAccountId = stringValue(result.accountId);
   if (resultAccountId && resultAccountId !== accountId) return null;
   return Object.keys(result).length > 0 ? result : null;
@@ -200,9 +196,9 @@ export function buildFacebookPerformance(
   );
   const successfulPosts = new Set([...publishedIds].filter((postId) => postsById.has(postId)));
   const aiPublishedCount = [...successfulPosts].filter((postId) =>
-    record(postsById.get(postId)?.metadata).aiGenerated === true ||
-    Boolean(stringValue(record(postsById.get(postId)?.metadata).aiModel)) ||
-    Boolean(stringValue(record(postsById.get(postId)?.metadata).aiProvider)),
+    asRecord(postsById.get(postId)?.metadata)?.aiGenerated === true ||
+    Boolean(stringValue(asRecord(postsById.get(postId)?.metadata)?.aiModel)) ||
+    Boolean(stringValue(asRecord(postsById.get(postId)?.metadata)?.aiProvider)),
   ).length;
   const sinceThirtyDays = since.getTime();
 
@@ -222,7 +218,7 @@ export function buildFacebookPerformance(
     .slice(-40)
     .reverse()
     .map((event) => {
-      const details = record(event.details);
+      const details = asRecord(event.details) ?? {};
       return {
         id: event.id,
         postId: event.postId,

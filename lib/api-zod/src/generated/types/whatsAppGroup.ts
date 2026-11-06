@@ -5,10 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { WhatsAppGroupKind } from './whatsAppGroupKind';
+
 export interface WhatsAppGroup {
   groupJid: string;
+  /** Internal identity ID when already persisted. */
   groupId: string;
-  kind: "announcement";
+  kind: WhatsAppGroupKind;
   name: string;
   communityParentJid?: string;
   selected: boolean;

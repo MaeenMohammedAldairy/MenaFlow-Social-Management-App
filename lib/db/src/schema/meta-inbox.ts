@@ -32,6 +32,10 @@ export const menaMetaInboxItems = pgTable(
     replyText: text("reply_text"),
     replyExternalId: text("reply_external_id"),
     repliedAt: timestamp("replied_at", { withTimezone: true }),
+    replyStatus: text("reply_status").$type<"sending" | "unknown" | null>(),
+    replyAttemptStartedAt: timestamp("reply_attempt_started_at", {
+      withTimezone: true,
+    }),
     metadata: jsonb("metadata")
       .$type<Record<string, unknown>>()
       .notNull()

@@ -6,6 +6,8 @@ import {
   processWhatsAppMediaThumbnailQueue,
 } from "./lib/whatsapp-media-download";
 import { processMetaAutoReplyQueue } from "./lib/meta-auto-reply-worker";
+import { processWhatsAppProductExtractionQueue } from "./lib/whatsapp-product-extraction";
+import { processProductPublicationQueue } from "./lib/product-publishing";
 
 const rawPort = process.env["PORT"];
 
@@ -21,13 +23,42 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
+app.listen(port, "0.0.0.0", (err) => {
   if (err) {
     logger.error({ err }, "Error listening on port");
     process.exit(1);
   }
 
-  logger.info({ port }, "Server listening");
+  logger.info({ host: "0.0.0.0", port }, "Server listening");
+  if (process.env["WHATSAPP_PRODUCT_EXTRACTION_WORKER_ENABLED"] !== "false") {
+    const productExtractionTimer = setInterval(() => {
+      void processWhatsAppProductExtractionQueue().catch((error) => {
+        logger.error({ err: error }, "WhatsApp product extraction queue poll failed");
+      });
+    }, 3000);
+    productExtractionTimer.unref();
+    void processWhatsAppProductExtractionQueue().catch((error) => {
+      logger.error(
+        { err: error },
+        "Initial WhatsApp product extraction processing failed",
+      );
+    });
+  } else {
+    logger.info("WhatsApp product extraction worker disabled");
+  }
+  if (process.env["PRODUCT_PUBLICATION_WORKER_ENABLED"] !== "false") {
+    const productPublicationTimer = setInterval(() => {
+      void processProductPublicationQueue().catch((error) => {
+        logger.error({ err: error }, "Product publication queue poll failed");
+      });
+    }, 3000);
+    productPublicationTimer.unref();
+    void processProductPublicationQueue().catch((error) => {
+      logger.error({ err: error }, "Initial product publication processing failed");
+    });
+  } else {
+    logger.info("Product publication worker disabled");
+  }
   if (process.env["WHATSAPP_MEDIA_DOWNLOAD_WORKER_ENABLED"] !== "false") {
     const mediaDownloadTimer = setInterval(() => {
       void processWhatsAppMediaDownloadQueue().catch((error) => {

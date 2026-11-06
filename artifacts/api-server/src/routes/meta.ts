@@ -1,22 +1,41 @@
 import { createHash, randomBytes } from "node:crypto";
 import { request as httpsRequest } from "node:https";
-import { and, eq, gt, lte, sql } from "drizzle-orm";
-import { Router, type Request, type Response } from "express";
-import { menaMetaConnections, menaOAuthStates, db } from "@workspace/db";
+import { and, eq, gt, lte, ne } from "drizzle-orm";
+import {
+  Router,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from "express";
+import {
+  menaMetaConnections,
+  menaOAuthStates,
+  workspaceMembers,
+  db,
+} from "@workspace/db";
 import {
   PostMetaConnectBody,
   PostMetaConnectResponse,
 } from "@workspace/api-zod";
 import { requestOwnerId } from "../lib/owner-access";
-import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
+  requireWorkspace,
+  requestWorkspaceContext,
+  requestWorkspaceId,
+} from "../lib/workspace-context";
+import {
+  canManageMetaConnections,
   grantedMetaPermissions,
   metaGraphErrorDetails,
   hasGrantedMetaPageListPermission,
+  metaConnectionConflictDetail,
+  metaConnectionConflictFromError,
   metaOAuthScopes,
   missingMetaIntegrationPermissions,
+  normalizeMetaAccountId,
   type MetaIntegration,
 } from "../lib/meta-oauth";
+import { queryString } from "../lib/value-utils.ts";
 import {
   buildFacebookPageByIdUrl,
   buildMetaPageListUrl,
@@ -29,19 +48,44 @@ import {
 import { resolveMetaWebReturnOrigin } from "../lib/meta-web-origin";
 import { getMetaGraphVersion } from "../lib/meta-graph-config";
 import { encryptMetaToken } from "../lib/meta-token-crypto";
+import {
+  canConnectChannel,
+  canConnectMetaAccounts,
+} from "../lib/subscriptions";
 
 const router = Router();
 const GRAPH_VERSION = getMetaGraphVersion();
 const STATE_TTL_MS = 10 * 60 * 1000;
 const APP_REDIRECT = "menaflow-mobile://oauth/meta";
 
+const requireMetaConnectionManager: RequestHandler = (req, res, next) => {
+  const context = requestWorkspaceContext(req);
+  if (!context) {
+    next(new Error("WORKSPACE_CONTEXT_MISSING"));
+    return;
+  }
+  if (!canManageMetaConnections(context.role)) {
+    res.status(403).json({
+      error: "يقتصر تعديل اتصالات Meta على مالك مساحة العمل.",
+      code: "WORKSPACE_MANAGEMENT_REQUIRED",
+    });
+    return;
+  }
+  next();
+};
+
 function getMetaRedirectUri(): string | null {
   const configured = process.env.MENA_FACEBOOK_REDIRECT_URI?.trim();
-  const developmentDomain = process.env.REPLIT_DEV_DOMAIN?.trim();
+  const developmentDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
+  const normalizedDevelopmentDomain = developmentDomain
+    ? /^https?:\/\//i.test(developmentDomain)
+      ? developmentDomain
+      : `https://${developmentDomain}`
+    : undefined;
   const redirectUri =
     configured ||
-    (process.env.NODE_ENV !== "production" && developmentDomain
-      ? `https://${developmentDomain}/api/social/meta/callback`
+    (process.env.NODE_ENV !== "production" && normalizedDevelopmentDomain
+      ? `${normalizedDevelopmentDomain.replace(/\/+$/, "")}/api/social/meta/callback`
       : process.env.NODE_ENV === "production"
         ? undefined
         : "http://localhost:5000/api/social/meta/callback");
@@ -68,8 +112,6 @@ function metaWebReturnOrigin(req: Request): string | undefined {
     process.env.NODE_ENV === "production"
       ? []
       : [
-          process.env.REPLIT_DEV_DOMAIN,
-          process.env.REPLIT_DOMAINS,
           process.env.EXPO_PUBLIC_DOMAIN,
         ].filter((domain): domain is string => Boolean(domain)),
     process.env.MENA_FACEBOOK_WEB_ORIGINS,
@@ -103,10 +145,6 @@ function makeStateHash(state: string): string {
   return createHash("sha256").update(state, "utf8").digest("hex");
 }
 
-function queryString(value: unknown): string | null {
-  return typeof value === "string" && value.length > 0 ? value : null;
-}
-
 function appRedirect(
   res: Response,
   status: string,
@@ -138,6 +176,47 @@ class MetaGraphRequestError extends Error {
     readonly pageCount = 0,
   ) {
     super("META_GRAPH_REQUEST_FAILED");
+  }
+}
+
+class MetaConnectionOwnershipConflict extends Error {
+  constructor(readonly account: "facebook_page" | "instagram_account") {
+    super("META_ACCOUNT_ALREADY_CONNECTED");
+  }
+}
+
+async function assertMetaExternalAccountAvailable(
+  workspaceId: string,
+  pageId: string,
+  instagramUserId: string | null,
+): Promise<void> {
+  const [pageConflict] = await db
+    .select({ workspaceId: menaMetaConnections.workspaceId })
+    .from(menaMetaConnections)
+    .where(
+      and(
+        eq(menaMetaConnections.pageId, pageId),
+        ne(menaMetaConnections.workspaceId, workspaceId),
+      ),
+    )
+    .limit(1);
+  if (pageConflict) {
+    throw new MetaConnectionOwnershipConflict("facebook_page");
+  }
+
+  if (!instagramUserId || instagramUserId === "") return;
+  const [instagramConflict] = await db
+    .select({ workspaceId: menaMetaConnections.workspaceId })
+    .from(menaMetaConnections)
+    .where(
+      and(
+        eq(menaMetaConnections.instagramUserId, instagramUserId),
+        ne(menaMetaConnections.workspaceId, workspaceId),
+      ),
+    )
+    .limit(1);
+  if (instagramConflict) {
+    throw new MetaConnectionOwnershipConflict("instagram_account");
   }
 }
 
@@ -254,7 +333,7 @@ async function graphJson<T>(
   return payload as T;
 }
 
-router.post("/social/meta/connect", requireWorkspace, async (req, res) => {
+router.post("/social/meta/connect", requireWorkspace, requireMetaConnectionManager, async (req, res) => {
   const ownerId = requestOwnerId(req);
   const workspaceId = requestWorkspaceId(req);
   const parsedBody = PostMetaConnectBody.safeParse(req.body ?? {});
@@ -278,6 +357,20 @@ router.post("/social/meta/connect", requireWorkspace, async (req, res) => {
   }
 
   try {
+    const channelAccess = await canConnectChannel(
+      workspaceId,
+      requestedIntegration,
+    );
+    if (!channelAccess.allowed) {
+      res.status(403).json({
+        error: "بلغت الحد الأقصى لقنوات خطتك الحالية. تظهر خيارات الترقية قريبًا.",
+        code: "SUBSCRIPTION_LIMIT_REACHED",
+        usage: channelAccess.used,
+        limit: channelAccess.limit,
+      });
+      return;
+    }
+
     const redirectUri = getMetaRedirectUri();
     if (!redirectUri) {
       res.status(503).json({
@@ -354,6 +447,26 @@ router.get("/social/meta/callback", async (req, res) => {
       return;
     }
     returnOrigin = metaOAuthReturnOrigin(state);
+    const [membership] = await db
+      .select({ role: workspaceMembers.role })
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, stateRow.workspaceId),
+          eq(workspaceMembers.userId, stateRow.ownerId),
+        ),
+      )
+      .limit(1);
+    if (!membership || !canManageMetaConnections(membership.role)) {
+      appRedirect(
+        res,
+        "error",
+        "workspace_management_required",
+        returnOrigin,
+        "لم يعد حسابك مخولاً لإدارة اتصالات مساحة العمل.",
+      );
+      return;
+    }
     if (queryString(req.query.error) || !code) {
       appRedirect(
         res,
@@ -573,14 +686,18 @@ router.get("/social/meta/callback", async (req, res) => {
       return;
     }
 
+    const pageId = normalizeMetaAccountId(page.id);
+    if (!pageId) throw new Error("INVALID_META_ACCOUNT_ID");
     const missingPermissions = missingMetaIntegrationPermissions(
       stateRow.requestedIntegration,
       grantedPermissions,
     );
-    let instagramAccount: { id: string; username: string } | undefined;
+    let instagramAccountData:
+      | { id?: unknown; username?: unknown }
+      | undefined;
     try {
       const instagramUrl = new URL(
-        `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(page.id)}`,
+        `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}`,
       );
       instagramUrl.search = new URLSearchParams({
         fields: "instagram_business_account{id,username}",
@@ -589,12 +706,8 @@ router.get("/social/meta/callback", async (req, res) => {
       const result = await graphJson<{
         instagram_business_account?: { id?: string; username?: string };
       }>(instagramUrl, "instagram_account");
-      const account = result.instagram_business_account;
-      if (
-        typeof account?.id === "string" &&
-        typeof account.username === "string"
-      ) {
-        instagramAccount = { id: account.id, username: account.username };
+      if (result.instagram_business_account) {
+        instagramAccountData = result.instagram_business_account;
       }
     } catch (error) {
       console.warn("Unable to fetch the linked Instagram business account:", {
@@ -607,44 +720,117 @@ router.get("/social/meta/callback", async (req, res) => {
       });
     }
 
+    const instagramAccountId = normalizeMetaAccountId(
+      instagramAccountData?.id,
+    );
+    const instagramAccountUsername =
+      typeof instagramAccountData?.username === "string"
+        ? instagramAccountData.username
+        : null;
+    const [existingConnection] = await db
+      .select({
+        pageId: menaMetaConnections.pageId,
+        instagramUserId: menaMetaConnections.instagramUserId,
+        instagramUsername: menaMetaConnections.instagramUsername,
+      })
+      .from(menaMetaConnections)
+      .where(eq(menaMetaConnections.workspaceId, stateRow.workspaceId))
+      .limit(1);
+    const existingInstagramUserId =
+      existingConnection?.pageId === pageId
+        ? normalizeMetaAccountId(existingConnection.instagramUserId)
+        : null;
+    const instagramUserId =
+      instagramAccountId ??
+      existingInstagramUserId;
+    const instagramUsername = instagramAccountId
+      ? instagramAccountUsername
+      : existingInstagramUserId
+        ? existingConnection?.instagramUsername ?? null
+        : null;
+    if (
+      stateRow.requestedIntegration === "instagram" &&
+      !instagramUserId
+    ) {
+      appRedirect(
+        res,
+        "error",
+        "instagram_account_required",
+        returnOrigin,
+        "اربط حساب Instagram احترافيًا (Business أو Creator) بصفحة Facebook التي اخترتها، ثم أعد المحاولة.",
+      );
+      return;
+    }
+    if (
+      stateRow.requestedIntegration === "instagram" &&
+      missingPermissions.length > 0
+    ) {
+      appRedirect(
+        res,
+        "error",
+        "instagram_permissions_missing",
+        returnOrigin,
+        `لم تُمنح صلاحيات Instagram المطلوبة: ${missingPermissions.join(", ")}. أعد الربط ووافق على الصلاحيات المطلوبة.`,
+      );
+      return;
+    }
+    const metaChannelAccess = await canConnectMetaAccounts(
+      stateRow.workspaceId,
+      Boolean(instagramUserId),
+    );
+    if (!metaChannelAccess.allowed) {
+      appRedirect(
+        res,
+        "error",
+        "subscription_limit",
+        returnOrigin,
+        "بلغت الحد الأقصى لقنوات خطتك الحالية. تظهر خيارات الترقية قريبًا.",
+      );
+      return;
+    }
+    await assertMetaExternalAccountAvailable(
+      stateRow.workspaceId,
+      pageId,
+      instagramUserId,
+    );
+
     const encryptedPageAccessToken = encryptMetaToken(page.access_token);
     await db
       .insert(menaMetaConnections)
       .values({
+        // ownerId records the user who initially connected this row; workspaceId controls access.
         ownerId: stateRow.ownerId,
         workspaceId: stateRow.workspaceId,
-        pageId: page.id,
+        pageId,
         pageName: page.name,
         encryptedPageAccessToken,
-        instagramUserId: instagramAccount?.id ?? null,
-        instagramUsername: instagramAccount?.username ?? null,
+        instagramUserId,
+        instagramUsername,
         grantedPermissions,
         authorizationVerifiedAt: now,
         accessTokenExpiresAt,
         connectedAt: new Date(),
       })
       .onConflictDoUpdate({
-        target: menaMetaConnections.ownerId,
+        target: menaMetaConnections.workspaceId,
         set: {
-          pageId: page.id,
+          pageId,
           pageName: page.name,
           encryptedPageAccessToken,
           grantedPermissions,
           authorizationVerifiedAt: now,
           accessTokenExpiresAt,
-          instagramUserId:
-            instagramAccount?.id ??
-            sql`CASE WHEN ${menaMetaConnections.pageId} = ${page.id} THEN ${menaMetaConnections.instagramUserId} ELSE NULL END`,
-          instagramUsername:
-            instagramAccount?.username ??
-            sql`CASE WHEN ${menaMetaConnections.pageId} = ${page.id} THEN ${menaMetaConnections.instagramUsername} ELSE NULL END`,
+          instagramUserId,
+          instagramUsername,
           connectedAt: new Date(),
         },
       });
 
     appRedirect(
       res,
-      "facebook_connected",
+      stateRow.requestedIntegration === "instagram"
+        ? "instagram_connected"
+        : "facebook_connected",
       undefined,
       returnOrigin,
       missingPermissions.length > 0
@@ -670,13 +856,38 @@ router.get("/social/meta/callback", async (req, res) => {
       );
       return;
     }
+    const accountConflict =
+      err instanceof MetaConnectionOwnershipConflict
+        ? err.account
+        : metaConnectionConflictFromError(err);
+    if (accountConflict) {
+      appRedirect(
+        res,
+        "error",
+        "account_already_connected",
+        returnOrigin,
+        metaConnectionConflictDetail(accountConflict),
+      );
+      return;
+    }
+    if (err instanceof Error && err.message === "INVALID_META_ACCOUNT_ID") {
+      appRedirect(
+        res,
+        "error",
+        "invalid_meta_account",
+        returnOrigin,
+        "أعادت Meta معرّف حساب غير صالح. أعد المحاولة لاحقاً.",
+      );
+      return;
+    }
     console.error("Meta OAuth callback failed:", err);
     appRedirect(res, "error", "connection_failed", returnOrigin);
   }
 });
 
-router.delete("/social/meta", requireWorkspace, async (req, res) => {
+router.delete("/social/meta", requireWorkspace, requireMetaConnectionManager, async (req, res) => {
   const ownerId = requestOwnerId(req);
+  const workspaceId = requestWorkspaceId(req);
   if (!ownerId) {
     res.status(401).json({ error: "سجّل الدخول أولاً." });
     return;
@@ -690,7 +901,7 @@ router.delete("/social/meta", requireWorkspace, async (req, res) => {
   const [connection] = await db
     .select()
     .from(menaMetaConnections)
-    .where(eq(menaMetaConnections.ownerId, ownerId))
+    .where(eq(menaMetaConnections.workspaceId, workspaceId))
     .limit(1);
   if (!connection) {
     res.json({
@@ -717,7 +928,7 @@ router.delete("/social/meta", requireWorkspace, async (req, res) => {
       .set({ instagramUserId: null, instagramUsername: null })
       .where(
         and(
-          eq(menaMetaConnections.ownerId, ownerId),
+          eq(menaMetaConnections.workspaceId, workspaceId),
           eq(menaMetaConnections.pageId, connection.pageId),
           eq(menaMetaConnections.instagramUserId, connection.instagramUserId),
         ),
@@ -727,7 +938,7 @@ router.delete("/social/meta", requireWorkspace, async (req, res) => {
       const [latest] = await db
         .select({ instagramUserId: menaMetaConnections.instagramUserId })
         .from(menaMetaConnections)
-        .where(eq(menaMetaConnections.ownerId, ownerId))
+        .where(eq(menaMetaConnections.workspaceId, workspaceId))
         .limit(1);
       if (!latest || !latest.instagramUserId) {
         res.json({
@@ -755,7 +966,7 @@ router.delete("/social/meta", requireWorkspace, async (req, res) => {
     .delete(menaMetaConnections)
     .where(
       and(
-        eq(menaMetaConnections.ownerId, ownerId),
+        eq(menaMetaConnections.workspaceId, workspaceId),
         eq(menaMetaConnections.pageId, connection.pageId),
       ),
     )
@@ -764,7 +975,7 @@ router.delete("/social/meta", requireWorkspace, async (req, res) => {
     const [latest] = await db
       .select({ pageId: menaMetaConnections.pageId })
       .from(menaMetaConnections)
-      .where(eq(menaMetaConnections.ownerId, ownerId))
+      .where(eq(menaMetaConnections.workspaceId, workspaceId))
       .limit(1);
     if (!latest) {
       res.json({

@@ -59,4 +59,4 @@ Keep generated API contracts and database access at their existing package bound
 - `artifacts/` is the configured location for deployable applications, not disposable generated output.
 - `lib/` contains active workspace packages and generated API contract outputs.
 - `.agents/` contains owner-scope guidance for coding agents; retain it as project instructions, not runtime application code.
-- The API's Replit/Expo hostname fallbacks for Meta callbacks, signed media, and Evolution webhooks are development-only. Those production integrations require explicitly configured public HTTPS origins.
+- The API's configured app-domain fallbacks for Meta callbacks, signed media, and Evolution webhooks are development-only. Those production integrations require explicitly configured public HTTPS origins.

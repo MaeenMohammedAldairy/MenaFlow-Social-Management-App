@@ -16,6 +16,7 @@ import {
   evolutionConnectionState,
 } from "../lib/whatsapp-evolution";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
+import { isRecord } from "../lib/value-utils.ts";
 import { evolutionErrorResponse } from "./whatsapp-route-errors";
 
 const router: IRouter = Router();
@@ -29,10 +30,6 @@ const tones = new Set<WhatsAppAutoReplyTone>([
   "concise",
   "formal",
 ]);
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
 
 function parseAutoReplySettings(value: unknown): {
   enabled: boolean;
@@ -350,7 +347,11 @@ router.post(
       return;
     }
     try {
-      const reply = await generateWhatsAppAutoReply(customerMessage, settings);
+      const reply = await generateWhatsAppAutoReply(
+        workspaceId,
+        customerMessage,
+        settings,
+      );
       await db
         .update(menaWhatsAppConnections)
         .set({ autoReplyTestedHash: autoReplySettingsHash(settings) })

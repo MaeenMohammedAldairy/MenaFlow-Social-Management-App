@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  pairingCodeFrom,
-  pairingQrBase64From,
-} from "./whatsapp-pairing.ts";
+import { pairingCodeFrom, pairingQrBase64From } from "./whatsapp-pairing.ts";
 
 test("reads a top-level Evolution pairingCode", () => {
   assert.equal(pairingCodeFrom({ pairingCode: "  1234-5678  " }), "1234-5678");
@@ -31,7 +28,10 @@ test("reads pairing codes in common Evolution response envelopes", () => {
 });
 
 test("does not treat a QR code payload as a WhatsApp pairing code", () => {
-  assert.equal(pairingCodeFrom({ code: "qr-payload", base64: "qr-image" }), null);
+  assert.equal(
+    pairingCodeFrom({ code: "qr-payload", base64: "qr-image" }),
+    null,
+  );
   assert.equal(pairingCodeFrom({ data: { code: "qr-payload" } }), null);
 });
 

@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db, menaWhatsAppMessages, posts } from "@workspace/db";
+import { recordOrEmpty } from "./value-utils.ts";
 import { notifyPostsChanged } from "./post-events";
 import { whatsappContentPostId } from "./whatsapp-albums";
 import type { AiDraft } from "./whatsapp-marketing-ai";
@@ -184,7 +185,5 @@ export async function saveDraft(
 }
 
 export function safePublishResults(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? { ...(value as Record<string, unknown>) }
-    : {};
+  return { ...recordOrEmpty(value) };
 }

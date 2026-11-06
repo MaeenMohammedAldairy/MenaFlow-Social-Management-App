@@ -20,7 +20,7 @@ export function evolutionErrorResponse(
             : error.statusCode === 409
               ? "حساب واتساب غير متصل حالياً. أعد ربطه ثم حاول مجدداً."
               : error.statusCode === 422
-                ? "لم تُصدر Evolution API رمز ربط لهذا الطلب. انتظر قليلاً ثم حاول مرة واحدة؛ إذا تكرر الخطأ فالمشكلة في جلسة Evolution أو اتصال واتساب."
+                ? "لم تُصدر Evolution API رمز الربط النصي. تحقق من الرقم وحالة اتصال واتساب ثم حاول مجددًا."
                 : error.statusCode === 504
                   ? "استغرق تحميل مجموعات واتساب وقتاً أطول من المتوقع. أعد المحاولة بعد قليل."
                   : "تعذّر التواصل مع Evolution API. تحقق من WHATSAPP_EVOLUTION_BASE_URL وWHATSAPP_EVOLUTION_API_KEY.";

@@ -89,7 +89,7 @@ paths:
       tags: [auth]
       security:
         - bearerAuth: []
-      summary: Check whether the signed-in user is the MenaFlow owner
+      summary: Get access and onboarding status for the signed-in user
       responses:
         "200":
           description: Owner access result
@@ -105,6 +105,32 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "503":
           description: Owner access is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /subscription:
+    get:
+      operationId: getSubscription
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: Get the current workspace plan and monthly usage
+      responses:
+        "200":
+          description: Current plan, usage, and available plan options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubscriptionOverview"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Workspace selection required
           content:
             application/json:
               schema:
@@ -293,7 +319,7 @@ paths:
       tags: [social]
       security:
         - bearerAuth: []
-      summary: Reuse or create a workspace Evolution instance and request a pairing code
+      summary: Reuse or create a workspace Evolution instance and request phone-code or QR pairing
       requestBody:
         required: true
         content:
@@ -358,7 +384,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Current Evolution API connection state
+          description: Current normalized Evolution state; unavailable means the provider returned an unknown state.
           content:
             application/json:
               schema:
@@ -623,7 +649,14 @@ paths:
       tags: [social]
       security:
         - bearerAuth: []
-      summary: Disconnect WhatsApp account
+      summary: Disconnect WhatsApp or cancel a pending pairing
+      parameters:
+        - in: query
+          name: cancelPairing
+          required: false
+          description: Cancel only an in-progress pairing without deleting saved workspace settings
+          schema:
+            type: boolean
       responses:
         "200":
           description: WhatsApp disconnected
@@ -751,15 +784,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                ids:
-                  type: array
-                  maxItems: 1000
-                  items:
-                    type: string
-                    maxLength: 150
-              required: [ids]
+              $ref: "#/components/schemas/KnownPostIdsInput"
       responses:
         "200":
           description: IDs already stored in the active workspace
@@ -911,7 +936,84 @@ components:
       properties:
         authorized:
           type: boolean
-      required: [authorized]
+        onboarding:
+          $ref: "#/components/schemas/OnboardingStatus"
+      required: [authorized, onboarding]
+    KnownPostIdsInput:
+      type: object
+      properties:
+        ids:
+          type: array
+          maxItems: 1000
+          items:
+            type: string
+            maxLength: 150
+      required: [ids]
+    SubscriptionPlan:
+      type: object
+      properties:
+        id:
+          type: string
+          enum: [free, starter, growth]
+        name:
+          type: string
+        monthlyPriceUsd:
+          type: integer
+        limits:
+          type: object
+          properties:
+            postsCreated:
+              type: integer
+            aiGenerations:
+              type: integer
+            channels:
+              type: integer
+          required: [postsCreated, aiGenerations, channels]
+      required: [id, name, monthlyPriceUsd, limits]
+    SubscriptionUsage:
+      type: object
+      properties:
+        postsCreated:
+          type: integer
+        aiGenerations:
+          type: integer
+        channels:
+          type: integer
+      required: [postsCreated, aiGenerations, channels]
+    SubscriptionOverview:
+      type: object
+      properties:
+        planId:
+          type: string
+          enum: [free, starter, growth]
+        planName:
+          type: string
+        status:
+          type: string
+          enum: [trialing, active, canceled, past_due, free]
+        trialEndsAt:
+          type: string
+          format: date-time
+          nullable: true
+        paymentAvailable:
+          type: boolean
+        periodKey:
+          type: string
+        usage:
+          $ref: "#/components/schemas/SubscriptionUsage"
+        plans:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionPlan"
+      required:
+        - planId
+        - planName
+        - status
+        - trialEndsAt
+        - paymentAvailable
+        - periodKey
+        - usage
+        - plans
     OnboardingProgressInput:
       type: object
       additionalProperties: false
@@ -948,7 +1050,7 @@ components:
           type: boolean
         connectionState:
           type: string
-          enum: [connected, connecting, disconnected, missing, unavailable]
+          enum: [connected, connecting, disconnected, failed, missing, unavailable]
         instanceName:
           type: string
         phoneNumber:
@@ -1036,7 +1138,7 @@ components:
             enum: [instagram, facebook, whatsapp]
         status:
           type: string
-          enum: [draft, review, scheduled, published]
+          enum: [draft, review, approved, scheduled, published]
         metadata:
           type: object
           additionalProperties: true
@@ -1071,7 +1173,7 @@ components:
             enum: [instagram, facebook, whatsapp]
         status:
           type: string
-          enum: [draft, review, scheduled, published]
+          enum: [draft, review, approved, scheduled, published]
         metadata:
           type: object
           additionalProperties: true
@@ -1090,7 +1192,7 @@ components:
             enum: [instagram, facebook, whatsapp]
         status:
           type: string
-          enum: [draft, review, scheduled, published]
+          enum: [draft, review, approved, scheduled, published]
     PostDeleteResult:
       type: object
       properties:
@@ -1109,6 +1211,7 @@ components:
       required: [phoneNumber]
     WhatsAppPairingCodeResponse:
       type: object
+      description: At least one of pairingCode or qrCodeBase64 is returned.
       properties:
         instanceName:
           type: string
@@ -1116,19 +1219,20 @@ components:
           type: string
         pairingCode:
           type: string
+          description: Optional phone-number pairing code.
         qrCodeBase64:
           type: string
-          description: Optional QR image returned by Evolution for scanning when phone-number pairing is rejected.
+          description: Optional QR image returned by Evolution for scanning when phone-number pairing is unavailable.
         state:
           type: string
           enum: [connecting]
-      required: [instanceName, phoneNumber, pairingCode, state]
+      required: [instanceName, phoneNumber, state]
     WhatsAppConnectionStatus:
       type: object
       properties:
         state:
           type: string
-          enum: [connecting, connected, disconnected]
+          enum: [connecting, connected, disconnected, failed, unavailable]
       required: [state]
     WhatsAppAutoReplySettings:
       type: object
@@ -1179,6 +1283,7 @@ components:
           type: string
         groupId:
           type: string
+          description: Internal identity ID when already persisted.
         kind:
           type: string
           enum: [announcement]
@@ -1199,13 +1304,40 @@ components:
           name,
           selected,
         ]
+    WhatsAppGroupOption:
+      type: object
+      properties:
+        groupJid:
+          type: string
+        groupId:
+          type: string
+          description: Internal identity ID when already persisted.
+        kind:
+          type: string
+          enum: [announcement]
+        name:
+          type: string
+        communityParentJid:
+          type: string
+        selected:
+          type: boolean
+        verifiedAt:
+          type: string
+          format: date-time
+      required:
+        [
+          groupJid,
+          kind,
+          name,
+          selected,
+        ]
     WhatsAppGroupsResponse:
       type: object
       properties:
         groups:
           type: array
           items:
-            $ref: "#/components/schemas/WhatsAppGroup"
+            $ref: "#/components/schemas/WhatsAppGroupOption"
       required: [groups]
     WhatsAppGroupSelectionsResponse:
       type: object

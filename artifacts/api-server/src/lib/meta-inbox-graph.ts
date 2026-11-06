@@ -1,4 +1,5 @@
 import { request as httpsRequest } from "node:https";
+import { asRecord as record } from "./value-utils.ts";
 import { decryptMetaTokenForRotation } from "./meta-token-crypto.ts";
 import { getMetaGraphVersion } from "./meta-graph-config.ts";
 
@@ -100,12 +101,6 @@ export async function postMetaInboxGraph(
   return result;
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
-
 function facebookAttachmentImageUrls(value: unknown): string[] {
   const attachment = record(value);
   if (!attachment) return [];
@@ -178,6 +173,101 @@ export function normalizeMetaPublishedPosts(
       },
     ];
   });
+}
+
+export function normalizeMetaPageBusinessInfo(
+  value: unknown,
+  platform: "facebook" | "instagram",
+): string | null {
+  const profile = record(value);
+  if (!profile) return null;
+  const lines: string[] = [];
+  const fields: Array<[string, string]> =
+    platform === "facebook"
+      ? [
+          ["name", "اسم الصفحة"],
+          ["category", "النشاط"],
+          ["about", "نبذة"],
+          ["description", "الوصف"],
+          ["phone", "الهاتف"],
+          ["website", "الموقع الإلكتروني"],
+          ["link", "رابط الصفحة"],
+        ]
+      : [
+          ["name", "اسم الحساب"],
+          ["username", "اسم المستخدم"],
+          ["biography", "النبذة"],
+          ["website", "الموقع الإلكتروني"],
+        ];
+  for (const [field, label] of fields) {
+    const text = profile[field];
+    if (typeof text === "string" && text.trim()) {
+      lines.push(`${label}: ${text.trim().slice(0, 500)}`);
+    }
+  }
+  if (platform === "facebook") {
+    const location = record(profile.location);
+    const address = ["street", "city", "state", "zip", "country"]
+      .flatMap((field) => {
+        const text = location?.[field];
+        return typeof text === "string" && text.trim() ? [text.trim()] : [];
+      })
+      .join("، ");
+    if (address) lines.push(`العنوان: ${address.slice(0, 500)}`);
+    const hours = profile.hours;
+    if (hours && typeof hours === "object") {
+      lines.push(`ساعات العمل: ${JSON.stringify(hours).slice(0, 1000)}`);
+    }
+  }
+  return lines.length > 0 ? lines.join("\n").slice(0, 2000) : null;
+}
+
+export async function getMetaPageBusinessInfo(input: {
+  platform: "facebook" | "instagram";
+  pageId: string;
+  instagramUserId: string | null;
+  accessToken: string;
+}): Promise<string | null> {
+  const accountId =
+    input.platform === "facebook" ? input.pageId : input.instagramUserId;
+  if (!accountId) return null;
+  const fields =
+    input.platform === "facebook"
+      ? "id,name,category,about,description,phone,website,link,location,hours"
+      : "id,name,username,biography,website";
+  const url = new URL(
+    `https://graph.facebook.com/${getMetaGraphVersion()}/${encodeURIComponent(accountId)}`,
+  );
+  url.searchParams.set("fields", fields);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${input.accessToken}`,
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new MetaInboxGraphError(undefined, undefined, true);
+  }
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new MetaInboxGraphError(response.status, undefined, false);
+  }
+  const result = record(payload);
+  const error = record(result?.error);
+  if (!response.ok || error) {
+    throw new MetaInboxGraphError(
+      response.status,
+      typeof error?.code === "number" ? error.code : undefined,
+      false,
+    );
+  }
+  return normalizeMetaPageBusinessInfo(result, input.platform);
 }
 
 async function fetchMetaPublishedPostsPage(

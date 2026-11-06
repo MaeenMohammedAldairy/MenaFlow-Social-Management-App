@@ -33,8 +33,6 @@ function resolveLoopbackRequestOrigin(requestOrigin?: string): string | null {
 
 export function resolvePublicMediaBaseUrl(input: {
   configuredBase?: string;
-  replitDevDomain?: string;
-  replitDomains?: string;
   expoPublicDomain?: string;
   requestOrigin?: string;
   allowDeploymentFallbacks?: boolean;
@@ -44,11 +42,7 @@ export function resolvePublicMediaBaseUrl(input: {
 
   const configuredBase = input.configuredBase?.trim();
   const allowDeploymentFallbacks = input.allowDeploymentFallbacks !== false;
-  const replitDomain = allowDeploymentFallbacks
-    ? input.replitDevDomain?.trim() ||
-      input.replitDomains?.split(",").map((domain) => domain.trim()).find(Boolean)
-    : undefined;
-  let candidate = configuredBase || replitDomain;
+  let candidate = configuredBase;
   if (!candidate) {
     const expoPublicDomain = allowDeploymentFallbacks
       ? input.expoPublicDomain?.trim()

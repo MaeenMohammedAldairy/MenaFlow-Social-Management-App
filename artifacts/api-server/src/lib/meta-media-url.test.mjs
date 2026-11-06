@@ -5,11 +5,10 @@ import {
   resolvePublicMediaBaseUrl,
 } from "./meta-media-url.ts";
 
-test("uses the configured public media origin before deployment domains", () => {
+test("uses the configured public media origin before the app domain", () => {
   assert.equal(resolvePublicMediaBaseUrl({
     configuredBase: "https://media.example.com/api",
-    replitDevDomain: "app.replit.dev",
-    replitDomains: "first.example.com,second.example.com",
+    expoPublicDomain: "app.example.com",
   }), "https://media.example.com");
 });
 
@@ -17,7 +16,6 @@ test("uses a loopback request origin for local media previews even with a stale 
   assert.equal(resolvePublicMediaBaseUrl({
     configuredBase: "https://expired-tunnel.example.com",
     requestOrigin: "http://localhost:5000",
-    replitDevDomain: "app.replit.dev",
   }), "http://localhost:5000");
   assert.equal(resolvePublicMediaBaseUrl({
     configuredBase: "https://expired-tunnel.example.com",
@@ -36,16 +34,6 @@ test("ignores non-loopback or malformed request origins", () => {
   }), "https://media.example.com");
 });
 
-test("uses the Replit development or first deployment domain when no base is configured", () => {
-  assert.equal(resolvePublicMediaBaseUrl({
-    replitDevDomain: "app.replit.dev",
-    replitDomains: "first.example.com,second.example.com",
-  }), "https://app.replit.dev");
-  assert.equal(resolvePublicMediaBaseUrl({
-    replitDomains: " first.example.com, second.example.com ",
-  }), "https://first.example.com");
-});
-
 test("uses the public Expo application domain as a fallback", () => {
   assert.equal(resolvePublicMediaBaseUrl({
     expoPublicDomain: "app.example.com",
@@ -58,10 +46,8 @@ test("returns no origin when no publicly reachable host is configured", () => {
   assert.equal(resolvePublicMediaBaseUrl({ expoPublicDomain: "localhost:5000" }), null);
 });
 
-test("does not use Replit or app-domain fallbacks when production disallows them", () => {
+test("does not use app-domain fallbacks when production disallows them", () => {
   assert.equal(resolvePublicMediaBaseUrl({
-    replitDevDomain: "temporary.replit.dev",
-    replitDomains: "temporary.example.com",
     expoPublicDomain: "app.example.com",
     allowDeploymentFallbacks: false,
   }), null);

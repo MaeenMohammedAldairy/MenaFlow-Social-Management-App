@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 import {
   db,
@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { requestOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
-import { missingMetaIntegrationPermissions } from "../lib/meta-oauth";
+import { metaAuthorizationStatus } from "../lib/meta-oauth";
 import {
   filterHistoryRecordsForGroup,
   extractRemoteJidFromEnvelope,
@@ -22,57 +22,29 @@ import {
 import {
   configureWhatsAppWebhook,
   EvolutionApiError,
+  clearConnectionStateCache,
   evolutionConnectionState,
   evolutionRequest,
   isExclusiveWhatsAppInstance,
+  mapEvolutionConnectionState,
 } from "../lib/whatsapp-evolution";
 
 import { whatsappInstanceNameForWorkspace } from "../lib/whatsapp-instance";
 
-import {
-  connectedWhatsAppForWorkspace,
-} from "./whatsapp-groups";
+import { connectedWhatsAppForWorkspace } from "./whatsapp-groups";
 import { evolutionErrorResponse } from "./whatsapp-route-errors";
-import { asRecord, queryString } from "../lib/whatsapp-route-utils";
+import { asRecord, queryString } from "../lib/value-utils.ts";
 
-import { pairingCodeFrom, pairingQrBase64From } from "../lib/whatsapp-pairing";
+import {
+  pairingCodeFrom,
+  pairingQrBase64From,
+} from "../lib/whatsapp-pairing";
+import { canConnectChannel } from "../lib/subscriptions";
 
 const router: IRouter = Router();
+const MAX_WHATSAPP_GROUP_SELECTIONS = 500;
 
 export { extractRemoteJidFromEnvelope, filterHistoryRecordsForGroup };
-
-function metaAuthorizationStatus(
-  connection: typeof menaMetaConnections.$inferSelect,
-  integration: "facebook" | "instagram",
-  now = new Date(),
-) {
-  const missingPermissions = connection.authorizationVerifiedAt
-    ? missingMetaIntegrationPermissions(
-        integration,
-        connection.grantedPermissions,
-      )
-    : [];
-  const tokenExpired =
-    connection.accessTokenExpiresAt !== null &&
-    connection.accessTokenExpiresAt <= now;
-  const authorizationReason = tokenExpired
-    ? "token_expired"
-    : !connection.authorizationVerifiedAt
-      ? "permissions_unverified"
-      : missingPermissions.length > 0
-        ? "permissions_missing"
-        : null;
-
-  return {
-    authorizationStatus: authorizationReason
-      ? "needs_reauthorization"
-      : "ready",
-    authorizationReason,
-    missingPermissions,
-    accessTokenExpiresAt:
-      connection.accessTokenExpiresAt?.toISOString() ?? null,
-  };
-}
 
 router.get("/social/connections", requireWorkspace, async (req, res) => {
   const ownerId = requestOwnerId(req);
@@ -98,6 +70,7 @@ router.get("/social/connections", requireWorkspace, async (req, res) => {
     | "connected"
     | "connecting"
     | "disconnected"
+    | "failed"
     | "missing"
     | "unavailable"
     | null = null;
@@ -106,14 +79,10 @@ router.get("/social/connections", requireWorkspace, async (req, res) => {
       const providerState = await evolutionConnectionState(
         waConnection.instanceName,
       );
-      whatsappState =
-        providerState === "open"
-          ? "connected"
-          : providerState === "connecting"
-            ? "connecting"
-            : ["close", "closed", "refused", "logout"].includes(providerState)
-              ? "disconnected"
-              : "unavailable";
+      whatsappState = mapEvolutionConnectionState(
+        providerState,
+        waConnection.status === "failed",
+      );
     } catch (err) {
       if (err instanceof EvolutionApiError && err.statusCode === 404) {
         whatsappState = "missing";
@@ -122,7 +91,8 @@ router.get("/social/connections", requireWorkspace, async (req, res) => {
           workspaceId,
           statusCode: err instanceof EvolutionApiError ? err.statusCode : null,
         });
-        whatsappState = "unavailable";
+        whatsappState =
+          waConnection.status === "failed" ? "failed" : "unavailable";
       }
     }
     if (whatsappState === "connected" && waConnection.status !== "connected") {
@@ -189,6 +159,17 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
     return;
   }
 
+  const channelAccess = await canConnectChannel(workspaceId, "whatsapp");
+  if (!channelAccess.allowed) {
+    res.status(403).json({
+      error: "بلغت الحد الأقصى لقنوات خطتك الحالية. تظهر خيارات الترقية قريبًا.",
+      code: "SUBSCRIPTION_LIMIT_REACHED",
+      usage: channelAccess.used,
+      limit: channelAccess.limit,
+    });
+    return;
+  }
+
   const inputPhone =
     typeof req.body?.phoneNumber === "string"
       ? req.body.phoneNumber.trim()
@@ -200,9 +181,12 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
     });
     return;
   }
+  const evolutionPhoneNumber = phoneNumber.replace(/^\+/, "");
 
   const refreshCode = req.body?.refreshCode === true;
   let unlockAndRelease: (() => Promise<void>) | null = null;
+  let pairingInstanceName: string | null = null;
+  let pairingAttemptPersisted = false;
   try {
     const lockClient = await pool.connect();
     let lockAcquired = false;
@@ -299,6 +283,20 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
       existingConnection.status !== "connecting" ||
       evolutionState !== "connecting";
 
+    const finalChannelAccess = await canConnectChannel(
+      workspaceId,
+      "whatsapp",
+    );
+    if (!finalChannelAccess.allowed) {
+      res.status(403).json({
+        error: "بلغت الحد الأقصى لقنوات خطتك الحالية. تظهر خيارات الترقية قريبًا.",
+        code: "SUBSCRIPTION_LIMIT_REACHED",
+        usage: finalChannelAccess.used,
+        limit: finalChannelAccess.limit,
+      });
+      return;
+    }
+
     await db
       .insert(menaWhatsAppConnections)
       .values({
@@ -317,6 +315,8 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
           status: "connecting",
         },
       });
+    pairingInstanceName = instanceName;
+    pairingAttemptPersisted = true;
 
     if (recreateInstance) {
       if (existingConnection && !existingInstanceMissing) {
@@ -335,8 +335,9 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
         method: "POST",
         body: JSON.stringify({
           instanceName,
+          number: evolutionPhoneNumber,
           integration: "WHATSAPP-BAILEYS",
-          qrcode: false,
+          qrcode: true,
           syncFullHistory: true,
         }),
       });
@@ -345,11 +346,16 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
     }
 
     await configureWhatsAppWebhook(instanceName);
-    const pairingPath = `instance/connect/${encodeURIComponent(instanceName)}?number=${encodeURIComponent(phoneNumber.replace(/^\+/, ""))}`;
+    const pairingPath = `instance/connect/${encodeURIComponent(instanceName)}?number=${encodeURIComponent(evolutionPhoneNumber)}`;
     let pairingResponse: unknown = null;
     let pairingCode: string | null = null;
     let pairingQrBase64: string | null = null;
-    for (let attempt = 0; attempt < 3 && !pairingCode; attempt += 1) {
+    for (
+      let attempt = 0;
+      attempt < 3 &&
+      !pairingCode;
+      attempt += 1
+    ) {
       if (attempt > 0) {
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
@@ -361,6 +367,7 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
       const responseBody = asRecord(pairingResponse);
       console.error("Evolution API did not return a WhatsApp pairing code", {
         responseKeys: Object.keys(responseBody ?? {}),
+        hasQrCode: Boolean(pairingQrBase64),
         count:
           typeof responseBody?.count === "number"
             ? responseBody.count
@@ -376,10 +383,49 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
       instanceName,
       phoneNumber,
       pairingCode,
-      ...(pairingQrBase64 ? { qrCodeBase64: pairingQrBase64 } : {}),
       state: "connecting",
     });
   } catch (err) {
+    if (pairingAttemptPersisted && pairingInstanceName) {
+      try {
+        await evolutionRequest(
+          `instance/delete/${encodeURIComponent(pairingInstanceName)}`,
+          { method: "DELETE" },
+        );
+      } catch (cleanupError) {
+        if (
+          !(cleanupError instanceof EvolutionApiError &&
+            cleanupError.statusCode === 404)
+        ) {
+          console.error("Unable to clean failed WhatsApp pairing instance", {
+            workspaceId,
+            instanceName: pairingInstanceName,
+            error:
+              cleanupError instanceof Error
+                ? cleanupError.message
+                : "UNKNOWN_ERROR",
+          });
+        }
+      }
+      try {
+        await db
+          .update(menaWhatsAppConnections)
+          .set({ status: "failed" })
+          .where(
+            and(
+              eq(menaWhatsAppConnections.workspaceId, workspaceId),
+              eq(menaWhatsAppConnections.instanceName, pairingInstanceName),
+              eq(menaWhatsAppConnections.status, "connecting"),
+            ),
+          );
+      } catch (statusError) {
+        console.error("Unable to mark WhatsApp pairing as failed", {
+          workspaceId,
+          instanceName: pairingInstanceName,
+          error: statusError,
+        });
+      }
+    }
     evolutionErrorResponse(res, err, "Error starting WhatsApp pairing");
   } finally {
     await unlockAndRelease?.();
@@ -402,8 +448,9 @@ router.get(
       return;
     }
 
+    let connection: (typeof menaWhatsAppConnections.$inferSelect) | undefined;
     try {
-      const [connection] = await db
+      [connection] = await db
         .select()
         .from(menaWhatsAppConnections)
         .where(eq(menaWhatsAppConnections.workspaceId, workspaceId))
@@ -413,8 +460,12 @@ router.get(
         return;
       }
 
-      const state = await evolutionConnectionState(instanceName);
-      if (state === "open") {
+      const providerState = await evolutionConnectionState(instanceName);
+      const state = mapEvolutionConnectionState(
+        providerState,
+        connection.status === "failed",
+      );
+      if (state === "connected") {
         try {
           await configureWhatsAppWebhook(instanceName);
         } catch (err) {
@@ -433,7 +484,7 @@ router.get(
         return;
       }
 
-      if (["close", "closed", "refused", "logout"].includes(state)) {
+      if (state === "disconnected") {
         if (connection.status !== "disconnected") {
           await db
             .update(menaWhatsAppConnections)
@@ -441,6 +492,16 @@ router.get(
             .where(eq(menaWhatsAppConnections.workspaceId, workspaceId));
         }
         res.json({ state: "disconnected" });
+        return;
+      }
+
+      if (state === "unavailable") {
+        res.json({ state: "unavailable" });
+        return;
+      }
+
+      if (state === "failed") {
+        res.json({ state: "failed" });
         return;
       }
 
@@ -452,6 +513,10 @@ router.get(
       }
       res.json({ state: "connecting" });
     } catch (err) {
+      if (connection?.status === "failed") {
+        res.json({ state: "failed" });
+        return;
+      }
       evolutionErrorResponse(res, err, "Error checking WhatsApp connection");
     }
   },
@@ -542,7 +607,6 @@ router.put(
     const groupJids: unknown = req.body?.groupJids;
     if (
       !Array.isArray(groupJids) ||
-      groupJids.length > 500 ||
       groupJids.some(
         (groupJid) =>
           typeof groupJid !== "string" ||
@@ -553,11 +617,17 @@ router.put(
       res.status(400).json({ error: "قائمة المجموعات المحددة غير صالحة." });
       return;
     }
+    if (groupJids.length > MAX_WHATSAPP_GROUP_SELECTIONS) {
+      res.status(400).json({
+        error: "الحد الأقصى لاختيار مجموعات واتساب هو 500 مجموعة.",
+      });
+      return;
+    }
 
     try {
       const connection = await connectedWhatsAppForWorkspace(workspaceId);
       const requestedJids = groupJids as string[];
-      const selectedGroups = requestedJids.length
+      const selectedFromDirectory = requestedJids.length
         ? await db
             .select({
               groupId: menaWhatsAppGroups.id,
@@ -571,26 +641,20 @@ router.put(
               and(
                 eq(menaWhatsAppGroups.id, menaWhatsAppGroupJids.groupId),
                 eq(menaWhatsAppGroups.workspaceId, workspaceId),
-                eq(
-                  menaWhatsAppGroups.instanceName,
-                  connection.instanceName,
-                ),
+                eq(menaWhatsAppGroups.instanceName, connection.instanceName),
               ),
             )
             .where(
               and(
                 eq(menaWhatsAppGroupJids.workspaceId, workspaceId),
-                eq(
-                  menaWhatsAppGroupJids.instanceName,
-                  connection.instanceName,
-                ),
+                eq(menaWhatsAppGroupJids.instanceName, connection.instanceName),
                 inArray(menaWhatsAppGroupJids.groupJid, requestedJids),
+                eq(menaWhatsAppGroupJids.kind, "announcement"),
                 eq(menaWhatsAppGroups.kind, "announcement"),
               ),
             )
         : [];
-
-      if (selectedGroups.length !== requestedJids.length) {
+      if (selectedFromDirectory.length !== requestedJids.length) {
         res.status(422).json({
           error:
             "تتضمن القائمة مجموعة إعلانات غير معروفة لهذا الحساب. حدّث القائمة ثم حاول مجدداً.",
@@ -598,7 +662,7 @@ router.put(
         return;
       }
       const groupByJid = new Map(
-        selectedGroups.map((group) => [group.groupJid, group]),
+        selectedFromDirectory.map((group) => [group.groupJid, group]),
       );
       const selectedInRequestOrder = requestedJids.map((groupJid) =>
         groupByJid.get(groupJid)!,
@@ -606,6 +670,14 @@ router.put(
 
       const verifiedAt = new Date();
       await db.transaction(async (transaction) => {
+        await transaction.execute(sql`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(
+              ${`whatsapp-group-selections:${workspaceId}:${connection.instanceName}`},
+              0
+            )
+          )
+        `);
         await transaction
           .delete(menaWhatsAppGroupSelections)
           .where(
@@ -663,6 +735,7 @@ router.put(
 router.delete("/social/whatsapp", requireWorkspace, async (req, res) => {
   const ownerId = requestOwnerId(req);
   const workspaceId = requestWorkspaceId(req);
+  const cancelPairing = queryString(req.query.cancelPairing) === "true";
   if (!ownerId) {
     res.status(401).json({ error: "سجّل الدخول أولاً." });
     return;
@@ -679,6 +752,10 @@ router.delete("/social/whatsapp", requireWorkspace, async (req, res) => {
         alreadyDisconnected: true,
         evolutionInstanceDeleted: false,
       });
+      return;
+    }
+    if (cancelPairing && connection.status !== "connecting") {
+      res.json({ disconnected: false, evolutionInstanceDeleted: false });
       return;
     }
     const instanceConnections = await db
@@ -699,6 +776,31 @@ router.delete("/social/whatsapp", requireWorkspace, async (req, res) => {
       return;
     }
 
+    if (cancelPairing) {
+      let providerState: string | null = null;
+      clearConnectionStateCache();
+      try {
+        providerState = await evolutionConnectionState(connection.instanceName);
+      } catch (error) {
+        if (!(error instanceof EvolutionApiError && error.statusCode === 404)) {
+          throw error;
+        }
+      }
+      if (providerState === "open") {
+        await db
+          .update(menaWhatsAppConnections)
+          .set({ status: "connected" })
+          .where(
+            and(
+              eq(menaWhatsAppConnections.workspaceId, workspaceId),
+              eq(menaWhatsAppConnections.instanceName, connection.instanceName),
+            ),
+          );
+        res.json({ disconnected: false, evolutionInstanceDeleted: false });
+        return;
+      }
+    }
+
     let evolutionInstanceDeleted = true;
     try {
       await evolutionRequest(
@@ -711,6 +813,28 @@ router.delete("/social/whatsapp", requireWorkspace, async (req, res) => {
       } else {
         throw err;
       }
+    }
+
+    if (cancelPairing) {
+      const [cancelled] = await db
+        .update(menaWhatsAppConnections)
+        .set({ status: "failed" })
+        .where(
+          and(
+            eq(menaWhatsAppConnections.workspaceId, workspaceId),
+            eq(menaWhatsAppConnections.instanceName, connection.instanceName),
+            eq(menaWhatsAppConnections.status, "connecting"),
+          ),
+        )
+        .returning({ instanceName: menaWhatsAppConnections.instanceName });
+      if (!cancelled) {
+        res.status(409).json({
+          error: "تغيرت حالة الربط أثناء الإلغاء. حدّث الصفحة للتحقق منها.",
+        });
+        return;
+      }
+      res.json({ disconnected: true, evolutionInstanceDeleted });
+      return;
     }
 
     const deleted = await db

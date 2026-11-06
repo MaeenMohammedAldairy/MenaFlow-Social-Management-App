@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildMetaInboxReplyRequest,
+  normalizeMetaPageBusinessInfo,
   normalizeMetaPublishedPosts,
 } from "./meta-inbox-graph.ts";
 
@@ -186,5 +187,47 @@ test("normalizes a direct Meta post lookup response", () => {
         mediaUrls: [],
       },
     ],
+  );
+});
+
+test("normalizes only relevant public business profile fields", () => {
+  assert.equal(
+    normalizeMetaPageBusinessInfo(
+      {
+        id: "page-1",
+        name: "متجر البيت",
+        category: "تسوق وبيع بالتجزئة",
+        about: "أدوات منزلية",
+        phone: "777000000",
+        website: "https://shop.example",
+        location: { street: "الشارع الرئيسي", city: "صنعاء", latitude: 15.3 },
+        hours: { monday_1_open: "09:00", monday_1_close: "17:00" },
+      },
+      "facebook",
+    ),
+    [
+      "اسم الصفحة: متجر البيت",
+      "النشاط: تسوق وبيع بالتجزئة",
+      "نبذة: أدوات منزلية",
+      "الهاتف: 777000000",
+      "الموقع الإلكتروني: https://shop.example",
+      "العنوان: الشارع الرئيسي، صنعاء",
+      'ساعات العمل: {"monday_1_open":"09:00","monday_1_close":"17:00"}',
+    ].join("\n"),
+  );
+  assert.equal(
+    normalizeMetaPageBusinessInfo(
+      {
+        username: "shop",
+        biography: "منتجات منزلية",
+        website: "https://shop.example",
+      },
+      "instagram",
+    ),
+    [
+      "اسم المستخدم: shop",
+      "النبذة: منتجات منزلية",
+      "الموقع الإلكتروني: https://shop.example",
+    ].join("\n"),
   );
 });

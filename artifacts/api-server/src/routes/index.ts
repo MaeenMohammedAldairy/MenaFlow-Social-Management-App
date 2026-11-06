@@ -13,10 +13,13 @@ import metaWebhookRouter from "./meta-webhook";
 import metaWebhookSubscriptionsRouter from "./meta-webhook-subscriptions";
 import whatsappGroupsRouter from "./whatsapp-groups";
 import postsRouter from "./posts";
+import productsRouter from "./products";
+import productPublishingRouter from "./product-publishing";
 import accountDetailsRouter from "./account-details";
 import workspacesRouter from "./workspaces";
 import onboardingRouter from "./onboarding";
 import whatsappAutoRepliesRouter from "./whatsapp-auto-replies";
+import subscriptionsRouter from "./subscriptions";
 
 const router: IRouter = Router();
 
@@ -35,8 +38,11 @@ router.use(metaWebhookRouter);
 router.use(metaWebhookSubscriptionsRouter);
 router.use(aiRouter);
 router.use(postsRouter);
+router.use(productsRouter);
+router.use(productPublishingRouter);
 router.use(accountDetailsRouter);
 router.use(workspacesRouter);
 router.use(onboardingRouter);
+router.use(subscriptionsRouter);
 
 export default router;

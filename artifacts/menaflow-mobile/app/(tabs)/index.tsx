@@ -22,6 +22,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
+import { formatArabicDate } from "@/lib/formatting";
 
 const metrics = [
   { label: "مسودات", icon: "edit-3" as const, status: "draft" },
@@ -163,21 +164,34 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
 
       <View style={styles.metricsRow}>
         {metrics.map((metric) => (
-          <Panel key={metric.status} style={styles.metricCard}>
-            <View
-              style={[styles.metricIcon, { backgroundColor: colors.accent }]}
-            >
-              <Icon name={metric.icon} size={17} color={colors.primary} />
-            </View>
-            <Text style={[styles.metricNumber, { color: colors.foreground }]}>
-              {count(metric.status)}
-            </Text>
-            <Text
-              style={[styles.metricLabel, { color: colors.mutedForeground }]}
-            >
-              {metric.label}
-            </Text>
-          </Panel>
+          <Pressable
+            key={metric.status}
+            accessibilityRole="button"
+            accessibilityLabel={`${metric.label}: ${count(metric.status)}`}
+            onPress={() =>
+              router.push({
+                pathname: "/(tabs)/content",
+                params: { status: metric.status },
+              })
+            }
+            style={styles.metricPressable}
+          >
+            <Panel style={styles.metricCard}>
+              <View
+                style={[styles.metricIcon, { backgroundColor: colors.accent }]}
+              >
+                <Icon name={metric.icon} size={17} color={colors.primary} />
+              </View>
+              <Text style={[styles.metricNumber, { color: colors.foreground }]}>
+                {count(metric.status)}
+              </Text>
+              <Text
+                style={[styles.metricLabel, { color: colors.mutedForeground }]}
+              >
+                {metric.label}
+              </Text>
+            </Panel>
+          </Pressable>
         ))}
       </View>
 
@@ -185,7 +199,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
         <SectionTitle
           title="حساباتك الاجتماعية"
           action={
-            <Pressable onPress={() => router.push("/(tabs)/sources")}>
+            <Pressable onPress={() => router.push("/(tabs)/more/sources")}>
               <Text style={[styles.link, { color: colors.primary }]}>
                 إدارة الحسابات
               </Text>
@@ -209,7 +223,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                       params: { platform: channel.platform },
                     })
                   : router.push({
-                      pathname: "/(tabs)/sources",
+                      pathname: "/(tabs)/more/sources",
                       params: { connect: channel.platform },
                     })
               }
@@ -269,57 +283,122 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
             body="ابدأ بكتابة أول منشور. ستتم مزامنة المحتوى تلقائياً مع الخادم."
           />
         ) : (
-          posts.slice(0, 4).map((post) => (
-            <Pressable
-              key={post.id}
-              onPress={() => router.push("/(tabs)/content")}
-              style={[styles.activityRow, { borderBottomColor: colors.border }]}
-            >
-              <View style={styles.activityCopy}>
-                <Text
-                  numberOfLines={1}
-                  style={[styles.activityTitle, { color: colors.foreground }]}
+          posts.slice(0, 4).map((post) => {
+            const title = post.title.trim();
+            const displayTitle =
+              title &&
+              ![
+                "محتوى يحتاج إلى مراجعة",
+                "محتوى من واتساب",
+                "منشور بدون عنوان",
+              ].includes(title)
+                ? title
+                : post.body
+                    .trim()
+                    .split(/\r?\n/)
+                    .find(Boolean)
+                    ?.replace(/^[*#\s]+/, "")
+                    .slice(0, 72) || "منشور بدون عنوان";
+            const statusLabel =
+              post.status === "review"
+                ? "بانتظار المراجعة"
+                : post.status === "draft"
+                  ? "مسودة"
+                  : post.status === "scheduled"
+                    ? "مجدول"
+                    : post.status === "publishing"
+                      ? "قيد الإرسال"
+                      : post.status === "failed"
+                        ? "فشل النشر"
+                        : post.status === "approved"
+                          ? "معتمد للنشر"
+                          : "منشور";
+            const postDate = formatArabicDate(
+              post.sourceMessageDate ?? post.createdAt,
+            );
+            return (
+              <View
+                key={post.id}
+                style={[
+                  styles.activityRow,
+                  { borderBottomColor: colors.border },
+                ]}
+              >
+                <StatusPill
+                  style={styles.activityStatus}
+                  label={statusLabel}
+                  tone={
+                    post.status === "review"
+                      ? "amber"
+                      : post.status === "published"
+                        ? "green"
+                        : "muted"
+                  }
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`عرض ${displayTitle}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/(tabs)/content",
+                      params: { status: post.status },
+                    })
+                  }
+                  style={styles.activityCopy}
                 >
-                  {post.title || post.body}
-                </Text>
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.activityMeta,
-                    { color: colors.mutedForeground },
-                  ]}
-                >
-                  {post.channels
-                    .map((channel) =>
-                      channel === "instagram"
-                        ? "إنستغرام"
-                        : channel === "facebook"
-                          ? "فيسبوك"
-                          : "واتساب",
-                    )
-                    .join("، ") || "بدون قنوات"}
-                </Text>
+                  <Text
+                    numberOfLines={2}
+                    style={[styles.activityTitle, { color: colors.foreground }]}
+                  >
+                    {displayTitle}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.activityMeta,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {post.channels
+                      .map((channel) =>
+                        channel === "instagram"
+                          ? "إنستغرام"
+                          : channel === "facebook"
+                            ? "فيسبوك"
+                            : "واتساب",
+                      )
+                      .join("، ") || "بدون قنوات"}
+                    {postDate ? ` · ${postDate}` : ""}
+                  </Text>
+                </Pressable>
+                {post.status === "review" ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`مراجعة ${displayTitle}`}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(tabs)/content",
+                        params: { status: "review" },
+                      })
+                    }
+                    style={[
+                      styles.reviewButton,
+                      { backgroundColor: colors.accent },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.reviewButtonLabel,
+                        { color: colors.primary },
+                      ]}
+                    >
+                      مراجعة
+                    </Text>
+                  </Pressable>
+                ) : null}
               </View>
-              <StatusPill
-                label={
-                  post.status === "review"
-                    ? "مراجعة"
-                    : post.status === "draft"
-                      ? "مسودة"
-                      : post.status === "scheduled"
-                        ? "مجدول"
-                        : "منشور"
-                }
-                tone={
-                  post.status === "review"
-                    ? "amber"
-                    : post.status === "published"
-                      ? "green"
-                      : "muted"
-                }
-              />
-            </Pressable>
-          ))
+            );
+          })
         )}
       </Panel>
     </Page>
@@ -332,7 +411,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     padding: 18,
     overflow: "hidden",
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
@@ -345,10 +424,16 @@ const styles = StyleSheet.create({
     left: -76,
     bottom: -115,
   },
-  heroText: { flex: 1, alignItems: "flex-end", gap: 10, zIndex: 1 },
+  heroText: { flex: 1, alignItems: "flex-start", gap: 10, zIndex: 1 },
   heroEyebrow: { fontSize: 12, fontWeight: "800" },
   heroTitle: { fontSize: 20, fontWeight: "800", textAlign: "right" },
-  heroBody: { fontSize: 13, lineHeight: 19, textAlign: "right", maxWidth: 220 },
+  heroBody: {
+    alignSelf: "stretch",
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "left",
+    maxWidth: 220,
+  },
   heroIllustration: {
     width: 82,
     height: 82,
@@ -367,7 +452,8 @@ const styles = StyleSheet.create({
     top: -5,
     right: -5,
   },
-  metricsRow: { flexDirection: "row-reverse", gap: 8 },
+  metricsRow: { flexDirection: "row", gap: 8 },
+  metricPressable: { flex: 1 },
   metricCard: {
     flex: 1,
     alignItems: "center",
@@ -385,7 +471,7 @@ const styles = StyleSheet.create({
   metricNumber: { fontSize: 21, fontWeight: "800" },
   metricLabel: { fontSize: 10, textAlign: "center", fontWeight: "600" },
   link: { fontSize: 12, fontWeight: "700" },
-  channelRow: { flexDirection: "row-reverse", gap: 8 },
+  channelRow: { flexDirection: "row", gap: 8 },
   channelTile: {
     flex: 1,
     minHeight: 90,
@@ -398,16 +484,29 @@ const styles = StyleSheet.create({
   },
   channelName: { fontSize: 12, fontWeight: "700" },
   channelState: { fontSize: 10, textAlign: "center", maxWidth: 85 },
-  helperNote: { fontSize: 11, textAlign: "right" },
+  helperNote: {
+    alignSelf: "stretch",
+    fontSize: 11,
+    textAlign: "right",
+    writingDirection: "rtl",
+  },
   activityRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  activityCopy: { flex: 1, alignItems: "flex-end", gap: 4 },
+  activityCopy: { flex: 1, alignItems: "flex-start", gap: 4 },
+  activityStatus: { alignSelf: "center" },
   activityTitle: { fontSize: 13, fontWeight: "700" },
-  activityMeta: { fontSize: 11 },
+  activityMeta: { fontSize: 11, textAlign: "left" },
+  reviewButton: {
+    minHeight: 34,
+    justifyContent: "center",
+    borderRadius: 10,
+    paddingHorizontal: 10,
+  },
+  reviewButtonLabel: { fontSize: 11, fontWeight: "700" },
 });

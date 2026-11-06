@@ -8,7 +8,10 @@ import {
   View,
 } from "react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CairoText as Text } from "@/components/CairoTypography";
+import {
+  CairoText as Text,
+  CairoTextInput,
+} from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, Panel, SectionTitle } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
@@ -331,6 +334,50 @@ export function MetaAutoReplySettingsPanel({
 
                   <View style={styles.field}>
                     <Text style={[styles.label, { color: colors.foreground }]}>
+                      معلومات النشاط والمنتجات
+                    </Text>
+                    <Text
+                      style={[
+                        styles.bodySmall,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      أضف معلومات مؤكدة فقط، مثل أسماء المنتجات وأسعارها وتوفرها
+                      وسياسة التوصيل وبيانات التواصل. لن يخمّن الرد الآلي
+                      المعلومات غير المذكورة.
+                    </Text>
+                    <CairoTextInput
+                      accessibilityLabel="معلومات النشاط والمنتجات"
+                      value={settings.instructions}
+                      onChangeText={(instructions) => update({ instructions })}
+                      placeholder="مثال: ساعات رجالية متوفرة، السعر 150 ريال. التوصيل خلال يومين..."
+                      placeholderTextColor={colors.mutedForeground}
+                      maxLength={2000}
+                      multiline
+                      textAlign="right"
+                      textAlignVertical="top"
+                      editable={!save.isPending}
+                      style={[
+                        styles.instructionsInput,
+                        {
+                          color: colors.foreground,
+                          backgroundColor: colors.background,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.bodySmall,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      {settings.instructions.length}/2000
+                    </Text>
+                  </View>
+
+                  <View style={styles.field}>
+                    <Text style={[styles.label, { color: colors.foreground }]}>
                       لغة الرد
                     </Text>
                     <View style={styles.choiceRow}>
@@ -514,7 +561,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   modalHeader: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
@@ -522,7 +569,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
   },
-  modalHeading: { flex: 1, gap: 4, alignItems: "flex-end" },
+  modalHeading: { flex: 1, gap: 4, alignItems: "flex-start" },
   modalTitle: { fontSize: 17, fontWeight: "700", textAlign: "right" },
   closeButton: {
     width: 36,
@@ -534,15 +581,15 @@ const styles = StyleSheet.create({
   modalScroll: { flexShrink: 1 },
   modalContent: { gap: 16, padding: 20 },
   modalFooter: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderTopWidth: 1,
   },
-  body: { fontSize: 13, lineHeight: 21, textAlign: "right" },
-  bodySmall: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  body: { fontSize: 13, lineHeight: 21, textAlign: "left" },
+  bodySmall: { fontSize: 12, lineHeight: 19, textAlign: "left" },
   platform: {
     gap: 10,
     borderWidth: 1,
@@ -550,7 +597,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   platformHeader: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
@@ -558,7 +605,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   platformHeading: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
@@ -579,14 +626,23 @@ const styles = StyleSheet.create({
   platformState: { fontSize: 12, fontWeight: "600" },
   switchBlock: { gap: 3 },
   switchRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
   },
   field: { gap: 8 },
   label: { fontSize: 14, fontWeight: "600", textAlign: "right" },
-  choiceRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
+  instructionsInput: {
+    minHeight: 112,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   choice: {
     overflow: "hidden",
     borderWidth: 1,

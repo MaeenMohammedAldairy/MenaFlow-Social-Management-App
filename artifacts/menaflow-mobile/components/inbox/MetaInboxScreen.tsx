@@ -1,5 +1,12 @@
 import React, { useState } from "react";
-import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
+import {
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
+import { router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
@@ -14,15 +21,15 @@ import {
   Panel,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
+import { formatArabicDateTime } from "@/lib/formatting";
 import {
   activateMetaWebhookSubscriptions,
   getMetaInbox,
-  sendMetaInboxReply,
+  metaInboxPersonId,
   type MetaInboxItem,
   type MetaInboxKind,
   type MetaInboxPlatform,
 } from "@/lib/meta-inbox-api";
-import { MetaInboxItemCard } from "./MetaInboxItemCard";
 import { MetaAutoReplySettingsPanel } from "./MetaAutoReplySettingsPanel";
 
 type InboxFilter = "all" | MetaInboxPlatform | MetaInboxKind;
@@ -34,6 +41,51 @@ const filters: Array<{ key: InboxFilter; label: string }> = [
   { key: "facebook", label: "فيسبوك" },
   { key: "instagram", label: "إنستغرام" },
 ];
+
+type InboxGroup = {
+  key: string;
+  title: string;
+  platform: MetaInboxPlatform;
+  items: MetaInboxItem[];
+  latestAt: number;
+};
+
+function groupInboxItems(items: MetaInboxItem[]): InboxGroup[] {
+  const groups = new Map<string, InboxGroup>();
+  for (const item of items) {
+    const personId = metaInboxPersonId(item);
+    const key = `${item.platform}:person:${personId}`;
+    const group = groups.get(key);
+    if (group) {
+      group.items.push(item);
+      if (!group.title || group.title === "مستخدم") {
+        group.title = item.actorName || group.title;
+      }
+      const occurredAt = Date.parse(item.occurredAt);
+      if (Number.isFinite(occurredAt)) {
+        group.latestAt = Math.max(group.latestAt, occurredAt);
+      }
+      continue;
+    }
+    const occurredAt = Date.parse(item.occurredAt);
+    groups.set(key, {
+      key,
+      title: item.actorName || "مستخدم",
+      platform: item.platform,
+      items: [item],
+      latestAt: Number.isFinite(occurredAt) ? occurredAt : 0,
+    });
+  }
+  return [...groups.values()].sort(
+    (first, second) => second.latestAt - first.latestAt,
+  );
+}
+
+function latestInboxItem(group: InboxGroup): MetaInboxItem {
+  return group.items.reduce((latest, item) =>
+    Date.parse(item.occurredAt) > Date.parse(latest.occurredAt) ? item : latest,
+  );
+}
 
 export function MetaInboxScreen() {
   return isLocalAuthDisabled ? (
@@ -52,7 +104,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState<InboxFilter>("all");
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [search, setSearch] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
   const queryKey = ["meta-inbox", userId ?? "local"] as const;
   const inbox = useQuery({
@@ -79,25 +131,23 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
       ),
     onSettled: () => queryClient.invalidateQueries({ queryKey }),
   });
-  const reply = useMutation({
-    mutationFn: ({ item, text }: { item: MetaInboxItem; text: string }) =>
-      sendMetaInboxReply(item.id, text),
-    onSuccess: async (_result, variables) => {
-      setDrafts((current) => ({ ...current, [variables.item.id]: "" }));
-      setActionError(null);
-      await queryClient.invalidateQueries({ queryKey });
-    },
-    onError: (error) =>
-      setActionError(
-        error instanceof Error ? error.message : "تعذر إرسال الرد.",
-      ),
-  });
-
-  const visibleItems =
+  const filteredItems =
     inbox.data?.items.filter((item) => {
       if (filter === "all") return true;
       return item.platform === filter || item.kind === filter;
     }) ?? [];
+  const normalizedSearch = search.trim().toLocaleLowerCase();
+  const visibleItems = normalizedSearch
+    ? filteredItems.filter((item) =>
+        [item.actorName, item.text]
+          .filter(Boolean)
+          .some(
+            (value) =>
+              value?.toLocaleLowerCase().includes(normalizedSearch) ?? false,
+          ),
+      )
+    : filteredItems;
+  const groups = groupInboxItems(visibleItems);
   const subscriptions = inbox.data?.webhook.subscriptions ?? {};
   const connectedPlatforms = (["facebook", "instagram"] as const).filter(
     (platform) => Boolean(inbox.data?.webhook.accounts[platform]),
@@ -186,7 +236,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
 
       {actionError ? (
         <Panel style={[styles.errorPanel, { borderColor: colors.destructive }]}>
-          <Text style={{ color: colors.destructive, textAlign: "right" }}>
+          <Text style={{ color: colors.destructive, textAlign: "left" }}>
             {actionError}
           </Text>
         </Panel>
@@ -236,10 +286,37 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           );
         })}
       </View>
+      <View
+        style={[
+          styles.searchRow,
+          { borderColor: colors.border, backgroundColor: colors.card },
+        ]}
+      >
+        <Icon name="search" size={18} color={colors.mutedForeground} />
+        <TextInput
+          accessibilityLabel="ابحث في الرسائل والتعليقات"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="ابحث بالاسم أو نص الرسالة"
+          placeholderTextColor={colors.mutedForeground}
+          returnKeyType="search"
+          style={[styles.searchInput, { color: colors.foreground }]}
+        />
+        {search ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="مسح البحث"
+            onPress={() => setSearch("")}
+            hitSlop={8}
+          >
+            <Icon name="x" size={17} color={colors.mutedForeground} />
+          </Pressable>
+        ) : null}
+      </View>
       {inbox.data ? (
         <Text style={[styles.lastEvent, { color: colors.mutedForeground }]}>
           {inbox.data.webhook.lastEventAt
-            ? `آخر رسالة أو تعليق مستلم: ${new Date(inbox.data.webhook.lastEventAt).toLocaleString("ar")}`
+            ? `آخر رسالة أو تعليق مستلم: ${formatArabicDateTime(inbox.data.webhook.lastEventAt) ?? "غير محدد"}`
             : "لم تُستقبل رسائل أو تعليقات من Meta حتى الآن"}
         </Text>
       ) : null}
@@ -251,30 +328,190 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
       ) : visibleItems.length === 0 && !inbox.isError ? (
         <EmptyState
           icon="message-square"
-          title="لا توجد رسائل أو تعليقات بعد"
+          title={
+            search
+              ? "لا توجد نتائج"
+              : "لا توجد رسائل أو تعليقات بعد"
+          }
           body={
-            allConfiguredSubscriptions
-              ? "ستظهر هنا رسائل وتعليقات الحسابات المتصلة عند وصولها."
-              : "أكمل إعداد Webhooks وفعّل اشتراك الحسابات، ثم أرسل رسالة أو أضف تعليقًا للاختبار."
+            search
+              ? "جرّب البحث باسم مختلف أو جزء من نص الرسالة."
+              : allConfiguredSubscriptions
+                ? "ستظهر هنا رسائل وتعليقات الحسابات المتصلة عند وصولها."
+                : "أكمل إعداد Webhooks وفعّل اشتراك الحسابات، ثم أرسل رسالة أو أضف تعليقًا للاختبار."
           }
         />
       ) : (
-        <View style={styles.items}>
-          {visibleItems.map((item) => (
-            <MetaInboxItemCard
-              key={`${item.platform}:${item.externalId}`}
-              item={item}
-              replyText={drafts[item.id] ?? ""}
-              onChangeReply={(text) =>
-                setDrafts((current) => ({ ...current, [item.id]: text }))
-              }
-              onReply={() => {
-                setActionError(null);
-                reply.mutate({ item, text: drafts[item.id]?.trim() ?? "" });
-              }}
-              sending={reply.isPending && reply.variables?.item.id === item.id}
-            />
-          ))}
+        <View style={styles.groups}>
+          <Text style={[styles.resultsCount, { color: colors.mutedForeground }]}>
+            {visibleItems.length} نتيجة · عدد المحادثات: {groups.length}
+          </Text>
+          {groups.map((group) => {
+            const latestItem = latestInboxItem(group);
+            const messageCount = group.items.filter(
+              (item) => item.kind === "message",
+            ).length;
+            const commentCount = group.items.length - messageCount;
+            return (
+              <Pressable
+                key={group.key}
+                accessibilityRole="button"
+                accessibilityLabel={`فتح محادثة ${group.title}، ${messageCount} رسالة و${commentCount} تعليق`}
+                onPress={() =>
+                  router.push({
+                    pathname: "/inbox/[conversationId]",
+                    params: {
+                      conversationId: metaInboxPersonId(group.items[0]),
+                      platform: group.platform,
+                    },
+                  })
+                }
+                style={[
+                  styles.conversationCard,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.conversationAvatar,
+                    { backgroundColor: colors.accent },
+                  ]}
+                >
+                  <Icon
+                    name="user"
+                    size={20}
+                    color={
+                      group.platform === "instagram"
+                        ? colors.instagram
+                        : colors.facebook
+                    }
+                  />
+                </View>
+                <View style={styles.conversationHeading}>
+                  <View style={styles.conversationTopLine}>
+                    <Text
+                      style={[
+                        styles.conversationTitle,
+                        { color: colors.foreground },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {group.title}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.conversationDate,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      {formatArabicDateTime(latestItem.occurredAt) ??
+                        "غير محدد"}
+                    </Text>
+                  </View>
+                  <View style={styles.conversationPreviewRow}>
+                    <Icon
+                      name={
+                        latestItem.kind === "comment"
+                          ? "message-square"
+                          : "message-circle"
+                      }
+                      size={15}
+                      color={colors.mutedForeground}
+                    />
+                    <Text
+                      style={[
+                        styles.conversationPreview,
+                        { color: colors.mutedForeground },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {latestItem.text ||
+                        (latestItem.media.length > 0
+                          ? "رسالة تحتوي على مرفق"
+                          : latestItem.kind === "comment"
+                            ? "تعليق بدون نص"
+                            : "رسالة بدون نص")}
+                    </Text>
+                  </View>
+                  <View style={styles.conversationBottomLine}>
+                    <View
+                      style={[
+                        styles.platformBadge,
+                        { backgroundColor: colors.accent },
+                      ]}
+                    >
+                      <Icon
+                        name={group.platform}
+                        size={13}
+                        color={
+                          group.platform === "instagram"
+                            ? colors.instagram
+                            : colors.facebook
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.platformLabel,
+                          {
+                            color:
+                              group.platform === "instagram"
+                                ? colors.instagram
+                                : colors.facebook,
+                          },
+                        ]}
+                      >
+                        {group.platform === "facebook" ? "فيسبوك" : "إنستغرام"}
+                      </Text>
+                    </View>
+                    <View style={styles.conversationCounts}>
+                      <View style={styles.countItem}>
+                        <Icon
+                          name="message-circle"
+                          size={13}
+                          color={colors.mutedForeground}
+                        />
+                        <Text
+                          style={[
+                            styles.conversationMeta,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          {messageCount}
+                        </Text>
+                      </View>
+                      <View style={styles.countItem}>
+                        <Icon
+                          name="message-square"
+                          size={13}
+                          color={colors.mutedForeground}
+                        />
+                        <Text
+                          style={[
+                            styles.conversationMeta,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          {commentCount}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+                <Icon
+                  name="chevron-left"
+                  size={19}
+                  color={
+                    group.platform === "instagram"
+                      ? colors.instagram
+                      : colors.facebook
+                  }
+                />
+              </Pressable>
+            );
+          })}
         </View>
       )}
     </Page>
@@ -283,18 +520,94 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
 
 const styles = StyleSheet.create({
   setupPanel: { gap: 12 },
-  setupHeading: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  setupHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
   setupTitle: { fontSize: 15, fontWeight: "700", textAlign: "right" },
-  setupText: { fontSize: 13, lineHeight: 22, textAlign: "right" },
-  callback: { fontSize: 12, textAlign: "left" },
+  setupText: { fontSize: 13, lineHeight: 22, textAlign: "left" },
+  callback: {
+    fontSize: 12,
+    textAlign: "left",
+    writingDirection: "ltr",
+  },
   errorPanel: { borderWidth: 1 },
-  filters: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
+  filters: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   filter: {
     borderWidth: 1,
     borderRadius: 18,
     paddingHorizontal: 13,
     paddingVertical: 8,
   },
+  searchRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 42,
+    textAlign: "right",
+    writingDirection: "rtl",
+    fontSize: 14,
+  },
   items: { gap: 12 },
-  lastEvent: { fontSize: 12, textAlign: "right" },
+  groups: { gap: 14 },
+  conversationCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    minHeight: 100,
+  },
+  conversationAvatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  conversationHeading: { flex: 1, gap: 8 },
+  conversationTopLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  conversationTitle: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  conversationDate: { fontSize: 10, textAlign: "left" },
+  conversationPreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  conversationPreview: { flex: 1, fontSize: 12, textAlign: "right" },
+  conversationBottomLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  platformBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  platformLabel: { fontSize: 10, fontWeight: "700" },
+  conversationCounts: { flexDirection: "row", alignItems: "center", gap: 10 },
+  countItem: { flexDirection: "row", alignItems: "center", gap: 4 },
+  conversationMeta: { fontSize: 11 },
+  resultsCount: { fontSize: 12, textAlign: "left" },
+  lastEvent: { fontSize: 12, textAlign: "left" },
 });

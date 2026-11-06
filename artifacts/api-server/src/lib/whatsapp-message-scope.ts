@@ -1,8 +1,4 @@
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
+import { asRecord } from "./value-utils.ts";
 
 function normalizeText(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
@@ -17,8 +13,8 @@ export function extractWhatsAppTextFromMessage(
   const directText: string[] = [];
   const captions: string[] = [];
 
-  while (pending.length > 0) {
-    const current = pending.shift();
+  for (let cursor = 0; cursor < pending.length; cursor += 1) {
+    const current = pending[cursor];
     if (!current || seen.has(current)) continue;
     seen.add(current);
 

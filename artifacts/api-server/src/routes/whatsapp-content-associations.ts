@@ -4,6 +4,7 @@ import {
   decideWhatsAppContentAssociation,
   WhatsAppContentAssociationError,
 } from "../lib/whatsapp-content-associations";
+import { requeueWhatsAppProductMessage } from "../lib/whatsapp-product-extraction";
 import { requireWorkspace, requestWorkspaceId, requestWorkspaceUserId } from "../lib/workspace-context";
 
 const router: IRouter = Router();
@@ -52,6 +53,11 @@ router.post(
         secondMessageId,
         decision,
       });
+      const workspaceId = requestWorkspaceId(req);
+      await Promise.all([
+        requeueWhatsAppProductMessage(workspaceId, firstMessageId),
+        requeueWhatsAppProductMessage(workspaceId, secondMessageId),
+      ]);
       res.json(result);
     } catch (error) {
       if (error instanceof WhatsAppContentAssociationError) {

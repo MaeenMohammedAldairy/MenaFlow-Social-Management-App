@@ -11,13 +11,13 @@ import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { StatusPill } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
-import type { WhatsAppGroup } from "@workspace/api-client-react";
+import type { WhatsAppGroupOption } from "@workspace/api-client-react";
 
 interface WhatsAppSetupModalProps {
   visible: boolean;
   loading: boolean;
   loadError?: string;
-  groups: WhatsAppGroup[];
+  groups: WhatsAppGroupOption[];
   initialized: boolean;
   busy: boolean;
   setupError?: string;
@@ -258,10 +258,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "left" },
   setupSectionTitle: { fontSize: 15, fontWeight: "800", textAlign: "right" },
   loadingRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
@@ -290,25 +290,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     padding: 10,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 8,
   },
-  selectedGroupCopy: { flex: 1, alignItems: "flex-end", gap: 4 },
+  selectedGroupCopy: { flex: 1, alignItems: "flex-start", gap: 4 },
   selectedGroupName: { fontSize: 13, fontWeight: "700", textAlign: "right" },
   removeGroupButton: { padding: 6 },
   primaryAction: {
     minHeight: 44,
     borderRadius: 12,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
   },
   primaryActionLabel: { fontSize: 14, fontWeight: "800" },
-  dialogError: { fontSize: 12, lineHeight: 18, textAlign: "right" },
-  dialogActions: { flexDirection: "row-reverse", gap: 10, marginTop: 4 },
+  dialogError: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  dialogActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   dialogButton: {
     flex: 1,
     minHeight: 44,

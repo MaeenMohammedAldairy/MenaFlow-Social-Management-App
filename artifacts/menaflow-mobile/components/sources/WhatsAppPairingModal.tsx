@@ -1,9 +1,13 @@
 import React from "react";
 import {
+  ActivityIndicator,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
+  ScrollView,
   View,
 } from "react-native";
 import { CairoText as Text, CairoTextInput } from "@/components/CairoTypography";
@@ -24,11 +28,13 @@ interface WhatsAppPairingModalProps {
   isExistingConnection: boolean;
   busy: boolean;
   error?: string;
+  pairingTimedOut: boolean;
   formattedInternationalPhone?: string;
   parsedCallingCode?: string;
   onChangeInput: (updater: (prev: WhatsAppInputState | null) => WhatsAppInputState | null) => void;
   onOpenCountryPicker: () => void;
   onSubmit: (requestNewCode?: boolean) => void;
+  onCheckAgain: () => void;
   onClose: () => void;
 }
 
@@ -38,11 +44,13 @@ export function WhatsAppPairingModal({
   isExistingConnection,
   busy,
   error,
+  pairingTimedOut,
   formattedInternationalPhone,
   parsedCallingCode,
   onChangeInput,
   onOpenCountryPicker,
   onSubmit,
+  onCheckAgain,
   onClose,
 }: WhatsAppPairingModalProps) {
   const colors = useColors();
@@ -56,17 +64,29 @@ export function WhatsAppPairingModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.modalOverlay}
+      >
         <View
           style={[
             styles.whatsappDialog,
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
-          <Text style={[styles.dialogTitle, { color: colors.foreground }]}>
-            {isExistingConnection ? "إعادة ربط واتساب" : "ربط واتساب"}
-          </Text>
-          {input.pairingCode ? (
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.dialogContent}
+          >
+            <Text style={[styles.dialogTitle, { color: colors.foreground }]}>
+              {input.pairingCode || input.qrCodeBase64
+                ? "تأكيد الربط"
+                : isExistingConnection
+                  ? "إعادة ربط واتساب"
+                  : "ربط واتساب"}
+            </Text>
+          {input.pairingCode || input.qrCodeBase64 ? (
             <>
               <Text
                 style={[
@@ -74,58 +94,69 @@ export function WhatsAppPairingModal({
                   { color: colors.mutedForeground },
                 ]}
               >
-                من تطبيق واتساب على هاتفك، افتح «الإعدادات» ثم «الأجهزة
-                المرتبطة» واختر «ربط جهاز» ثم «الربط برقم الهاتف». أدخل الرمز
-                التالي هناك، وسنتحقق تلقائيًا عند تأكيد الربط.
+                {input.pairingCode
+                  ? "من واتساب: الإعدادات ← الأجهزة المرتبطة ← ربط جهاز ← الربط برقم الهاتف."
+                  : "من واتساب: الأجهزة المرتبطة ← ربط جهاز، ثم امسح الرمز."}
               </Text>
-              <Text
-                selectable
-                style={[
-                  styles.pairingCode,
-                  { color: colors.primary, backgroundColor: colors.accent },
-                ]}
-              >
-                {input.pairingCode}
-              </Text>
+              {input.pairingCode ? (
+                <Text
+                  selectable
+                  style={[
+                    styles.pairingCode,
+                    { color: colors.primary, backgroundColor: colors.accent },
+                  ]}
+                >
+                  {input.pairingCode}
+                </Text>
+              ) : null}
               <Text
                 style={[
                   styles.pairingPhoneNumber,
                   { color: colors.mutedForeground },
                 ]}
               >
-                هذا الرمز مخصص لرقم واتساب{" "}
-                {formattedInternationalPhone || input.phoneNumber}
-                . أدخله للحساب نفسه على هاتفك.
+                {`رقم واتساب: ${formattedInternationalPhone || input.phoneNumber}`}
               </Text>
               <Text
-                style={[styles.connectionProgress, { color: colors.primary }]}
+                style={[
+                  styles.connectionProgress,
+                  {
+                    color: pairingTimedOut
+                      ? colors.warning
+                      : colors.primary,
+                  },
+                ]}
               >
-                بانتظار تأكيد الربط من واتساب…
+                {pairingTimedOut
+                  ? "لم يصل تأكيد الربط بعد."
+                  : "بانتظار التأكيد…"}
               </Text>
               {input.qrCodeBase64 ? (
                 <>
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() =>
-                      onChangeInput((current) =>
-                        current
-                          ? { ...current, showQrCode: !current.showQrCode }
-                          : current,
-                      )
-                    }
-                    style={styles.pairingRefresh}
-                  >
-                    <Text
-                      style={[
-                        styles.secondaryActionLabel,
-                        { color: colors.primary },
-                      ]}
+                  {input.pairingCode ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() =>
+                        onChangeInput((current) =>
+                          current
+                            ? { ...current, showQrCode: !current.showQrCode }
+                            : current,
+                        )
+                      }
+                      style={styles.pairingRefresh}
                     >
-                      {input.showQrCode
-                        ? "إخفاء رمز QR"
-                        : "تعذّر إدخال الرمز؟ استخدم رمز QR"}
-                    </Text>
-                  </Pressable>
+                      <Text
+                        style={[
+                          styles.secondaryActionLabel,
+                          { color: colors.primary },
+                        ]}
+                      >
+                        {input.showQrCode
+                          ? "إخفاء رمز QR"
+                          : "تعذّر إدخال الرمز؟ استخدم رمز QR"}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                   {input.showQrCode ? (
                     <>
                       <Image
@@ -138,16 +169,6 @@ export function WhatsAppPairingModal({
                         resizeMode="contain"
                         style={styles.pairingQr}
                       />
-                      <Text
-                        style={[
-                          styles.pairingPhoneNumber,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        امسح الرمز من واتساب على هاتفك عبر «الأجهزة
-                        المرتبطة» ثم «ربط جهاز». اعرض هذه الصفحة على جهاز
-                        آخر.
-                      </Text>
                     </>
                   ) : null}
                 </>
@@ -164,7 +185,7 @@ export function WhatsAppPairingModal({
                       : current,
                   );
                 }}
-                style={styles.pairingRefresh}
+                style={[styles.pairingRefresh, { opacity: busy ? 0.6 : 1 }]}
               >
                 <Text
                   style={[
@@ -172,9 +193,30 @@ export function WhatsAppPairingModal({
                     { color: colors.primary },
                   ]}
                 >
-                  الرقم غير صحيح؟ غيّره قبل طلب الرمز
+                  تعديل الرقم
                 </Text>
               </Pressable>
+              {pairingTimedOut ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: busy }}
+                  disabled={busy}
+                  onPress={onCheckAgain}
+                  style={[
+                    styles.pairingRefresh,
+                    { opacity: busy ? 0.6 : 1 },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.secondaryActionLabel,
+                      { color: colors.primary },
+                    ]}
+                  >
+                    {busy ? "جارٍ التحقق…" : "التحقق من حالة الربط مجددًا"}
+                  </Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 disabled={busy}
@@ -192,21 +234,23 @@ export function WhatsAppPairingModal({
                 >
                   {busy
                     ? "جارٍ إصدار رمز جديد…"
-                    : "لم يعمل الرمز؟ اطلب رمزًا جديدًا"}
+                    : pairingTimedOut
+                      ? "إصدار رمز جديد"
+                      : input.pairingCode
+                        ? "لم يعمل الرمز؟ اطلب رمزًا جديدًا"
+                        : "تعذّر المسح؟ اطلب رمزًا جديدًا"}
                 </Text>
               </Pressable>
             </>
           ) : (
             <>
-              <Text
-                style={[
-                  styles.dialogDescription,
-                  { color: colors.mutedForeground },
-                ]}
-              >
+              <Text style={[styles.dialogDescription, { color: colors.mutedForeground }]}>
                 {isExistingConnection
-                  ? "أعد ربط حساب واتساب باستخدام الرقم المحفوظ، مع الاحتفاظ بإعداداتك ومجموعاتك."
-                  : "اختر بلد الرقم واكتب رقم واتساب المحلي، ثم نعرض لك خطوات إكمال الربط."}
+                  ? "أعد ربط الرقم الحالي أو أدخل رقمًا آخر."
+                  : "اختر البلد وأدخل رقم واتساب."}
+              </Text>
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                رقم واتساب
               </Text>
               <View style={styles.phoneFieldRow}>
                 <Pressable
@@ -268,8 +312,24 @@ export function WhatsAppPairingModal({
                   { color: colors.mutedForeground },
                 ]}
               >
-                {`مفتاح الدولة ${parsedCallingCode || `+${getCountryCallingCode(phoneCountry)}`} محدد. أدخل الرقم المحلي من دون المفتاح.`}
+                {`الرقم المحلي فقط · ${parsedCallingCode || `+${getCountryCallingCode(phoneCountry)}`}`}
               </Text>
+              <View
+                style={[
+                  styles.existingNumberNote,
+                  { backgroundColor: colors.accent },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.existingNumberNoteText,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  الرقم المرتبط بحساب آخر لا يُنقل تلقائيًا؛ افصله من الحساب
+                  السابق أولًا.
+                </Text>
+              </View>
             </>
           )}
           {error ? (
@@ -296,10 +356,14 @@ export function WhatsAppPairingModal({
                   { color: colors.foreground },
                 ]}
               >
-                {input.pairingCode ? "إغلاق" : "إلغاء"}
+                {busy
+                  ? "جارٍ التنفيذ…"
+                  : input.pairingCode
+                    ? "إلغاء المحاولة"
+                    : "إلغاء"}
               </Text>
             </Pressable>
-            {!input.pairingCode ? (
+            {!input.pairingCode && !input.qrCodeBase64 ? (
               <Pressable
                 accessibilityRole="button"
                 disabled={busy}
@@ -319,13 +383,14 @@ export function WhatsAppPairingModal({
                     { color: colors.primaryForeground },
                   ]}
                 >
-                  {busy ? "جارٍ الربط…" : "الحصول على رمز الربط"}
+                  {busy ? "جارٍ الإرسال…" : "إرسال الرمز"}
                 </Text>
               </Pressable>
             ) : null}
           </View>
+          </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -341,13 +406,15 @@ const styles = StyleSheet.create({
   whatsappDialog: {
     width: "100%",
     maxWidth: 440,
+    maxHeight: "90%",
     borderWidth: 1,
     borderRadius: 20,
-    padding: 20,
-    gap: 14,
+    overflow: "hidden",
   },
+  dialogContent: { gap: 12, padding: 20 },
+  fieldLabel: { fontSize: 12, fontWeight: "700", textAlign: "right" },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "left" },
   pairingCode: {
     paddingVertical: 16,
     paddingHorizontal: 20,
@@ -367,19 +434,19 @@ const styles = StyleSheet.create({
   },
   pairingRefresh: { alignSelf: "center", paddingVertical: 8 },
   connectionProgress: { fontSize: 13, fontWeight: "700", textAlign: "center" },
-  phoneFieldRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  phoneFieldRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   countryCodeButton: {
     minWidth: 92,
     minHeight: 48,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 10,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 7,
   },
-  countryCodeLabel: { fontSize: 14, fontWeight: "800" },
+  countryCodeLabel: { fontSize: 14, fontWeight: "800", writingDirection: "ltr" },
   dialogInput: {
     minHeight: 48,
     borderWidth: 1,
@@ -388,10 +455,12 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontSize: 14,
   },
-  phoneInput: { flex: 1, textAlign: "right", writingDirection: "rtl" },
-  phoneNumberHint: { fontSize: 11, lineHeight: 17, textAlign: "right" },
-  dialogError: { fontSize: 12, lineHeight: 18, textAlign: "right" },
-  dialogActions: { flexDirection: "row-reverse", gap: 10, marginTop: 4 },
+  phoneInput: { flex: 1, textAlign: "left", writingDirection: "ltr" },
+  phoneNumberHint: { fontSize: 11, lineHeight: 17, textAlign: "left" },
+  existingNumberNote: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  existingNumberNoteText: { fontSize: 11, lineHeight: 17, textAlign: "right" },
+  dialogError: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  dialogActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   dialogButton: {
     flex: 1,
     minHeight: 44,

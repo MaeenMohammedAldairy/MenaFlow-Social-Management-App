@@ -20,10 +20,17 @@
 
 export type OpenAiMessage = {
   role: "system" | "user" | "assistant";
-  content: string | Array<Record<string, unknown>>;
+  content: string;
 };
 
-export type GeminiPart = Record<string, unknown>;
+export type GeminiPart = { text: string };
+
+export type GeminiResponseFormat = {
+  text: {
+    mimeType: string;
+    schema?: Record<string, unknown>;
+  };
+};
 
 export type AiProviderOptions = {
   /** Messages in OpenAI chat-completions format. Required when calling OpenAI. */
@@ -34,10 +41,8 @@ export type AiProviderOptions = {
   geminiContents?: Array<{ parts: GeminiPart[] }>;
   /** System instruction text for Gemini (separate from contents). */
   geminiSystemInstruction?: string;
-  /** Gemini-specific responseSchema for structured output. */
-  geminiResponseSchema?: Record<string, unknown>;
-  /** Gemini-specific responseMimeType (e.g. "application/json"). */
-  geminiResponseMimeType?: string;
+  /** Gemini response format for generateContent. */
+  geminiResponseFormat?: GeminiResponseFormat;
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
@@ -64,6 +69,98 @@ export function validateModelName(
   return model;
 }
 
+function normalizeGeminiResponseMimeType(mimeType: string): string {
+  switch (mimeType) {
+    case "application/json":
+      return "APPLICATION_JSON";
+    case "text/plain":
+      return "TEXT_PLAIN";
+    default:
+      throw new Error("GEMINI_RESPONSE_MIME_TYPE_UNSUPPORTED");
+  }
+}
+
+function isMediaUrl(value: string): boolean {
+  let url: URL;
+  try {
+    url = new URL(value.replace(/[),.;!?]+$/, ""));
+  } catch {
+    return false;
+  }
+  const host = url.hostname.toLowerCase();
+  return (
+    /\.(?:avif|bmp|gif|heic|heif|jpe?g|m4v|mkv|mov|mp4|mpeg|mpg|png|svg|webm|webp)$/i.test(url.pathname) ||
+    /(?:^|\.)((?:fbcdn\.net)|(?:cdninstagram\.com)|(?:fbsbx\.com)|(?:mmg\.whatsapp\.net))$/.test(host) ||
+    /\/(?:storage\/v1\/object|product-media|whatsapp-media|media|attachments?)(?:\/|$)/i.test(url.pathname)
+  );
+}
+
+function sanitizeAiText(value: string): string {
+  return value
+    .replace(/data:(?:image|video)\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi, "[media omitted]")
+    .replace(/https?:\/\/[^\s<>"']+/gi, (url) =>
+      isMediaUrl(url) ? "[media link omitted]" : url,
+    );
+}
+
+function textOnlyGeminiContents(
+  contents: Array<{ parts: GeminiPart[] }> | undefined,
+): Array<{ parts: GeminiPart[] }> {
+  return (contents ?? []).map((content) => ({
+    parts: content.parts.map((part) => {
+      if (
+        !part ||
+        typeof part !== "object" ||
+        typeof part.text !== "string" ||
+        Object.keys(part).some((key) => key !== "text")
+      ) {
+        throw new Error("AI_TEXT_ONLY_CONTENT_REQUIRED");
+      }
+      return { text: sanitizeAiText(part.text) };
+    }),
+  }));
+}
+
+function textOnlyOpenAiMessages(messages: OpenAiMessage[] | undefined): OpenAiMessage[] {
+  return (messages ?? []).map((message) => {
+    if (!message || typeof message.content !== "string") {
+      throw new Error("AI_TEXT_ONLY_CONTENT_REQUIRED");
+    }
+    return { ...message, content: sanitizeAiText(message.content) };
+  });
+}
+
+export function buildGeminiRequestBody(
+  options: AiProviderOptions,
+): Record<string, unknown> {
+  const geminiContents = textOnlyGeminiContents(options.geminiContents);
+  const responseFormat = options.geminiResponseFormat
+    ? {
+        ...options.geminiResponseFormat,
+        text: {
+          ...options.geminiResponseFormat.text,
+          mimeType: normalizeGeminiResponseMimeType(
+            options.geminiResponseFormat.text.mimeType,
+          ),
+        },
+      }
+    : undefined;
+  const body: Record<string, unknown> = {
+    contents: geminiContents,
+    generationConfig: {
+      temperature: options.temperature ?? 0.5,
+      maxOutputTokens: options.maxTokens ?? 700,
+      ...(responseFormat ? { responseFormat } : {}),
+    },
+  };
+  if (options.geminiSystemInstruction) {
+    body.systemInstruction = {
+      parts: [{ text: sanitizeAiText(options.geminiSystemInstruction) }],
+    };
+  }
+  return body;
+}
+
 async function callOpenAI(
   options: AiProviderOptions,
 ): Promise<AiProviderResult> {
@@ -73,9 +170,10 @@ async function callOpenAI(
     throw new Error("OPENAI_MESSAGES_REQUIRED");
 
   const model = validateModelName(process.env.OPENAI_MODEL, "gpt-4o-mini");
+  const messages = textOnlyOpenAiMessages(options.openAiMessages);
   const body: Record<string, unknown> = {
     model,
-    messages: options.openAiMessages,
+    messages,
     temperature: options.temperature ?? 0.5,
     max_tokens: options.maxTokens ?? 700,
   };
@@ -114,24 +212,7 @@ async function callGeminiModel(
   geminiKey: string,
   options: AiProviderOptions,
 ): Promise<string> {
-  const geminiBody: Record<string, unknown> = {
-    contents: options.geminiContents ?? [],
-    generationConfig: {
-      temperature: options.temperature ?? 0.5,
-      maxOutputTokens: options.maxTokens ?? 700,
-      ...(options.geminiResponseMimeType
-        ? { responseMimeType: options.geminiResponseMimeType }
-        : {}),
-      ...(options.geminiResponseSchema
-        ? { responseSchema: options.geminiResponseSchema }
-        : {}),
-    },
-  };
-  if (options.geminiSystemInstruction) {
-    geminiBody.systemInstruction = {
-      parts: [{ text: options.geminiSystemInstruction }],
-    };
-  }
+  const geminiBody = buildGeminiRequestBody(options);
 
   const response = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,

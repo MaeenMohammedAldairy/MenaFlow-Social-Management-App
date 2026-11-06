@@ -29,7 +29,13 @@ Configure these API variables in the hosting provider's secret/configuration man
 - `WHATSAPP_EVOLUTION_BASE_URL`, `WHATSAPP_EVOLUTION_API_KEY`, `WHATSAPP_EVOLUTION_WEBHOOK_SECRET`, and `WHATSAPP_EVOLUTION_WEBHOOK_URL` (public HTTPS callback) when enabling Evolution
 - `GEMINI_API_KEY` and/or `OPENAI_API_KEY` when enabling AI generation
 
-Production startup rejects disabled Clerk auth, missing Clerk keys, short encryption keys, short supplied previous keys, and malformed/non-HTTPS CORS origins. Meta media and Evolution callbacks do not use Replit, Expo-domain, localhost, or Docker-host fallbacks in production. Keep database and provider credentials server-side; only `EXPO_PUBLIC_*` values are embedded into the app.
+Production startup rejects disabled Clerk auth, missing Clerk keys, short encryption keys, short supplied previous keys, and malformed/non-HTTPS CORS origins. Meta media and Evolution callbacks do not use app-domain, localhost, or Docker-host fallbacks in production. Keep database and provider credentials server-side; only `EXPO_PUBLIC_*` values are embedded into the app.
+
+### Subscription plans
+
+Apply `supabase/migrations/20261104001000_workspace_subscriptions.sql` before deploying the plan and quota screens. Existing workspaces are assigned the free plan; newly created workspaces receive a seven-day Growth trial, then fall back to Free. Monthly post limits are enforced in PostgreSQL for all post creation paths, and AI-generation limits are enforced by the API. The current USD catalog is Free (10 posts, 10 AI generations, 2 channels), Starter ($9; 100 posts, 100 AI generations, 3 channels), and Growth ($29; 500 posts, 500 AI generations, 3 channels).
+
+Payment collection and plan changes are intentionally disabled until a payment provider is selected and configured. Do not present paid plans as purchasable until checkout, payment webhooks, cancellation, and renewal handling have been integrated and verified.
 
 ### Meta permissions for comments and messaging
 
@@ -42,7 +48,7 @@ OAuth consent is not treated as proof that a permission was granted. The API rec
 The authenticated inbox is available in the app's **الوارد** tab. Before receiving events:
 
 1. Configure `MENA_META_WEBHOOK_VERIFY_TOKEN` in the API secret manager. Use a long random value and enter the same value in the Meta App Dashboard; never commit it.
-2. Configure the public HTTPS callback shown in the inbox as the Meta Webhooks callback URL. Subscribe the app to the **Page** fields `feed`, `messages`, and `messaging_postbacks`, and the **Instagram** fields `comments` and `messages`.
+2. Configure the public HTTPS callback shown in the inbox as the Meta Webhooks callback URL. The callback uses `MENA_PUBLIC_MEDIA_BASE_URL` when set, otherwise the host from `MENA_FACEBOOK_REDIRECT_URI`. For local testing, run `pnpm dev:instagram`, keep its terminal open, and update the Meta callback whenever the temporary Cloudflare Tunnel URL changes. Subscribe the app to the **Page** fields `feed`, `messages`, and `messaging_postbacks`, and the **Instagram** fields `comments` and `messages`.
 3. Subscribe the connected Page and Instagram account from the inbox's **تفعيل الحسابات المتصلة** action. The API uses the connected Page token and records each account's subscription result.
 4. Confirm the app has the required access/review in Meta, then send a test message and comment. Incoming events are signature-verified using `FACEBOOK_APP_SECRET`; duplicate webhook deliveries are ignored.
 

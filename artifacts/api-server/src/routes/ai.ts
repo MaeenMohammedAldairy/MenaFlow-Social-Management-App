@@ -3,9 +3,12 @@ import {
   GenerateAiContentResponse,
 } from "@workspace/api-zod";
 import { Router, type IRouter } from "express";
-import { callAiProvider } from "../lib/ai-provider.ts";
 import { requestOwnerId } from "../lib/owner-access";
-import { requireWorkspace } from "../lib/workspace-context";
+import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
+import {
+  callMeteredAiProvider,
+  SubscriptionAiQuotaError,
+} from "../lib/metered-ai-provider.ts";
 
 const router: IRouter = Router();
 const requestTimes = new Map<string, number[]>();
@@ -105,10 +108,11 @@ router.post("/ai/content", requireWorkspace, async (req, res): Promise<void> => 
     return;
   }
 
+  const workspaceId = requestWorkspaceId(req);
   const { idea, businessContext, provider, tone, channel } = parsed.data;
   const prompt = buildPrompt({ idea, businessContext, tone, channel });
   try {
-    const generated = await callAiProvider({
+    const generated = await callMeteredAiProvider(workspaceId, {
       preferredProvider: provider === "gemini" ? "gemini" : undefined,
       openAiMessages: [
         { role: "system", content: "أنت مساعد كتابة تسويقية. التزم بالتعليمات واكتب بالعربية فقط." },
@@ -128,6 +132,15 @@ router.post("/ai/content", requireWorkspace, async (req, res): Promise<void> => 
       }),
     );
   } catch (error) {
+    if (error instanceof SubscriptionAiQuotaError) {
+      res.status(429).json({
+        error: "بلغت الحد الشهري لتوليد المحتوى في خطتك الحالية.",
+        code: "SUBSCRIPTION_LIMIT_REACHED",
+        usage: error.used,
+        limit: error.limit,
+      });
+      return;
+    }
     const message = error instanceof Error ? error.message : "";
     if (message.startsWith("MISSING_")) {
       res.status(503).json({

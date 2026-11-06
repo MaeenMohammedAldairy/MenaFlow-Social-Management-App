@@ -1,7 +1,8 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -54,6 +55,28 @@ type PublishChannelResult = {
   reason?: string;
 };
 
+function isPostStatus(value: string | undefined): value is PostStatus {
+  return (
+    value === "draft" ||
+    value === "review" ||
+    value === "approved" ||
+    value === "scheduled" ||
+    value === "published" ||
+    value === "publishing" ||
+    value === "failed"
+  );
+}
+
+const postStatusPriority: Record<PostStatus, number> = {
+  review: 0,
+  failed: 1,
+  scheduled: 2,
+  publishing: 3,
+  approved: 4,
+  draft: 5,
+  published: 6,
+};
+
 export default function ContentScreen() {
   if (isLocalAuthDisabled) return <ContentScreenContent userId={null} />;
   return <AuthenticatedContentScreen />;
@@ -66,6 +89,14 @@ function AuthenticatedContentScreen() {
 
 function ContentScreenContent({ userId }: { userId: string | null }) {
   const colors = useColors();
+  const { status: routeStatusParam, date: routeDateParam } =
+    useLocalSearchParams<{ status?: string; date?: string }>();
+  const routeStatus = Array.isArray(routeStatusParam)
+    ? routeStatusParam[0]
+    : routeStatusParam;
+  const routeDate = Array.isArray(routeDateParam)
+    ? routeDateParam[0]
+    : routeDateParam;
   const {
     posts,
     loadMorePosts,
@@ -79,10 +110,11 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     syncing,
     autoPublishSettings,
     updateAutoPublishSettings,
-    analyzeWhatsAppBacklog,
   } = useStudio();
   const [filter, setFilter] = useState<PostStatus | "all">("all");
   const [autoPublish, setAutoPublish] = useState(autoPublishSettings.enabled);
+  const [autoPublishSettingsExpanded, setAutoPublishSettingsExpanded] =
+    useState(false);
   const [autoPublishChannels, setAutoPublishChannels] = useState<Channel[]>(
     autoPublishSettings.channels,
   );
@@ -90,8 +122,11 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     "all" | "facebook" | "instagram"
   >("all");
   const [dateFilter, setDateFilter] = useState<"all" | "7" | "30">("all");
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [sortMode, setSortMode] = useState<"priority" | "newest" | "oldest">(
+    "priority",
+  );
   const [search, setSearch] = useState("");
-  const [processingHistory, setProcessingHistory] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editingBody, setEditingBody] = useState("");
   const [editingMediaUrls, setEditingMediaUrls] = useState<string[]>([]);
@@ -120,6 +155,10 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     null,
   );
   const [autoPublishError, setAutoPublishError] = useState<string | null>(null);
+  const [autoPublishNotice, setAutoPublishNotice] = useState<string | null>(null);
+  const [autoPublishConfirmationVisible, setAutoPublishConfirmationVisible] =
+    useState(false);
+  const [autoPublishSaving, setAutoPublishSaving] = useState(false);
   const [mediaPreviewUrls, setMediaPreviewUrls] = useState<
     Record<string, string>
   >({});
@@ -295,9 +334,11 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
       const created = new Date(
         post.sourceMessageDate || post.createdAt,
       ).getTime();
+      const age = Date.now() - created;
       if (
         !Number.isFinite(created) ||
-        Date.now() - created > Number(dateFilter) * 24 * 60 * 60 * 1000
+        age < 0 ||
+        age > Number(dateFilter) * 24 * 60 * 60 * 1000
       )
         return false;
     }
@@ -305,6 +346,19 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
       `${post.title} ${post.body} ${post.sourceText ?? ""} ${post.sourceGroupName ?? ""}`.toLocaleLowerCase();
     return (
       !search.trim() || searchText.includes(search.trim().toLocaleLowerCase())
+    );
+  }).sort((left, right) => {
+    const leftDate = Date.parse(left.sourceMessageDate || left.createdAt);
+    const rightDate = Date.parse(right.sourceMessageDate || right.createdAt);
+    const normalizedLeftDate = Number.isFinite(leftDate) ? leftDate : 0;
+    const normalizedRightDate = Number.isFinite(rightDate) ? rightDate : 0;
+
+    if (sortMode === "newest") return normalizedRightDate - normalizedLeftDate;
+    if (sortMode === "oldest") return normalizedLeftDate - normalizedRightDate;
+
+    return (
+      postStatusPriority[left.status] - postStatusPriority[right.status] ||
+      normalizedRightDate - normalizedLeftDate
     );
   });
   const hasActiveFilters = Boolean(
@@ -318,6 +372,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     setPlatformFilter("all");
     setDateFilter("all");
     setSearch("");
+    setFiltersExpanded(false);
   };
 
   useEffect(() => {
@@ -408,6 +463,18 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     setEditingBody(post.body);
     setEditingMediaUrls(post.mediaUrls ?? []);
   };
+
+  useEffect(() => {
+    if (routeStatus === "all" || isPostStatus(routeStatus)) {
+      setFilter(routeStatus);
+    }
+  }, [routeStatus]);
+
+  useEffect(() => {
+    if (routeDate === "all" || routeDate === "7" || routeDate === "30") {
+      setDateFilter(routeDate);
+    }
+  }, [routeDate]);
 
   const onPublish = async (post: (typeof posts)[number]) => {
     setPublishMessage(null);
@@ -533,26 +600,6 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     }
   };
 
-  const onAnalyzeHistory = async () => {
-    setProcessingHistory(true);
-    try {
-      const result = await analyzeWhatsAppBacklog();
-      Alert.alert(
-        "اكتمل تحليل الرسائل",
-        `تم فحص ${result.scanned} رسالة؛ أُنشئت ${result.created} للمراجعة، وتجاوز ${result.skipped}.`,
-      );
-    } catch (error) {
-      Alert.alert(
-        "تعذر تحليل الرسائل",
-        error instanceof Error
-          ? error.message
-          : "تحقق من اتصال واتساب والخادم.",
-      );
-    } finally {
-      setProcessingHistory(false);
-    }
-  };
-
   const onAutoPublishChange = async (enabled: boolean) => {
     if (enabled && autoPublishChannels.length === 0) {
       setAutoPublishError(
@@ -560,37 +607,34 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
       );
       return;
     }
-    const approvedCount = posts.filter((post) => post.status === "approved").length;
-    if (enabled && approvedCount > 0) {
-      Alert.alert(
-        "تفعيل النشر التلقائي؟",
-        `سيتم إرسال ${approvedCount} منشوراً معتمداً إلى ${autoPublishChannels.map(platformLabel).join(" و")} الآن.`,
-        [
-          { text: "إلغاء", style: "cancel" },
-          {
-            text: "تفعيل والنشر",
-            onPress: () => void persistAutoPublishChange(enabled),
-          },
-        ],
-      );
+    if (enabled) {
+      setAutoPublishError(null);
+      setAutoPublishNotice(null);
+      setAutoPublishConfirmationVisible(true);
       return;
     }
     await persistAutoPublishChange(enabled);
   };
 
   const persistAutoPublishChange = async (enabled: boolean) => {
-    const saved = await saveAutoPublish(enabled, autoPublishChannels);
-    if (saved) {
-      setAutoPublish(enabled);
-      const report = saved.initialPublish;
-      if (enabled && report) {
-        Alert.alert(
-          "نتيجة النشر التلقائي",
-          report.processed > 0
-            ? `تمت معالجة ${report.processed} منشورًا معتمدًا للنشر التلقائي. نُشر ${report.published} بنجاح، وفشل ${report.failed}.`
-            : "لا توجد منشورات معتمدة للنشر التلقائي الآن.",
-        );
+    setAutoPublishSaving(true);
+    setAutoPublishError(null);
+    setAutoPublishNotice(null);
+    try {
+      const saved = await saveAutoPublish(enabled, autoPublishChannels);
+      if (saved) {
+        setAutoPublish(enabled);
+        const report = saved.initialPublish;
+        if (enabled && report) {
+          setAutoPublishNotice(
+            report.processed > 0
+              ? `تمت معالجة ${report.processed} منشورًا معتمدًا للنشر التلقائي. نُشر ${report.published} بنجاح، وفشل ${report.failed}.`
+              : "لا توجد منشورات معتمدة للنشر التلقائي الآن.",
+          );
+        }
       }
+    } finally {
+      setAutoPublishSaving(false);
     }
   };
 
@@ -637,58 +681,98 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           </Text>
           <Switch
             value={autoPublish}
-            disabled={!connectionsLoaded || connectedChannels.length === 0}
+            disabled={
+              !connectionsLoaded ||
+              connectedChannels.length === 0 ||
+              autoPublishSaving
+            }
             onValueChange={(value) => void onAutoPublishChange(value)}
           />
         </View>
-        <Text style={[styles.autoLabel, { color: colors.mutedForeground }]}>
-          المنصات المستهدفة
-        </Text>
-        <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-          عند التفعيل، تُنشر المنشورات المعتمدة فقط إلى المنصات المختارة.
-        </Text>
-        <View style={styles.channelChips}>
-          {connectedChannels.map((channel) => {
-            const selected = autoPublishChannels.includes(channel);
-            return (
-              <Pressable
-                key={channel}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => toggleAutoChannel(channel)}
-                style={[
-                  styles.filterChip,
-                  {
-                    backgroundColor: selected
-                      ? colors.primary
-                      : colors.secondary,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.filterLabel,
-                    {
-                      color: selected
-                        ? colors.primaryForeground
-                        : colors.mutedForeground,
-                    },
-                  ]}
-                >
-                  {platformLabel(channel)}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        {!connectionsLoaded ? (
-          <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-            جارٍ التحقق من المنصات المرتبطة…
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: autoPublishSettingsExpanded }}
+          onPress={() =>
+            setAutoPublishSettingsExpanded((expanded) => !expanded)
+          }
+          style={[
+            styles.advancedFilterToggle,
+            {
+              borderColor: colors.border,
+              backgroundColor: autoPublishSettingsExpanded
+                ? colors.accent
+                : colors.card,
+            },
+          ]}
+        >
+          <Text style={[styles.filterLabel, { color: colors.foreground }]}>
+            {autoPublish
+              ? `مفعّل على ${
+                  autoPublishChannels.map(platformLabel).join(" و") ||
+                  "المنصات المختارة"
+                }`
+              : "إعدادات المنصات والنشر التلقائي"}
           </Text>
-        ) : connectionLoadError ? null : connectedChannels.length === 0 ? (
-          <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-            اربط صفحة فيسبوك أو إنستغرام من صفحة المصادر لتفعيل النشر.
-          </Text>
+          <Icon
+            name={
+              autoPublishSettingsExpanded ? "chevron-up" : "chevron-down"
+            }
+            size={16}
+            color={colors.mutedForeground}
+          />
+        </Pressable>
+        {autoPublishSettingsExpanded ? (
+          <>
+            <Text style={[styles.autoLabel, { color: colors.mutedForeground }]}>
+              المنصات المستهدفة
+            </Text>
+            <Text style={[styles.intro, { color: colors.mutedForeground }]}>
+              عند التفعيل، تُنشر المنشورات المعتمدة فقط إلى المنصات المختارة.
+            </Text>
+            <View style={styles.channelChips}>
+              {connectedChannels.map((channel) => {
+                const selected = autoPublishChannels.includes(channel);
+                return (
+                  <Pressable
+                    key={channel}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() => toggleAutoChannel(channel)}
+                    style={[
+                      styles.filterChip,
+                      {
+                        backgroundColor: selected
+                          ? colors.primary
+                          : colors.secondary,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterLabel,
+                        {
+                          color: selected
+                            ? colors.primaryForeground
+                            : colors.mutedForeground,
+                        },
+                      ]}
+                    >
+                      {platformLabel(channel)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {!connectionsLoaded ? (
+              <Text style={[styles.intro, { color: colors.mutedForeground }]}>
+                جارٍ التحقق من المنصات المرتبطة…
+              </Text>
+            ) : connectionLoadError ? null : connectedChannels.length === 0 ? (
+              <Text style={[styles.intro, { color: colors.mutedForeground }]}>
+                اربط صفحة فيسبوك أو إنستغرام من صفحة المصادر لتفعيل النشر.
+              </Text>
+            ) : null}
+          </>
         ) : null}
         {connectionLoadError ? (
           <View style={styles.connectionLoadError}>
@@ -727,22 +811,121 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             {autoPublishError}
           </Text>
         ) : null}
-        <Pressable
-          accessibilityRole="button"
-          disabled={processingHistory}
-          onPress={() => void onAnalyzeHistory()}
-          style={[styles.historyButton, { backgroundColor: colors.secondary }]}
-        >
-          <Text style={[styles.filterLabel, { color: colors.foreground }]}>
-            {processingHistory
-              ? "جارٍ تحليل الرسائل القديمة…"
-              : "تحليل رسائل واتساب القديمة"}
+        {autoPublishSaving ? (
+          <Text
+            accessibilityRole="alert"
+            style={[styles.intro, { color: colors.mutedForeground }]}
+          >
+            جارٍ حفظ إعدادات النشر التلقائي…
           </Text>
-        </Pressable>
+        ) : null}
+        {autoPublishNotice ? (
+          <Text
+            accessibilityRole="alert"
+            style={[styles.intro, { color: colors.primary }]}
+          >
+            {autoPublishNotice}
+          </Text>
+        ) : null}
         <SectionTitle title="مساحة النشر وإدارة المنشورات" />
         <Text style={[styles.intro, { color: colors.mutedForeground }]}>
           الرسائل والوسائط المزامنة تُحوّل إلى منشورات متاحة للمراجعة والنشر
           اليدوي أو التلقائي.
+        </Text>
+        <Text style={[styles.priorityHeading, { color: colors.foreground }]}>
+          تحتاج إلى متابعة
+        </Text>
+        <View style={styles.priorityFilters}>
+          {[
+            {
+              key: "review" as const,
+              label: "بانتظار المراجعة",
+              icon: "eye" as const,
+              count: posts.filter((post) => post.status === "review").length,
+            },
+            {
+              key: "failed" as const,
+              label: "فشل النشر",
+              icon: "alert-circle" as const,
+              count: posts.filter((post) => post.status === "failed").length,
+            },
+            {
+              key: "scheduled" as const,
+              label: "بانتظار النشر",
+              icon: "clock" as const,
+              count: posts.filter((post) => post.status === "scheduled").length,
+            },
+          ].map((item) => (
+            <Pressable
+              key={item.key}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.label}: ${item.count}`}
+              accessibilityState={{ selected: filter === item.key }}
+              onPress={() => setFilter(filter === item.key ? "all" : item.key)}
+              style={[
+                styles.priorityFilter,
+                {
+                  backgroundColor:
+                    filter === item.key ? colors.primary : colors.secondary,
+                  borderColor:
+                    item.count > 0 ? colors.warning : colors.border,
+                },
+              ]}
+            >
+              <Icon
+                name={item.icon}
+                size={15}
+                color={
+                  filter === item.key
+                    ? colors.primaryForeground
+                    : item.count > 0
+                      ? colors.warning
+                      : colors.mutedForeground
+                }
+              />
+              <Text
+                style={[
+                  styles.filterLabel,
+                  {
+                    color:
+                      filter === item.key
+                        ? colors.primaryForeground
+                        : colors.foreground,
+                  },
+                ]}
+              >
+                {item.label}
+              </Text>
+              <View
+                style={[
+                  styles.priorityCount,
+                  {
+                    backgroundColor:
+                      filter === item.key ? colors.card : colors.background,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.priorityCountText,
+                    {
+                      color:
+                        filter === item.key
+                          ? colors.primary
+                          : item.count > 0
+                            ? colors.warning
+                            : colors.mutedForeground,
+                    },
+                  ]}
+                >
+                  {item.count}
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={[styles.priorityHint, { color: colors.mutedForeground }]}>
+          الأعداد تخص المنشورات المحمّلة حاليًا.
         </Text>
         <ScrollView
           horizontal
@@ -753,12 +936,9 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           {[
             { key: "all" as const, label: "الكل" },
             { key: "draft" as const, label: "مسودات" },
-            { key: "review" as const, label: "بانتظار المراجعة" },
             { key: "approved" as const, label: "معتمد للنشر التلقائي" },
-            { key: "scheduled" as const, label: "بانتظار النشر" },
             { key: "published" as const, label: "تم النشر" },
             { key: "publishing" as const, label: "قيد الإرسال" },
-            { key: "failed" as const, label: "فشل النشر" },
           ].map((item) => (
             <Pressable
               key={item.key}
@@ -789,6 +969,61 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             </Pressable>
           ))}
         </ScrollView>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: filtersExpanded }}
+          onPress={() => setFiltersExpanded((expanded) => !expanded)}
+          style={[
+            styles.advancedFilterToggle,
+            {
+              borderColor: colors.border,
+              backgroundColor: filtersExpanded ? colors.accent : colors.card,
+            },
+          ]}
+        >
+          <Icon
+            name="filter"
+            size={16}
+            color={filtersExpanded ? colors.primary : colors.mutedForeground}
+          />
+          <Text style={[styles.filterLabel, { color: colors.foreground }]}>
+            {platformFilter !== "all" || dateFilter !== "all"
+              ? `التصفية: ${
+                  platformFilter === "facebook"
+                    ? "فيسبوك"
+                    : platformFilter === "instagram"
+                      ? "إنستغرام"
+                      : ""
+                }${
+                  platformFilter !== "all" && dateFilter !== "all" ? " · " : ""
+                }${
+                  dateFilter === "7"
+                    ? "آخر 7 أيام"
+                    : dateFilter === "30"
+                      ? "آخر 30 يوماً"
+                      : ""
+                }`
+              : "تصفية حسب المنصة والتاريخ"}
+          </Text>
+          {platformFilter !== "all" || dateFilter !== "all" ? (
+            <View
+              style={[
+                styles.activeFilterBadge,
+                { backgroundColor: colors.accent },
+              ]}
+            >
+              <Text style={[styles.activeFilterBadgeText, { color: colors.primary }]}>
+                {(platformFilter !== "all" ? 1 : 0) +
+                  (dateFilter !== "all" ? 1 : 0)}
+              </Text>
+            </View>
+          ) : null}
+          <Icon
+            name={filtersExpanded ? "chevron-up" : "chevron-down"}
+            size={16}
+            color={colors.mutedForeground}
+          />
+        </Pressable>
         <View style={[styles.searchRow, { borderColor: colors.border }]}>
           <TextInput
             accessibilityLabel="ابحث في المنشورات"
@@ -811,78 +1046,141 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             </Pressable>
           ) : null}
         </View>
-        <View style={styles.filterRow}>
-          {[
-            { value: "all" as const, label: "كل المنصات" },
-            { value: "facebook" as const, label: "فيسبوك" },
-            { value: "instagram" as const, label: "إنستغرام" },
-          ].map((item) => (
-            <Pressable
-              key={item.value}
-              accessibilityRole="button"
-              accessibilityState={{ selected: platformFilter === item.value }}
-              onPress={() => setPlatformFilter(item.value)}
+        {filtersExpanded ? (
+          <View style={styles.advancedFilters}>
+            <Text
               style={[
-                styles.filterChip,
-                {
-                  backgroundColor:
-                    platformFilter === item.value
-                      ? colors.primary
-                      : colors.secondary,
-                },
+                styles.filterGroupLabel,
+                { color: colors.mutedForeground },
               ]}
             >
-              <Text
+              المنصة
+            </Text>
+            <View style={styles.filterRow}>
+              {[
+                { value: "all" as const, label: "كل المنصات" },
+                { value: "facebook" as const, label: "فيسبوك" },
+                { value: "instagram" as const, label: "إنستغرام" },
+              ].map((item) => (
+                <Pressable
+                  key={item.value}
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    selected: platformFilter === item.value,
+                  }}
+                  onPress={() => setPlatformFilter(item.value)}
+                  style={[
+                    styles.filterChip,
+                    {
+                      backgroundColor:
+                        platformFilter === item.value
+                          ? colors.primary
+                          : colors.secondary,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterLabel,
+                      {
+                        color:
+                          platformFilter === item.value
+                            ? colors.primaryForeground
+                            : colors.mutedForeground,
+                      },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text
+              style={[
+                styles.filterGroupLabel,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              الفترة
+            </Text>
+            <View style={styles.filterRow}>
+              {[
+                { value: "all" as const, label: "كل التواريخ" },
+                { value: "7" as const, label: "7 أيام" },
+                { value: "30" as const, label: "30 يوماً" },
+              ].map((item) => (
+                <Pressable
+                  key={item.value}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: dateFilter === item.value }}
+                  onPress={() => setDateFilter(item.value)}
+                  style={[
+                    styles.filterChip,
+                    {
+                      backgroundColor:
+                        dateFilter === item.value
+                          ? colors.primary
+                          : colors.secondary,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterLabel,
+                      {
+                        color:
+                          dateFilter === item.value
+                            ? colors.primaryForeground
+                            : colors.mutedForeground,
+                      },
+                    ]}
+                  >
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+        <View style={styles.sortRow}>
+          <Text style={[styles.filterGroupLabel, { color: colors.mutedForeground }]}>
+            ترتيب
+          </Text>
+          <View style={styles.filterRow}>
+            {[
+              { value: "priority" as const, label: "الأولوية" },
+              { value: "newest" as const, label: "الأحدث" },
+              { value: "oldest" as const, label: "الأقدم" },
+            ].map((item) => (
+              <Pressable
+                key={item.value}
+                accessibilityRole="button"
+                accessibilityState={{ selected: sortMode === item.value }}
+                onPress={() => setSortMode(item.value)}
                 style={[
-                  styles.filterLabel,
+                  styles.filterChip,
                   {
-                    color:
-                      platformFilter === item.value
-                        ? colors.primaryForeground
-                        : colors.mutedForeground,
+                    backgroundColor:
+                      sortMode === item.value ? colors.accent : colors.secondary,
                   },
                 ]}
               >
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
-          {[
-            { value: "all" as const, label: "كل التواريخ" },
-            { value: "7" as const, label: "7 أيام" },
-            { value: "30" as const, label: "30 يوماً" },
-          ].map((item) => (
-            <Pressable
-              key={item.value}
-              accessibilityRole="button"
-              accessibilityState={{ selected: dateFilter === item.value }}
-              onPress={() => setDateFilter(item.value)}
-              style={[
-                styles.filterChip,
-                {
-                  backgroundColor:
-                    dateFilter === item.value
-                      ? colors.primary
-                      : colors.secondary,
-                },
-              ]}
-            >
-
-              <Text
-                style={[
-                  styles.filterLabel,
-                  {
-                    color:
-                      dateFilter === item.value
-                        ? colors.primaryForeground
-                        : colors.mutedForeground,
-                  },
-                ]}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
+                <Text
+                  style={[
+                    styles.filterLabel,
+                    {
+                      color:
+                        sortMode === item.value
+                          ? colors.primary
+                          : colors.mutedForeground,
+                    },
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
         <View style={styles.resultsSummary}>
           <Text style={[styles.intro, { color: colors.mutedForeground }]}>
@@ -955,6 +1253,69 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
         retryConfirmationVisible={retryConfirmationVisible}
         setRetryConfirmationVisible={setRetryConfirmationVisible}
       />
+      <Modal
+        visible={autoPublishConfirmationVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAutoPublishConfirmationVisible(false)}
+      >
+        <View style={styles.autoPublishModalOverlay}>
+          <View
+            accessibilityViewIsModal
+            style={[
+              styles.autoPublishModal,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.autoPublishModalTitle, { color: colors.foreground }]}>
+              تفعيل النشر التلقائي؟
+            </Text>
+            <Text
+              style={[
+                styles.intro,
+                { color: colors.mutedForeground, textAlign: "left" },
+              ]}
+            >
+              سيتم إرسال المنشورات المعتمدة إلى{" "}
+              {autoPublishChannels.map(platformLabel).join(" و")} الآن.
+            </Text>
+            <View style={styles.autoPublishModalActions}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setAutoPublishConfirmationVisible(false)}
+                style={[
+                  styles.autoPublishModalButton,
+                  { borderColor: colors.border },
+                ]}
+              >
+                <Text style={[styles.filterLabel, { color: colors.foreground }]}>
+                  إلغاء
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setAutoPublishConfirmationVisible(false);
+                  void persistAutoPublishChange(true);
+                }}
+                style={[
+                  styles.autoPublishModalButton,
+                  { backgroundColor: colors.primary },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterLabel,
+                    { color: colors.primaryForeground },
+                  ]}
+                >
+                  تفعيل والنشر
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </Page>
   );
 }

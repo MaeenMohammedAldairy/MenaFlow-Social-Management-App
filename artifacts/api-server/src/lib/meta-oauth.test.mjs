@@ -1,12 +1,127 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canManageMetaConnections,
   grantedMetaPermissions,
   hasGrantedMetaPageListPermission,
+  metaAutoReplyPermission,
+  metaConnectionConflictDetail,
+  metaConnectionConflictFromError,
   metaGraphErrorDetails,
   metaOAuthScopes,
+  metaAuthorizationStatus,
+  normalizeMetaAccountId,
   missingMetaIntegrationPermissions,
 } from "./meta-oauth.ts";
+
+test("only workspace owners can manage Meta connections", () => {
+  assert.equal(canManageMetaConnections("owner"), true);
+  assert.equal(canManageMetaConnections("member"), false);
+  assert.equal(canManageMetaConnections("admin"), false);
+});
+
+test("normalizes valid Meta IDs and rejects empty or whitespace-only IDs", () => {
+  assert.equal(normalizeMetaAccountId("  page-123 \n"), "page-123");
+  assert.equal(normalizeMetaAccountId(undefined), null);
+  assert.equal(normalizeMetaAccountId(null), null);
+  assert.throws(() => normalizeMetaAccountId(""), /INVALID_META_ACCOUNT_ID/);
+  assert.throws(
+    () => normalizeMetaAccountId(" \t\n "),
+    /INVALID_META_ACCOUNT_ID/,
+  );
+  assert.throws(() => normalizeMetaAccountId(123), /INVALID_META_ACCOUNT_ID/);
+});
+
+test("normalizes the ECMAScript trim whitespace set without altering other characters", () => {
+  const trimmedWhitespace = [
+    "\u0009",
+    "\u000a",
+    "\u000b",
+    "\u000c",
+    "\u000d",
+    "\u0020",
+    "\u00a0",
+    "\u1680",
+    ...Array.from({ length: 11 }, (_, index) =>
+      String.fromCodePoint(0x2000 + index),
+    ),
+    "\u2028",
+    "\u2029",
+    "\u202f",
+    "\u205f",
+    "\u3000",
+    "\ufeff",
+  ];
+
+  for (const whitespace of trimmedWhitespace) {
+    assert.equal(
+      normalizeMetaAccountId(`${whitespace}meta-id${whitespace}`),
+      "meta-id",
+      `expected U+${whitespace.codePointAt(0).toString(16).toUpperCase()} to trim`,
+    );
+    assert.throws(
+      () => normalizeMetaAccountId(whitespace),
+      /INVALID_META_ACCOUNT_ID/,
+    );
+  }
+
+  for (const preservedWhitespace of ["\u0085", "\u180e"]) {
+    assert.equal(
+      normalizeMetaAccountId(
+        `${preservedWhitespace}meta-id${preservedWhitespace}`,
+      ),
+      `${preservedWhitespace}meta-id${preservedWhitespace}`,
+    );
+  }
+
+  assert.equal(normalizeMetaAccountId("meta id"), "meta id");
+});
+
+test("classifies only matching Meta ownership unique constraints", () => {
+  assert.equal(
+    metaConnectionConflictFromError({
+      code: "23505",
+      constraint: "mena_meta_connections_page_id_key",
+    }),
+    "facebook_page",
+  );
+  assert.equal(
+    metaConnectionConflictFromError({
+      cause: {
+        code: "23505",
+        constraint: "mena_meta_connections_instagram_user_id_key",
+      },
+    }),
+    "instagram_account",
+  );
+  assert.equal(
+    metaConnectionConflictFromError({
+      code: "23505",
+      constraint: "mena_meta_connections_workspace_key",
+    }),
+    null,
+  );
+  assert.equal(
+    metaConnectionConflictFromError({
+      code: "23505",
+      constraint: "unrelated_unique_key",
+    }),
+    null,
+  );
+  assert.equal(
+    metaConnectionConflictFromError(new Error("database down")),
+    null,
+  );
+});
+
+test("ownership conflict details do not expose another workspace", () => {
+  assert.match(metaConnectionConflictDetail("facebook_page"), /Facebook/);
+  assert.match(metaConnectionConflictDetail("instagram_account"), /Instagram/);
+  assert.doesNotMatch(
+    metaConnectionConflictDetail("facebook_page"),
+    /workspace-[a-z0-9-]+/i,
+  );
+});
 
 test("requests the existing Meta scopes and only the selected integration's permissions", () => {
   const facebookScopes = metaOAuthScopes("facebook");
@@ -53,6 +168,60 @@ test("only permissions reported as granted are considered authorized", () => {
     "pages_messaging",
     "pages_manage_metadata",
   ]);
+});
+
+test("Meta accounts require verified, current integration permissions", () => {
+  const now = new Date("2026-11-04T00:00:00.000Z");
+  const valid = {
+    authorizationVerifiedAt: new Date("2026-11-03T00:00:00.000Z"),
+    accessTokenExpiresAt: new Date("2026-11-05T00:00:00.000Z"),
+    grantedPermissions: [
+      "pages_manage_engagement",
+      "pages_messaging",
+      "pages_manage_metadata",
+    ],
+  };
+  assert.equal(metaAuthorizationStatus(valid, "facebook", now).authorizationStatus, "ready");
+  assert.equal(
+    metaAuthorizationStatus(
+      { ...valid, authorizationVerifiedAt: null },
+      "facebook",
+      now,
+    ).authorizationReason,
+    "permissions_unverified",
+  );
+  assert.equal(
+    metaAuthorizationStatus(
+      { ...valid, accessTokenExpiresAt: new Date("2026-11-03T23:59:59.000Z") },
+      "facebook",
+      now,
+    ).authorizationReason,
+    "token_expired",
+  );
+  assert.equal(
+    metaAuthorizationStatus(
+      { ...valid, grantedPermissions: [] },
+      "facebook",
+      now,
+    ).authorizationReason,
+    "permissions_missing",
+  );
+});
+
+test("maps Meta auto-reply kinds to the platform-specific permission", () => {
+  assert.equal(metaAutoReplyPermission("facebook", "message"), "pages_messaging");
+  assert.equal(
+    metaAutoReplyPermission("facebook", "comment"),
+    "pages_manage_engagement",
+  );
+  assert.equal(
+    metaAutoReplyPermission("instagram", "message"),
+    "instagram_manage_messages",
+  );
+  assert.equal(
+    metaAutoReplyPermission("instagram", "comment"),
+    "instagram_manage_comments",
+  );
 });
 
 test("recognizes a granted permission to list Facebook pages", () => {

@@ -12,6 +12,12 @@ export function metaOAuthErrorMessage(reason?: string, detail?: string): string 
       return detail
         ? `لم تكتمل موافقة Meta على الصلاحيات المطلوبة. ${detail}`
         : "لم تكتمل موافقة Meta على الصلاحيات المطلوبة. أعد الربط ووافق على جميع الصلاحيات.";
+    case "instagram_account_required":
+      return detail ||
+        "لم نعثر على حساب Instagram احترافي مرتبط بصفحة Facebook المختارة. حوّل الحساب إلى Business أو Creator واربطه بصفحة Facebook ثم أعد المحاولة.";
+    case "instagram_permissions_missing":
+      return detail ||
+        "لم تُمنح صلاحيات Instagram المطلوبة. أعد الربط ووافق على صلاحيات إدارة Instagram.";
     case "invalid_page_token":
     case "expired_page_token":
     case "meta_verify_page_token":
@@ -20,6 +26,8 @@ export function metaOAuthErrorMessage(reason?: string, detail?: string): string 
         : "تعذّر التحقق من رمز صفحة Meta. أعد ربط الحساب.";
     case "expired_state":
       return "انتهت صلاحية جلسة الربط. ابدأ الربط من جديد.";
+    case "subscription_limit":
+      return detail || "بلغت الحد الأقصى لقنوات خطتك الحالية. تظهر خيارات الترقية قريبًا.";
     case "connection_failed":
       return "تعذّر إكمال الاتصال بخدمات Meta. حاول مرة أخرى، وإذا استمرت المشكلة فتحقق من إعدادات التطبيق وعنوان العودة.";
     case "meta_graph_unreachable":

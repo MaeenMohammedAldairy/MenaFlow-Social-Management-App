@@ -4,6 +4,10 @@ import {
   buildWhatsAppHistoryQuery,
   extractWhatsAppHistoryRecords,
   filterWhatsAppHistoryAfter,
+  filterWhatsAppHistoryFrom,
+  getWhatsAppHistoryMessageId,
+  isWhatsAppHistoryCandidate,
+  isWhatsAppHistoryPageBeforeCursor,
   parseWhatsAppHistoryTimestamp,
 } from "./whatsapp-history.ts";
 import { filterHistoryRecordsForGroup } from "./whatsapp-message-scope.ts";
@@ -29,6 +33,34 @@ test("filters historical records to messages newer than the saved cursor", () =>
     records[5],
     records[6],
   ]);
+});
+
+test("keeps cursor-boundary messages so unseen messages with tied timestamps are imported", () => {
+  const cursor = new Date("2026-10-23T00:00:00.000Z");
+  const records = [
+    { key: { id: "older" }, messageTimestamp: cursor.getTime() - 1 },
+    { key: { id: "boundary" }, messageTimestamp: cursor.getTime() },
+    { key: { id: "newer" }, messageTimestamp: cursor.getTime() + 1 },
+    { key: { id: "unknown" }, messageTimestamp: "invalid" },
+  ];
+
+  assert.deepEqual(filterWhatsAppHistoryFrom(records, cursor), [
+    records[1],
+    records[2],
+  ]);
+  assert.equal(getWhatsAppHistoryMessageId(records[1]), "boundary");
+  assert.equal(
+    isWhatsAppHistoryPageBeforeCursor([records[0]], cursor),
+    true,
+  );
+  assert.equal(
+    isWhatsAppHistoryPageBeforeCursor([records[0], records[1]], cursor),
+    false,
+  );
+  assert.equal(
+    isWhatsAppHistoryPageBeforeCursor([records[0], records[3]], cursor),
+    false,
+  );
 });
 
 test("queries group history using Evolution's supported remoteJid filter", () => {
@@ -60,6 +92,36 @@ test("queries group history using Evolution's supported remoteJid filter", () =>
       page: 1,
     },
   );
+  assert.deepEqual(
+    buildWhatsAppHistoryQuery(
+      "120363012345678901@g.us",
+      100,
+      "remoteJid",
+      2,
+    ),
+    {
+      where: {
+        key: {
+          remoteJid: "120363012345678901@g.us",
+        },
+      },
+      offset: 100,
+      page: 2,
+    },
+  );
+});
+
+test("counts only messages that are not fully persisted toward a history limit", () => {
+  const savedIds = new Set(["saved", "media-pending"]);
+  assert.equal(
+    isWhatsAppHistoryCandidate({ key: { id: "saved" } }, savedIds),
+    false,
+  );
+  assert.equal(
+    isWhatsAppHistoryCandidate({ key: { id: "new" } }, savedIds),
+    true,
+  );
+  assert.equal(isWhatsAppHistoryCandidate({ text: "missing id" }, savedIds), true);
 });
 
 test("extracts history records from Evolution response envelopes", () => {

@@ -23,6 +23,7 @@ export type MetaInboxItem = {
   occurredAt: string;
   replyText: string | null;
   repliedAt: string | null;
+  replyStatus: "sending" | "unknown" | null;
   autoReplyStatus:
     | "queued"
     | "processing"
@@ -33,6 +34,15 @@ export type MetaInboxItem = {
     | "unknown"
     | null;
 };
+
+export function metaInboxPersonId(item: MetaInboxItem): string {
+  return (
+    item.actorId ||
+    (item.kind === "message"
+      ? item.conversationId || item.externalId
+      : item.externalId)
+  );
+}
 
 export type MetaAutoReplySettings = {
   enabled: boolean;
@@ -150,6 +160,16 @@ export async function sendMetaInboxReply(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     },
+  );
+  return responseJson(response);
+}
+
+export async function confirmMetaInboxReplyNotSent(
+  itemId: string,
+): Promise<{ cleared: boolean }> {
+  const response = await fetchApiResponse(
+    `/api/social/meta-inbox/items/${encodeURIComponent(itemId)}/retry-confirmation`,
+    { method: "POST" },
   );
   return responseJson(response);
 }

@@ -12,6 +12,7 @@ export type CreatePostInputStatus = typeof CreatePostInputStatus[keyof typeof Cr
 export const CreatePostInputStatus = {
   draft: 'draft',
   review: 'review',
+  approved: 'approved',
   scheduled: 'scheduled',
   published: 'published',
 } as const;

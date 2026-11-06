@@ -7,6 +7,7 @@ import {
   type SocialAccountDetails,
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@clerk/expo";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
 import {
@@ -32,6 +33,8 @@ import {
   StatusPill,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
+import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
+import { isLocalAuthDisabled } from "@/constants/auth";
 
 const platforms: Record<
   AccountPlatform,
@@ -57,15 +60,11 @@ function platformFromParam(value: unknown): AccountPlatform | null {
 }
 
 function formatCount(value: number): string {
-  return new Intl.NumberFormat("ar").format(value);
+  return formatArabicNumber(value);
 }
 
 function formatDate(value: string | null | undefined): string {
-  if (!value) return "لا توجد بيانات";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "لا توجد بيانات"
-    : date.toLocaleString("ar-EG");
+  return formatArabicDateTime(value) ?? "لا توجد بيانات";
 }
 
 function accountErrorMessage(error: unknown, fallback: string): string {
@@ -93,6 +92,16 @@ function activityLabel(eventType: string): string {
 }
 
 export default function AccountDetailsScreen() {
+  if (isLocalAuthDisabled) return <AccountDetailsContent userId={null} />;
+  return <AuthenticatedAccountDetails />;
+}
+
+function AuthenticatedAccountDetails() {
+  const { userId } = useAuth();
+  return <AccountDetailsContent userId={userId ?? null} />;
+}
+
+function AccountDetailsContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const queryClient = useQueryClient();
   const { platform: rawPlatform } = useLocalSearchParams<{ platform?: string }>();
@@ -100,7 +109,7 @@ export default function AccountDetailsScreen() {
   const [actionError, setActionError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
   const [postFilter, setPostFilter] = useState<"all" | "with-image" | "text-only">("all");
-  const queryKey = ["socialAccountDetails", platform];
+  const queryKey = ["socialAccountDetails", userId ?? "local", platform];
 
   const detailsQuery = useQuery({
     queryKey,
@@ -160,7 +169,7 @@ export default function AccountDetailsScreen() {
   const relinkAccount = () => {
     if (!platform) return;
     router.push({
-      pathname: "/(tabs)/sources",
+      pathname: "/(tabs)/more/sources",
       params: { connect: platform, reconnect: "true" },
     });
   };
@@ -173,7 +182,7 @@ export default function AccountDetailsScreen() {
       if (platform === "whatsapp") await deleteWhatsAppConnection();
       else await deleteMetaConnectionForPlatform(platform);
       await queryClient.invalidateQueries();
-      router.replace("/(tabs)/sources");
+      router.replace("/(tabs)/more/sources");
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : "تعذّر فصل الحساب.",
@@ -194,9 +203,9 @@ export default function AccountDetailsScreen() {
         />
         <ActionButton
           label="العودة إلى الحسابات"
-          icon="chevron-left"
+          icon="chevron-right"
           secondary
-          onPress={() => router.replace("/(tabs)/sources")}
+          onPress={() => router.replace("/(tabs)/more/sources")}
         />
       </Page>
     );
@@ -246,7 +255,7 @@ export default function AccountDetailsScreen() {
             <ActionButton
               label="إدارة الحسابات"
               icon="settings"
-              onPress={() => router.push("/(tabs)/sources")}
+              onPress={() => router.push("/(tabs)/more/sources")}
             />
           </View>
         </Panel>
@@ -761,9 +770,9 @@ export default function AccountDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-  loadingRow: { flexDirection: "row-reverse", alignItems: "center", gap: 10 },
+  loadingRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   profileHeader: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 12,
   },
@@ -777,7 +786,7 @@ const styles = StyleSheet.create({
   },
   facebookCoverImage: { width: "100%", height: "100%" },
   facebookPageBadge: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     borderRadius: 20,
     paddingHorizontal: 9,
@@ -793,17 +802,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  profileCopy: { flex: 1, alignItems: "flex-end", gap: 7 },
+  profileCopy: { flex: 1, alignItems: "flex-start", gap: 7 },
   accountName: { fontSize: 18, fontWeight: "800", textAlign: "right" },
   metaRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     justifyContent: "space-between",
     gap: 10,
   },
   metaLabel: { fontSize: 11 },
-  metaValue: { fontSize: 11, textAlign: "right" },
-  bodyText: { fontSize: 12, lineHeight: 19, textAlign: "right" },
-  metricsGrid: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
+  metaValue: { fontSize: 11, textAlign: "left" },
+  bodyText: { fontSize: 12, lineHeight: 19, textAlign: "left" },
+  metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   metricCard: {
     flexGrow: 1,
     flexBasis: "45%",
@@ -828,18 +837,18 @@ const styles = StyleSheet.create({
   performanceSummary: { gap: 5 },
   performanceSection: { gap: 8 },
   performanceHeading: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  weekRow: { flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  weekRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   weekLabel: { width: 58, fontSize: 10, textAlign: "right" },
   weekTrack: { flex: 1, height: 8, borderRadius: 5, overflow: "hidden" },
-  weekBar: { height: "100%", borderRadius: 5, alignSelf: "flex-end" },
+  weekBar: { height: "100%", borderRadius: 5, alignSelf: "flex-start" },
   weekCount: { width: 28, fontSize: 10, textAlign: "left" },
   activityCard: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 5 },
-  activityTopRow: { flexDirection: "row-reverse", justifyContent: "space-between", gap: 10 },
+  activityTopRow: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
   activityTitle: { flex: 1, fontSize: 12, fontWeight: "700", textAlign: "right" },
-  activityStatus: { fontSize: 10, fontWeight: "700", textAlign: "left" },
-  activityReason: { fontSize: 11, lineHeight: 17, textAlign: "right" },
+  activityStatus: { fontSize: 10, fontWeight: "700", textAlign: "right" },
+  activityReason: { fontSize: 11, lineHeight: 17, textAlign: "left" },
   list: { gap: 8 },
-  filterRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },
+  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   filterChip: {
     borderWidth: 1,
     borderRadius: 20,
@@ -849,7 +858,7 @@ const styles = StyleSheet.create({
   filterLabel: { fontSize: 11, fontWeight: "700" },
   postCard: { borderWidth: 1, borderRadius: 13, padding: 11, gap: 7 },
   facebookPostHeader: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 8,
     marginBottom: 2,
@@ -861,30 +870,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  facebookPostHeading: { flex: 1, alignItems: "flex-end", gap: 2 },
+  facebookPostHeading: { flex: 1, alignItems: "flex-start", gap: 2 },
   facebookPostTitle: { fontSize: 11, fontWeight: "700", textAlign: "right" },
   postImage: { width: "100%", height: 190, borderRadius: 10, backgroundColor: "#EAF2FC" },
-  postText: { fontSize: 12, lineHeight: 19, textAlign: "right", fontWeight: "700" },
-  postStats: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 12 },
-  postStat: { flexDirection: "row-reverse", alignItems: "center", gap: 5 },
+  postText: { fontSize: 12, lineHeight: 19, textAlign: "left", fontWeight: "700" },
+  postStats: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  postStat: { flexDirection: "row", alignItems: "center", gap: 5 },
   whatsappStatusRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  issue: { fontSize: 11, lineHeight: 17, textAlign: "right" },
-  permissionText: { fontSize: 11, textAlign: "right" },
+  issue: { fontSize: 11, lineHeight: 17, textAlign: "left" },
+  permissionText: { fontSize: 11, textAlign: "left" },
   link: { fontSize: 12, fontWeight: "700", textAlign: "right" },
   facebookQuickActions: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
   },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
-  actionRow: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
+  error: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   disconnectAction: {
     minHeight: 42,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 7,

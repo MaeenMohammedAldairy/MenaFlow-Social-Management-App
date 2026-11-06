@@ -1,7 +1,7 @@
 import React from 'react';
 import { Image, Platform, Pressable, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowUpRight, ChartNoAxesColumnIncreasing, MessageCircle, Sparkles } from 'lucide-react-native';
+import { ArrowRight, ArrowUpRight, ChartNoAxesColumnIncreasing, MessageCircle, Sparkles } from 'lucide-react-native';
 import { Link } from 'expo-router';
 import { CairoText as Text } from '@/components/CairoTypography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,7 +31,7 @@ function AuthArtwork({ compact = false }: { compact?: boolean }) {
         <MessageCircle size={compact ? 15 : 19} color={colors.primary} fill={colors.accent} />
       </View>
       <LinearGradient
-        colors={['#E5FFF6', '#BDF6E4']}
+        colors={[colors.accent, colors.greenSoft]}
         style={[styles.robotHalo, compact && styles.compactRobotHalo]}
       >
         <View style={[styles.robotEar, styles.robotEarLeft, compact && styles.compactRobotEar]} />
@@ -87,9 +87,18 @@ export function AuthFrame({
   const wide = width >= 760;
 
   return (
-    <View style={[styles.root, { backgroundColor: '#F1FAFB' }]}>
-      <View pointerEvents="none" style={styles.backgroundGlowTop} />
-      <View pointerEvents="none" style={styles.backgroundGlowBottom} />
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <View
+        pointerEvents="none"
+        style={[styles.backgroundGlowTop, { backgroundColor: colors.accent }]}
+      />
+      <View
+        pointerEvents="none"
+        style={[
+          styles.backgroundGlowBottom,
+          { backgroundColor: colors.greenSoft },
+        ]}
+      />
       <KeyboardAwareScrollViewCompat
         style={styles.scroll}
         contentContainerStyle={[
@@ -103,13 +112,23 @@ export function AuthFrame({
         showsVerticalScrollIndicator={false}
         bottomOffset={32}
       >
-        <View style={[styles.surface, wide && styles.wideSurface]}>
+        <View
+          style={[
+            styles.surface,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              shadowColor: colors.foreground,
+            },
+            wide && styles.wideSurface,
+          ]}
+        >
           <View style={[styles.formColumn, wide && styles.wideFormColumn]}>
             <View style={styles.brand}>
               {mode === 'sign-up' ? (
                 <Link href="/(auth)/sign-in" asChild>
                   <Pressable accessibilityLabel="العودة إلى تسجيل الدخول" style={styles.backButton}>
-                    <ArrowUpRight size={18} color={colors.foreground} />
+                    <ArrowRight size={18} color={colors.foreground} />
                   </Pressable>
                 </Link>
               ) : null}
@@ -124,8 +143,24 @@ export function AuthFrame({
 
             <View style={[styles.headingRow, mode === 'sign-in' && styles.signInHeadingRow]}>
               <View style={[styles.heading, mode === 'sign-in' && styles.signInHeading]}>
-                <Text style={[styles.title, { color: colors.foreground }]}>{title}</Text>
-                <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{subtitle}</Text>
+                <Text
+                  style={[
+                    styles.title,
+                    mode === 'sign-in' && styles.signInTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  {title}
+                </Text>
+                <Text
+                  style={[
+                    styles.subtitle,
+                    mode === 'sign-in' && styles.signInSubtitle,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {subtitle}
+                </Text>
               </View>
               {mode === 'sign-in' && !wide ? <AuthArtwork compact /> : null}
             </View>
@@ -138,7 +173,7 @@ export function AuthFrame({
 
           {wide ? (
             <LinearGradient
-              colors={['#F2FFFB', '#D9FBF0', '#C2F7E8']}
+              colors={[colors.background, colors.secondary, colors.accent]}
               style={styles.wideArtworkPanel}
             >
               <AuthArtwork />
@@ -168,8 +203,13 @@ export const authStyles = StyleSheet.create({
     paddingHorizontal: 2,
     fontSize: 13,
     textAlign: 'right',
+    writingDirection: 'rtl',
     outlineStyle: 'none',
   } as never,
+  ltrInput: {
+    textAlign: 'left',
+    writingDirection: 'ltr',
+  },
   button: {
     minHeight: 47,
     alignItems: 'center',
@@ -197,16 +237,16 @@ export const authStyles = StyleSheet.create({
     gap: 8,
   },
   secondaryText: { fontSize: 12, fontWeight: '700' },
-  error: { fontSize: 12, lineHeight: 18, textAlign: 'right' },
+  error: { fontSize: 12, lineHeight: 18, textAlign: 'left' },
   linkRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 5,
     marginTop: 3,
   },
   linkText: { fontSize: 12, fontWeight: '700' },
-  hint: { fontSize: 11, lineHeight: 17, textAlign: 'right' },
+  hint: { fontSize: 11, lineHeight: 17, textAlign: 'left' },
 });
 
 const styles = StyleSheet.create({
@@ -223,7 +263,6 @@ const styles = StyleSheet.create({
     width: 360,
     height: 360,
     borderRadius: 180,
-    backgroundColor: '#E1F7F8',
     top: -215,
     right: -115,
   },
@@ -232,7 +271,6 @@ const styles = StyleSheet.create({
     width: 520,
     height: 220,
     borderRadius: 260,
-    backgroundColor: '#D5FFF0',
     bottom: -160,
     left: -170,
     transform: [{ rotate: '-12deg' }],
@@ -287,7 +325,7 @@ const styles = StyleSheet.create({
   brandName: { fontSize: 23, fontWeight: '900', letterSpacing: -0.7 },
   backButton: {
     position: 'absolute',
-    left: 0,
+    start: 0,
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -297,7 +335,7 @@ const styles = StyleSheet.create({
   },
   headingRow: { width: '100%' },
   signInHeadingRow: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     minHeight: 142,
@@ -305,7 +343,15 @@ const styles = StyleSheet.create({
   heading: { alignItems: 'center', gap: 4, width: '100%' },
   signInHeading: { flex: 1, alignItems: 'flex-start' },
   title: { fontSize: 22, fontWeight: '900', textAlign: 'center', lineHeight: 32 },
-  subtitle: { fontSize: 12, lineHeight: 19, textAlign: 'center', maxWidth: 300 },
+  subtitle: {
+    alignSelf: 'stretch',
+    fontSize: 12,
+    lineHeight: 19,
+    textAlign: 'left',
+    maxWidth: 300,
+  },
+  signInTitle: { alignSelf: 'stretch', textAlign: 'right' },
+  signInSubtitle: { alignSelf: 'stretch', textAlign: 'left' },
   artwork: {
     flex: 1,
     minHeight: 440,
@@ -313,7 +359,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  compactArtwork: { flex: 0, width: 128, minHeight: 138, height: 138, marginRight: -2 },
+  compactArtwork: { flex: 0, width: 128, minHeight: 138, height: 138, marginStart: -2 },
   orbit: {
     position: 'absolute',
     width: 290,

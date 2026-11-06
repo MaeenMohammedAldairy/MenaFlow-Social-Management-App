@@ -4,6 +4,7 @@ import {
   db,
   workspaceMembers,
   workspaceOnboarding,
+  workspaceSubscriptions,
   workspaces,
 } from "@workspace/db";
 import { requestOwnerId } from "./owner-access";
@@ -48,6 +49,16 @@ const databaseRepository: WorkspaceRepository = {
             .where(eq(workspaceMembers.userId, userId)),
         createWorkspace: async (input) => {
           await transaction.insert(workspaces).values(input);
+          const now = new Date();
+          await transaction.insert(workspaceSubscriptions).values({
+            id: `subscription:${input.id}`,
+            workspaceId: input.id,
+            planId: "growth",
+            status: "trialing",
+            trialEndsAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+            createdAt: now,
+            updatedAt: now,
+          });
         },
         createOnboardingProgress: async (input) => {
           await transaction.insert(workspaceOnboarding).values(input);

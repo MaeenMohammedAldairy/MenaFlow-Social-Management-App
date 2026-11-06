@@ -1,8 +1,4 @@
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
+import { asRecord } from "./value-utils.ts";
 
 export function pairingCodeFrom(payload: unknown): string | null {
   const body = asRecord(payload);
@@ -29,7 +25,6 @@ export function pairingCodeFrom(payload: unknown): string | null {
   }
   return null;
 }
-
 export function pairingQrBase64From(payload: unknown): string | null {
   const body = asRecord(payload);
   const data = asRecord(body?.data);

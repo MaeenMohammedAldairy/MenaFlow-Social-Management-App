@@ -218,6 +218,21 @@ test("accepts supported response envelopes and rejects malformed group payloads"
   );
 });
 
+test("rejects incomplete group entries instead of treating them as an empty directory", () => {
+  assert.throws(
+    () => normalizeEvolutionGroups([{ subject: "مجموعة" }]),
+    /EVOLUTION_API_INVALID_GROUPS_RESPONSE/,
+  );
+  assert.throws(
+    () => normalizeEvolutionGroups([group({ announce: null })]),
+    /EVOLUTION_API_INVALID_GROUPS_RESPONSE/,
+  );
+  assert.throws(
+    () => normalizeEvolutionGroups([{ ...group(), id: "invalid@g.us" }]),
+    /EVOLUTION_API_INVALID_GROUPS_RESPONSE/,
+  );
+});
+
 test("filters out records from other WhatsApp groups and direct chats", () => {
   const groupJid = "120363430177130458@g.us";
   const records = [
@@ -337,6 +352,20 @@ test("extracts original text from wrapped Evolution message and album captions",
       },
     }),
     "تفاصيل المنتج",
+  );
+});
+
+test("preserves breadth-first text ordering across nested wrappers", () => {
+  assert.equal(
+    extractWhatsAppTextFromMessage({
+      message: {
+        message: { conversation: "النص المتداخل" },
+      },
+      ephemeralMessage: {
+        message: { conversation: "النص الأقرب" },
+      },
+    }),
+    "النص الأقرب\nالنص المتداخل",
   );
 });
 

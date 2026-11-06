@@ -12,7 +12,8 @@ import {
 } from "@workspace/db";
 import { requestOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
-import { decryptMetaTokenForRotation } from "../lib/meta-token-crypto";
+import { metaConnectionAccessToken } from "../lib/meta-connection-token.ts";
+import { asRecord } from "../lib/value-utils.ts";
 import { getMetaGraphVersion } from "../lib/meta-graph-config";
 import { EvolutionApiError, evolutionConnectionState } from "../lib/whatsapp-evolution";
 import { evolutionErrorResponse } from "./whatsapp-route-errors";
@@ -21,29 +22,6 @@ import { buildFacebookPerformance } from "../lib/facebook-performance";
 const router: IRouter = Router();
 const GRAPH_VERSION = getMetaGraphVersion();
 const INSIGHTS_DAYS = 28;
-
-async function metaConnectionAccessToken(
-  connection: typeof menaMetaConnections.$inferSelect,
-): Promise<string> {
-  const decrypted = decryptMetaTokenForRotation(
-    connection.encryptedPageAccessToken,
-  );
-  if (decrypted.rotatedCiphertext) {
-    await db
-      .update(menaMetaConnections)
-      .set({ encryptedPageAccessToken: decrypted.rotatedCiphertext })
-      .where(
-        and(
-          eq(menaMetaConnections.workspaceId, connection.workspaceId),
-          eq(
-            menaMetaConnections.encryptedPageAccessToken,
-            connection.encryptedPageAccessToken,
-          ),
-        ),
-      );
-  }
-  return decrypted.accessToken;
-}
 
 type AccountPlatform = "facebook" | "instagram" | "whatsapp";
 type AccountMetric = { key: string; label: string; value: number; period?: string };
@@ -57,12 +35,6 @@ type AccountPost = {
   comments: number | null;
   views: number | null;
 };
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === "object" && value !== null
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
 
 function numberValue(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;

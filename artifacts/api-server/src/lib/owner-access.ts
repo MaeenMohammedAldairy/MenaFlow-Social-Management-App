@@ -93,9 +93,3 @@ export const requireOwner: RequestHandler = (req, res, next) => {
   }
   next();
 };
-
-/** @deprecated Use requireOwner which now supports all authenticated users */
-export function isOwnerRequest(req: Request): boolean {
-  if (isLocalAuthDisabled()) return true;
-  return Boolean(getAuth(req).userId);
-}

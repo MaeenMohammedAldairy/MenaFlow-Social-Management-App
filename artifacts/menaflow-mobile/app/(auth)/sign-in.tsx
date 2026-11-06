@@ -1,12 +1,13 @@
-import { useAuth, useSignIn } from '@clerk/expo';
-import { useSSO } from '@clerk/expo/experimental';
+import { useAuth, useSignIn, useSSO } from '@clerk/expo';
 import { Link, Redirect, router } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Eye, EyeOff, LockKeyhole, Mail, ArrowRight } from 'lucide-react-native';
+import { Eye, EyeOff, LockKeyhole, Mail, ArrowLeft } from 'lucide-react-native';
 import { CairoText as Text, CairoTextInput as TextInput } from '@/components/CairoTypography';
 import { AuthFrame, authStyles } from '@/components/AuthFrame';
 import { useColors } from '@/hooks/useColors';
+import { getAuthErrorMessage } from '@/lib/auth-error-message';
+import { activateOAuthSession } from '@/lib/activate-oauth-session';
 
 type SecondFactorStrategy = 'totp' | 'backup_code' | 'email_code' | 'phone_code';
 type ResetStep = 'email' | 'code' | 'new-password' | null;
@@ -25,6 +26,7 @@ export default function SignInScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [socialLoading, setSocialLoading] = useState(false);
   const loading = fetchStatus === 'fetching' || socialLoading;
   const requiresSecondFactor =
@@ -47,64 +49,120 @@ export default function SignInScreen() {
 
   const submit = async () => {
     setErrorMessage('');
-    const { error } = await signIn.password({
-      emailAddress: emailAddress.trim(),
-      password,
-    });
-    if (error) {
-      setErrorMessage(error.message || 'تعذر تسجيل الدخول. تحقق من البيانات وحاول مجدداً.');
-      return;
-    }
-    if (signIn.status === 'complete') {
-      await finalizeSignIn();
-    } else if (signIn.status !== 'needs_second_factor' && signIn.status !== 'needs_client_trust') {
-      setErrorMessage('تعذر إكمال تسجيل الدخول. حاول مرة أخرى.');
-    } else {
-      setVerificationCode('');
-      setSecondFactor(null);
+    try {
+      const { error } = await signIn.password({
+        emailAddress: emailAddress.trim(),
+        password,
+      });
+      if (error) {
+        setErrorMessage(getAuthErrorMessage(error, 'تعذر تسجيل الدخول. تحقق من البريد الإلكتروني وكلمة المرور.'));
+        return;
+      }
+      if (signIn.status === 'complete') {
+        await finalizeSignIn();
+      } else if (signIn.status !== 'needs_second_factor' && signIn.status !== 'needs_client_trust') {
+        setErrorMessage('تعذر إكمال تسجيل الدخول. حاول مرة أخرى.');
+      } else {
+        setVerificationCode('');
+        setSecondFactor(null);
+      }
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'تعذر تسجيل الدخول الآن. حاول مرة أخرى.'));
     }
   };
 
   const selectSecondFactor = async (strategy: SecondFactorStrategy) => {
     setErrorMessage('');
+    setSuccessMessage('');
     setSecondFactor(strategy);
     setVerificationCode('');
 
-    const result =
-      strategy === 'email_code'
-        ? await signIn.mfa.sendEmailCode()
-        : strategy === 'phone_code'
-          ? await signIn.mfa.sendPhoneCode()
-          : { error: null };
+    try {
+      const result =
+        strategy === 'email_code'
+          ? await signIn.mfa.sendEmailCode()
+          : strategy === 'phone_code'
+            ? await signIn.mfa.sendPhoneCode()
+            : { error: null };
 
-    if (result.error) {
-      setErrorMessage(result.error.message || 'تعذر إرسال رمز التحقق.');
+      if (result.error) {
+        setErrorMessage(getAuthErrorMessage(result.error, 'تعذر إرسال رمز التحقق. حاول مرة أخرى.'));
+      }
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'تعذر إرسال رمز التحقق. تحقق من اتصالك وحاول مجدداً.'));
+    }
+  };
+
+  const resendSecondFactor = async () => {
+    if (secondFactor !== 'email_code' && secondFactor !== 'phone_code') return;
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      const result =
+        secondFactor === 'email_code'
+          ? await signIn.mfa.sendEmailCode()
+          : await signIn.mfa.sendPhoneCode();
+      if (result.error) {
+        setErrorMessage(getAuthErrorMessage(result.error, 'تعذر إرسال رمز جديد. حاول مرة أخرى.'));
+      } else {
+        setSuccessMessage('تم إرسال رمز تحقق جديد.');
+      }
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'تعذر إرسال رمز جديد الآن. تحقق من اتصالك وحاول مجدداً.'));
+    }
+  };
+
+  const restartSignIn = async () => {
+    if (!emailAddress.trim()) {
+      setErrorMessage('أدخل البريد الإلكتروني للعودة إلى خيارات تسجيل الدخول.');
+      return;
+    }
+    setErrorMessage('');
+    setSuccessMessage('');
+
+    try {
+      const result = await signIn.create({ identifier: emailAddress.trim() });
+      if (result.error) {
+        setErrorMessage(getAuthErrorMessage(result.error, 'تعذر بدء محاولة تسجيل دخول جديدة. حاول مرة أخرى.'));
+        return;
+      }
+      setSecondFactor(null);
+      setVerificationCode('');
+      setPassword('');
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'تعذر بدء محاولة تسجيل دخول جديدة. تحقق من اتصالك وحاول مجدداً.'));
     }
   };
 
   const verifySecondFactor = async () => {
     if (!secondFactor || !verificationCode.trim()) return;
     setErrorMessage('');
+    setSuccessMessage('');
 
-    const params = { code: verificationCode.trim() };
-    const result =
-      secondFactor === 'totp'
-        ? await signIn.mfa.verifyTOTP(params)
-        : secondFactor === 'backup_code'
-          ? await signIn.mfa.verifyBackupCode(params)
-          : secondFactor === 'email_code'
-            ? await signIn.mfa.verifyEmailCode(params)
-            : await signIn.mfa.verifyPhoneCode(params);
+    try {
+      const params = { code: verificationCode.trim() };
+      const result =
+        secondFactor === 'totp'
+          ? await signIn.mfa.verifyTOTP(params)
+          : secondFactor === 'backup_code'
+            ? await signIn.mfa.verifyBackupCode(params)
+            : secondFactor === 'email_code'
+              ? await signIn.mfa.verifyEmailCode(params)
+              : await signIn.mfa.verifyPhoneCode(params);
 
-    if (result.error) {
-      setErrorMessage(result.error.message || 'رمز التحقق غير صحيح أو انتهت صلاحيته.');
-      return;
+      if (result.error) {
+        setErrorMessage(getAuthErrorMessage(result.error, 'رمز التحقق غير صحيح أو انتهت صلاحيته. تحقق منه أو اطلب رمزاً جديداً.'));
+        return;
+      }
+      if (signIn.status === 'complete') {
+        await finalizeSignIn();
+        return;
+      }
+      setErrorMessage('لم يكتمل التحقق. تأكد من الرمز ثم حاول مرة أخرى.');
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'تعذر التحقق من الرمز الآن. حاول مرة أخرى.'));
     }
-    if (signIn.status === 'complete') {
-      await finalizeSignIn();
-      return;
-    }
-    setErrorMessage('لم يكتمل التحقق. تأكد من الرمز ثم حاول مرة أخرى.');
   };
 
   const startPasswordReset = async () => {
@@ -113,63 +171,95 @@ export default function SignInScreen() {
       return;
     }
     setErrorMessage('');
-    const created = await signIn.create({ identifier: emailAddress.trim() });
-    if (created.error) {
-      setErrorMessage(created.error.message || 'تعذر بدء استعادة كلمة المرور.');
-      return;
+    setSuccessMessage('');
+    try {
+      const created = await signIn.create({ identifier: emailAddress.trim() });
+      if (created.error) {
+        setErrorMessage(getAuthErrorMessage(created.error, 'تعذر بدء استعادة كلمة المرور. تحقق من البريد الإلكتروني.'));
+        return;
+      }
+      const sent = await signIn.resetPasswordEmailCode.sendCode();
+      if (sent.error) {
+        setErrorMessage(getAuthErrorMessage(sent.error, 'تعذر إرسال رمز الاستعادة. حاول مرة أخرى.'));
+        return;
+      }
+      setVerificationCode('');
+      setResetStep('code');
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'تعذر إرسال رمز الاستعادة الآن. تحقق من اتصالك وحاول مجدداً.'));
     }
-    const sent = await signIn.resetPasswordEmailCode.sendCode();
-    if (sent.error) {
-      setErrorMessage(sent.error.message || 'تعذر إرسال رمز الاستعادة.');
-      return;
+  };
+
+  const resendPasswordResetCode = async () => {
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const result = await signIn.resetPasswordEmailCode.sendCode();
+      if (result.error) {
+        setErrorMessage(getAuthErrorMessage(result.error, 'تعذر إرسال رمز استعادة جديد. حاول مرة أخرى.'));
+      } else {
+        setSuccessMessage('تم إرسال رمز استعادة جديد إلى بريدك.');
+      }
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'تعذر إرسال رمز الاستعادة الآن. تحقق من اتصالك وحاول مجدداً.'));
     }
-    setVerificationCode('');
-    setResetStep('code');
   };
 
   const verifyPasswordResetCode = async () => {
-    const result = await signIn.resetPasswordEmailCode.verifyCode({ code: verificationCode.trim() });
-    if (result.error) {
-      setErrorMessage(result.error.message || 'رمز التحقق غير صحيح أو انتهت صلاحيته.');
-      return;
-    }
-    if (signIn.status === 'needs_new_password') {
-      setErrorMessage('');
-      setResetStep('new-password');
-    } else {
-      setErrorMessage('تعذر التحقق من الرمز. اطلب رمزاً جديداً وحاول مرة أخرى.');
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const result = await signIn.resetPasswordEmailCode.verifyCode({ code: verificationCode.trim() });
+      if (result.error) {
+        setErrorMessage(getAuthErrorMessage(result.error, 'رمز التحقق غير صحيح أو انتهت صلاحيته. اطلب رمزاً جديداً.'));
+        return;
+      }
+      if (signIn.status === 'needs_new_password') {
+        setErrorMessage('');
+        setResetStep('new-password');
+      } else {
+        setErrorMessage('تعذر التحقق من الرمز. اطلب رمزاً جديداً وحاول مرة أخرى.');
+      }
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'تعذر التحقق من الرمز الآن. حاول مرة أخرى.'));
     }
   };
 
   const finishPasswordReset = async () => {
-    const result = await signIn.resetPasswordEmailCode.submitPassword({ password: newPassword });
-    if (result.error) {
-      setErrorMessage(result.error.message || 'تعذر حفظ كلمة المرور الجديدة.');
-      return;
-    }
-    if (signIn.status === 'complete') {
-      await finalizeSignIn();
-    } else {
-      setErrorMessage('تم تحديث كلمة المرور، لكن تعذر إكمال تسجيل الدخول. ارجع وسجّل الدخول مجدداً.');
+    setErrorMessage('');
+    setSuccessMessage('');
+    try {
+      const result = await signIn.resetPasswordEmailCode.submitPassword({ password: newPassword });
+      if (result.error) {
+        setErrorMessage(getAuthErrorMessage(result.error, 'تعذر حفظ كلمة المرور الجديدة. اختر كلمة مرور أخرى وحاول مجدداً.'));
+        return;
+      }
+      if (signIn.status === 'complete') {
+        await finalizeSignIn();
+      } else {
+        setErrorMessage('تم تحديث كلمة المرور، لكن تعذر إكمال تسجيل الدخول. ارجع وسجّل الدخول مجدداً.');
+      }
+    } catch (error) {
+      setErrorMessage(getAuthErrorMessage(error, 'تعذر حفظ كلمة المرور الآن. حاول مرة أخرى.'));
     }
   };
 
   const signInWithProvider = async (strategy: 'oauth_google' | 'oauth_facebook') => {
     setErrorMessage('');
+    setSuccessMessage('');
     setSocialLoading(true);
     try {
-      const { createdSessionId } = await startSSOFlow({ strategy });
-      if (createdSessionId) {
-        router.replace('/(tabs)');
-      } else {
+      const { createdSessionId, setActive } = await startSSOFlow({ strategy });
+      const activated = await activateOAuthSession(
+        createdSessionId,
+        setActive,
+        () => router.replace('/(tabs)'),
+      );
+      if (!activated) {
         setErrorMessage('تم إيقاف تسجيل الدخول قبل اكتماله.');
       }
     } catch (error) {
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'تعذر تسجيل الدخول عبر مزود الخدمة. تحقق من إعدادات Clerk وحاول مرة أخرى.',
-      );
+      setErrorMessage(getAuthErrorMessage(error, 'تعذر تسجيل الدخول عبر مزود الخدمة. تحقق من اتصالك وحاول مرة أخرى.'));
     } finally {
       setSocialLoading(false);
     }
@@ -255,7 +345,7 @@ export default function SignInScreen() {
                     textContentType="oneTimeCode"
                     placeholder="أدخل الرمز"
                     placeholderTextColor={colors.mutedForeground}
-                    style={[authStyles.input, { color: colors.foreground }]}
+                    style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
                     accessibilityLabel="رمز التحقق"
                     onSubmitEditing={verifySecondFactor}
                     returnKeyType="go"
@@ -271,6 +361,18 @@ export default function SignInScreen() {
                     {loading ? 'جارٍ التحقق…' : 'تأكيد الرمز'}
                   </Text>
                 </Pressable>
+                {secondFactor === 'email_code' || secondFactor === 'phone_code' ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: loading, busy: loading }}
+                    onPress={() => void resendSecondFactor()}
+                    disabled={loading}
+                  >
+                    <Text style={[authStyles.linkText, { color: colors.primary, textAlign: 'center' }]}>
+                      {loading ? 'جارٍ إرسال الرمز…' : 'إعادة إرسال رمز التحقق'}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </>
             ) : null}
           </>
@@ -289,7 +391,7 @@ export default function SignInScreen() {
                     textContentType="oneTimeCode"
                     placeholder="أدخل الرمز المرسل لبريدك"
                     placeholderTextColor={colors.mutedForeground}
-                    style={[authStyles.input, { color: colors.foreground }]}
+                    style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
                     accessibilityLabel="رمز استعادة كلمة المرور"
                   />
                 </View>
@@ -301,6 +403,16 @@ export default function SignInScreen() {
                 >
                   <Text style={[authStyles.buttonText, { color: colors.primaryForeground }]}>
                     {loading ? 'جارٍ التحقق…' : 'التحقق من الرمز'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: loading, busy: loading }}
+                  onPress={() => void resendPasswordResetCode()}
+                  disabled={loading}
+                >
+                  <Text style={[authStyles.linkText, { color: colors.primary, textAlign: 'center' }]}>
+                    {loading ? 'جارٍ إرسال الرمز…' : 'إعادة إرسال رمز الاستعادة'}
                   </Text>
                 </Pressable>
               </>
@@ -318,7 +430,7 @@ export default function SignInScreen() {
                     secureTextEntry={!showNewPassword}
                     placeholder="أدخل كلمة مرور جديدة"
                     placeholderTextColor={colors.mutedForeground}
-                    style={[authStyles.input, { color: colors.foreground }]}
+                    style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
                     accessibilityLabel="كلمة المرور الجديدة"
                   />
                   <Pressable
@@ -355,7 +467,7 @@ export default function SignInScreen() {
                     textContentType="emailAddress"
                     placeholder="name@example.com"
                     placeholderTextColor={colors.mutedForeground}
-                    style={[authStyles.input, { color: colors.foreground }]}
+                    style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
                     accessibilityLabel="البريد الإلكتروني"
                   />
                 </View>
@@ -371,7 +483,7 @@ export default function SignInScreen() {
                 </Pressable>
               </>
             )}
-            <Pressable accessibilityRole="button" onPress={() => { setResetStep(null); setErrorMessage(''); }}>
+            <Pressable accessibilityRole="button" disabled={loading} onPress={() => { setResetStep(null); setErrorMessage(''); setSuccessMessage(''); }}>
               <Text style={[authStyles.linkText, { color: colors.primary, textAlign: 'center' }]}>العودة لتسجيل الدخول</Text>
             </Pressable>
           </>
@@ -389,7 +501,7 @@ export default function SignInScreen() {
                 textContentType="emailAddress"
                 placeholder="name@example.com"
                 placeholderTextColor={colors.mutedForeground}
-                style={[authStyles.input, { color: colors.foreground }]}
+                style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
                 accessibilityLabel="البريد الإلكتروني"
               />
             </View>
@@ -405,7 +517,7 @@ export default function SignInScreen() {
                 secureTextEntry={!showPassword}
                 placeholder="أدخل كلمة المرور"
                 placeholderTextColor={colors.mutedForeground}
-                style={[authStyles.input, { color: colors.foreground }]}
+                style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
                 accessibilityLabel="كلمة المرور"
                 onSubmitEditing={submit}
                 returnKeyType="go"
@@ -423,7 +535,10 @@ export default function SignInScreen() {
               <Pressable accessibilityRole="button" onPress={() => { setResetStep('email'); setErrorMessage(''); }}>
                 <Text style={[authStyles.linkText, { color: colors.primary }]}>نسيت كلمة المرور؟</Text>
               </Pressable>
-              <Text style={[authStyles.hint, { color: colors.mutedForeground }]}>دخول آمن ومشفّر</Text>
+              <View style={[styles.secureBadge, { backgroundColor: colors.accent }]}>
+                <LockKeyhole size={12} color={colors.primary} />
+                <Text style={[authStyles.hint, { color: colors.primary }]}>دخول آمن</Text>
+              </View>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -434,7 +549,7 @@ export default function SignInScreen() {
               <Text style={[authStyles.buttonText, { color: colors.primaryForeground }]}>
                 {loading ? 'جارٍ تسجيل الدخول…' : 'تسجيل الدخول'}
               </Text>
-              <ArrowRight size={17} color={colors.primaryForeground} />
+              <ArrowLeft size={17} color={colors.primaryForeground} />
             </Pressable>
 
             <View style={styles.divider}>
@@ -469,17 +584,22 @@ export default function SignInScreen() {
             {errorMessage}
           </Text>
         ) : null}
+        {successMessage ? (
+          <Text accessibilityRole="alert" style={[authStyles.hint, { color: colors.primary, textAlign: 'center' }]}>
+            {successMessage}
+          </Text>
+        ) : null}
         <View style={authStyles.linkRow}>
           {requiresSecondFactor ? (
             <Pressable
               accessibilityRole="button"
-              onPress={() => {
-                setSecondFactor(null);
-                setVerificationCode('');
-                setErrorMessage('');
-              }}
+              accessibilityState={{ disabled: loading || !emailAddress.trim(), busy: loading }}
+              disabled={loading || !emailAddress.trim()}
+              onPress={() => void restartSignIn()}
             >
-              <Text style={[authStyles.linkText, { color: colors.primary }]}>العودة لتسجيل الدخول</Text>
+              <Text style={[authStyles.linkText, { color: colors.primary }]}>
+                {loading ? 'جارٍ الرجوع…' : 'العودة لاختيار حساب أو طريقة دخول أخرى'}
+              </Text>
             </Pressable>
           ) : resetStep ? null : (
             <>
@@ -500,10 +620,18 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   panel: { gap: 10 },
   formLinks: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: -2,
+  },
+  secureBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 9, marginVertical: 1 },
   dividerLine: { flex: 1, height: 1 },

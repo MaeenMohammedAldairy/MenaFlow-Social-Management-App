@@ -1,7 +1,9 @@
 import {
   getWhatsAppAutoReplySettings,
+  getGetSocialConnectionsQueryKey,
   getWhatsAppGroupSelections,
   getWhatsAppGroups,
+  getSocialConnections,
   saveWhatsAppAutoReplySettings,
   saveWhatsAppGroupSelections,
   testWhatsAppAutoReply,
@@ -10,7 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -78,27 +80,62 @@ function AuthenticatedWhatsAppSetup() {
 function WhatsAppSetupContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const queryClient = useQueryClient();
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const queryKey = ["whatsappAutoReplySettings", userId ?? "local"];
-  const selectionQueryKey = ["whatsappGroupSelections", userId ?? "local"];
-  const groupsQueryKey = ["whatsappGroups", userId ?? "local"];
+  const connectionsQueryKey = [
+    ...getGetSocialConnectionsQueryKey(),
+    userId ?? "local",
+  ] as const;
+  const [groupsFetchEnabled, setGroupsFetchEnabled] = useState(false);
   const [showAvailableGroups, setShowAvailableGroups] = useState(false);
   const settingsQuery = useQuery({
     queryKey,
     queryFn: getWhatsAppAutoReplySettings,
     retry: false,
   });
+  const connectionsQuery = useQuery({
+    queryKey: connectionsQueryKey,
+    queryFn: getSocialConnections,
+    staleTime: 30_000,
+  });
   const connected = settingsQuery.data?.connected === true;
+  const instanceName = connectionsQuery.data?.whatsapp?.instanceName;
+  const selectionQueryKey = [
+    "whatsappGroupSelections",
+    userId ?? "local",
+    instanceName ?? "no-connection",
+  ] as const;
+  const groupsQueryKey = [
+    "whatsappGroups",
+    userId ?? "local",
+    instanceName ?? "no-connection",
+  ] as const;
   const groupSelectionsQuery = useQuery({
     queryKey: selectionQueryKey,
     queryFn: getWhatsAppGroupSelections,
-    enabled: connected,
+    enabled: connected && Boolean(instanceName),
     retry: false,
   });
   const groupsQuery = useQuery({
     queryKey: groupsQueryKey,
-    queryFn: getWhatsAppGroups,
-    enabled: connected && showAvailableGroups,
+    queryFn: async ({ signal }) => {
+      try {
+        return await getWhatsAppGroups({ signal });
+      } catch (error) {
+        setGroupsFetchEnabled(false);
+        throw error;
+      }
+    },
+    enabled:
+      connected &&
+      showAvailableGroups &&
+      groupsFetchEnabled &&
+      Boolean(instanceName),
     retry: false,
+    retryOnMount: false,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     staleTime: 5 * 60 * 1000,
   });
   const [settings, setSettings] =
@@ -234,7 +271,12 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
   };
 
   const retrySettings = () => void settingsQuery.refetch();
-  const returnToSources = () => router.replace("/(tabs)/sources");
+  const returnToSources = () =>
+    router.replace(
+      returnTo === "connect-accounts"
+        ? "/connect-accounts"
+        : "/(tabs)/more/sources",
+    );
 
   return (
     <Page>
@@ -249,7 +291,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
             onPress={returnToSources}
             style={styles.backButton}
           >
-            <Icon name="chevron-left" size={18} color={colors.primary} />
+            <Icon name="chevron-right" size={18} color={colors.primary} />
           </Pressable>
         }
       />
@@ -284,7 +326,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
           />
           <ActionButton
             label="العودة إلى ربط الحسابات"
-            icon="chevron-left"
+            icon="chevron-right"
             onPress={returnToSources}
           />
         </Panel>
@@ -571,7 +613,11 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
                   label={showAvailableGroups ? "إخفاء المجموعات" : "إضافة مجموعة جديدة"}
                   icon={showAvailableGroups ? "chevron-left" : "plus"}
                   secondary
-                  onPress={() => setShowAvailableGroups((visible) => !visible)}
+                  onPress={() => {
+                    const opening = !showAvailableGroups;
+                    setShowAvailableGroups(opening);
+                    setGroupsFetchEnabled(opening);
+                  }}
                 />
 
                 {showAvailableGroups ? (
@@ -599,7 +645,10 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
                         label="إعادة المحاولة"
                         icon="refresh-cw"
                         secondary
-                        onPress={() => void groupsQuery.refetch()}
+                        onPress={() => {
+                          setGroupsFetchEnabled(true);
+                          void groupsQuery.refetch();
+                        }}
                       />
                     </View>
                   ) : groupsQuery.data?.groups.length ? (
@@ -726,11 +775,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 14,
   },
-  body: { fontSize: 13, lineHeight: 21, textAlign: "right" },
-  bodySmall: { fontSize: 11, lineHeight: 18, textAlign: "right" },
+  body: { fontSize: 13, lineHeight: 21, textAlign: "left" },
+  bodySmall: { fontSize: 11, lineHeight: 18, textAlign: "left" },
   connectedPanel: { gap: 12 },
   connectedHeader: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
@@ -743,28 +792,28 @@ const styles = StyleSheet.create({
   },
   connectedTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
   accountRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     borderTopWidth: 1,
     paddingTop: 12,
     gap: 10,
   },
-  accountCopy: { flex: 1, gap: 2, alignItems: "flex-end" },
+  accountCopy: { flex: 1, gap: 2, alignItems: "flex-start" },
   accountTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" },
   switchRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
   },
-  switchCopy: { flex: 1, alignItems: "flex-end", gap: 3 },
+  switchCopy: { flex: 1, alignItems: "flex-start", gap: 3 },
   fieldGroup: { gap: 8 },
   fieldTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" },
   choiceRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
   },
@@ -789,9 +838,9 @@ const styles = StyleSheet.create({
   },
   testMessageInput: { minHeight: 70 },
   previewCard: { borderRadius: 14, padding: 13, gap: 7 },
-  notice: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  notice: { fontSize: 12, lineHeight: 19, textAlign: "left" },
   loadingRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
@@ -800,7 +849,7 @@ const styles = StyleSheet.create({
   errorBlock: { gap: 12 },
   groupList: { gap: 8 },
   groupRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 10,
     borderWidth: 1,
@@ -822,5 +871,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  groupCopy: { flex: 1, alignItems: "flex-end", gap: 2 },
+  groupCopy: { flex: 1, alignItems: "flex-start", gap: 2 },
 });

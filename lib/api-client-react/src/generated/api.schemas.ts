@@ -67,8 +67,87 @@ export interface ApiError {
   error: string;
 }
 
+export interface OnboardingStatus {
+  started: boolean;
+  /**
+     * @minimum 0
+     * @maximum 3
+     */
+  currentStep: number;
+  completed: boolean;
+  socialAccountsCompleted: boolean;
+}
+
 export interface AuthAccessResponse {
   authorized: boolean;
+  onboarding: OnboardingStatus;
+}
+
+export interface KnownPostIdsInput {
+  /**
+     * @maxItems 1000
+     * @items.maxLength 150
+     */
+  ids: string[];
+}
+
+export type SubscriptionPlanId = typeof SubscriptionPlanId[keyof typeof SubscriptionPlanId];
+
+
+export const SubscriptionPlanId = {
+  free: 'free',
+  starter: 'starter',
+  growth: 'growth',
+} as const;
+
+export type SubscriptionPlanLimits = {
+  postsCreated: number;
+  aiGenerations: number;
+  channels: number;
+};
+
+export interface SubscriptionPlan {
+  id: SubscriptionPlanId;
+  name: string;
+  monthlyPriceUsd: number;
+  limits: SubscriptionPlanLimits;
+}
+
+export interface SubscriptionUsage {
+  postsCreated: number;
+  aiGenerations: number;
+  channels: number;
+}
+
+export type SubscriptionOverviewPlanId = typeof SubscriptionOverviewPlanId[keyof typeof SubscriptionOverviewPlanId];
+
+
+export const SubscriptionOverviewPlanId = {
+  free: 'free',
+  starter: 'starter',
+  growth: 'growth',
+} as const;
+
+export type SubscriptionOverviewStatus = typeof SubscriptionOverviewStatus[keyof typeof SubscriptionOverviewStatus];
+
+
+export const SubscriptionOverviewStatus = {
+  trialing: 'trialing',
+  active: 'active',
+  canceled: 'canceled',
+  past_due: 'past_due',
+  free: 'free',
+} as const;
+
+export interface SubscriptionOverview {
+  planId: SubscriptionOverviewPlanId;
+  planName: string;
+  status: SubscriptionOverviewStatus;
+  trialEndsAt: string | null;
+  paymentAvailable: boolean;
+  periodKey: string;
+  usage: SubscriptionUsage;
+  plans: SubscriptionPlan[];
 }
 
 export type OnboardingProgressInputAction = typeof OnboardingProgressInputAction[keyof typeof OnboardingProgressInputAction];
@@ -84,17 +163,6 @@ export interface OnboardingProgressInput {
   action: OnboardingProgressInputAction;
 }
 
-export interface OnboardingStatus {
-  started: boolean;
-  /**
-     * @minimum 0
-     * @maximum 3
-     */
-  currentStep: number;
-  completed: boolean;
-  socialAccountsCompleted: boolean;
-}
-
 export type SocialAccountStatusConnectionState = typeof SocialAccountStatusConnectionState[keyof typeof SocialAccountStatusConnectionState];
 
 
@@ -102,6 +170,7 @@ export const SocialAccountStatusConnectionState = {
   connected: 'connected',
   connecting: 'connecting',
   disconnected: 'disconnected',
+  failed: 'failed',
   missing: 'missing',
   unavailable: 'unavailable',
 } as const;
@@ -233,6 +302,7 @@ export type CreatePostInputStatus = typeof CreatePostInputStatus[keyof typeof Cr
 export const CreatePostInputStatus = {
   draft: 'draft',
   review: 'review',
+  approved: 'approved',
   scheduled: 'scheduled',
   published: 'published',
 } as const;
@@ -293,11 +363,15 @@ export const WhatsAppPairingCodeResponseState = {
   connecting: 'connecting',
 } as const;
 
+/**
+ * At least one of pairingCode or qrCodeBase64 is returned.
+ */
 export interface WhatsAppPairingCodeResponse {
   instanceName: string;
   phoneNumber: string;
-  pairingCode: string;
-  /** Optional QR image returned by Evolution for scanning when phone-number pairing is rejected. */
+  /** Optional phone-number pairing code. */
+  pairingCode?: string;
+  /** Optional QR image returned by Evolution for scanning when phone-number pairing is unavailable. */
   qrCodeBase64?: string;
   state: WhatsAppPairingCodeResponseState;
 }
@@ -309,6 +383,8 @@ export const WhatsAppConnectionStatusState = {
   connecting: 'connecting',
   connected: 'connected',
   disconnected: 'disconnected',
+  failed: 'failed',
+  unavailable: 'unavailable',
 } as const;
 
 export interface WhatsAppConnectionStatus {
@@ -380,35 +456,32 @@ export type WhatsAppGroupKind = typeof WhatsAppGroupKind[keyof typeof WhatsAppGr
 
 
 export const WhatsAppGroupKind = {
-  community: 'community',
   announcement: 'announcement',
-  group: 'group',
-  unknown: 'unknown',
-} as const;
-
-export type WhatsAppGroupRole = typeof WhatsAppGroupRole[keyof typeof WhatsAppGroupRole];
-
-
-export const WhatsAppGroupRole = {
-  admin: 'admin',
-  superadmin: 'superadmin',
-  member: 'member',
-  unknown: 'unknown',
-} as const;
-
-export type WhatsAppGroupPublishState = typeof WhatsAppGroupPublishState[keyof typeof WhatsAppGroupPublishState];
-
-
-export const WhatsAppGroupPublishState = {
-  eligible: 'eligible',
-  restricted: 'restricted',
-  unverified: 'unverified',
 } as const;
 
 export interface WhatsAppGroup {
   groupJid: string;
+  /** Internal identity ID when already persisted. */
   groupId: string;
-  kind: "announcement";
+  kind: WhatsAppGroupKind;
+  name: string;
+  communityParentJid?: string;
+  selected: boolean;
+  verifiedAt?: string;
+}
+
+export type WhatsAppGroupOptionKind = typeof WhatsAppGroupOptionKind[keyof typeof WhatsAppGroupOptionKind];
+
+
+export const WhatsAppGroupOptionKind = {
+  announcement: 'announcement',
+} as const;
+
+export interface WhatsAppGroupOption {
+  groupJid: string;
+  /** Internal identity ID when already persisted. */
+  groupId?: string;
+  kind: WhatsAppGroupOptionKind;
   name: string;
   communityParentJid?: string;
   selected: boolean;
@@ -416,7 +489,7 @@ export interface WhatsAppGroup {
 }
 
 export interface WhatsAppGroupsResponse {
-  groups: WhatsAppGroup[];
+  groups: WhatsAppGroupOption[];
 }
 
 export interface WhatsAppGroupSelectionsResponse {
@@ -460,6 +533,13 @@ export type TestWhatsAppAutoReply200 = {
   reply: string;
 };
 
+export type DeleteWhatsAppConnectionParams = {
+/**
+ * Cancel only an in-progress pairing without deleting saved workspace settings
+ */
+cancelPairing?: boolean;
+};
+
 export type GetPostsPageParams = {
 /**
  * @minimum 1
@@ -472,14 +552,6 @@ cursor?: string;
 export type GetPostsPage200 = {
   items: PostItem[];
   nextCursor: string | null;
-};
-
-export type GetKnownPostIdsBody = {
-  /**
-     * @maxItems 1000
-     * @items.maxLength 150
-     */
-  ids: string[];
 };
 
 export type GetKnownPostIds200 = {

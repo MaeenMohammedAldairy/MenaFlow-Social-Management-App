@@ -25,6 +25,8 @@ import {
   syncGroupHistory,
   processWebhookEvent,
   WHATSAPP_SYNC_STALE_THRESHOLD_MS,
+  DEFAULT_WHATSAPP_HISTORY_IMPORT_LIMIT,
+  MAX_WHATSAPP_HISTORY_IMPORT_LIMIT,
 } from "../lib/whatsapp-sync";
 
 const router: IRouter = Router();
@@ -43,6 +45,24 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
     return;
   }
   const includeHistory = req.body?.includeHistory !== false;
+  const requestedHistoryLimit = req.body?.historyLimit;
+  if (
+    includeHistory &&
+    requestedHistoryLimit !== undefined &&
+    (typeof requestedHistoryLimit !== "number" ||
+      !Number.isInteger(requestedHistoryLimit) ||
+      requestedHistoryLimit < 1 ||
+      requestedHistoryLimit > MAX_WHATSAPP_HISTORY_IMPORT_LIMIT)
+  ) {
+    res.status(400).json({
+      error: `عدد الرسائل السابقة يجب أن يكون بين 1 و${MAX_WHATSAPP_HISTORY_IMPORT_LIMIT}.`,
+    });
+    return;
+  }
+  const historyLimit =
+    includeHistory && typeof requestedHistoryLimit === "number"
+      ? requestedHistoryLimit
+      : DEFAULT_WHATSAPP_HISTORY_IMPORT_LIMIT;
 
   try {
     const [connection] = await db
@@ -222,6 +242,8 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
             group.name,
             group.id,
             includeHistory,
+            false,
+            historyLimit,
           );
         } catch (error) {
           const reason =

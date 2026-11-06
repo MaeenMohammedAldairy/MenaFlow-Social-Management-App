@@ -11,6 +11,7 @@ import {
 import { metaAutoReplyEnabled } from "../lib/meta-auto-reply";
 import {
   parseMetaWebhookEvents,
+  resolveUniqueMetaConnection,
   verifyMetaWebhookSignature,
 } from "../lib/meta-webhook";
 import { metaString } from "../lib/meta-inbox-utils";
@@ -96,15 +97,24 @@ router.post("/social/meta/webhook", async (req, res) => {
       platform === "facebook"
         ? eq(menaMetaConnections.pageId, accountId)
         : eq(menaMetaConnections.instagramUserId, accountId);
-    const [connection] = await db
+    const connections = await db
       .select({
         ownerId: menaMetaConnections.ownerId,
         workspaceId: menaMetaConnections.workspaceId,
       })
       .from(menaMetaConnections)
       .where(predicate)
-      .limit(1);
-    if (!connection) continue;
+      .limit(2);
+    const connection = resolveUniqueMetaConnection(connections);
+    if (!connection) {
+      if (connections.length > 1) {
+        console.error(
+          "Meta webhook account matched multiple workspaces; event skipped.",
+          { platform },
+        );
+      }
+      continue;
+    }
 
     const events = parseMetaWebhookEvents({ entry: [entry] }, platform);
     for (let offset = 0; offset < events.length; offset += 100) {

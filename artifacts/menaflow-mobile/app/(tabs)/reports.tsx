@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { CairoText as Text } from '@/components/CairoTypography';
 import { LucideIcon as Icon } from '@/components/LucideIcon';
-import { BrandHeader, EmptyState, Page, PageTitle, Panel, SectionTitle, StatusPill } from '@/components/Ui';
+import { ActionButton, BrandHeader, EmptyState, Page, PageTitle, Panel, SectionTitle } from '@/components/Ui';
 import { useStudio } from '@/context/StudioContext';
 import { useColors } from '@/hooks/useColors';
 import { router } from 'expo-router';
@@ -25,6 +25,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const { posts, refreshPosts, syncing } = useStudio();
   const [refreshing, setRefreshing] = useState(false);
+  const [dateRange, setDateRange] = useState<"all" | "7" | "30">("30");
 
   const connectionsQuery = useQuery({
     queryKey: [
@@ -35,21 +36,36 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
   });
   const connections = connectionsQuery.data;
 
-  const published = posts.filter((post) => post.status === 'published').length;
-  const draft = posts.filter((post) => post.status === 'draft').length;
-  const review = posts.filter((post) => post.status === 'review').length;
-  const scheduled = posts.filter((post) => post.status === 'scheduled').length;
+  const reportPosts = useMemo(() => {
+    if (dateRange === "all") return posts;
+    const cutoff = Date.now() - Number(dateRange) * 24 * 60 * 60 * 1000;
+    return posts.filter((post) => {
+      const reportDate = Date.parse(post.sourceMessageDate || post.createdAt);
+      return Number.isFinite(reportDate) && reportDate >= cutoff;
+    });
+  }, [dateRange, posts]);
 
-  const igPosts = posts.filter((p) => p.channels.includes('instagram')).length;
-  const fbPosts = posts.filter((p) => p.channels.includes('facebook')).length;
-  const waPosts = posts.filter((p) => p.channels.includes('whatsapp')).length;
+  const published = reportPosts.filter((post) => post.status === 'published').length;
+  const draft = reportPosts.filter((post) => post.status === 'draft').length;
+  const review = reportPosts.filter((post) => post.status === 'review').length;
+  const scheduled = reportPosts.filter((post) => post.status === 'scheduled').length;
+  const approved = reportPosts.filter((post) => post.status === 'approved').length;
+  const publishing = reportPosts.filter((post) => post.status === 'publishing').length;
+  const failed = reportPosts.filter((post) => post.status === 'failed').length;
+
+  const igPosts = reportPosts.filter((p) => p.channels.includes('instagram')).length;
+  const fbPosts = reportPosts.filter((p) => p.channels.includes('facebook')).length;
+  const waPosts = reportPosts.filter((p) => p.channels.includes('whatsapp')).length;
 
   const hasConnections = Boolean(connections?.facebook || connections?.instagram);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refreshPosts(), connectionsQuery.refetch()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refreshPosts(), connectionsQuery.refetch()]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   return (
@@ -63,139 +79,239 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
       }
     >
       <BrandHeader />
-      <PageTitle title="التقارير" subtitle="ملخص نشاط مساحة العمل ونتائج القنوات والمزامنة." />
+      <PageTitle title="التقارير" subtitle="ملخص المحتوى وحالاته وتوزيعه على القنوات." />
 
-      <Panel style={{ backgroundColor: colors.accent }}>
-        <View style={styles.reportHeader}>
-          <View style={[styles.reportIcon, { backgroundColor: colors.card }]}>
-            <Icon name="bar-chart-2" size={20} color={colors.primary} />
-          </View>
-          <View style={styles.reportCopy}>
-            <Text style={[styles.reportTitle, { color: colors.foreground }]}>
-              {syncing ? 'جارٍ المزامنة السحابية...' : 'بيانات مساحة العمل المتزامنة'}
-            </Text>
-            <Text style={[styles.reportDescription, { color: colors.mutedForeground }]}>
-              {hasConnections
-                ? 'الحسابات مرتبطة بالخادم وقاعدة البيانات، والمنشورات متزامنة لحظياً.'
-                : 'المنشورات متزامنة سحابياً. اربط حساباتك الاجتماعية لتفعيل النشر والتحليلات.'}
-            </Text>
-          </View>
+      <View style={styles.rangeSection}>
+        <Text style={[styles.rangeTitle, { color: colors.foreground }]}>
+          فترة التقرير
+        </Text>
+        <View style={styles.rangeOptions}>
+          {[
+            { value: "7" as const, label: "آخر 7 أيام" },
+            { value: "30" as const, label: "آخر 30 يوماً" },
+            { value: "all" as const, label: "كل الفترات" },
+          ].map((item) => (
+            <Pressable
+              key={item.value}
+              accessibilityRole="button"
+              accessibilityState={{ selected: dateRange === item.value }}
+              onPress={() => setDateRange(item.value)}
+              style={[
+                styles.rangeChip,
+                {
+                  backgroundColor:
+                    dateRange === item.value ? colors.primary : colors.secondary,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.rangeChipText,
+                  {
+                    color:
+                      dateRange === item.value
+                        ? colors.primaryForeground
+                        : colors.mutedForeground,
+                  },
+                ]}
+              >
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
         </View>
-      </Panel>
+        <Text style={[styles.rangeHint, { color: colors.mutedForeground }]}>
+          تُحتسب العناصر حسب تاريخ الرسالة المصدر، أو تاريخ إنشاء المحتوى عند عدم توفره. هذه مؤشرات حجم وليست بيانات الوصول أو التفاعل.
+        </Text>
+      </View>
 
       <View style={styles.statsGrid}>
         {[
-          { label: 'إجمالي المحتوى', value: posts.length, icon: 'file-text' as const },
-          { label: 'مسودات جاهزة', value: draft, icon: 'edit-3' as const },
-          { label: 'قيد المراجعة', value: review, icon: 'eye' as const },
-          { label: 'منشورة بنجاح', value: published, icon: 'send' as const },
+          { label: 'إجمالي المحتوى', value: reportPosts.length, icon: 'file-text' as const, status: 'all' },
+          { label: 'مسودات', value: draft, icon: 'edit-3' as const, status: 'draft' },
+          { label: 'قيد المراجعة', value: review, icon: 'eye' as const, status: 'review' },
+          { label: 'منشورات منشورة', value: published, icon: 'send' as const, status: 'published' },
         ].map((item) => (
-          <Panel key={item.label} style={styles.statCard}>
-            <Icon name={item.icon} size={18} color={colors.primary} />
-            <Text style={[styles.statValue, { color: colors.foreground }]}>{item.value}</Text>
-            <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{item.label}</Text>
-          </Panel>
+          <Pressable
+            key={item.label}
+            accessibilityRole="button"
+            accessibilityLabel={`عرض ${item.label} في المحتوى`}
+            onPress={() =>
+              router.push({
+                pathname: "/(tabs)/content",
+                params: {
+                  status: item.status,
+                  date: dateRange,
+                },
+              })
+            }
+            style={({ pressed }) => [
+              styles.statCardPressable,
+              { opacity: pressed ? 0.75 : 1 },
+            ]}
+          >
+            <Panel style={styles.statCard}>
+              <Icon name={item.icon} size={18} color={colors.primary} />
+              <Text style={[styles.statValue, { color: colors.foreground }]}>{item.value}</Text>
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{item.label}</Text>
+            </Panel>
+          </Pressable>
         ))}
       </View>
 
       <Panel>
         <SectionTitle
-          title="أداء المنصات والقنوات"
+          title="المحتوى المخصص لكل قناة"
           action={
-            <Pressable onPress={() => router.push('/(tabs)/sources')}>
-              <Text style={[styles.link, { color: colors.primary }]}>إدارة القنوات</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() =>
+                router.push({
+                  pathname: "/(tabs)/more/sources",
+                  params: { view: "publishing" },
+                })
+              }
+            >
+              <Text style={[styles.link, { color: colors.primary }]}>حسابات النشر</Text>
             </Pressable>
           }
         />
-        {!hasConnections ? (
-          <EmptyState
-            icon="link-2"
-            title="اربط حساباتك لعرض التحليلات المباشرة"
-            body="اربط صفحة فيسبوك وحساب إنستغرام الاحترافي لبدء جدولة المحتوى ورصد الأداء."
-          />
-        ) : (
-          <View style={styles.channelsList}>
-            {connections?.instagram && (
-              <View style={[styles.channelItem, { borderColor: colors.border }]}>
-                <View style={styles.channelMeta}>
-                  <View style={[styles.channelIconWrap, { backgroundColor: colors.accent }]}>
-                    <Icon name="instagram" size={18} color={colors.instagram} />
-                  </View>
-                  <View style={styles.channelInfo}>
-                    <Text style={[styles.channelTitle, { color: colors.foreground }]}>
-                      إنستغرام (@{connections.instagram.accountName})
-                    </Text>
-                    <Text style={[styles.channelSub, { color: colors.mutedForeground }]}>
-                      {igPosts} منشور مخصص لهذه القناة
-                    </Text>
-                  </View>
-                </View>
-                <StatusPill label="متصل" tone="green" />
+        <View style={styles.channelsList}>
+          <View style={[styles.channelItem, { borderColor: colors.border }]}>
+            <View style={styles.channelMeta}>
+              <View style={[styles.channelIconWrap, { backgroundColor: colors.accent }]}>
+                <Icon name="instagram" size={18} color={colors.instagram} />
               </View>
-            )}
-
-            {connections?.facebook && (
-              <View style={[styles.channelItem, { borderColor: colors.border }]}>
-                <View style={styles.channelMeta}>
-                  <View style={[styles.channelIconWrap, { backgroundColor: colors.accent }]}>
-                    <Icon name="facebook" size={18} color={colors.facebook} />
-                  </View>
-                  <View style={styles.channelInfo}>
-                    <Text style={[styles.channelTitle, { color: colors.foreground }]}>
-                      فيسبوك ({connections.facebook.accountName})
-                    </Text>
-                    <Text style={[styles.channelSub, { color: colors.mutedForeground }]}>
-                      {fbPosts} منشور مخصص لهذه القناة
-                    </Text>
-                  </View>
-                </View>
-                <StatusPill label="متصل" tone="green" />
+              <View style={styles.channelInfo}>
+                <Text style={[styles.channelTitle, { color: colors.foreground }]}>
+                  {connections?.instagram
+                    ? `إنستغرام (@${connections.instagram.accountName})`
+                    : "إنستغرام"}
+                </Text>
+                <Text style={[styles.channelSub, { color: colors.mutedForeground }]}>
+                  {igPosts} عنصر محتوى مخصص لهذه القناة
+                </Text>
               </View>
-            )}
-
-            <View style={[styles.channelItem, { borderColor: colors.border }]}>
-              <View style={styles.channelMeta}>
-                <View style={[styles.channelIconWrap, { backgroundColor: colors.accent }]}>
-                  <Icon name="message-circle" size={18} color={colors.whatsapp} />
-                </View>
-                <View style={styles.channelInfo}>
-                  <Text style={[styles.channelTitle, { color: colors.foreground }]}>واتساب للأعمال</Text>
-                  <Text style={[styles.channelSub, { color: colors.mutedForeground }]}>
-                    {waPosts} رسالة/منشور مخصص
-                  </Text>
-                </View>
-              </View>
-              <StatusPill label="غير مربوط" tone="muted" />
             </View>
           </View>
-        )}
+          <View style={[styles.channelItem, { borderColor: colors.border }]}>
+            <View style={styles.channelMeta}>
+              <View style={[styles.channelIconWrap, { backgroundColor: colors.accent }]}>
+                <Icon name="facebook" size={18} color={colors.facebook} />
+              </View>
+              <View style={styles.channelInfo}>
+                <Text style={[styles.channelTitle, { color: colors.foreground }]}>
+                  {connections?.facebook
+                    ? `فيسبوك (${connections.facebook.accountName})`
+                    : "فيسبوك"}
+                </Text>
+                <Text style={[styles.channelSub, { color: colors.mutedForeground }]}>
+                  {fbPosts} عنصر محتوى مخصص لهذه القناة
+                </Text>
+              </View>
+            </View>
+          </View>
+          <View style={[styles.channelItem, { borderColor: colors.border }]}>
+            <View style={styles.channelMeta}>
+              <View style={[styles.channelIconWrap, { backgroundColor: colors.accent }]}>
+                <Icon name="message-circle" size={18} color={colors.whatsapp} />
+              </View>
+              <View style={styles.channelInfo}>
+                <Text style={[styles.channelTitle, { color: colors.foreground }]}>
+                  واتساب
+                </Text>
+                <Text style={[styles.channelSub, { color: colors.mutedForeground }]}>
+                  {waPosts} عنصر محتوى مخصص لهذه القناة
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        {connectionsQuery.isError ? (
+          <View style={styles.connectionNotice}>
+            <Text style={[styles.connectionNoticeText, { color: colors.mutedForeground }]}>
+              تعذّر التحقق من ربط حسابات النشر. أعداد المحتوى أعلاه مستقلة عن حالة الربط.
+            </Text>
+            <ActionButton
+              label="إعادة المحاولة"
+              icon="refresh-cw"
+              secondary
+              onPress={() => void connectionsQuery.refetch()}
+            />
+          </View>
+        ) : !connectionsQuery.isLoading && !hasConnections ? (
+          <View style={styles.connectionNotice}>
+            <EmptyState
+              icon="link-2"
+              title="لا توجد حسابات نشر مرتبطة"
+              body="يمكنك ربط فيسبوك وإنستغرام من قسم حسابات النشر."
+            />
+            <ActionButton
+              label="إدارة حسابات النشر"
+              icon="link"
+              onPress={() =>
+                router.push({
+                  pathname: "/(tabs)/more/sources",
+                  params: { view: "publishing" },
+                })
+              }
+            />
+          </View>
+        ) : null}
       </Panel>
 
       <Panel>
         <SectionTitle title="حالة سير العمل والمحتوى" />
         {[
-          { label: 'المسودات', value: draft, tint: colors.blue },
-          { label: 'قيد المراجعة', value: review, tint: colors.warning },
-          { label: 'مجدولة', value: scheduled, tint: colors.instagram },
-          { label: 'منشورة فعلياً', value: published, tint: colors.primary },
+          { label: 'المسودات', value: draft, tint: colors.blue, status: 'draft' },
+          { label: 'قيد المراجعة', value: review, tint: colors.warning, status: 'review' },
+          { label: 'معتمدة', value: approved, tint: colors.blue, status: 'approved' },
+          { label: 'مجدولة', value: scheduled, tint: colors.instagram, status: 'scheduled' },
+          { label: 'قيد النشر', value: publishing, tint: colors.blue, status: 'publishing' },
+          { label: 'تعذّر نشرها', value: failed, tint: colors.warning, status: 'failed' },
+          { label: 'منشورة', value: published, tint: colors.primary, status: 'published' },
         ].map((item) => (
-          <View key={item.label} style={styles.progressRow}>
-            <View style={styles.progressLabelLine}>
-              <Text style={[styles.progressValue, { color: item.tint }]}>{item.value}</Text>
-              <Text style={[styles.progressLabel, { color: colors.foreground }]}>{item.label}</Text>
-            </View>
-            <View style={[styles.track, { backgroundColor: colors.secondary }]}>
+          <Pressable
+            key={item.label}
+            accessibilityRole="button"
+            accessibilityLabel={`عرض ${item.label} في المحتوى`}
+            onPress={() =>
+              router.push({
+                pathname: "/(tabs)/content",
+                params: {
+                  status: item.status,
+                  date: dateRange,
+                },
+              })
+            }
+            style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
+          >
+            <View style={styles.progressRow}>
+              <View style={styles.progressLabelLine}>
+                <Text style={[styles.progressValue, { color: item.tint }]}>
+                  {item.value}
+                </Text>
+                <Text
+                  style={[styles.progressLabel, { color: colors.foreground }]}
+                >
+                  {item.label}
+                </Text>
+              </View>
+              <View
+                style={[styles.track, { backgroundColor: colors.secondary }]}
+              >
               <View
                 style={[
                   styles.bar,
                   {
                     backgroundColor: item.tint,
-                    width: `${posts.length ? Math.min(100, (item.value / posts.length) * 100) : 0}%`,
+                    width: `${reportPosts.length ? Math.min(100, (item.value / reportPosts.length) * 100) : 0}%`,
                   },
                 ]}
               />
+              </View>
             </View>
-          </View>
+          </Pressable>
         ))}
       </Panel>
     </Page>
@@ -203,19 +319,23 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
 }
 
 const styles = StyleSheet.create({
-  reportHeader: { flexDirection: 'row-reverse', alignItems: 'center', gap: 12 },
-  reportIcon: { width: 44, height: 44, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  reportCopy: { flex: 1, alignItems: 'flex-end', gap: 4 },
-  reportTitle: { fontSize: 15, fontWeight: '800' },
-  reportDescription: { fontSize: 11, textAlign: 'right', lineHeight: 17 },
-  statsGrid: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 9 },
-  statCard: { width: '48%', alignItems: 'center', paddingVertical: 15, gap: 7 },
+  rangeSection: { gap: 8 },
+  rangeTitle: { fontSize: 13, fontWeight: '800', textAlign: 'right' },
+  rangeOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  rangeChip: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 11 },
+  rangeChipText: { fontSize: 11, fontWeight: '700' },
+  rangeHint: { fontSize: 10, lineHeight: 15, textAlign: 'right' },
+  connectionNotice: { gap: 10, marginTop: 12 },
+  connectionNoticeText: { fontSize: 11, lineHeight: 17, textAlign: 'right' },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  statCardPressable: { width: '48%' },
+  statCard: { alignItems: 'center', paddingVertical: 15, gap: 7 },
   statValue: { fontSize: 23, fontWeight: '800' },
   statLabel: { fontSize: 11, fontWeight: '600' },
   link: { fontSize: 12, fontWeight: '700' },
   channelsList: { gap: 10, marginTop: 4 },
   channelItem: {
-    flexDirection: 'row-reverse',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 10,
@@ -223,15 +343,20 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
   },
-  channelMeta: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  channelMeta: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   channelIconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  channelInfo: { alignItems: 'flex-end', gap: 2 },
+  channelInfo: { alignItems: 'flex-start', gap: 2 },
   channelTitle: { fontSize: 13, fontWeight: '700' },
-  channelSub: { fontSize: 11 },
+  channelSub: { fontSize: 11, textAlign: 'left' },
   progressRow: { gap: 7, marginTop: 8 },
-  progressLabelLine: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  progressLabelLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   progressValue: { fontSize: 13, fontWeight: '800' },
   progressLabel: { fontSize: 12, fontWeight: '700' },
-  track: { height: 8, borderRadius: 5, overflow: 'hidden', alignItems: 'flex-end' },
+  track: {
+    height: 8,
+    borderRadius: 5,
+    overflow: 'hidden',
+    alignItems: 'flex-start',
+  },
   bar: { height: 8, borderRadius: 5 },
 });

@@ -4,9 +4,22 @@ import {
   GetOnboardingStatusResponse,
   UpdateOnboardingProgressBody,
   UpdateOnboardingProgressResponse,
+  hasEligibleSocialConnection,
+  type EligibleSocialConnections,
 } from "@workspace/api-zod";
-import { db, workspaceOnboarding } from "@workspace/db";
+import {
+  db,
+  menaMetaConnections,
+  menaWhatsAppConnections,
+  workspaceOnboarding,
+} from "@workspace/db";
+import { metaAuthorizationStatus } from "../lib/meta-oauth";
 import { transitionOnboardingProgress } from "../lib/onboarding-progress";
+import { getWorkspaceOnboardingStatus } from "../lib/onboarding-status";
+import {
+  EvolutionApiError,
+  evolutionConnectionState,
+} from "../lib/whatsapp-evolution";
 import {
   requireWorkspace,
   requestWorkspaceId,
@@ -17,29 +30,11 @@ const router = Router();
 
 router.get("/onboarding", requireWorkspace, async (req, res, next) => {
   try {
-    const [progress] = await db
-      .select({
-        step: workspaceOnboarding.currentStep,
-        completed: workspaceOnboarding.completed,
-        socialAccountsCompleted:
-          workspaceOnboarding.socialAccountsCompleted,
-      })
-      .from(workspaceOnboarding)
-      .where(
-        and(
-          eq(workspaceOnboarding.workspaceId, requestWorkspaceId(req)),
-          eq(workspaceOnboarding.userId, requestWorkspaceUserId(req)),
-        ),
-      )
-      .limit(1);
-
     res.json(
-      GetOnboardingStatusResponse.parse({
-        started: progress ? !progress.completed : false,
-        currentStep: progress?.step ?? 3,
-        completed: progress?.completed ?? true,
-        socialAccountsCompleted: progress?.socialAccountsCompleted ?? true,
-      }),
+      await getWorkspaceOnboardingStatus(
+        requestWorkspaceId(req),
+        requestWorkspaceUserId(req),
+      ),
     );
   } catch (error) {
     next(error);
@@ -142,6 +137,95 @@ router.post(
     try {
       const workspaceId = requestWorkspaceId(req);
       const userId = requestWorkspaceUserId(req);
+      const [metaConnection] = await db
+        .select()
+        .from(menaMetaConnections)
+        .where(eq(menaMetaConnections.workspaceId, workspaceId))
+        .limit(1);
+      const now = new Date();
+      const facebook = metaConnection
+        ? {
+            authorizationStatus: metaAuthorizationStatus(
+              metaConnection,
+              "facebook",
+              now,
+            ).authorizationStatus,
+          }
+        : null;
+      const instagram =
+        metaConnection?.instagramUserId && metaConnection.instagramUsername
+          ? {
+              authorizationStatus: metaAuthorizationStatus(
+                metaConnection,
+                "instagram",
+                now,
+              ).authorizationStatus,
+            }
+          : null;
+      let eligibleConnections: EligibleSocialConnections = {
+        facebook,
+        instagram,
+        whatsapp: null,
+      };
+      if (!hasEligibleSocialConnection(eligibleConnections)) {
+        const [whatsappConnection] = await db
+          .select()
+          .from(menaWhatsAppConnections)
+          .where(eq(menaWhatsAppConnections.workspaceId, workspaceId))
+          .limit(1);
+        if (whatsappConnection) {
+          let whatsappState: string;
+          try {
+            whatsappState = await evolutionConnectionState(
+              whatsappConnection.instanceName,
+            );
+          } catch (error) {
+            if (
+              error instanceof EvolutionApiError &&
+              error.statusCode === 404
+            ) {
+              whatsappState = "missing";
+            } else {
+              console.warn("Unable to verify WhatsApp for onboarding completion", {
+                workspaceId,
+                statusCode:
+                  error instanceof EvolutionApiError
+                    ? error.statusCode
+                    : null,
+              });
+              res.status(503).json({
+                error:
+                  "تعذر التحقق من اتصال WhatsApp الآن. حاول مرة أخرى بعد استقرار الخدمة.",
+              });
+              return;
+            }
+          }
+          if (
+            whatsappState === "open" &&
+            whatsappConnection.status !== "connected"
+          ) {
+            await db
+              .update(menaWhatsAppConnections)
+              .set({ status: "connected", connectedAt: now })
+              .where(eq(menaWhatsAppConnections.workspaceId, workspaceId));
+          }
+          eligibleConnections = {
+            ...eligibleConnections,
+            whatsapp: {
+              connectionState:
+                whatsappState === "open" ? "connected" : whatsappState,
+            },
+          };
+        }
+      }
+      if (!hasEligibleSocialConnection(eligibleConnections)) {
+        res.status(409).json({
+          error:
+            "اربط حساب Facebook أو Instagram بصلاحيات صالحة، أو حساب WhatsApp متصلًا، قبل إكمال الإعداد.",
+        });
+        return;
+      }
+
       const [progress] = await db
         .update(workspaceOnboarding)
         .set({

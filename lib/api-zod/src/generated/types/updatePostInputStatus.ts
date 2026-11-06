@@ -12,6 +12,7 @@ export type UpdatePostInputStatus = typeof UpdatePostInputStatus[keyof typeof Up
 export const UpdatePostInputStatus = {
   draft: 'draft',
   review: 'review',
+  approved: 'approved',
   scheduled: 'scheduled',
   published: 'published',
 } as const;

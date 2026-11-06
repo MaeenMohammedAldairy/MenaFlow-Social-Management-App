@@ -1,5 +1,6 @@
 import React from "react";
 import { Image, Modal, Pressable, StyleSheet } from "react-native";
+import { mediaUrlForApp } from "@/lib/content-utils";
 
 interface MediaPreviewModalProps {
   url: string | null;
@@ -22,7 +23,7 @@ export function MediaPreviewModal({ url, onClose }: MediaPreviewModalProps) {
       >
         {url ? (
           <Image
-            source={{ uri: url }}
+            source={{ uri: url ? mediaUrlForApp(url) : undefined }}
             style={styles.mediaPreviewFull}
             resizeMode="contain"
           />

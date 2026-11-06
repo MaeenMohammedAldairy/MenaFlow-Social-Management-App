@@ -44,10 +44,49 @@ export const GenerateAiContentResponse = zod.object({
 
 
 /**
- * @summary Check whether the signed-in user is the MenaFlow owner
+ * @summary Get access and onboarding status for the signed-in user
  */
+export const getOwnerAccessResponseOnboardingCurrentStepMin = 0;
+export const getOwnerAccessResponseOnboardingCurrentStepMax = 3;
+
+
+
 export const GetOwnerAccessResponse = zod.object({
-  "authorized": zod.boolean()
+  "authorized": zod.boolean(),
+  "onboarding": zod.object({
+  "started": zod.boolean(),
+  "currentStep": zod.number().int().min(getOwnerAccessResponseOnboardingCurrentStepMin).max(getOwnerAccessResponseOnboardingCurrentStepMax),
+  "completed": zod.boolean(),
+  "socialAccountsCompleted": zod.boolean()
+})
+})
+
+
+/**
+ * @summary Get the current workspace plan and monthly usage
+ */
+export const GetSubscriptionResponse = zod.object({
+  "planId": zod.enum(['free', 'starter', 'growth']),
+  "planName": zod.string(),
+  "status": zod.enum(['trialing', 'active', 'canceled', 'past_due', 'free']),
+  "trialEndsAt": zod.coerce.date().nullable(),
+  "paymentAvailable": zod.boolean(),
+  "periodKey": zod.string(),
+  "usage": zod.object({
+  "postsCreated": zod.number().int(),
+  "aiGenerations": zod.number().int(),
+  "channels": zod.number().int()
+}),
+  "plans": zod.array(zod.object({
+  "id": zod.enum(['free', 'starter', 'growth']),
+  "name": zod.string(),
+  "monthlyPriceUsd": zod.number().int(),
+  "limits": zod.object({
+  "postsCreated": zod.number().int(),
+  "aiGenerations": zod.number().int(),
+  "channels": zod.number().int()
+})
+}))
 })
 
 
@@ -112,7 +151,7 @@ export const GetSocialConnectionsResponse = zod.object({
   "accountName": zod.string(),
   "connectedAt": zod.coerce.date(),
   "connected": zod.boolean().optional(),
-  "connectionState": zod.enum(['connected', 'connecting', 'disconnected', 'missing', 'unavailable']).optional(),
+  "connectionState": zod.enum(['connected', 'connecting', 'disconnected', 'failed', 'missing', 'unavailable']).optional(),
   "instanceName": zod.string().optional(),
   "phoneNumber": zod.string().optional(),
   "authorizationStatus": zod.enum(['ready', 'needs_reauthorization']).optional(),
@@ -125,7 +164,7 @@ export const GetSocialConnectionsResponse = zod.object({
   "accountName": zod.string(),
   "connectedAt": zod.coerce.date(),
   "connected": zod.boolean().optional(),
-  "connectionState": zod.enum(['connected', 'connecting', 'disconnected', 'missing', 'unavailable']).optional(),
+  "connectionState": zod.enum(['connected', 'connecting', 'disconnected', 'failed', 'missing', 'unavailable']).optional(),
   "instanceName": zod.string().optional(),
   "phoneNumber": zod.string().optional(),
   "authorizationStatus": zod.enum(['ready', 'needs_reauthorization']).optional(),
@@ -138,7 +177,7 @@ export const GetSocialConnectionsResponse = zod.object({
   "accountName": zod.string(),
   "connectedAt": zod.coerce.date(),
   "connected": zod.boolean().optional(),
-  "connectionState": zod.enum(['connected', 'connecting', 'disconnected', 'missing', 'unavailable']).optional(),
+  "connectionState": zod.enum(['connected', 'connecting', 'disconnected', 'failed', 'missing', 'unavailable']).optional(),
   "instanceName": zod.string().optional(),
   "phoneNumber": zod.string().optional(),
   "authorizationStatus": zod.enum(['ready', 'needs_reauthorization']).optional(),
@@ -187,7 +226,7 @@ export const MetaOAuthCallbackResponse = zod.void()
 
 
 /**
- * @summary Reuse or create a workspace Evolution instance and request a pairing code
+ * @summary Reuse or create a workspace Evolution instance and request phone-code or QR pairing
  */
 export const postWhatsAppPairingCodeBodyPhoneNumberRegExp = new RegExp('^\\+?[1-9][0-9]{7,14}$');
 
@@ -200,10 +239,10 @@ export const PostWhatsAppPairingCodeBody = zod.object({
 export const PostWhatsAppPairingCodeResponse = zod.object({
   "instanceName": zod.string(),
   "phoneNumber": zod.string(),
-  "pairingCode": zod.string(),
-  "qrCodeBase64": zod.string().optional().describe('Optional QR image returned by Evolution for scanning when phone-number pairing is rejected.'),
+  "pairingCode": zod.string().optional().describe('Optional phone-number pairing code.'),
+  "qrCodeBase64": zod.string().optional().describe('Optional QR image returned by Evolution for scanning when phone-number pairing is unavailable.'),
   "state": zod.enum(['connecting'])
-})
+}).describe('At least one of pairingCode or qrCodeBase64 is returned.')
 
 
 /**
@@ -214,7 +253,7 @@ export const GetWhatsAppConnectionStatusQueryParams = zod.object({
 })
 
 export const GetWhatsAppConnectionStatusResponse = zod.object({
-  "state": zod.enum(['connecting', 'connected', 'disconnected'])
+  "state": zod.enum(['connecting', 'connected', 'disconnected', 'failed', 'unavailable'])
 })
 
 
@@ -290,7 +329,7 @@ export const TestWhatsAppAutoReplyResponse = zod.object({
 export const GetWhatsAppGroupsResponse = zod.object({
   "groups": zod.array(zod.object({
   "groupJid": zod.string(),
-  "groupId": zod.string(),
+  "groupId": zod.string().optional().describe('Internal identity ID when already persisted.'),
   "kind": zod.enum(['announcement']),
   "name": zod.string(),
   "communityParentJid": zod.string().optional(),
@@ -306,7 +345,7 @@ export const GetWhatsAppGroupsResponse = zod.object({
 export const GetWhatsAppGroupSelectionsResponse = zod.object({
   "groups": zod.array(zod.object({
   "groupJid": zod.string(),
-  "groupId": zod.string(),
+  "groupId": zod.string().describe('Internal identity ID when already persisted.'),
   "kind": zod.enum(['announcement']),
   "name": zod.string(),
   "communityParentJid": zod.string().optional(),
@@ -331,7 +370,7 @@ export const SaveWhatsAppGroupSelectionsBody = zod.object({
 export const SaveWhatsAppGroupSelectionsResponse = zod.object({
   "groups": zod.array(zod.object({
   "groupJid": zod.string(),
-  "groupId": zod.string(),
+  "groupId": zod.string().describe('Internal identity ID when already persisted.'),
   "kind": zod.enum(['announcement']),
   "name": zod.string(),
   "communityParentJid": zod.string().optional(),
@@ -342,8 +381,12 @@ export const SaveWhatsAppGroupSelectionsResponse = zod.object({
 
 
 /**
- * @summary Disconnect WhatsApp account
+ * @summary Disconnect WhatsApp or cancel a pending pairing
  */
+export const DeleteWhatsAppConnectionQueryParams = zod.object({
+  "cancelPairing": zod.coerce.boolean().optional().describe('Cancel only an in-progress pairing without deleting saved workspace settings')
+})
+
 export const DeleteWhatsAppConnectionResponse = zod.object({
   "disconnected": zod.boolean(),
   "alreadyDisconnected": zod.boolean().optional(),
@@ -377,7 +420,7 @@ export const CreatePostBody = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
-  "status": zod.enum(['draft', 'review', 'scheduled', 'published']),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
   "metadata": zod.record(zod.string(), zod.unknown()).optional()
 })
 

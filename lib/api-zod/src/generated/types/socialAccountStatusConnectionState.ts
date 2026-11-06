@@ -13,6 +13,7 @@ export const SocialAccountStatusConnectionState = {
   connected: 'connected',
   connecting: 'connecting',
   disconnected: 'disconnected',
+  failed: 'failed',
   missing: 'missing',
   unavailable: 'unavailable',
 } as const;

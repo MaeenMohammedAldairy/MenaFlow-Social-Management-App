@@ -178,11 +178,19 @@ export function EmptyState({ icon, title, body }: { icon: LucideIconName; title:
   );
 }
 
-export function StatusPill({ label, tone = 'muted' }: { label: string; tone?: 'green' | 'amber' | 'blue' | 'muted' }) {
+export function StatusPill({
+  label,
+  tone = 'muted',
+  style,
+}: {
+  label: string;
+  tone?: 'green' | 'amber' | 'blue' | 'muted';
+  style?: StyleProp<ViewStyle>;
+}) {
   const colors = useColors();
-  const color = tone === 'green' ? colors.primary : tone === 'amber' ? colors.warning : tone === 'blue' ? colors.blue : colors.mutedForeground;
+  const color = tone === 'green' ? colors.primary : tone === 'amber' ? colors.warning : tone === 'blue' ? colors.blue : colors.secondaryForeground;
   return (
-    <View style={[styles.pill, { backgroundColor: tone === 'green' ? colors.accent : colors.secondary }]}>
+    <View style={[styles.pill, style, { backgroundColor: tone === 'green' ? colors.accent : colors.secondary }]}>
       <View style={[styles.pillDot, { backgroundColor: color }]} />
       <Text style={[styles.pillText, { color }]}>{label}</Text>
     </View>
@@ -202,30 +210,40 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   scrollContent: { flexGrow: 1 },
   pageContent: { paddingHorizontal: 18, gap: 18 },
-  brandHeader: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', minHeight: 38 },
+  brandHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 38 },
   brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   brandMark: { width: 29, height: 29, borderRadius: 9 },
   brandName: { fontSize: 19, fontWeight: '800', letterSpacing: -0.7 },
   iconOnly: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   headerSpacer: { width: 40 },
-  notificationDot: { position: 'absolute', width: 7, height: 7, borderRadius: 4, top: 8, right: 8 },
+  notificationDot: { position: 'absolute', width: 7, height: 7, borderRadius: 4, top: 8, end: 8 },
   avatar: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  titleRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 },
-  titleCopy: { flex: 1, alignItems: 'flex-end', gap: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 },
+  titleCopy: { flex: 1, alignItems: 'flex-start', gap: 4 },
   pageTitle: { fontSize: 24, fontWeight: '800', textAlign: 'right' },
-  pageSubtitle: { fontSize: 13, lineHeight: 20, textAlign: 'right' },
+  pageSubtitle: {
+    alignSelf: 'stretch',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'left',
+  },
   panel: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 14, shadowColor: '#0A2540', shadowOpacity: 0.035, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 1 },
-  sectionTitle: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  sectionTitle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   sectionText: { fontSize: 16, fontWeight: '800', textAlign: 'right' },
-  actionButton: { minHeight: 46, borderRadius: 15, borderWidth: 1, paddingHorizontal: 15, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  actionButton: { minHeight: 46, borderRadius: 15, borderWidth: 1, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   actionLabel: { fontSize: 14, fontWeight: '700' },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 22, paddingHorizontal: 18, gap: 8 },
   emptyIcon: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
   emptyTitle: { fontSize: 15, fontWeight: '800', textAlign: 'center' },
-  emptyBody: { fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  emptyBody: {
+    alignSelf: 'stretch',
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'left',
+  },
   errorBanner: { borderRadius: 12, padding: 12 },
-  errorText: { fontSize: 12, textAlign: 'right', lineHeight: 18 },
-  pill: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' },
+  errorText: { fontSize: 12, textAlign: 'left', lineHeight: 18 },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' },
   pillDot: { width: 6, height: 6, borderRadius: 3 },
-  pillText: { fontSize: 11, fontWeight: '700' },
+  pillText: { fontSize: 12, fontWeight: '700' },
 });

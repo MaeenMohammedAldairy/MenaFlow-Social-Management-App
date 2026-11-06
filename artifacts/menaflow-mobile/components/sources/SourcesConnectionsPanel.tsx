@@ -12,7 +12,6 @@ export type SourceKey = "instagram" | "facebook" | "whatsapp";
 type SourceDefinition = {
   key: SourceKey;
   name: string;
-  provider: string;
   description: string;
 };
 
@@ -20,28 +19,25 @@ const sources: SourceDefinition[] = [
   {
     key: "facebook",
     name: "فيسبوك",
-    provider: "Meta Business",
-    description:
-      "اربط صفحة أعمال من حساب Meta الخاص بك. سيُطلب منك تسجيل الدخول بحساب فيسبوك لمنح الصلاحيات اللازمة.",
+    description: "صفحة Facebook تملك صلاحية إدارتها.",
   },
   {
     key: "instagram",
     name: "إنستغرام",
-    provider: "Instagram Business",
-    description:
-      "ربط Instagram غير مشمول في تدفق ربط Facebook الحالي، ولا يلزم لربط صفحة Facebook.",
+    description: "حساب احترافي مرتبط بصفحة Facebook.",
   },
   {
     key: "whatsapp",
     name: "واتساب",
-    provider: "WhatsApp Business API",
-    description:
-      "اربط خادم WhatsApp Business API لإدارة مجموعاتك ومزامنة محتواها ونشر المحتوى عليها.",
+    description: "WhatsApp Business لاستيراد رسائل المجموعات.",
   },
 ];
 
 interface SourcesConnectionsPanelProps {
   compactLayout: boolean;
+  sourceKeys: SourceKey[];
+  sectionTitle: string;
+  refreshLabel: string;
   connections?: SocialConnectionsResponse;
   busySources: Record<SourceKey, boolean>;
   disconnectingSource: SourceKey | null;
@@ -59,6 +55,9 @@ interface SourcesConnectionsPanelProps {
 
 export function SourcesConnectionsPanel({
   compactLayout,
+  sourceKeys,
+  sectionTitle,
+  refreshLabel,
   connections,
   busySources,
   disconnectingSource,
@@ -74,23 +73,23 @@ export function SourcesConnectionsPanel({
   onRefresh,
 }: SourcesConnectionsPanelProps) {
   const colors = useColors();
+  const visibleSources = sources.filter((source) =>
+    sourceKeys.includes(source.key),
+  );
 
   return (
     <Panel>
-      <SectionTitle title="المنصات المتاحة" />
+      <SectionTitle title={sectionTitle} />
       {connectionError ? (
         <Text style={[styles.error, { color: colors.destructive }]}>
           {connectionError}
         </Text>
       ) : null}
 
-      {sources.map((source) => {
+      {visibleSources.map((source) => {
         const connected = isConnected(source.key);
         const sourceBusy =
           busySources[source.key] || disconnectingSource === source.key;
-        const whatsappRestoring =
-          source.key === "whatsapp" &&
-          connections?.whatsapp?.connectionState === "connecting";
         const reauthorizationRequired =
           source.key === "facebook"
             ? connections?.facebook?.authorizationStatus ===
@@ -98,6 +97,28 @@ export function SourcesConnectionsPanel({
             : source.key === "instagram" &&
               connections?.instagram?.authorizationStatus ===
                 "needs_reauthorization";
+        const connectionNeedsAttention =
+          reauthorizationRequired ||
+          (source.key === "whatsapp" &&
+            Boolean(connections?.whatsapp) &&
+            !connected);
+        const whatsappConnecting =
+          source.key === "whatsapp" &&
+          connections?.whatsapp?.connectionState === "connecting";
+        const whatsappActionLabel = busySources.whatsapp
+          ? "جارٍ الربط…"
+          : connected
+            ? "إعدادات الحساب"
+            : whatsappConnecting
+              ? "متابعة الربط"
+              : "إعادة الربط";
+        const statusTone = sourceBusy || whatsappConnecting
+          ? "blue"
+          : connected && !reauthorizationRequired
+            ? "green"
+            : connectionNeedsAttention
+              ? "amber"
+              : "muted";
 
         return (
           <View
@@ -105,7 +126,13 @@ export function SourcesConnectionsPanel({
             style={[
               styles.sourceCard,
               compactLayout && styles.sourceCardCompact,
-              { borderColor: connected ? colors.primary : colors.border },
+              {
+                borderColor: connected
+                  ? colors.primary
+                  : connectionNeedsAttention
+                    ? colors.warning
+                    : colors.border,
+              },
             ]}
           >
             <Pressable
@@ -114,11 +141,11 @@ export function SourcesConnectionsPanel({
                 connected ? `تفاصيل حساب ${source.name}` : `ربط ${source.name}`
               }
               onPress={() => onSourceCardPress(source.key)}
-              disabled={sourceBusy || whatsappRestoring}
+              disabled={sourceBusy}
               style={[
                 styles.sourceIdentity,
                 compactLayout && styles.sourceIdentityCompact,
-                (sourceBusy || whatsappRestoring) && styles.disabledSource,
+                sourceBusy && styles.disabledSource,
               ]}
             >
               <View
@@ -135,25 +162,19 @@ export function SourcesConnectionsPanel({
                   </Text>
                   <StatusPill
                     label={sourceStatus(source.key)}
-                    tone={connected && !reauthorizationRequired ? "green" : "muted"}
+                    tone={statusTone}
                   />
                 </View>
-                <Text
-                  style={[
-                    styles.providerName,
-                    { color: colors.mutedForeground },
-                  ]}
-                >
-                  {source.provider}
-                </Text>
-                <Text
-                  style={[
-                    styles.sourceDescription,
-                    { color: colors.mutedForeground },
-                  ]}
-                >
-                  {source.description}
-                </Text>
+                {!connected || reauthorizationRequired ? (
+                  <Text
+                    style={[
+                      styles.sourceDescription,
+                      { color: colors.secondaryForeground },
+                    ]}
+                  >
+                    {source.description}
+                  </Text>
+                ) : null}
               </View>
             </Pressable>
 
@@ -161,9 +182,7 @@ export function SourcesConnectionsPanel({
               <View style={styles.whatsappCardActions}>
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={
-                    connected ? "إعدادات حساب واتساب" : "إعادة المحاولة"
-                  }
+                  accessibilityLabel={whatsappActionLabel}
                   disabled={sourceBusy}
                   onPress={connected ? onOpenWhatsAppSetup : onConnectWhatsApp}
                   style={[
@@ -194,11 +213,7 @@ export function SourcesConnectionsPanel({
                       { color: colors.primaryForeground },
                     ]}
                   >
-                    {busySources.whatsapp
-                      ? "جارٍ الربط…"
-                      : connected
-                        ? "إعدادات الحساب"
-                        : "إعادة المحاولة"}
+                    {whatsappActionLabel}
                   </Text>
                 </Pressable>
                 {connected ? (
@@ -239,7 +254,7 @@ export function SourcesConnectionsPanel({
                     ? `إعادة تفويض ${source.name}`
                     : `${connected ? "إلغاء ربط" : "ربط"} ${source.name}`
                 }
-                disabled={sourceBusy || whatsappRestoring}
+                disabled={sourceBusy}
                 onPress={() => onSourceAction(source.key)}
                 style={[
                   styles.connectButton,
@@ -250,7 +265,7 @@ export function SourcesConnectionsPanel({
                     backgroundColor: connected && !reauthorizationRequired
                       ? colors.secondary
                       : colors.primary,
-                    opacity: sourceBusy || whatsappRestoring ? 0.6 : 1,
+                    opacity: sourceBusy ? 0.6 : 1,
                   },
                 ]}
               >
@@ -296,9 +311,9 @@ export function SourcesConnectionsPanel({
             )}
           </View>
         );
-      })}
+        })}
       <ActionButton
-        label="تحديث حالة الحسابات"
+        label={refreshLabel}
         icon="refresh-cw"
         secondary
         onPress={onRefresh}
@@ -312,7 +327,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 17,
     padding: 12,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 9,
   },
@@ -323,7 +338,7 @@ const styles = StyleSheet.create({
   },
   sourceIdentity: {
     flex: 1,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 9,
   },
@@ -336,23 +351,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  sourceCopy: { flex: 1, alignItems: "flex-end", gap: 3 },
+  sourceCopy: { flex: 1, alignItems: "flex-start", gap: 3 },
   sourceTitleLine: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
     flexWrap: "wrap",
   },
   sourceName: { fontSize: 14, fontWeight: "800" },
-  providerName: { fontSize: 11, fontWeight: "600" },
-  sourceDescription: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  sourceDescription: { fontSize: 12, lineHeight: 17, textAlign: "left" },
   whatsappCardActions: { gap: 7, alignItems: "stretch" },
   connectButton: {
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
@@ -362,11 +376,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 7,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 5,
   },
-  disconnectLabel: { fontSize: 10, fontWeight: "700" },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  disconnectLabel: { fontSize: 11, fontWeight: "700" },
+  error: { fontSize: 12, lineHeight: 18, textAlign: "left" },
 });

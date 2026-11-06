@@ -4,6 +4,8 @@ import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { StatusPill } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
+import { formatArabicDateTime } from "@/lib/formatting";
+import { mediaUrlForApp } from "@/lib/content-utils";
 import {
   canConvertWhatsAppMessageGroup,
   type DisplayedWhatsAppMessageGroup,
@@ -93,7 +95,7 @@ export function WhatsAppMessageGroupCard({
                         onPress={() => item.url && onPreview(item.url)}
                       >
                         <Image
-                          source={{ uri: item.thumbnailUrl || item.url }}
+                          source={{ uri: mediaUrlForApp(item.thumbnailUrl || item.url) }}
                           style={styles.mediaThumbnail}
                           resizeMode="cover"
                         />
@@ -179,7 +181,7 @@ export function WhatsAppMessageGroupCard({
               onPress={() => item.url && onPreview(item.url)}
             >
               <Image
-                source={{ uri: item.thumbnailUrl || item.url || undefined }}
+                source={{ uri: mediaUrlForApp(item.thumbnailUrl || item.url || "") }}
                 style={styles.mediaThumbnail}
                 resizeMode="cover"
               />
@@ -248,7 +250,7 @@ export function WhatsAppMessageGroupCard({
         </Pressable>
       ) : null}
       <Text style={[styles.meta, { color: colors.mutedForeground }]}>
-        {group.messageTimestamp ? new Date(group.messageTimestamp).toLocaleString("ar-EG") : "غير محدد"}
+        {formatArabicDateTime(group.messageTimestamp) ?? "غير محدد"}
       </Text>
     </View>
   );
@@ -256,14 +258,14 @@ export function WhatsAppMessageGroupCard({
 
 const styles = StyleSheet.create({
   card: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 8 },
-  header: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  senderWrap: { flex: 1, alignItems: "flex-end", gap: 3 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  senderWrap: { flex: 1, alignItems: "flex-start", gap: 3 },
   groupStatus: { flexShrink: 0 },
   sender: { fontSize: 12, fontWeight: "800", textAlign: "right", flexShrink: 1 },
-  body: { fontSize: 12, lineHeight: 19, textAlign: "right" },
-  suggestionList: { alignItems: "flex-end", gap: 8 },
-  suggestion: { alignItems: "flex-end", gap: 5 },
-  candidateMediaList: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },
+  body: { fontSize: 12, lineHeight: 19, textAlign: "left" },
+  suggestionList: { alignItems: "flex-start", gap: 8 },
+  suggestion: { alignItems: "flex-start", gap: 5 },
+  candidateMediaList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   suggestionActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   suggestionAction: {
     minHeight: 36,
@@ -273,11 +275,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  meta: { fontSize: 10, textAlign: "right" },
-  mediaList: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 7 },
+  meta: { fontSize: 10, textAlign: "left" },
+  mediaList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   mediaThumbnail: { width: 76, height: 76, borderRadius: 8 },
   mediaPlaceholder: { width: 76, height: 76, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   mediaType: { fontSize: 11, fontWeight: "700" },
-  convertAction: { minHeight: 40, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 7 },
+  convertAction: { minHeight: 40, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
   convertActionLabel: { fontSize: 11, fontWeight: "800" },
 });

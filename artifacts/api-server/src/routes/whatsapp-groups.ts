@@ -8,11 +8,11 @@ import {
   normalizeEvolutionGroups,
   type WhatsAppGroup,
 } from "../lib/whatsapp-groups";
-import { reconcileWhatsAppGroupDirectory } from "../lib/whatsapp-group-identity";
 import {
   EvolutionApiError,
   evolutionRequest,
 } from "../lib/whatsapp-evolution";
+import { reconcileWhatsAppGroupDirectory } from "../lib/whatsapp-group-identity";
 import { evolutionErrorResponse } from "./whatsapp-route-errors";
 
 const router: IRouter = Router();
@@ -32,15 +32,33 @@ export async function connectedWhatsAppForWorkspace(workspaceId: string) {
 
 export async function freshWhatsAppGroups(
   instanceName: string,
+  signal?: AbortSignal,
 ): Promise<WhatsAppGroup[]> {
-  const payload = await evolutionRequest(
-    `group/fetchAllGroups/${encodeURIComponent(instanceName)}?getParticipants=false`,
-    {},
-    EVOLUTION_GROUP_FETCH_TIMEOUT_MS,
-  );
+  const startedAt = performance.now();
+  let phase = "request";
   try {
-    return normalizeEvolutionGroups(payload);
+    const payload = await evolutionRequest(
+      `group/fetchAllGroups/${encodeURIComponent(instanceName)}?getParticipants=false`,
+      { signal },
+      EVOLUTION_GROUP_FETCH_TIMEOUT_MS,
+    );
+    const requestDurationMs = Math.round(performance.now() - startedAt);
+    phase = "normalize";
+    const normalizeStartedAt = performance.now();
+    const groups = normalizeEvolutionGroups(payload);
+    console.info("WhatsApp group directory fetched", {
+      groupCount: groups.length,
+      requestDurationMs,
+      normalizeDurationMs: Math.round(performance.now() - normalizeStartedAt),
+    });
+    return groups;
   } catch (error) {
+    if (signal?.aborted) throw error;
+    console.warn("WhatsApp group directory fetch failed", {
+      phase,
+      durationMs: Math.round(performance.now() - startedAt),
+      reason: error instanceof Error ? error.message : "UNKNOWN_ERROR",
+    });
     if (error instanceof Error && error.message === "EVOLUTION_API_INVALID_GROUPS_RESPONSE") {
       throw new EvolutionApiError(502, error.message);
     }
@@ -56,12 +74,22 @@ router.get("/social/whatsapp/groups", requireWorkspace, async (req, res) => {
     return;
   }
 
+  const requestStartedAt = performance.now();
+  const upstreamController = new AbortController();
+  const abortUpstreamOnDisconnect = () => {
+    if (!res.writableEnded) upstreamController.abort();
+  };
+  res.once("close", abortUpstreamOnDisconnect);
   try {
     const connection = await connectedWhatsAppForWorkspace(workspaceId);
-    const [groups, selections] = await Promise.all([
-      freshWhatsAppGroups(connection.instanceName),
-      db
-        .select({ groupId: menaWhatsAppGroupSelections.groupId })
+    let selectionsReadDurationMs = 0;
+    const selectionsPromise = (async () => {
+      const selectionsStartedAt = performance.now();
+      const selections = await db
+        .select({
+          groupId: menaWhatsAppGroupSelections.groupId,
+          groupJid: menaWhatsAppGroupSelections.groupJid,
+        })
         .from(menaWhatsAppGroupSelections)
         .where(
           and(
@@ -69,40 +97,63 @@ router.get("/social/whatsapp/groups", requireWorkspace, async (req, res) => {
             eq(menaWhatsAppGroupSelections.instanceName, connection.instanceName),
             eq(menaWhatsAppGroupSelections.selected, true),
           ),
-        ),
+        );
+      selectionsReadDurationMs = Math.round(
+        performance.now() - selectionsStartedAt,
+      );
+      return selections;
+    })();
+    const [groups, selections] = await Promise.all([
+      freshWhatsAppGroups(connection.instanceName, upstreamController.signal),
+      selectionsPromise,
     ]);
-    const identities = await reconcileWhatsAppGroupDirectory(
+    await reconcileWhatsAppGroupDirectory(
       workspaceId,
       connection.ownerId,
       connection.instanceName,
       groups,
     );
-    const identityByJid = new Map(
-      identities.map((identity) => [identity.groupJid, identity]),
+    const selectedJids = new Set(
+      selections.flatMap(({ groupJid }) => groupJid ? [groupJid] : []),
     );
-    const selectedIds = new Set(
-      selections.flatMap(({ groupId }) => groupId ? [groupId] : []),
+    const selectedGroupIdsByJid = new Map(
+      selections.flatMap(({ groupId, groupJid }) =>
+        groupId && groupJid ? [[groupJid, groupId] as const] : [],
+      ),
     );
     const responseGroups = groups.map((group) => {
-      const identity = identityByJid.get(group.groupJid);
-      if (!identity) throw new Error("WHATSAPP_GROUP_IDENTITY_NOT_FOUND");
+      const groupId = selectedGroupIdsByJid.get(group.groupJid);
       return {
         ...group,
-        groupId: identity.id,
-        selected: selectedIds.has(identity.id),
+        ...(groupId ? { groupId } : {}),
+        selected: selectedJids.has(group.groupJid),
       };
     });
 
+    console.info("WhatsApp group directory response prepared", {
+      groupCount: groups.length,
+      selectedCount: selectedJids.size,
+      selectionsReadDurationMs,
+      totalDurationMs: Math.round(performance.now() - requestStartedAt),
+    });
     res.json({
       groups: responseGroups,
     });
   } catch (error) {
+    if (upstreamController.signal.aborted || res.destroyed) return;
+    console.warn("WhatsApp group directory response failed", {
+      totalDurationMs: Math.round(performance.now() - requestStartedAt),
+      failureCode:
+        error instanceof EvolutionApiError ? error.message : "INTERNAL_ERROR",
+    });
     if (error instanceof EvolutionApiError) {
       evolutionErrorResponse(res, error, "Error fetching WhatsApp groups");
       return;
     }
     console.error("Error fetching WhatsApp groups:", error);
     res.status(500).json({ error: "تعذر تحميل مجموعات واتساب." });
+  } finally {
+    res.off("close", abortUpstreamOnDisconnect);
   }
 });
 

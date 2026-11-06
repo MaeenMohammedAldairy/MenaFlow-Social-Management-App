@@ -6,6 +6,7 @@ import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { EmptyState, StatusPill } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
+import { formatArabicDate, formatArabicDateTime } from "@/lib/formatting";
 import type { Post, PostStatus } from "@/context/StudioContext";
 import {
   mediaPreviewUrl,
@@ -90,7 +91,7 @@ function displayPostTitle(post: Post): string {
     return title;
   }
   return (
-    post.body
+    (post.body || post.sourceText || "")
       .trim()
       .split(/\r?\n/)
       .find(Boolean)
@@ -98,6 +99,24 @@ function displayPostTitle(post: Post): string {
       .slice(0, 72) ||
     (post.sourceType === "whatsapp" ? "منشور واتساب" : "منشور بدون عنوان")
   );
+}
+
+function postReadinessMessage(post: Post): string | null {
+  const hasText =
+    post.sourceType === "whatsapp"
+      ? Boolean(post.body.trim())
+      : Boolean(post.body.trim() || post.title.trim());
+  const hasMedia = Boolean(post.mediaUrls?.length);
+  if (!hasText && !hasMedia) {
+    return "أضف نصاً وأرفق وسيطاً واحداً على الأقل قبل الاعتماد أو النشر. استخدم «تعديل» لإكمال المنشور.";
+  }
+  if (!hasText) {
+    return "أضف نصاً للمنشور قبل اعتماده أو نشره. استخدم «تعديل» لإكماله.";
+  }
+  if (!hasMedia) {
+    return "أرفق وسيطاً واحداً على الأقل قبل اعتماد المنشور أو نشره. استخدم «تعديل» لإكماله.";
+  }
+  return null;
 }
 
 export function ContentPostList({
@@ -121,10 +140,20 @@ export function ContentPostList({
   const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [expandedActionPostIds, setExpandedActionPostIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [approvingPostId, setApprovingPostId] = useState<string | null>(null);
   const [previewPost, setPreviewPost] = useState<Post | null>(null);
   const [previewChannel, setPreviewChannel] = useState<MetaChannel>("facebook");
   const activePreviewChannels = previewPost ? previewChannels(previewPost) : [];
+
+  const markMediaFailed = (mediaUrl: string) => {
+    setFailedMediaUrls((current) => new Set(current).add(mediaUrl));
+  };
 
   const renderPreviewMedia = () => {
     if (!previewPost?.mediaUrls?.length) return null;
@@ -136,38 +165,66 @@ export function ContentPostList({
         <View style={styles.previewMediaList}>
           {previewPost.mediaUrls.map((mediaUrl, index) => {
             const mediaType = postMediaType(previewPost, mediaUrl);
-            return mediaType === "image" ? (
-              <Image
-                key={`${mediaUrl}-${index}`}
-                source={{
-                  uri: mediaPreviewUrl(
-                    mediaUrl,
-                    previewPost.mediaPreviewUrls?.[index],
-                    mediaPreviewUrls,
-                  ),
-                }}
-                style={styles.mediaImage}
-                contentFit="cover"
-                cachePolicy="disk"
-                accessibilityLabel={`وسيط ${index + 1} للمنشور`}
-              />
-            ) : (
+            const previewUrl = mediaPreviewUrl(
+              mediaUrl,
+              previewPost.mediaPreviewUrls?.[index],
+              mediaPreviewUrls,
+            );
+            if (mediaType !== "image") {
+              return (
+                <View
+                  key={`${mediaUrl}-${index}`}
+                  style={[
+                    styles.previewMediaPlaceholder,
+                    { backgroundColor: colors.accent },
+                  ]}
+                >
+                  <Icon
+                    name={mediaType === "video" ? "play" : "file-text"}
+                    size={18}
+                    color={colors.primary}
+                  />
+                  <Text
+                    style={[
+                      styles.mediaVideoLabel,
+                      { color: colors.primary },
+                    ]}
+                  >
+                    {mediaType === "video" ? "فيديو" : "مستند"}
+                  </Text>
+                </View>
+              );
+            }
+            return failedMediaUrls.has(previewUrl) ? (
               <View
                 key={`${mediaUrl}-${index}`}
+                accessibilityLabel="تعذر تحميل الوسيط"
                 style={[
                   styles.previewMediaPlaceholder,
                   { backgroundColor: colors.accent },
                 ]}
               >
                 <Icon
-                  name={mediaType === "video" ? "play" : "file-text"}
+                  name="alert-circle"
                   size={18}
-                  color={colors.primary}
+                  color={colors.destructive}
                 />
-                <Text style={[styles.mediaVideoLabel, { color: colors.primary }]}>
-                  {mediaType === "video" ? "فيديو" : "مستند"}
+                <Text
+                  style={[styles.mediaVideoLabel, { color: colors.destructive }]}
+                >
+                  تعذر التحميل
                 </Text>
               </View>
+            ) : (
+              <Image
+                key={`${mediaUrl}-${index}`}
+                source={{ uri: previewUrl }}
+                style={styles.mediaImage}
+                contentFit="cover"
+                cachePolicy="disk"
+                accessibilityLabel={`وسيط ${index + 1} للمنشور`}
+                onError={() => markMediaFailed(previewUrl)}
+              />
             );
           })}
         </View>
@@ -214,7 +271,17 @@ export function ContentPostList({
             {group.posts.map((post) => {
               const status = statusInfo(post.status);
               const displayTitle = displayPostTitle(post);
+              const readinessMessage = postReadinessMessage(post);
               const expanded = expandedPostIds.has(post.id);
+              const actionsExpanded = expandedActionPostIds.has(post.id);
+              const primaryAction =
+                post.status === "review"
+                  ? "preview"
+                  : post.status === "draft"
+                    ? "submit"
+                    : ["approved", "scheduled", "failed"].includes(post.status)
+                      ? "publish"
+                      : null;
               const sourceText = post.sourceText ?? "";
               const canExpand =
                 post.body.length > 240 || sourceText.length > 160;
@@ -248,11 +315,9 @@ export function ContentPostList({
                           { color: colors.mutedForeground },
                         ]}
                       >
-                        {post.sourceMessageDate
-                          ? new Date(post.sourceMessageDate).toLocaleDateString(
-                              "ar",
-                            )
-                          : new Date(post.createdAt).toLocaleDateString("ar")}
+                        {formatArabicDate(
+                          post.sourceMessageDate ?? post.createdAt,
+                        ) ?? "غير محدد"}
                       </Text>
                     </View>
                   </View>
@@ -262,6 +327,11 @@ export function ContentPostList({
                       <View style={styles.mediaImages}>
                         {post.mediaUrls.slice(0, 3).map((mediaUrl, index) => {
                           const mediaType = postMediaType(post, mediaUrl);
+                          const previewUrl = mediaPreviewUrl(
+                            mediaUrl,
+                            post.mediaPreviewUrls?.[index],
+                            mediaPreviewUrls,
+                          );
                           return mediaType === "video" ? (
                             <View
                               key={`${mediaUrl}-${index}`}
@@ -285,21 +355,41 @@ export function ContentPostList({
                               </Text>
                             </View>
                           ) : mediaType === "image" ? (
-                            <Image
-                              key={`${mediaUrl}-${index}`}
-                              source={{
-                                uri: mediaPreviewUrl(
-                                  mediaUrl,
-                                  post.mediaPreviewUrls?.[index],
-                                  mediaPreviewUrls,
-                                ),
-                              }}
-                              style={styles.mediaImage}
-                              contentFit="cover"
-                              cachePolicy="disk"
-                              priority="low"
+                            failedMediaUrls.has(previewUrl) ? (
+                              <View
+                                key={`${mediaUrl}-${index}`}
+                                accessibilityLabel="تعذر تحميل الوسيط"
+                                style={[
+                                  styles.mediaVideo,
+                                  { backgroundColor: colors.accent },
+                                ]}
+                              >
+                                <Icon
+                                  name="alert-circle"
+                                  size={20}
+                                  color={colors.destructive}
+                                />
+                                <Text
+                                  style={[
+                                    styles.mediaVideoLabel,
+                                    { color: colors.destructive },
+                                  ]}
+                                >
+                                  تعذر التحميل
+                                </Text>
+                              </View>
+                            ) : (
+                              <Image
+                                key={`${mediaUrl}-${index}`}
+                                source={{ uri: previewUrl }}
+                                style={styles.mediaImage}
+                                contentFit="cover"
+                                cachePolicy="disk"
+                                priority="low"
                                 accessibilityLabel={`وسيط ${index + 1} للمنشور`}
-                            />
+                                onError={() => markMediaFailed(previewUrl)}
+                              />
+                            )
                           ) : (
                             <View
                               key={`${mediaUrl}-${index}`}
@@ -391,19 +481,19 @@ export function ContentPostList({
                       {publishReasonLabel(reviewReason) ?? reviewReason}
                     </Text>
                   ) : null}
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => {
-                      setPreviewChannel(previewChannels(post)[0] ?? "facebook");
-                      setPreviewPost(post);
-                    }}
-                  >
+                  {readinessMessage &&
+                  post.status !== "published" &&
+                  post.status !== "publishing" ? (
                     <Text
-                      style={[styles.reviewAction, { color: colors.primary }]}
+                      accessibilityRole="text"
+                      style={[
+                        styles.sourceText,
+                        { color: colors.destructive },
+                      ]}
                     >
-                      معاينة المنشور والنتيجة
+                      {readinessMessage}
                     </Text>
-                  </Pressable>
+                  ) : null}
                   {facebookStatus === "unknown" ? (
                     <View style={{ gap: 6 }}>
                       <Pressable
@@ -483,148 +573,288 @@ export function ContentPostList({
                     ) : null}
 
                     <View style={styles.postActions}>
-                      <Pressable
-                        accessibilityRole="button"
-                        onPress={() => onEdit(post)}
-                      >
-                        <Text
-                          style={[
-                            styles.reviewAction,
-                            { color: colors.primary },
-                          ]}
-                        >
-                          تعديل
-                        </Text>
-                      </Pressable>
-                      {post.status !== "published" &&
-                        post.status !== "publishing" && (
-                          <Pressable
-                            accessibilityRole="button"
-                            style={[styles.postActionButton, { borderColor: colors.border }]}
-                            onPress={() => onPublish(post)}
-                          >
-                            <Text
-                              style={[
-                                styles.reviewAction,
-                                { color: colors.green },
-                              ]}
-                            >
-                              {post.status === "failed"
-                                ? "إعادة محاولة النشر"
-                                : post.status === "approved"
-                                  ? "نشر الآن"
-                                  : post.status === "review"
-                                    ? "نشر يدوي"
-                                    : "نشر"}
-                            </Text>
-                          </Pressable>
-                        )}
-                      {post.status === "review" ? (
+                      {primaryAction ? (
                         <Pressable
                           accessibilityRole="button"
-                          disabled={approvingPostId === post.id}
-                          accessibilityLabel={`اعتماد ${post.title || "المنشور"} للنشر التلقائي`}
-                          accessibilityState={{ busy: approvingPostId === post.id }}
-                          style={[styles.postActionButton, { borderColor: colors.border }]}
-                          onPress={async () => {
-                            setApprovingPostId(post.id);
-                            try {
-                              await onApprove(post);
-                            } finally {
-                              setApprovingPostId(null);
+                          accessibilityLabel={
+                            primaryAction === "preview"
+                              ? "معاينة ومراجعة المنشور"
+                              : primaryAction === "submit"
+                                ? "إرسال المنشور للمراجعة"
+                                : post.status === "failed"
+                                  ? "إعادة محاولة النشر"
+                                  : "نشر المنشور"
+                          }
+                          disabled={
+                            primaryAction === "publish" &&
+                            Boolean(readinessMessage)
+                          }
+                          accessibilityState={{
+                            disabled:
+                              primaryAction === "publish" &&
+                              Boolean(readinessMessage),
+                          }}
+                          style={[
+                            styles.primaryPostAction,
+                            {
+                              backgroundColor: colors.primary,
+                              opacity:
+                                primaryAction === "publish" &&
+                                readinessMessage
+                                  ? 0.5
+                                  : 1,
+                            },
+                          ]}
+                          onPress={() => {
+                            if (primaryAction === "preview") {
+                              setPreviewChannel(
+                                previewChannels(post)[0] ?? "facebook",
+                              );
+                              setPreviewPost(post);
+                            } else if (primaryAction === "submit") {
+                              void updatePostStatus(post.id, "review").catch(
+                                (error) =>
+                                  Alert.alert(
+                                    "تعذر إرسال المنشور للمراجعة",
+                                    error instanceof Error
+                                      ? error.message
+                                      : "تعذر تحديث حالة المنشور.",
+                                  ),
+                              );
+                            } else {
+                              onPublish(post);
                             }
                           }}
                         >
                           <Text
-                            style={[styles.reviewAction, { color: colors.green }]}
-                          >
-                            {approvingPostId === post.id ? "جارٍ الاعتماد…" : "اعتماد للنشر التلقائي"}
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                      {post.status === "draft" ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          style={[styles.postActionButton, { borderColor: colors.border }]}
-                          onPress={() =>
-                            void updatePostStatus(post.id, "review").catch((error) =>
-                              Alert.alert(
-                                "تعذر إرسال المنشور للمراجعة",
-                                error instanceof Error
-                                  ? error.message
-                                  : "تعذر تحديث حالة المنشور.",
-                              ),
-                            )
-                          }
-                        >
-                          <Text
-                            style={[styles.reviewAction, { color: colors.primary }]}
-                          >
-                            إرسال للمراجعة
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                      {post.status !== "published" &&
-                      post.status !== "publishing" ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          style={[styles.postActionButton, { borderColor: colors.border }]}
-                          onPress={() =>
-                            void updatePostStatus(post.id, "draft").catch((error) =>
-                              Alert.alert(
-                                "تعذر حفظ المسودة",
-                                error instanceof Error
-                                  ? error.message
-                                  : "تعذر تحديث حالة المنشور.",
-                              ),
-                            )
-                          }
-                        >
-                          <Text
                             style={[
                               styles.reviewAction,
-                              { color: colors.mutedForeground },
+                              { color: colors.primaryForeground },
                             ]}
                           >
-                            حفظ كمسودة
+                            {primaryAction === "preview"
+                              ? "مراجعة المنشور"
+                              : primaryAction === "submit"
+                                ? "إرسال للمراجعة"
+                                : post.status === "failed"
+                                  ? "إعادة المحاولة"
+                                  : "نشر الآن"}
                           </Text>
                         </Pressable>
                       ) : null}
                       <Pressable
                         accessibilityRole="button"
-                        accessibilityLabel="حذف المنشور"
-                        style={styles.deleteActionButton}
+                        accessibilityState={{ expanded: actionsExpanded }}
                         onPress={() =>
-                          Alert.alert(
-                            "حذف المنشور؟",
-                            post.status === "published"
-                              ? "سيُحذف سجل المنشور من مساحة العمل والخادم فقط؛ وسيبقى المنشور على المنصة."
-                              : "سيُحذف هذا المنشور نهائياً من مساحة العمل والخادم.",
-                            [
-                              { text: "إلغاء", style: "cancel" },
-                              {
-                                text: "حذف",
-                                style: "destructive",
-                                onPress: () =>
-                                  void deletePost(post.id).catch((error) =>
-                                    Alert.alert(
-                                      "تعذر حذف المنشور",
-                                      error instanceof Error
-                                        ? error.message
-                                        : "تعذر حذف المنشور من مساحة العمل.",
-                                    ),
-                                  ),
-                              },
-                            ],
-                          )
+                          setExpandedActionPostIds((current) => {
+                            const next = new Set(current);
+                            if (next.has(post.id)) next.delete(post.id);
+                            else next.add(post.id);
+                            return next;
+                          })
                         }
+                        style={[
+                          styles.morePostActionsButton,
+                          { borderColor: colors.border },
+                        ]}
                       >
+                        <Text
+                          style={[
+                            styles.reviewAction,
+                            { color: colors.foreground },
+                          ]}
+                        >
+                          المزيد
+                        </Text>
                         <Icon
-                          name="trash-2"
-                          size={16}
-                          color={colors.destructive}
+                          name={actionsExpanded ? "chevron-up" : "chevron-down"}
+                          size={15}
+                          color={colors.mutedForeground}
                         />
                       </Pressable>
+                      {actionsExpanded ? (
+                        <View
+                          style={[
+                            styles.secondaryPostActions,
+                            { borderTopColor: colors.border },
+                          ]}
+                        >
+                          <Pressable
+                            accessibilityRole="button"
+                            onPress={() => onEdit(post)}
+                            style={[
+                              styles.postActionButton,
+                              { borderColor: colors.border },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.reviewAction,
+                                { color: colors.primary },
+                              ]}
+                            >
+                              تعديل
+                            </Text>
+                          </Pressable>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="معاينة المنشور والنتيجة"
+                            onPress={() => {
+                              setPreviewChannel(
+                                previewChannels(post)[0] ?? "facebook",
+                              );
+                              setPreviewPost(post);
+                            }}
+                            style={[
+                              styles.postActionButton,
+                              { borderColor: colors.border },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.reviewAction,
+                                { color: colors.primary },
+                              ]}
+                            >
+                              المعاينة
+                            </Text>
+                          </Pressable>
+                          {post.status !== "published" &&
+                          post.status !== "publishing" &&
+                          post.status !== "failed" ? (
+                            <Pressable
+                              accessibilityRole="button"
+                              disabled={Boolean(readinessMessage)}
+                              accessibilityState={{
+                                disabled: Boolean(readinessMessage),
+                              }}
+                              onPress={() => onPublish(post)}
+                              style={[
+                                styles.postActionButton,
+                                {
+                                  borderColor: colors.border,
+                                  opacity: readinessMessage ? 0.5 : 1,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.reviewAction,
+                                  { color: colors.green },
+                                ]}
+                              >
+                                نشر يدوي
+                              </Text>
+                            </Pressable>
+                          ) : null}
+                          {post.status === "review" ? (
+                            <Pressable
+                              accessibilityRole="button"
+                              disabled={
+                                Boolean(readinessMessage) ||
+                                approvingPostId === post.id
+                              }
+                              accessibilityLabel={`اعتماد ${post.title || "المنشور"} للنشر التلقائي`}
+                              accessibilityState={{
+                                disabled: Boolean(readinessMessage),
+                                busy: approvingPostId === post.id,
+                              }}
+                              onPress={async () => {
+                                setApprovingPostId(post.id);
+                                try {
+                                  await onApprove(post);
+                                } finally {
+                                  setApprovingPostId(null);
+                                }
+                              }}
+                              style={[
+                                styles.postActionButton,
+                                {
+                                  borderColor: colors.border,
+                                  opacity: readinessMessage ? 0.5 : 1,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.reviewAction,
+                                  { color: colors.green },
+                                ]}
+                              >
+                                {approvingPostId === post.id
+                                  ? "جارٍ الاعتماد…"
+                                  : "اعتماد"}
+                              </Text>
+                            </Pressable>
+                          ) : null}
+                          {post.status !== "draft" &&
+                          post.status !== "published" &&
+                          post.status !== "publishing" ? (
+                            <Pressable
+                              accessibilityRole="button"
+                              onPress={() =>
+                                void updatePostStatus(post.id, "draft").catch(
+                                  (error) =>
+                                    Alert.alert(
+                                      "تعذر حفظ المسودة",
+                                      error instanceof Error
+                                        ? error.message
+                                        : "تعذر تحديث حالة المنشور.",
+                                    ),
+                                )
+                              }
+                              style={[
+                                styles.postActionButton,
+                                { borderColor: colors.border },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.reviewAction,
+                                  { color: colors.mutedForeground },
+                                ]}
+                              >
+                                حفظ كمسودة
+                              </Text>
+                            </Pressable>
+                          ) : null}
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="حذف المنشور"
+                            style={styles.deleteActionButton}
+                            onPress={() =>
+                              Alert.alert(
+                                "حذف المنشور؟",
+                                post.status === "published"
+                                  ? "سيُحذف سجل المنشور من مساحة العمل والخادم فقط؛ وسيبقى المنشور على المنصة."
+                                  : "سيُحذف هذا المنشور نهائياً من مساحة العمل والخادم.",
+                                [
+                                  { text: "إلغاء", style: "cancel" },
+                                  {
+                                    text: "حذف",
+                                    style: "destructive",
+                                    onPress: () =>
+                                      void deletePost(post.id).catch((error) =>
+                                        Alert.alert(
+                                          "تعذر حذف المنشور",
+                                          error instanceof Error
+                                            ? error.message
+                                            : "تعذر حذف المنشور من مساحة العمل.",
+                                        ),
+                                      ),
+                                  },
+                                ],
+                              )
+                            }
+                          >
+                            <Icon
+                              name="trash-2"
+                              size={16}
+                              color={colors.destructive}
+                            />
+                          </Pressable>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
                 </View>
@@ -637,7 +867,7 @@ export function ContentPostList({
         <Text
           style={[
             styles.intro,
-            { color: colors.mutedForeground, textAlign: "center" },
+            { color: colors.mutedForeground, textAlign: "left" },
           ]}
         >
           جارٍ تحميل المزيد…
@@ -685,9 +915,9 @@ export function ContentPostList({
                     tone={statusInfo(previewPost.status).tone}
                   />
                   <Text style={[styles.postDate, { color: colors.mutedForeground }]}>
-                    {previewPost.sourceMessageDate
-                      ? new Date(previewPost.sourceMessageDate).toLocaleString("ar")
-                      : new Date(previewPost.createdAt).toLocaleString("ar")}
+                    {formatArabicDateTime(
+                      previewPost.sourceMessageDate ?? previewPost.createdAt,
+                    ) ?? "غير محدد"}
                   </Text>
                 </View>
                 <View style={styles.previewPlatformTabs}>

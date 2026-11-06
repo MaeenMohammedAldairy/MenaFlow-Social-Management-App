@@ -22,3 +22,5 @@ export * from "./whatsapp-content";
 export * from "./posts";
 export * from "./meta-inbox";
 export * from "./workspaces";
+export * from "./products";
+export * from "./subscriptions";

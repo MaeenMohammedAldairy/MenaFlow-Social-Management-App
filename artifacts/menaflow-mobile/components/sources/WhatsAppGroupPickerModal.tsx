@@ -13,6 +13,8 @@ import { StatusPill } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import type { WhatsAppGroupsResponse } from "@workspace/api-client-react";
 
+const MAX_SELECTED_GROUPS = 500;
+
 interface WhatsAppGroupPickerModalProps {
   visible: boolean;
   groupsData?: WhatsAppGroupsResponse;
@@ -89,7 +91,7 @@ export function WhatsAppGroupPickerModal({
                 يتم جلب أسماء المجموعات فقط.
               </Text>
             </View>
-          ) : isError ? (
+          ) : isError && !groupsData ? (
             <View style={styles.setupEmptyState}>
               <Text
                 style={[styles.emptyMessage, { color: colors.destructive }]}
@@ -155,6 +157,14 @@ export function WhatsAppGroupPickerModal({
                   </Text>
                 </Pressable>
               </View>
+              {isError ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={[styles.emptyMessage, { color: colors.destructive }]}
+                >
+                  تعذّر تحديث القائمة؛ المعروض آخر جلب ناجح. يمكنك إعادة المحاولة.
+                </Text>
+              ) : null}
               <CairoTextInput
                 accessibilityLabel="البحث في مجموعات واتساب"
                 placeholder="ابحث باسم المجموعة"
@@ -179,7 +189,13 @@ export function WhatsAppGroupPickerModal({
                       selection.includes(group.groupJid),
                     ),
                 }}
-                disabled={groupsData.groups.length === 0}
+                disabled={
+                  groupsData.groups.length === 0 ||
+                  (groupsData.groups.length > MAX_SELECTED_GROUPS &&
+                    !groupsData.groups.every((group) =>
+                      selection.includes(group.groupJid),
+                    ))
+                }
                 onPress={() => {
                   const groupJids = groupsData.groups.map(
                     (group) => group.groupJid,
@@ -211,6 +227,14 @@ export function WhatsAppGroupPickerModal({
                   تحديد جميع المجموعات
                 </Text>
               </Pressable>
+              {groupsData.groups.length > MAX_SELECTED_GROUPS ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={[styles.emptyMessage, { color: colors.destructive }]}
+                >
+                  الحد الأقصى للاختيار 500 مجموعة. استخدم البحث لاختيار المجموعات المطلوبة.
+                </Text>
+              ) : null}
               {groupsData.groups.length === 0 ? (
                 <View style={styles.setupEmptyState}>
                   <Text
@@ -261,6 +285,9 @@ export function WhatsAppGroupPickerModal({
                             accessibilityRole="checkbox"
                             accessibilityLabel={`${group.name}، مجموعة إعلانات`}
                             accessibilityState={{ checked: selected }}
+                            disabled={
+                              !selected && selection.length >= MAX_SELECTED_GROUPS
+                            }
                             onPress={() => onToggleGroup(group.groupJid)}
                             style={[
                               styles.groupCard,
@@ -268,7 +295,11 @@ export function WhatsAppGroupPickerModal({
                                 borderColor: selected
                                   ? colors.primary
                                   : colors.border,
-                                opacity: 1,
+                                opacity:
+                                  !selected &&
+                                  selection.length >= MAX_SELECTED_GROUPS
+                                    ? 0.5
+                                    : 1,
                               },
                             ]}
                           >
@@ -387,7 +418,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "left" },
   groupsLoading: {
     alignItems: "center",
     justifyContent: "center",
@@ -407,13 +438,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
   secondaryActionLabel: { fontSize: 12, fontWeight: "700" },
   groupCountsRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
     gap: 8,
@@ -423,7 +454,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 10,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
@@ -440,7 +471,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 12,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 10,
   },
@@ -449,7 +480,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
     marginBottom: 8,
@@ -470,9 +501,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  groupCardCopy: { flex: 1, gap: 4, alignItems: "flex-end" },
+  groupCardCopy: { flex: 1, gap: 4, alignItems: "flex-start" },
   groupCardTitle: { fontSize: 14, fontWeight: "700", textAlign: "right" },
-  dialogActions: { flexDirection: "row-reverse", gap: 10, marginTop: 4 },
+  dialogActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   dialogButton: {
     flex: 1,
     minHeight: 44,
