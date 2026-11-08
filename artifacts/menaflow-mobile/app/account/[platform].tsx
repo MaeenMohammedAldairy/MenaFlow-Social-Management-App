@@ -228,6 +228,10 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
       <PageTitle
         title={`تفاصيل حساب ${platformInfo.name}`}
         subtitle="بيانات الحساب وإحصاءاته من المنصة ومزامنة مساحة العمل."
+        back={{
+          href: "/(tabs)/more/sources",
+          label: "العودة إلى الحسابات والمصادر",
+        }}
       />
 
       {detailsQuery.isLoading ? (

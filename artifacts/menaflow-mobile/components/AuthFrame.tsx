@@ -187,7 +187,7 @@ export function AuthFrame({
 
 export const authStyles = StyleSheet.create({
   card: { width: '100%', gap: 10 },
-  label: { fontSize: 12, textAlign: 'right', fontWeight: '700' },
+  label: { fontSize: 14, textAlign: 'right', fontWeight: '700' },
   inputRow: {
     minHeight: 46,
     borderRadius: 13,
@@ -197,11 +197,19 @@ export const authStyles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
+  inputFocused: {
+    borderWidth: 2,
+    shadowColor: '#069969',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 2,
+  },
   input: {
     minHeight: 44,
     flex: 1,
     paddingHorizontal: 2,
-    fontSize: 13,
+    fontSize: 16,
     textAlign: 'right',
     writingDirection: 'rtl',
     outlineStyle: 'none',
@@ -236,8 +244,8 @@ export const authStyles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
-  secondaryText: { fontSize: 12, fontWeight: '700' },
-  error: { fontSize: 12, lineHeight: 18, textAlign: 'left' },
+  secondaryText: { fontSize: 14, fontWeight: '700' },
+  error: { fontSize: 14, lineHeight: 21, textAlign: 'left' },
   linkRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -245,8 +253,8 @@ export const authStyles = StyleSheet.create({
     gap: 5,
     marginTop: 3,
   },
-  linkText: { fontSize: 12, fontWeight: '700' },
-  hint: { fontSize: 11, lineHeight: 17, textAlign: 'left' },
+  linkText: { fontSize: 14, fontWeight: '700' },
+  hint: { fontSize: 14, lineHeight: 21, textAlign: 'left' },
 });
 
 const styles = StyleSheet.create({
@@ -345,7 +353,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: '900', textAlign: 'center', lineHeight: 32 },
   subtitle: {
     alignSelf: 'stretch',
-    fontSize: 12,
+    fontSize: 14,
     lineHeight: 19,
     textAlign: 'left',
     maxWidth: 300,
@@ -495,7 +503,7 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   artworkCaptionTitle: { fontSize: 19, fontWeight: '800' },
-  artworkCaptionText: { fontSize: 12 },
+  artworkCaptionText: { fontSize: 14 },
   captionArrow: {
     width: 32,
     height: 32,
@@ -512,5 +520,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  footer: { fontSize: 10, textAlign: 'center', marginTop: 1 },
+  footer: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 1 },
 });

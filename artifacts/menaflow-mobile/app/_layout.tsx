@@ -1,8 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  MutationCache,
+  QueryClient,
+  QueryCache,
+  QueryClientProvider,
+  useQuery,
+} from "@tanstack/react-query";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
-import { SafeAreaProvider } from "react-native-safe-area-context";
+import {
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import {
   useFonts,
@@ -15,13 +29,15 @@ import {
   Cairo_800ExtraBold,
   Cairo_900Black,
 } from "@expo-google-fonts/cairo";
-import { Stack } from "expo-router";
+import { router, Stack, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { ClerkLoaded, ClerkProvider, useAuth } from "@clerk/expo";
+import { ClerkLoaded, ClerkProvider, useAuth, useClerk } from "@clerk/expo";
 import { tokenCache } from "@clerk/expo/token-cache";
 import {
   getGetSocialConnectionsQueryKey,
   getGetOnboardingStatusQueryKey,
+  getOnboardingStatus,
+  getOnboardingStatusQueryKey,
   setAuthTokenGetter,
   setBaseUrl,
 } from "@workspace/api-client-react";
@@ -29,6 +45,9 @@ import { StudioProvider } from "@/context/StudioContext";
 import { Platform, I18nManager } from "react-native";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { applyAppearanceMode, readAppearanceMode } from "@/lib/appearance";
+import { signOutAndClearQueryCache } from "@/lib/sign-out";
+import { CairoText as Text } from "@/components/CairoTypography";
+import { useColors } from "@/hooks/useColors";
 
 if (Platform.OS === "web" && typeof document !== "undefined") {
   document.documentElement.lang = "ar";
@@ -38,7 +57,67 @@ if (Platform.OS === "web" && typeof document !== "undefined") {
 // Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
-const queryClient = new QueryClient();
+type ApiErrorNotice = {
+  kind: "unauthorized" | "forbidden" | "server" | "network";
+  retry?: () => Promise<void>;
+  signOutFailed?: boolean;
+};
+
+let apiErrorListener: ((notice: ApiErrorNotice) => void) | null = null;
+let queryClient: QueryClient;
+
+function apiErrorStatus(error: unknown): number | null {
+  if (
+    error instanceof Error &&
+    error.name === "ApiError" &&
+    "status" in error &&
+    typeof error.status === "number"
+  ) {
+    return error.status;
+  }
+  return null;
+}
+
+function reportApiError(
+  error: unknown,
+  retry?: () => Promise<void>,
+): void {
+  const status = apiErrorStatus(error);
+  if (status === 401) {
+    apiErrorListener?.({ kind: "unauthorized" });
+  } else if (status === 403) {
+    apiErrorListener?.({ kind: "forbidden" });
+  } else if (status !== null && status >= 500) {
+    apiErrorListener?.({ kind: "server", retry });
+  } else if (error instanceof TypeError) {
+    apiErrorListener?.({ kind: "network", retry });
+  }
+}
+
+queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      reportApiError(error, () =>
+        queryClient.refetchQueries({
+          queryKey: query.queryKey,
+          exact: true,
+        }),
+      );
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError: (error) => reportApiError(error),
+  }),
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error) => {
+        const status = apiErrorStatus(error);
+        if (status !== null && status >= 400 && status < 500) return false;
+        return failureCount < 2;
+      },
+    },
+  },
+});
 queryClient.setQueryDefaults(getGetSocialConnectionsQueryKey(), {
   staleTime: 30_000,
 });
@@ -67,6 +146,7 @@ if (publicDomain) {
       "Production EXPO_PUBLIC_DOMAIN must use a public HTTPS API origin.",
     );
   }
+
   if (
     !hasProtocol &&
     (apiUrl.hostname === "localhost" ||
@@ -81,42 +161,102 @@ if (publicDomain) {
 const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
 const clerkProxyUrl = process.env.EXPO_PUBLIC_CLERK_PROXY_URL || undefined;
 
-function AppNavigator() {
+function AppNavigator({ isSignedIn }: { isSignedIn: boolean }) {
   return (
     <Stack screenOptions={{ headerBackTitle: "رجوع" }}>
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Protected guard={!isSignedIn} redirectTo="/">
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      </Stack.Protected>
+      <Stack.Protected guard={isSignedIn} redirectTo="/(auth)/sign-in">
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="product-catalog" options={{ headerShown: false }} />
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="connect-accounts" options={{ headerShown: false }} />
+        <Stack.Screen name="whatsapp-setup" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="inbox/[conversationId]"
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="compose"
+          options={{ headerShown: false, presentation: "modal" }}
+        />
+        <Stack.Screen name="account/profile" options={{ headerShown: false }} />
+        <Stack.Screen name="account/[platform]" options={{ headerShown: false }} />
+        <Stack.Screen name="oauth/meta" options={{ headerShown: false }} />
+      </Stack.Protected>
       <Stack.Screen name="sso-callback" options={{ headerShown: false }} />
-      <Stack.Screen name="product-catalog" options={{ headerShown: false }} />
-      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="connect-accounts" options={{ headerShown: false }} />
-      <Stack.Screen name="whatsapp-setup" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="inbox/[conversationId]"
-        options={{ headerShown: false }}
-      />
-      <Stack.Screen
-        name="compose"
-        options={{ headerShown: false, presentation: "modal" }}
-      />
-      <Stack.Screen name="account/profile" options={{ headerShown: false }} />
-      <Stack.Screen name="account/[platform]" options={{ headerShown: false }} />
-      <Stack.Screen name="oauth/meta" options={{ headerShown: false }} />
     </Stack>
   );
 }
 
 function AuthenticatedAppNavigator() {
-  const { getToken, userId } = useAuth();
+  const { getToken, isSignedIn, userId } = useAuth();
+  const { signOut } = useClerk();
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const pathname = usePathname();
   const getTokenRef = React.useRef(getToken);
   const [authTokenGetterReady, setAuthTokenGetterReady] = useState(false);
+  const [apiErrorNotice, setApiErrorNotice] =
+    useState<ApiErrorNotice | null>(null);
   getTokenRef.current = getToken;
+
+  const onboarding = useQuery({
+    queryKey: getOnboardingStatusQueryKey(userId ?? null),
+    queryFn: () => getOnboardingStatus(),
+    enabled: Boolean(isSignedIn && userId && authTokenGetterReady),
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (!isSignedIn || !onboarding.data) return;
+    if (pathname === "/sso-callback" || pathname === "/oauth/meta") return;
+
+    const onOnboarding = pathname.endsWith("/onboarding");
+    const allowedDuringSocialSetup =
+      pathname.endsWith("/connect-accounts") ||
+      pathname.endsWith("/more/sources") ||
+      pathname.endsWith("/whatsapp-setup");
+
+    if (!onboarding.data.completed && !onOnboarding) {
+      router.replace("/onboarding");
+    } else if (
+      onboarding.data.completed &&
+      !onboarding.data.socialAccountsCompleted &&
+      !allowedDuringSocialSetup
+    ) {
+      router.replace("/connect-accounts");
+    }
+  }, [isSignedIn, onboarding.data, pathname]);
 
   useEffect(() => {
     setAuthTokenGetter(() => getTokenRef.current());
     setAuthTokenGetterReady(true);
     return () => setAuthTokenGetter(null);
   }, []);
+
+  useEffect(() => {
+    apiErrorListener = setApiErrorNotice;
+    return () => {
+      apiErrorListener = null;
+    };
+  }, []);
+
+  const reauthenticate = async () => {
+    try {
+      await signOutAndClearQueryCache(queryClient, signOut);
+      router.replace("/(auth)/sign-in");
+    } catch (error) {
+      console.error("Unable to end the rejected session:", error);
+      setApiErrorNotice((current) =>
+        current?.kind === "unauthorized"
+          ? { ...current, signOutFailed: true }
+          : current,
+      );
+    }
+  };
 
   if (!authTokenGetterReady) return null;
 
@@ -125,7 +265,87 @@ function AuthenticatedAppNavigator() {
       key={userId ?? "signed-out"}
       storageNamespace={userId ? `user:${userId}` : null}
     >
-      <AppNavigator />
+      <View style={styles.navigator}>
+        <AppNavigator isSignedIn={Boolean(isSignedIn)} />
+        {apiErrorNotice ? (
+          <View
+            accessibilityRole="alert"
+            accessibilityLiveRegion="assertive"
+            style={[
+              styles.apiErrorNotice,
+              {
+                top: insets.top + 12,
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Text style={[styles.apiErrorText, { color: colors.foreground }]}>
+              {apiErrorNotice.kind === "unauthorized"
+                ? apiErrorNotice.signOutFailed
+                  ? "تعذر إنهاء الجلسة. تحقق من اتصالك ثم حاول تسجيل الدخول مجددًا."
+                  : "انتهت صلاحية الجلسة أو تعذر التحقق منها. سجّل الدخول مجددًا للمتابعة."
+                : apiErrorNotice.kind === "forbidden"
+                  ? "ليس لديك صلاحية لتنفيذ هذا الإجراء."
+                  : apiErrorNotice.kind === "server"
+                    ? "حدث خطأ في الخادم. حاول مرة أخرى لاحقًا."
+                    : "تعذر الاتصال بالخادم. تحقق من اتصالك وحاول مجددًا."}
+            </Text>
+            <View style={styles.apiErrorActions}>
+              {apiErrorNotice.kind === "unauthorized" ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => void reauthenticate()}
+                  style={[
+                    styles.apiErrorButton,
+                    { backgroundColor: colors.primary },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.apiErrorButtonText,
+                      { color: colors.primaryForeground },
+                    ]}
+                  >
+                    تسجيل الدخول مجددًا
+                  </Text>
+                </Pressable>
+              ) : null}
+              {apiErrorNotice.retry ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    const retry = apiErrorNotice.retry;
+                    setApiErrorNotice(null);
+                    if (retry) void retry();
+                  }}
+                  style={[
+                    styles.apiErrorButton,
+                    { backgroundColor: colors.primary },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.apiErrorButtonText,
+                      { color: colors.primaryForeground },
+                    ]}
+                  >
+                    إعادة المحاولة
+                  </Text>
+                </Pressable>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إغلاق رسالة الخطأ"
+                onPress={() => setApiErrorNotice(null)}
+                style={styles.apiErrorDismiss}
+              >
+                <Text style={{ color: colors.mutedForeground }}>إغلاق</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+      </View>
     </StudioProvider>
   );
 }
@@ -187,7 +407,7 @@ export default function RootLayout() {
             <KeyboardProvider>
               {isLocalAuthDisabled ? (
                 <StudioProvider>
-                  <AppNavigator />
+                  <AppNavigator isSignedIn />
                 </StudioProvider>
               ) : (
                 <ClerkProvider
@@ -207,3 +427,49 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  navigator: { flex: 1 },
+  apiErrorNotice: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    zIndex: 1000,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  apiErrorText: {
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "right",
+  },
+  apiErrorActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  apiErrorButton: {
+    minHeight: 38,
+    borderRadius: 11,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  apiErrorButtonText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  apiErrorDismiss: {
+    minHeight: 38,
+    paddingHorizontal: 10,
+    justifyContent: "center",
+  },
+});

@@ -1,1 +1,1 @@
-export { default } from "../sources";
+export { SourcesScreen as default } from "../sources";

@@ -6,7 +6,6 @@ import { isLiquidGlassAvailable } from "expo-glass-effect";
 import { Tabs } from "expo-router";
 import { NativeTabs } from "expo-router/native-tabs";
 import { SymbolView } from "expo-symbols";
-import { OwnerGuard } from "@/components/OwnerGuard";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { useAuth } from "@clerk/expo";
 import { useQuery } from "@tanstack/react-query";
@@ -33,13 +32,17 @@ function NativeTabLayout({ hidden }: { hidden: boolean }) {
         />
         <NativeTabs.Trigger.Label>الرئيسية</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
+      <NativeTabs.Trigger name="products">
+        <NativeTabs.Trigger.Icon sf="shippingbox" md="inventory_2" />
+        <NativeTabs.Trigger.Label>المنتجات</NativeTabs.Trigger.Label>
+      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="content">
-        <NativeTabs.Trigger.Icon sf="doc.text" md="article" />
-        <NativeTabs.Trigger.Label>المحتوى</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf="square.and.pencil" md="edit_note" />
+        <NativeTabs.Trigger.Label>المنشورات</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="inbox">
         <NativeTabs.Trigger.Icon sf="bubble.left.and.bubble.right" md="forum" />
-        <NativeTabs.Trigger.Label>الوارد</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>المحادثات</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="more">
         <NativeTabs.Trigger.Icon sf="ellipsis" md="more_horiz" />
@@ -79,7 +82,7 @@ function ClassicTabLayout({ hidden }: { hidden: boolean }) {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
-        tabBarLabelStyle: { fontFamily: "Cairo_700Bold" },
+        tabBarLabelStyle: { fontFamily: "Cairo_700Bold", fontSize: 10 },
         headerShown: false,
         tabBarStyle: {
           position: "absolute",
@@ -120,9 +123,18 @@ function ClassicTabLayout({ hidden }: { hidden: boolean }) {
         }}
       />
       <Tabs.Screen
+        name="products"
+        options={{
+          title: "المنتجات",
+          tabBarIcon: ({ color }) => (
+            <Icon name="package" size={21} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="content"
         options={{
-          title: "المحتوى",
+          title: "المنشورات",
           tabBarIcon: ({ color }) => (
             <Icon name="file-text" size={21} color={color} />
           ),
@@ -131,7 +143,7 @@ function ClassicTabLayout({ hidden }: { hidden: boolean }) {
       <Tabs.Screen
         name="inbox"
         options={{
-          title: "الوارد",
+          title: "المحادثات",
           tabBarIcon: ({ color }) => (
             <Icon name="message-square" size={21} color={color} />
           ),
@@ -163,14 +175,10 @@ function ClassicTabLayout({ hidden }: { hidden: boolean }) {
 }
 
 export default function TabLayout() {
-  return (
-    <OwnerGuard>
-      {isLocalAuthDisabled ? (
-        <TabNavigation hidden={false} />
-      ) : (
-        <AuthenticatedTabNavigation />
-      )}
-    </OwnerGuard>
+  return isLocalAuthDisabled ? (
+    <TabNavigation hidden={false} />
+  ) : (
+    <AuthenticatedTabNavigation />
   );
 }
 

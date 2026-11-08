@@ -18,11 +18,10 @@ import {
   Page,
   PageTitle,
   Panel,
-  SectionTitle,
 } from "@/components/Ui";
 import { useStudio } from "@/context/StudioContext";
 import { useColors } from "@/hooks/useColors";
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import { useClerk, useUser } from "@clerk/expo";
 import { useQueryClient } from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
@@ -45,6 +44,8 @@ function SettingRow({
   onValueChange,
   danger = false,
   busy = false,
+  showChevron = false,
+  last = false,
 }: {
   icon: LucideIconName;
   title: string;
@@ -53,6 +54,8 @@ function SettingRow({
   onValueChange?: (next: boolean) => void;
   danger?: boolean;
   busy?: boolean;
+  showChevron?: boolean;
+  last?: boolean;
 }) {
   const colors = useColors();
   const settingIcon = (
@@ -70,7 +73,13 @@ function SettingRow({
     </View>
   );
   return (
-    <View style={[styles.settingRow, { borderBottomColor: colors.border }]}>
+    <View
+      style={[
+        styles.settingRow,
+        { borderBottomColor: colors.border },
+        last && styles.settingRowLast,
+      ]}
+    >
       {settingIcon}
       <View style={styles.settingCopy}>
         <Text
@@ -91,6 +100,8 @@ function SettingRow({
       </View>
       {onValueChange ? (
         <Switch
+          accessibilityLabel={title}
+          accessibilityHint={subtitle}
           value={value}
           onValueChange={onValueChange}
           trackColor={{ false: colors.border, true: colors.primary }}
@@ -98,12 +109,34 @@ function SettingRow({
         />
       ) : busy ? (
         <ActivityIndicator size="small" color={colors.destructive} />
+      ) : showChevron ? (
+        <Icon name="chevron-left" size={18} color={colors.mutedForeground} />
       ) : null}
     </View>
   );
 }
 
-export default function SettingsScreen() {
+function SettingsSectionTitle({
+  icon,
+  title,
+}: {
+  icon: LucideIconName;
+  title: string;
+}) {
+  const colors = useColors();
+  return (
+    <View style={styles.sectionHeading}>
+      <View style={[styles.sectionIcon, { backgroundColor: colors.accent }]}>
+        <Icon name={icon} size={16} color={colors.primary} />
+      </View>
+      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+        {title}
+      </Text>
+    </View>
+  );
+}
+
+export function SettingsScreen() {
   if (isLocalAuthDisabled) {
     return (
       <SettingsContent
@@ -237,8 +270,8 @@ function SettingsContent({
     <Page>
       <BrandHeader />
       <PageTitle title="الإعدادات" subtitle="تحكم في تفضيلات مساحة عملك." />
-      <Panel>
-        <SectionTitle title="الحساب" />
+      <Panel style={styles.settingsPanel}>
+        <SettingsSectionTitle icon="user" title="الحساب" />
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="تعديل الملف الشخصي وإكمال الإعداد"
@@ -248,6 +281,7 @@ function SettingsContent({
             icon="user"
             title={userName}
             subtitle={`${userEmail} · تعديل الملف الشخصي`}
+            showChevron
           />
         </Pressable>
         <Pressable
@@ -263,6 +297,7 @@ function SettingsContent({
             icon="link-2"
             title="حسابات النشر"
             subtitle="إدارة حسابات فيسبوك وإنستغرام"
+            showChevron
           />
         </Pressable>
         <Pressable
@@ -273,12 +308,14 @@ function SettingsContent({
             icon="file-text"
             title="كتالوج المنتجات"
             subtitle="إدارة المنتجات ومعلوماتها المعتمدة للرد الآلي"
+            showChevron
+            last
           />
         </Pressable>
       </Panel>
       {onSignOut ? (
-        <Panel>
-          <SectionTitle title="الخطة والاشتراك" />
+        <Panel style={styles.settingsPanel}>
+          <SettingsSectionTitle icon="shopping-bag" title="الخطة والاشتراك" />
           {subscriptionQuery.isLoading ? (
             <ActivityIndicator
               accessibilityLabel="جارٍ تحميل الخطة والاستخدام"
@@ -304,7 +341,15 @@ function SettingsContent({
             </View>
           ) : subscription ? (
             <>
-              <View style={[styles.subscriptionSummary, { borderColor: colors.border }]}>
+              <View
+                style={[
+                  styles.subscriptionSummary,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.accent,
+                  },
+                ]}
+              >
                 <View style={styles.subscriptionCopy}>
                   <Text style={[styles.subscriptionPlan, { color: colors.foreground }]}>
                     {subscription.planName}
@@ -346,7 +391,13 @@ function SettingsContent({
                       limit: currentPlan.limits.channels,
                     },
                   ].map((item) => (
-                    <View key={item.label} style={styles.subscriptionUsageRow}>
+                    <View
+                      key={item.label}
+                      style={[
+                        styles.subscriptionUsageRow,
+                        { borderBottomColor: colors.border },
+                      ]}
+                    >
                       <Text style={[styles.settingSubtitle, { color: colors.mutedForeground }]}>
                         {item.label}
                       </Text>
@@ -357,13 +408,19 @@ function SettingsContent({
                   ))}
                 </View>
               ) : null}
-              <Text style={[styles.settingSubtitle, { color: colors.mutedForeground }]}>
+              <Text style={[styles.plansHeading, { color: colors.mutedForeground }]}>
                 الخطط المتاحة
               </Text>
               {subscription.plans.map((plan) => (
                 <View
                   key={plan.id}
-                  style={[styles.planOption, { borderColor: colors.border }]}
+                  style={[
+                    styles.planOption,
+                    {
+                      borderColor: colors.border,
+                      backgroundColor: colors.background,
+                    },
+                  ]}
                 >
                   <Text style={[styles.settingTitle, { color: colors.foreground }]}>
                     {plan.name}
@@ -384,8 +441,8 @@ function SettingsContent({
           ) : null}
         </Panel>
       ) : null}
-      <Panel>
-        <SectionTitle title="التنبيهات وسير العمل" />
+      <Panel style={styles.settingsPanel}>
+        <SettingsSectionTitle icon="bell" title="التنبيهات وسير العمل" />
         <SettingRow
           icon="bell"
           title="تنبيهات داخل التطبيق"
@@ -401,10 +458,11 @@ function SettingsContent({
           onValueChange={(value) =>
             updatePreference("reviewBeforePublishing", value)
           }
+          last
         />
       </Panel>
-      <Panel>
-        <SectionTitle title="المظهر واللغة" />
+      <Panel style={styles.settingsPanel}>
+        <SettingsSectionTitle icon="sun" title="المظهر واللغة" />
         <SettingRow icon="globe" title="لغة التطبيق" subtitle="العربية" />
         <Pressable
           accessibilityRole="button"
@@ -422,6 +480,8 @@ function SettingsContent({
                   ? "داكن"
                   : "فاتح"
             }
+            showChevron
+            last
           />
         </Pressable>
         {appearancePickerVisible ? (
@@ -452,9 +512,10 @@ function SettingsContent({
           </View>
         ) : null}
       </Panel>
-      <Panel>
-        <SectionTitle title="الدعم والأمان" />
+      <Panel style={styles.settingsPanel}>
+        <SettingsSectionTitle icon="shield" title="الدعم والأمان" />
         <Pressable
+          accessibilityRole="button"
           onPress={() =>
             Alert.alert(
               "مركز المساعدة",
@@ -462,9 +523,10 @@ function SettingsContent({
             )
           }
         >
-          <SettingRow icon="help-circle" title="مركز المساعدة" />
+          <SettingRow icon="help-circle" title="مركز المساعدة" showChevron />
         </Pressable>
         <Pressable
+          accessibilityRole="button"
           onPress={() =>
             Alert.alert(
               "الخصوصية",
@@ -472,9 +534,10 @@ function SettingsContent({
             )
           }
         >
-          <SettingRow icon="shield" title="الخصوصية والأمان" />
+          <SettingRow icon="shield" title="الخصوصية والأمان" showChevron />
         </Pressable>
         <Pressable
+          accessibilityRole="button"
           onPress={() =>
             Alert.alert(
               "حول التطبيق",
@@ -482,12 +545,12 @@ function SettingsContent({
             )
           }
         >
-          <SettingRow icon="info" title="حول MenaFlow" />
+          <SettingRow icon="info" title="حول MenaFlow" showChevron last />
         </Pressable>
       </Panel>
       {onSignOut ? (
-        <Panel>
-          <SectionTitle title="الجلسة" />
+        <Panel style={styles.settingsPanel}>
+          <SettingsSectionTitle icon="user" title="الجلسة" />
           <Pressable
             accessibilityRole="button"
             accessibilityState={{ disabled: signingOut, busy: signingOut }}
@@ -501,6 +564,7 @@ function SettingsContent({
               subtitle="إنهاء الجلسة على هذا الجهاز"
               danger
               busy={signingOut}
+              last
             />
           </Pressable>
         </Panel>
@@ -513,20 +577,37 @@ function SettingsContent({
 }
 
 const styles = StyleSheet.create({
-  settingRow: {
-    minHeight: 58,
-    flexDirection: "row",
+  settingsPanel: { gap: 8 },
+  sectionHeading: {
+    minHeight: 38,
+    flexDirection: "row-reverse",
     alignItems: "center",
     gap: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 8,
+    marginBottom: 2,
   },
-  settingCopy: { flex: 1, alignItems: "flex-start", gap: 3 },
+  sectionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionTitle: { fontSize: 15, fontWeight: "800", textAlign: "right" },
+  settingRow: {
+    minHeight: 64,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 10,
+  },
+  settingRowLast: { borderBottomWidth: 0 },
+  settingCopy: { flex: 1, minWidth: 0, alignItems: "flex-start", gap: 4 },
   settingTitle: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  settingSubtitle: { fontSize: 10, textAlign: "left" },
+  settingSubtitle: { fontSize: 10, lineHeight: 16, textAlign: "right" },
   settingIcon: {
-    width: 33,
-    height: 33,
+    width: 38,
+    height: 38,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
@@ -549,28 +630,42 @@ const styles = StyleSheet.create({
   subscriptionLoading: { paddingVertical: 18 },
   subscriptionMessage: { gap: 10, paddingVertical: 8 },
   subscriptionSummary: {
-    minHeight: 58,
-    flexDirection: "row",
+    minHeight: 72,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  subscriptionCopy: { flex: 1, gap: 4 },
+  subscriptionPlan: { fontSize: 16, fontWeight: "800", textAlign: "right" },
+  subscriptionPrice: { fontSize: 12, fontWeight: "700" },
+  subscriptionUsage: { gap: 0, paddingVertical: 8 },
+  subscriptionUsageRow: {
+    minHeight: 40,
+    flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 8,
   },
-  subscriptionCopy: { flex: 1, gap: 4 },
-  subscriptionPlan: { fontSize: 15, fontWeight: "700" },
-  subscriptionPrice: { fontSize: 12, fontWeight: "700" },
-  subscriptionUsage: { gap: 8, paddingVertical: 12 },
-  subscriptionUsageRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-  },
+  plansHeading: { fontSize: 11, fontWeight: "700", textAlign: "right", paddingTop: 4 },
   planOption: {
+    minHeight: 60,
     gap: 5,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
+    borderRadius: 13,
+    paddingHorizontal: 12,
     paddingVertical: 10,
+    marginTop: 7,
   },
   subscriptionNotice: { fontSize: 10, lineHeight: 16, paddingTop: 8 },
   subscriptionLink: { fontSize: 12, fontWeight: "700" },
 });
+
+export default function SettingsRoute() {
+  return <Redirect href="/(tabs)/more/settings" />;
+}

@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import { Image } from "expo-image";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
+import { confirmDiscardChanges } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import type { Channel, Post } from "@/context/StudioContext";
 import {
@@ -103,6 +104,36 @@ export function ContentPostDialogs({
 }: ContentPostDialogsProps) {
   const colors = useColors();
   const [saving, setSaving] = useState(false);
+  const editingBaseline = useRef<{
+    postId: string;
+    body: string;
+    mediaUrls: string[];
+  } | null>(null);
+  useEffect(() => {
+    editingBaseline.current = editingPostId
+      ? {
+          postId: editingPostId,
+          body: editingBody,
+          mediaUrls: editingMediaUrls,
+        }
+      : null;
+  }, [editingPostId]);
+  const requestEditClose = () => {
+    if (saving) return;
+    const baseline = editingBaseline.current;
+    const hasChanges =
+      baseline?.postId === editingPostId &&
+      (baseline.body !== editingBody ||
+        JSON.stringify(baseline.mediaUrls) !== JSON.stringify(editingMediaUrls));
+    if (!hasChanges) {
+      setEditingPostId(null);
+      return;
+    }
+    confirmDiscardChanges(
+      () => setEditingPostId(null),
+      "تعديلات المنشور لم تُحفظ. هل تريد تجاهلها؟",
+    );
+  };
   const hasPublishResult = Boolean(
     publishMessage || publishChannelResults.length > 0,
   );
@@ -151,7 +182,7 @@ export function ContentPostDialogs({
         transparent
         animationType="fade"
         onRequestClose={() => {
-          if (!saving) setEditingPostId(null);
+          requestEditClose();
         }}
       >
         <View style={styles.modalBackdrop}>
@@ -332,7 +363,7 @@ export function ContentPostDialogs({
             <View style={styles.modalActions}>
               <Pressable
                 disabled={saving}
-                onPress={() => setEditingPostId(null)}
+                onPress={requestEditClose}
               >
                 <Text
                   style={[

@@ -14,6 +14,7 @@ import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   BrandHeader,
   EmptyState,
+  navigateBack,
   Page,
   PageTitle,
   Panel,
@@ -127,7 +128,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="العودة إلى صندوق الوارد"
-        onPress={() => router.back()}
+        onPress={() => navigateBack("/(tabs)/inbox")}
         style={styles.backButton}
       >
         <Icon name="chevron-right" size={18} color={colors.primary} />

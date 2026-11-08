@@ -5,15 +5,19 @@ import { LucideIcon as Icon } from '@/components/LucideIcon';
 import { ActionButton, BrandHeader, EmptyState, Page, PageTitle, Panel, SectionTitle } from '@/components/Ui';
 import { useStudio } from '@/context/StudioContext';
 import { useColors } from '@/hooks/useColors';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { getGetSocialConnectionsQueryKey, getSocialConnections } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@clerk/expo';
 import { isLocalAuthDisabled } from '@/constants/auth';
 
-export default function ReportsScreen() {
+export function ReportsScreen() {
   if (isLocalAuthDisabled) return <ReportsScreenContent userId={null} />;
   return <AuthenticatedReportsScreen />;
+}
+
+export default function ReportsRoute() {
+  return <Redirect href="/(tabs)/more/reports" />;
 }
 
 function AuthenticatedReportsScreen() {
@@ -81,10 +85,30 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
       <BrandHeader />
       <PageTitle title="التقارير" subtitle="ملخص المحتوى وحالاته وتوزيعه على القنوات." />
 
-      <View style={styles.rangeSection}>
-        <Text style={[styles.rangeTitle, { color: colors.foreground }]}>
-          فترة التقرير
-        </Text>
+      <Panel style={styles.rangeSection}>
+        <View style={styles.rangeHeading}>
+          <View style={styles.rangeTitleGroup}>
+            <View
+              style={[styles.rangeIcon, { backgroundColor: colors.accent }]}
+            >
+              <Icon name="clock" size={17} color={colors.primary} />
+            </View>
+            <Text style={[styles.rangeTitle, { color: colors.foreground }]}>
+              فترة التقرير
+            </Text>
+          </View>
+          <View
+            style={[styles.rangeBadge, { backgroundColor: colors.secondary }]}
+          >
+            <Text style={[styles.rangeBadgeText, { color: colors.foreground }]}>
+              {dateRange === "all"
+                ? "كل الفترات"
+                : dateRange === "7"
+                  ? "7 أيام"
+                  : "30 يوماً"}
+            </Text>
+          </View>
+        </View>
         <View style={styles.rangeOptions}>
           {[
             { value: "7" as const, label: "آخر 7 أيام" },
@@ -101,6 +125,8 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
                 {
                   backgroundColor:
                     dateRange === item.value ? colors.primary : colors.secondary,
+                  borderColor:
+                    dateRange === item.value ? colors.primary : colors.border,
                 },
               ]}
             >
@@ -123,14 +149,14 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
         <Text style={[styles.rangeHint, { color: colors.mutedForeground }]}>
           تُحتسب العناصر حسب تاريخ الرسالة المصدر، أو تاريخ إنشاء المحتوى عند عدم توفره. هذه مؤشرات حجم وليست بيانات الوصول أو التفاعل.
         </Text>
-      </View>
+      </Panel>
 
       <View style={styles.statsGrid}>
         {[
-          { label: 'إجمالي المحتوى', value: reportPosts.length, icon: 'file-text' as const, status: 'all' },
-          { label: 'مسودات', value: draft, icon: 'edit-3' as const, status: 'draft' },
-          { label: 'قيد المراجعة', value: review, icon: 'eye' as const, status: 'review' },
-          { label: 'منشورات منشورة', value: published, icon: 'send' as const, status: 'published' },
+          { label: 'إجمالي المحتوى', value: reportPosts.length, icon: 'file-text' as const, tint: colors.primary, status: 'all' },
+          { label: 'مسودات', value: draft, icon: 'edit-3' as const, tint: colors.blue, status: 'draft' },
+          { label: 'قيد المراجعة', value: review, icon: 'eye' as const, tint: colors.warning, status: 'review' },
+          { label: 'منشورات منشورة', value: published, icon: 'send' as const, tint: colors.green, status: 'published' },
         ].map((item) => (
           <Pressable
             key={item.label}
@@ -151,9 +177,22 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
             ]}
           >
             <Panel style={styles.statCard}>
-              <Icon name={item.icon} size={18} color={colors.primary} />
-              <Text style={[styles.statValue, { color: colors.foreground }]}>{item.value}</Text>
-              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{item.label}</Text>
+              <View style={styles.statCardHeading}>
+                <View
+                  style={[
+                    styles.statIcon,
+                    { backgroundColor: colors.accent },
+                  ]}
+                >
+                  <Icon name={item.icon} size={17} color={item.tint} />
+                </View>
+                <Text style={[styles.statValue, { color: item.tint }]}>
+                  {item.value}
+                </Text>
+              </View>
+              <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>
+                {item.label}
+              </Text>
             </Panel>
           </Pressable>
         ))}
@@ -177,7 +216,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
           }
         />
         <View style={styles.channelsList}>
-          <View style={[styles.channelItem, { borderColor: colors.border }]}>
+          <View style={[styles.channelItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
             <View style={styles.channelMeta}>
               <View style={[styles.channelIconWrap, { backgroundColor: colors.accent }]}>
                 <Icon name="instagram" size={18} color={colors.instagram} />
@@ -189,12 +228,15 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
                     : "إنستغرام"}
                 </Text>
                 <Text style={[styles.channelSub, { color: colors.mutedForeground }]}>
-                  {igPosts} عنصر محتوى مخصص لهذه القناة
+                  محتوى مخصص للقناة
                 </Text>
               </View>
             </View>
+            <View style={[styles.channelCount, { backgroundColor: colors.accent }]}>
+              <Text style={[styles.channelCountText, { color: colors.instagram }]}>{igPosts}</Text>
+            </View>
           </View>
-          <View style={[styles.channelItem, { borderColor: colors.border }]}>
+          <View style={[styles.channelItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
             <View style={styles.channelMeta}>
               <View style={[styles.channelIconWrap, { backgroundColor: colors.accent }]}>
                 <Icon name="facebook" size={18} color={colors.facebook} />
@@ -206,12 +248,15 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
                     : "فيسبوك"}
                 </Text>
                 <Text style={[styles.channelSub, { color: colors.mutedForeground }]}>
-                  {fbPosts} عنصر محتوى مخصص لهذه القناة
+                  محتوى مخصص للقناة
                 </Text>
               </View>
             </View>
+            <View style={[styles.channelCount, { backgroundColor: colors.accent }]}>
+              <Text style={[styles.channelCountText, { color: colors.facebook }]}>{fbPosts}</Text>
+            </View>
           </View>
-          <View style={[styles.channelItem, { borderColor: colors.border }]}>
+          <View style={[styles.channelItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
             <View style={styles.channelMeta}>
               <View style={[styles.channelIconWrap, { backgroundColor: colors.accent }]}>
                 <Icon name="message-circle" size={18} color={colors.whatsapp} />
@@ -221,9 +266,12 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
                   واتساب
                 </Text>
                 <Text style={[styles.channelSub, { color: colors.mutedForeground }]}>
-                  {waPosts} عنصر محتوى مخصص لهذه القناة
+                  محتوى مخصص للقناة
                 </Text>
               </View>
+            </View>
+            <View style={[styles.channelCount, { backgroundColor: colors.accent }]}>
+              <Text style={[styles.channelCountText, { color: colors.whatsapp }]}>{waPosts}</Text>
             </View>
           </View>
         </View>
@@ -233,9 +281,10 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
               تعذّر التحقق من ربط حسابات النشر. أعداد المحتوى أعلاه مستقلة عن حالة الربط.
             </Text>
             <ActionButton
-              label="إعادة المحاولة"
-              icon="refresh-cw"
+              label={connectionsQuery.isFetching ? "جارٍ التحقق…" : "إعادة المحاولة"}
+              icon={connectionsQuery.isFetching ? "clock" : "refresh-cw"}
               secondary
+              disabled={connectionsQuery.isFetching}
               onPress={() => void connectionsQuery.refetch()}
             />
           </View>
@@ -262,101 +311,157 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
 
       <Panel>
         <SectionTitle title="حالة سير العمل والمحتوى" />
-        {[
-          { label: 'المسودات', value: draft, tint: colors.blue, status: 'draft' },
-          { label: 'قيد المراجعة', value: review, tint: colors.warning, status: 'review' },
-          { label: 'معتمدة', value: approved, tint: colors.blue, status: 'approved' },
-          { label: 'مجدولة', value: scheduled, tint: colors.instagram, status: 'scheduled' },
-          { label: 'قيد النشر', value: publishing, tint: colors.blue, status: 'publishing' },
-          { label: 'تعذّر نشرها', value: failed, tint: colors.warning, status: 'failed' },
-          { label: 'منشورة', value: published, tint: colors.primary, status: 'published' },
-        ].map((item) => (
-          <Pressable
-            key={item.label}
-            accessibilityRole="button"
-            accessibilityLabel={`عرض ${item.label} في المحتوى`}
-            onPress={() =>
-              router.push({
-                pathname: "/(tabs)/content",
-                params: {
-                  status: item.status,
-                  date: dateRange,
-                },
-              })
-            }
-            style={({ pressed }) => ({ opacity: pressed ? 0.75 : 1 })}
-          >
-            <View style={styles.progressRow}>
-              <View style={styles.progressLabelLine}>
-                <Text style={[styles.progressValue, { color: item.tint }]}>
-                  {item.value}
-                </Text>
-                <Text
-                  style={[styles.progressLabel, { color: colors.foreground }]}
-                >
-                  {item.label}
-                </Text>
-              </View>
-              <View
-                style={[styles.track, { backgroundColor: colors.secondary }]}
-              >
-              <View
-                style={[
-                  styles.bar,
-                  {
-                    backgroundColor: item.tint,
-                    width: `${reportPosts.length ? Math.min(100, (item.value / reportPosts.length) * 100) : 0}%`,
+        <View style={styles.workflowList}>
+          {[
+            { label: 'المسودات', value: draft, tint: colors.blue, status: 'draft' },
+            { label: 'قيد المراجعة', value: review, tint: colors.warning, status: 'review' },
+            { label: 'معتمدة', value: approved, tint: colors.blue, status: 'approved' },
+            { label: 'مجدولة', value: scheduled, tint: colors.instagram, status: 'scheduled' },
+            { label: 'قيد النشر', value: publishing, tint: colors.blue, status: 'publishing' },
+            { label: 'تعذّر نشرها', value: failed, tint: colors.warning, status: 'failed' },
+            { label: 'منشورة', value: published, tint: colors.primary, status: 'published' },
+          ].map((item) => (
+            <Pressable
+              key={item.label}
+              accessibilityRole="button"
+              accessibilityLabel={`عرض ${item.label} في المحتوى`}
+              onPress={() =>
+                router.push({
+                  pathname: "/(tabs)/content",
+                  params: {
+                    status: item.status,
+                    date: dateRange,
                   },
-                ]}
-              />
+                })
+              }
+              style={({ pressed }) => [
+                styles.progressRow,
+                { opacity: pressed ? 0.75 : 1 },
+              ]}
+            >
+              <View style={styles.progressContent}>
+                <View style={styles.progressLabelLine}>
+                  <View style={styles.progressLabelGroup}>
+                    <View
+                      style={[
+                        styles.progressDot,
+                        { backgroundColor: item.tint },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.progressLabel,
+                        { color: colors.foreground },
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </View>
+                  <Text style={[styles.progressValue, { color: item.tint }]}>
+                    {item.value}
+                  </Text>
+                </View>
+                <View
+                  style={[styles.track, { backgroundColor: colors.secondary }]}
+                >
+                  <View
+                    style={[
+                      styles.bar,
+                      {
+                        backgroundColor: item.tint,
+                        width: `${reportPosts.length ? Math.min(100, (item.value / reportPosts.length) * 100) : 0}%`,
+                      },
+                    ]}
+                  />
+                </View>
               </View>
-            </View>
-          </Pressable>
-        ))}
+            </Pressable>
+          ))}
+        </View>
       </Panel>
     </Page>
   );
 }
 
 const styles = StyleSheet.create({
-  rangeSection: { gap: 8 },
-  rangeTitle: { fontSize: 13, fontWeight: '800', textAlign: 'right' },
-  rangeOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  rangeChip: { minHeight: 34, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 11 },
-  rangeChipText: { fontSize: 11, fontWeight: '700' },
-  rangeHint: { fontSize: 10, lineHeight: 15, textAlign: 'right' },
-  connectionNotice: { gap: 10, marginTop: 12 },
-  connectionNoticeText: { fontSize: 11, lineHeight: 17, textAlign: 'right' },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
-  statCardPressable: { width: '48%' },
-  statCard: { alignItems: 'center', paddingVertical: 15, gap: 7 },
-  statValue: { fontSize: 23, fontWeight: '800' },
-  statLabel: { fontSize: 11, fontWeight: '600' },
-  link: { fontSize: 12, fontWeight: '700' },
-  channelsList: { gap: 10, marginTop: 4 },
-  channelItem: {
+  rangeSection: { gap: 12 },
+  rangeHeading: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    gap: 10,
+  },
+  rangeTitleGroup: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 9,
+  },
+  rangeIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rangeBadge: {
+    minHeight: 28,
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  rangeBadgeText: { fontSize: 10, fontWeight: '700' },
+  rangeTitle: { fontSize: 13, fontWeight: '800', textAlign: 'right' },
+  rangeOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  rangeChip: {
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    borderRadius: 11,
+    borderWidth: 1,
+  },
+  rangeChipText: { fontSize: 11, fontWeight: '700' },
+  rangeHint: { fontSize: 10, lineHeight: 15, textAlign: 'right' },
+  connectionNotice: { gap: 10, marginTop: 12, padding: 12, borderRadius: 14 },
+  connectionNoticeText: { fontSize: 11, lineHeight: 17, textAlign: 'right' },
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  statCardPressable: { width: '48%', minWidth: 135 },
+  statCard: { gap: 12, padding: 14, minHeight: 104, justifyContent: 'space-between' },
+  statCardHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  statIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  statValue: { fontSize: 25, fontWeight: '800' },
+  statLabel: { fontSize: 11, fontWeight: '600' },
+  link: { fontSize: 12, fontWeight: '700' },
+  channelsList: { gap: 9, marginTop: 12 },
+  channelItem: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    minHeight: 68,
+    paddingVertical: 9,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: 15,
   },
-  channelMeta: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  channelIconWrap: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  channelInfo: { alignItems: 'flex-start', gap: 2 },
+  channelMeta: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  channelIconWrap: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  channelInfo: { alignItems: 'flex-start', gap: 3 },
   channelTitle: { fontSize: 13, fontWeight: '700' },
-  channelSub: { fontSize: 11, textAlign: 'left' },
-  progressRow: { gap: 7, marginTop: 8 },
+  channelSub: { fontSize: 10, textAlign: 'right' },
+  channelCount: { minWidth: 36, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 11, paddingHorizontal: 8 },
+  channelCountText: { fontSize: 14, fontWeight: '800' },
+  workflowList: { gap: 4, marginTop: 8 },
+  progressRow: { borderRadius: 12, paddingHorizontal: 10 },
+  progressContent: { gap: 8, paddingVertical: 10 },
   progressLabelLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  progressLabelGroup: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  progressDot: { width: 8, height: 8, borderRadius: 4 },
   progressValue: { fontSize: 13, fontWeight: '800' },
   progressLabel: { fontSize: 12, fontWeight: '700' },
   track: {
-    height: 8,
-    borderRadius: 5,
+    height: 7,
+    borderRadius: 4,
     overflow: 'hidden',
-    alignItems: 'flex-start',
+    alignItems: 'flex-end',
   },
-  bar: { height: 8, borderRadius: 5 },
+  bar: { height: 7, borderRadius: 4 },
 });

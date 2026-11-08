@@ -660,26 +660,86 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
       }
     >
       <BrandHeader />
-      <PageTitle
-        title="المحتوى"
-        subtitle="أنشئ المسودات وراجعها وقم بالتسويق والنشر على المنصات المختارة."
-        action={
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => router.push("/compose")}
-            style={[styles.addButton, { backgroundColor: colors.primary }]}
-          >
-            <Icon name="plus" size={19} color={colors.primaryForeground} />
-          </Pressable>
-        }
-      />
-
-      <Panel>
-        <View style={styles.autoToggleRow}>
-          <Text style={[styles.autoLabel, { color: colors.foreground }]}>
-            النشر التلقائي
+      <Panel style={styles.contentIntro}>
+        <View
+          style={[
+            styles.contentEyebrow,
+            { backgroundColor: colors.accent },
+          ]}
+        >
+          <Icon name="file-text" size={15} color={colors.primary} />
+          <Text style={[styles.contentEyebrowText, { color: colors.primary }]}>
+            استوديو المحتوى
           </Text>
+        </View>
+        <PageTitle
+          title="المحتوى"
+          subtitle="أنشئ المسودات وراجعها وقم بالتسويق والنشر على المنصات المختارة."
+          action={
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إنشاء منشور"
+              onPress={() => router.push("/compose")}
+              style={({ pressed }) => [
+                styles.addButton,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: pressed ? 0.84 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                },
+              ]}
+            >
+              <Icon name="plus" size={19} color={colors.primaryForeground} />
+              <Text
+                style={[
+                  styles.createPostLabel,
+                  { color: colors.primaryForeground },
+                ]}
+              >
+                منشور جديد
+              </Text>
+            </Pressable>
+          }
+        />
+      </Panel>
+
+      <Panel style={styles.autoPublishPanel}>
+        <View
+          style={[
+            styles.autoPublishHeader,
+            { backgroundColor: colors.background },
+          ]}
+        >
+          <View style={styles.autoPublishTitleGroup}>
+            <View
+              style={[
+                styles.autoPublishIcon,
+                { backgroundColor: colors.accent },
+              ]}
+            >
+              <Icon name="zap" size={17} color={colors.primary} />
+            </View>
+            <View style={styles.autoPublishTitleCopy}>
+              <Text style={[styles.autoLabel, { color: colors.foreground }]}>
+                النشر التلقائي
+              </Text>
+              <Text
+                style={[
+                  styles.autoPublishDescription,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                {autoPublish
+                  ? `المنشورات المعتمدة تُنشر على ${
+                      autoPublishChannels.map(platformLabel).join(" و") ||
+                      "المنصات المختارة"
+                    }`
+                  : "اختر منصاتك لنشر المحتوى المعتمد تلقائيًا"}
+              </Text>
+            </View>
+          </View>
           <Switch
+            accessibilityLabel="تفعيل النشر التلقائي"
             value={autoPublish}
             disabled={
               !connectionsLoaded ||
@@ -695,13 +755,14 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           onPress={() =>
             setAutoPublishSettingsExpanded((expanded) => !expanded)
           }
-          style={[
+          style={({ pressed }) => [
             styles.advancedFilterToggle,
             {
               borderColor: colors.border,
               backgroundColor: autoPublishSettingsExpanded
                 ? colors.accent
                 : colors.card,
+              opacity: pressed ? 0.8 : 1,
             },
           ]}
         >
@@ -738,12 +799,13 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
                     accessibilityRole="button"
                     accessibilityState={{ selected }}
                     onPress={() => toggleAutoChannel(channel)}
-                    style={[
+                    style={({ pressed }) => [
                       styles.filterChip,
                       {
                         backgroundColor: selected
                           ? colors.primary
                           : colors.secondary,
+                        opacity: pressed ? 0.78 : 1,
                       },
                     ]}
                   >
@@ -775,7 +837,12 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           </>
         ) : null}
         {connectionLoadError ? (
-          <View style={styles.connectionLoadError}>
+          <View
+            style={[
+              styles.connectionLoadError,
+              { backgroundColor: colors.secondary },
+            ]}
+          >
             <Text
               accessibilityRole="alert"
               style={[styles.intro, { color: colors.destructive }]}
@@ -787,11 +854,11 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
               accessibilityState={{ busy: connectionsQuery.isFetching }}
               disabled={connectionsQuery.isFetching}
               onPress={() => void connectionsQuery.refetch()}
-              style={[
+              style={({ pressed }) => [
                 styles.historyButton,
                 {
                   backgroundColor: colors.secondary,
-                  opacity: connectionsQuery.isFetching ? 0.6 : 1,
+                  opacity: connectionsQuery.isFetching ? 0.6 : pressed ? 0.76 : 1,
                 },
               ]}
             >
@@ -827,14 +894,27 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             {autoPublishNotice}
           </Text>
         ) : null}
+      </Panel>
+
+      <Panel style={styles.postWorkspace}>
         <SectionTitle title="مساحة النشر وإدارة المنشورات" />
         <Text style={[styles.intro, { color: colors.mutedForeground }]}>
           الرسائل والوسائط المزامنة تُحوّل إلى منشورات متاحة للمراجعة والنشر
           اليدوي أو التلقائي.
         </Text>
-        <Text style={[styles.priorityHeading, { color: colors.foreground }]}>
-          تحتاج إلى متابعة
-        </Text>
+        <View style={styles.prioritySectionHeading}>
+          <View
+            style={[
+              styles.priorityHeadingIcon,
+              { backgroundColor: colors.accent },
+            ]}
+          >
+            <Icon name="clock" size={15} color={colors.primary} />
+          </View>
+          <Text style={[styles.priorityHeading, { color: colors.foreground }]}>
+            تحتاج إلى متابعة
+          </Text>
+        </View>
         <View style={styles.priorityFilters}>
           {[
             {
@@ -862,13 +942,18 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
               accessibilityLabel={`${item.label}: ${item.count}`}
               accessibilityState={{ selected: filter === item.key }}
               onPress={() => setFilter(filter === item.key ? "all" : item.key)}
-              style={[
+              style={({ pressed }) => [
                 styles.priorityFilter,
                 {
                   backgroundColor:
                     filter === item.key ? colors.primary : colors.secondary,
                   borderColor:
-                    item.count > 0 ? colors.warning : colors.border,
+                    filter === item.key
+                      ? colors.primary
+                      : item.count > 0
+                        ? colors.warning
+                        : colors.border,
+                  opacity: pressed ? 0.82 : 1,
                 },
               ]}
             >
@@ -945,11 +1030,12 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
               accessibilityRole="button"
               accessibilityState={{ selected: filter === item.key }}
               onPress={() => setFilter(item.key)}
-              style={[
+              style={({ pressed }) => [
                 styles.filterChip,
                 {
                   backgroundColor:
                     filter === item.key ? colors.primary : colors.secondary,
+                  opacity: pressed ? 0.76 : 1,
                 },
               ]}
             >
@@ -973,11 +1059,12 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           accessibilityRole="button"
           accessibilityState={{ expanded: filtersExpanded }}
           onPress={() => setFiltersExpanded((expanded) => !expanded)}
-          style={[
+          style={({ pressed }) => [
             styles.advancedFilterToggle,
             {
               borderColor: colors.border,
               backgroundColor: filtersExpanded ? colors.accent : colors.card,
+              opacity: pressed ? 0.8 : 1,
             },
           ]}
         >
@@ -1024,7 +1111,16 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             color={colors.mutedForeground}
           />
         </Pressable>
-        <View style={[styles.searchRow, { borderColor: colors.border }]}>
+        <View
+          style={[
+            styles.searchRow,
+            {
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Icon name="search" size={17} color={colors.mutedForeground} />
           <TextInput
             accessibilityLabel="ابحث في المنشورات"
             value={search}
@@ -1041,6 +1137,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
               accessibilityLabel="مسح البحث"
               onPress={() => setSearch("")}
               style={styles.clearSearchButton}
+              hitSlop={8}
             >
               <Icon name="x" size={16} color={colors.mutedForeground} />
             </Pressable>
@@ -1069,13 +1166,14 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
                     selected: platformFilter === item.value,
                   }}
                   onPress={() => setPlatformFilter(item.value)}
-                  style={[
+                  style={({ pressed }) => [
                     styles.filterChip,
                     {
                       backgroundColor:
                         platformFilter === item.value
                           ? colors.primary
                           : colors.secondary,
+                      opacity: pressed ? 0.78 : 1,
                     },
                   ]}
                 >
@@ -1114,13 +1212,14 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
                   accessibilityRole="button"
                   accessibilityState={{ selected: dateFilter === item.value }}
                   onPress={() => setDateFilter(item.value)}
-                  style={[
+                  style={({ pressed }) => [
                     styles.filterChip,
                     {
                       backgroundColor:
                         dateFilter === item.value
                           ? colors.primary
                           : colors.secondary,
+                      opacity: pressed ? 0.78 : 1,
                     },
                   ]}
                 >
@@ -1157,11 +1256,12 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
                 accessibilityRole="button"
                 accessibilityState={{ selected: sortMode === item.value }}
                 onPress={() => setSortMode(item.value)}
-                style={[
+                style={({ pressed }) => [
                   styles.filterChip,
                   {
                     backgroundColor:
                       sortMode === item.value ? colors.accent : colors.secondary,
+                    opacity: pressed ? 0.78 : 1,
                   },
                 ]}
               >

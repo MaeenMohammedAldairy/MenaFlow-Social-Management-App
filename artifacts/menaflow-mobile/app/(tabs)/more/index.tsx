@@ -5,7 +5,6 @@ import {
   Page,
   PageTitle,
   Panel,
-  SectionTitle,
 } from "@/components/Ui";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon, type LucideIconName } from "@/components/LucideIcon";
@@ -15,6 +14,7 @@ const destinations: Array<{
   title: string;
   description: string;
   icon: LucideIconName;
+  accent: "primary" | "blue" | "purple";
   path:
     | "/(tabs)/more/sources"
     | "/(tabs)/more/reports"
@@ -24,18 +24,21 @@ const destinations: Array<{
     title: "المصادر والحسابات",
     description: "إدارة حسابات التواصل ومزامنة مصادر المحتوى",
     icon: "share-2",
+    accent: "primary",
     path: "/(tabs)/more/sources",
   },
   {
     title: "التقارير",
     description: "مراجعة أداء المحتوى والمنشورات",
     icon: "bar-chart-2",
+    accent: "blue",
     path: "/(tabs)/more/reports",
   },
   {
     title: "الإعدادات",
     description: "تفضيلات التطبيق والخصوصية والحساب",
     icon: "settings",
+    accent: "purple",
     path: "/(tabs)/more/settings",
   },
 ];
@@ -47,29 +50,63 @@ export default function MoreScreen() {
     <Page>
       <BrandHeader />
       <PageTitle title="المزيد" subtitle="إدارة التطبيق وحساباتك." />
-      <Panel>
-        <SectionTitle title="الإدارة" />
+      <Panel style={styles.managementPanel}>
+        <View style={styles.sectionHeading}>
+          <View
+            style={[styles.sectionIcon, { backgroundColor: colors.accent }]}
+          >
+            <Icon name="more-horizontal" size={17} color={colors.primary} />
+          </View>
+          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+            الإدارة
+          </Text>
+          <View style={[styles.countBadge, { backgroundColor: colors.secondary }]}>
+            <Text style={[styles.countText, { color: colors.foreground }]}>
+              {destinations.length}
+            </Text>
+          </View>
+        </View>
         <View style={styles.destinations}>
-          {destinations.map((destination) => (
+          {destinations.map((destination, index) => (
             <Link key={destination.path} href={destination.path} asChild>
               <Pressable
                 accessibilityRole="button"
-                style={StyleSheet.flatten([
+                accessibilityLabel={`${destination.title}: ${destination.description}`}
+                style={({ pressed }) => StyleSheet.flatten([
                   styles.destination,
-                  { borderBottomColor: colors.border },
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                    opacity: pressed ? 0.78 : 1,
+                  },
+                  index === 0 && styles.destinationFirst,
+                  index === destinations.length - 1 && styles.destinationLast,
                 ])}
               >
                 <View pointerEvents="none" style={styles.destinationContent}>
                   <View
                     style={[
                       styles.destinationIcon,
-                      { backgroundColor: colors.accent },
+                      {
+                        backgroundColor:
+                          destination.accent === "blue"
+                            ? colors.blueSoft
+                            : destination.accent === "purple"
+                              ? colors.secondary
+                              : colors.accent,
+                      },
                     ]}
                   >
                     <Icon
                       name={destination.icon}
                       size={18}
-                      color={colors.primary}
+                      color={
+                        destination.accent === "blue"
+                          ? colors.blue
+                          : destination.accent === "purple"
+                            ? colors.foreground
+                            : colors.primary
+                      }
                     />
                   </View>
                   <View style={styles.destinationCopy}>
@@ -93,7 +130,7 @@ export default function MoreScreen() {
                   <Icon
                     name="chevron-left"
                     size={18}
-                    color={colors.mutedForeground}
+                    color={colors.primary}
                   />
                 </View>
               </Pressable>
@@ -106,38 +143,67 @@ export default function MoreScreen() {
 }
 
 const styles = StyleSheet.create({
+  managementPanel: { gap: 14 },
+  sectionHeading: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 9,
+  },
+  sectionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionTitle: { flex: 1, fontSize: 15, fontWeight: "800", textAlign: "right" },
+  countBadge: {
+    minWidth: 27,
+    height: 27,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    paddingHorizontal: 7,
+  },
+  countText: { fontSize: 11, fontWeight: "800" },
   destinations: {
-    gap: 2,
+    gap: 9,
   },
   destination: {
-    minHeight: 68,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 10,
+    minHeight: 78,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
   },
+  destinationFirst: { marginTop: 1 },
+  destinationLast: { marginBottom: 1 },
   destinationContent: {
     flex: 1,
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 12,
+    gap: 11,
   },
   destinationIcon: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
   destinationCopy: {
     flex: 1,
+    minWidth: 0,
     alignItems: "flex-start",
-    gap: 3,
+    gap: 4,
   },
   destinationTitle: {
-    fontSize: 13,
-    fontWeight: "700",
+    fontSize: 14,
+    fontWeight: "800",
   },
   destinationDescription: {
     fontSize: 11,
+    lineHeight: 17,
     textAlign: "right",
   },
 });

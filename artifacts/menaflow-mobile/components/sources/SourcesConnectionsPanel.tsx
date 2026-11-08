@@ -38,6 +38,7 @@ interface SourcesConnectionsPanelProps {
   sourceKeys: SourceKey[];
   sectionTitle: string;
   refreshLabel: string;
+  isRefreshing: boolean;
   connections?: SocialConnectionsResponse;
   busySources: Record<SourceKey, boolean>;
   disconnectingSource: SourceKey | null;
@@ -58,6 +59,7 @@ export function SourcesConnectionsPanel({
   sourceKeys,
   sectionTitle,
   refreshLabel,
+  isRefreshing,
   connections,
   busySources,
   disconnectingSource,
@@ -76,14 +78,62 @@ export function SourcesConnectionsPanel({
   const visibleSources = sources.filter((source) =>
     sourceKeys.includes(source.key),
   );
+  const readableConnectionError =
+    connectionError &&
+    (/failed to fetch|network request failed|networkerror/i.test(connectionError)
+      ? "تعذر الاتصال بالخادم. تحقق من اتصال الإنترنت ثم أعد المحاولة."
+      : connectionError);
 
   return (
-    <Panel>
-      <SectionTitle title={sectionTitle} />
-      {connectionError ? (
-        <Text style={[styles.error, { color: colors.destructive }]}>
-          {connectionError}
-        </Text>
+    <Panel style={styles.panel}>
+      <View style={styles.sectionHeader}>
+        <View style={styles.sectionTitleGroup}>
+          <View
+            style={[styles.sectionIcon, { backgroundColor: colors.accent }]}
+          >
+            <Icon name="share-2" size={17} color={colors.primary} />
+          </View>
+          <SectionTitle title={sectionTitle} />
+        </View>
+        <View
+          style={[
+            styles.sourceCount,
+            { backgroundColor: colors.secondary },
+          ]}
+        >
+          <Text style={[styles.sourceCountText, { color: colors.foreground }]}>
+            {visibleSources.length}
+          </Text>
+        </View>
+      </View>
+      {readableConnectionError ? (
+        <View
+          accessibilityRole="alert"
+          style={[
+            styles.errorPanel,
+            {
+              backgroundColor: colors.secondary,
+              borderColor: colors.destructive,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.errorIcon,
+              { backgroundColor: colors.card },
+            ]}
+          >
+            <Icon name="alert-circle" size={18} color={colors.destructive} />
+          </View>
+          <View style={styles.errorCopy}>
+            <Text style={[styles.errorTitle, { color: colors.foreground }]}>
+              تعذر تحديث حالة المصادر
+            </Text>
+            <Text style={[styles.error, { color: colors.mutedForeground }]}>
+              {readableConnectionError}
+            </Text>
+          </View>
+        </View>
       ) : null}
 
       {visibleSources.map((source) => {
@@ -127,6 +177,7 @@ export function SourcesConnectionsPanel({
               styles.sourceCard,
               compactLayout && styles.sourceCardCompact,
               {
+                backgroundColor: colors.background,
                 borderColor: connected
                   ? colors.primary
                   : connectionNeedsAttention
@@ -313,9 +364,10 @@ export function SourcesConnectionsPanel({
         );
         })}
       <ActionButton
-        label={refreshLabel}
-        icon="refresh-cw"
+        label={isRefreshing ? "جارٍ التحديث…" : refreshLabel}
+        icon={isRefreshing ? "clock" : "refresh-cw"}
         secondary
+        disabled={isRefreshing}
         onPress={onRefresh}
       />
     </Panel>
@@ -323,6 +375,52 @@ export function SourcesConnectionsPanel({
 }
 
 const styles = StyleSheet.create({
+  panel: { gap: 14 },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  sectionTitleGroup: {
+    flex: 1,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 9,
+  },
+  sectionIcon: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+  },
+  sourceCount: {
+    minWidth: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    paddingHorizontal: 8,
+  },
+  sourceCountText: { fontSize: 12, fontWeight: "800" },
+  errorPanel: {
+    flexDirection: "row-reverse",
+    alignItems: "flex-start",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
+  errorIcon: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+  },
+  errorCopy: { flex: 1, gap: 3 },
+  errorTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" },
   sourceCard: {
     borderWidth: 1,
     borderRadius: 17,
@@ -345,9 +443,9 @@ const styles = StyleSheet.create({
   sourceIdentityCompact: { width: "100%" },
   disabledSource: { opacity: 0.6 },
   sourceIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
+    width: 46,
+    height: 46,
+    borderRadius: 15,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -382,5 +480,5 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   disconnectLabel: { fontSize: 11, fontWeight: "700" },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  error: { fontSize: 12, lineHeight: 19, textAlign: "right" },
 });

@@ -62,13 +62,13 @@ function AuthenticatedOnboarding() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const { isLoaded, isSignedIn, userId } = useAuth();
+  const { isLoaded, userId } = useAuth();
   const queryClient = useQueryClient();
   const queryKey = getOnboardingStatusQueryKey(userId ?? null);
   const status = useQuery({
     queryKey,
     queryFn: () => getOnboardingStatus(),
-    enabled: isLoaded && Boolean(isSignedIn),
+    enabled: Boolean(userId),
     retry: false,
   });
   const progress = useMutation({
@@ -99,7 +99,6 @@ function AuthenticatedOnboarding() {
   };
 
   if (!isLoaded) return <LoadingScreen />;
-  if (!isSignedIn) return <Redirect href="/(auth)/sign-in" />;
   if (status.isLoading) return <LoadingScreen />;
   if (status.isError || !status.data) {
     return (

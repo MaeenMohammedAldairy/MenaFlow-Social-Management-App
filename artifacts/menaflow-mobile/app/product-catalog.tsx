@@ -22,6 +22,7 @@ import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   ActionButton,
   BrandHeader,
+  confirmDiscardChanges,
   EmptyState,
   Page,
   PageTitle,
@@ -132,6 +133,16 @@ function normalizeProductPriceInput(price: string | null): string | null {
   return normalizedFraction ? `${integer}.${normalizedFraction}` : integer;
 }
 
+function catalogLoadErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "تعذر تحميل بيانات المنتجات. تحقق من اتصال الإنترنت ثم أعد المحاولة.";
+  }
+  if (/failed to fetch|network request failed|networkerror/i.test(error.message)) {
+    return "تعذر الاتصال بالخادم. تحقق من اتصال الإنترنت ثم أعد المحاولة.";
+  }
+  return error.message;
+}
+
 function ProductMediaThumbnail({
   uri,
   label,
@@ -189,59 +200,70 @@ function CatalogTabs({
 }) {
   const colors = useColors();
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.catalogTabsScroll}
-      contentContainerStyle={styles.catalogTabsContent}
+    <View
+      style={[
+        styles.catalogTabsFrame,
+        { backgroundColor: colors.secondary },
+      ]}
     >
-      {catalogTabDefinitions.map((tab) => {
-        const selected = activeTab === tab.id;
-        const count = counts[tab.id];
-        return (
-          <Pressable
-            key={tab.id}
-            accessibilityRole="tab"
-            accessibilityState={{ selected }}
-            onPress={() => onSelect(tab.id)}
-            style={[
-              styles.catalogTab,
-              {
-                borderBottomColor: selected ? colors.primary : "transparent",
-              },
-            ]}
-          >
-            <Text
-              style={{
-                color: selected ? colors.primary : colors.mutedForeground,
-                fontSize: 12,
-                fontWeight: selected ? "800" : "600",
-              }}
-            >
-              {tab.label}
-            </Text>
-            <View
-              style={[
-                styles.catalogTabCount,
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.catalogTabsScroll}
+        contentContainerStyle={styles.catalogTabsContent}
+      >
+        {catalogTabDefinitions.map((tab) => {
+          const selected = activeTab === tab.id;
+          const count = counts[tab.id];
+          return (
+            <Pressable
+              key={tab.id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              onPress={() => onSelect(tab.id)}
+              style={({ pressed }) => [
+                styles.catalogTab,
                 {
-                  backgroundColor: selected ? colors.accent : colors.secondary,
+                  backgroundColor: selected ? colors.card : "transparent",
+                  borderColor: selected ? colors.border : "transparent",
+                  opacity: pressed ? 0.76 : 1,
                 },
               ]}
             >
               <Text
                 style={{
                   color: selected ? colors.primary : colors.mutedForeground,
-                  fontSize: 10,
-                  fontWeight: "700",
+                  fontSize: 12,
+                  fontWeight: selected ? "800" : "600",
                 }}
               >
-                {count === null ? "…" : formatArabicNumber(count)}
+                {tab.label}
               </Text>
-            </View>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+              <View
+                style={[
+                  styles.catalogTabCount,
+                  {
+                    backgroundColor: selected
+                      ? colors.accent
+                      : colors.secondary,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: selected ? colors.primary : colors.mutedForeground,
+                    fontSize: 10,
+                    fontWeight: "700",
+                  }}
+                >
+                  {count === null ? "…" : formatArabicNumber(count)}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -322,9 +344,28 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
       query.state.data?.summary.inProgress ? 2000 : false,
   });
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [analysisSummary, setAnalysisSummary] = useState("");
   const [mediaUploading, setMediaUploading] = useState(false);
+  const editorSnapshot = (value: EditorState) =>
+    JSON.stringify({ value: value.value, mediaPreviews: value.mediaPreviews });
+  const openEditor = (value: EditorState) => {
+    setEditorBaseline(editorSnapshot(value));
+    setEditor(value);
+  };
+  const closeEditor = () => {
+    setEditor(null);
+    setEditorBaseline(null);
+  };
+  const requestEditorClose = () => {
+    if (!editor || save.isPending || mediaUploading) return;
+    if (editorBaseline === editorSnapshot(editor)) {
+      closeEditor();
+      return;
+    }
+    confirmDiscardChanges(closeEditor);
+  };
 
   const refresh = async () => {
     await Promise.all([
@@ -393,7 +434,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
       createExtractionProductDraft(suggestionId),
     onSuccess: async (product) => {
       await refresh();
-      setEditor({
+      openEditor({
         id: product.id,
         value: draftFromProduct(product),
         mediaPreviews: product.mediaPreviews,
@@ -524,7 +565,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     mutationFn: importProductCandidate,
     onSuccess: async (product) => {
       await refresh();
-      setEditor({
+      openEditor({
         id: product.id,
         value: draftFromProduct(product),
         mediaPreviews: product.mediaPreviews,
@@ -638,7 +679,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           product.id === savedProduct.id ? savedProduct : product,
         ),
       );
-      setEditor(null);
+      closeEditor();
       setError("");
       void refresh().catch((cause) =>
         setError(
@@ -657,7 +698,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     product: CatalogProduct | null,
     useExtractedValues: boolean,
   ) => {
-    setEditor(
+    openEditor(
       product
         ? {
             id: product.id,
@@ -709,27 +750,54 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         }
       >
         <BrandHeader />
-        <PageTitle
-          title="كتالوج المنتجات"
-          subtitle="مصدر معلومات المنتجات المعتمدة للرد على العملاء."
-          action={
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="إضافة منتج"
-              onPress={() =>
-                setEditor({ id: null, value: emptyDraft, mediaPreviews: [] })
-              }
-              style={[styles.addButton, { backgroundColor: colors.primary }]}
-            >
-              <Icon name="plus" size={17} color={colors.primaryForeground} />
-              <Text
-                style={{ color: colors.primaryForeground, fontWeight: "700" }}
+        <Panel style={styles.catalogIntro}>
+          <View
+            style={[
+              styles.catalogEyebrow,
+              { backgroundColor: colors.accent },
+            ]}
+          >
+            <Icon name="package" size={15} color={colors.primary} />
+            <Text style={[styles.catalogEyebrowText, { color: colors.primary }]}>
+              مكتبة منتجاتك
+            </Text>
+          </View>
+          <PageTitle
+            title="كتالوج المنتجات"
+            subtitle="مصدر معلومات المنتجات المعتمدة للرد على العملاء."
+            back={{
+              href: "/(tabs)/more/settings",
+              label: "العودة إلى الإعدادات",
+            }}
+            action={
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إضافة منتج"
+                onPress={() =>
+                  openEditor({ id: null, value: emptyDraft, mediaPreviews: [] })
+                }
+                style={({ pressed }) => [
+                  styles.addButton,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed ? 0.84 : 1,
+                    transform: [{ scale: pressed ? 0.98 : 1 }],
+                  },
+                ]}
               >
-                منتج
-              </Text>
-            </Pressable>
-          }
-        />
+                <Icon name="plus" size={17} color={colors.primaryForeground} />
+                <Text
+                  style={{
+                    color: colors.primaryForeground,
+                    fontWeight: "700",
+                  }}
+                >
+                  إضافة منتج
+                </Text>
+              </Pressable>
+            }
+          />
+        </Panel>
         <CatalogTabs
           activeTab={activeTab}
           counts={tabCounts}
@@ -866,7 +934,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     );
                   }}
                   onEditProduct={(product) =>
-                    setEditor({
+                    openEditor({
                       id: product.id,
                       value: draftFromProduct(product),
                       mediaPreviews: product.mediaPreviews,
@@ -886,117 +954,192 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
 
         {activeTab !== "extractions" ? (
           <View style={styles.section}>
-          <View style={styles.sectionHeading}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              المنتجات
-            </Text>
-            <Pressable
-              accessibilityRole="checkbox"
-              accessibilityLabel="تحديد جميع المنتجات المعروضة"
-              accessibilityState={{ checked: selectedAllVisible }}
-              disabled={visibleProducts.length === 0}
-              onPress={toggleAllVisibleProducts}
-              style={styles.selectAll}
-            >
+            <Panel style={styles.catalogToolbar}>
+              <View style={styles.sectionHeading}>
+                <View style={styles.productSectionTitle}>
+                  <Text
+                    style={[
+                      styles.sectionTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    المنتجات
+                  </Text>
+                  {catalog.data ? (
+                    <View
+                      style={[
+                        styles.productCount,
+                        { backgroundColor: colors.accent },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.productCountText,
+                          { color: colors.primary },
+                        ]}
+                      >
+                        {formatArabicNumber(visibleProducts.length)}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityLabel="تحديد جميع المنتجات المعروضة"
+                  accessibilityState={{
+                    checked: selectedAllVisible,
+                    disabled: visibleProducts.length === 0,
+                  }}
+                  disabled={visibleProducts.length === 0}
+                  onPress={toggleAllVisibleProducts}
+                  style={({ pressed }) => [
+                    styles.selectAll,
+                    { opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
+                      {
+                        borderColor: selectedAllVisible
+                          ? colors.primary
+                          : colors.border,
+                        backgroundColor: selectedAllVisible
+                          ? colors.primary
+                          : "transparent",
+                      },
+                    ]}
+                  >
+                    {selectedAllVisible ? (
+                      <Icon
+                        name="check"
+                        size={13}
+                        color={colors.primaryForeground}
+                      />
+                    ) : null}
+                  </View>
+                  <Text style={[styles.link, { color: colors.primary }]}>
+                    تحديد الكل
+                  </Text>
+                </Pressable>
+              </View>
               <View
                 style={[
-                  styles.checkbox,
+                  styles.productSearchRow,
                   {
-                    borderColor: selectedAllVisible
-                      ? colors.primary
-                      : colors.border,
-                    backgroundColor: selectedAllVisible
-                      ? colors.primary
-                      : "transparent",
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
                   },
                 ]}
               >
-                {selectedAllVisible ? (
-                  <Icon
-                    name="check"
-                    size={13}
-                    color={colors.primaryForeground}
-                  />
+                <Icon name="search" size={18} color={colors.mutedForeground} />
+                <CairoTextInput
+                  accessibilityLabel="البحث في المنتجات"
+                  value={productSearch}
+                  onChangeText={setProductSearch}
+                  placeholder="ابحث بالاسم أو رقم المنتج"
+                  placeholderTextColor={colors.mutedForeground}
+                  style={[
+                    styles.productSearchInput,
+                    { color: colors.foreground },
+                  ]}
+                  returnKeyType="search"
+                />
+                {productSearch ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="مسح البحث"
+                    onPress={() => setProductSearch("")}
+                    hitSlop={8}
+                  >
+                    <Icon name="x" size={17} color={colors.mutedForeground} />
+                  </Pressable>
                 ) : null}
               </View>
-              <Text style={[styles.link, { color: colors.primary }]}>
-                تحديد الكل
-              </Text>
-            </Pressable>
-          </View>
-          <View
-            style={[
-              styles.productSearchRow,
-              {
-                backgroundColor: colors.background,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <Icon name="search" size={17} color={colors.mutedForeground} />
-            <CairoTextInput
-              accessibilityLabel="البحث في المنتجات"
-              value={productSearch}
-              onChangeText={setProductSearch}
-              placeholder="ابحث بالاسم أو رقم المنتج"
-              placeholderTextColor={colors.mutedForeground}
-              style={[styles.productSearchInput, { color: colors.foreground }]}
-              returnKeyType="search"
-            />
-            {productSearch ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="مسح البحث"
-                onPress={() => setProductSearch("")}
+            </Panel>
+            {catalog.isError ? (
+              <Panel
+                style={[
+                  styles.catalogError,
+                  { borderColor: colors.border },
+                ]}
               >
-                <Icon name="x" size={17} color={colors.mutedForeground} />
-              </Pressable>
-            ) : null}
-          </View>
-          {catalog.isError ? (
-            <EmptyState
-              icon="alert-circle"
-              title="تعذر تحميل المنتجات"
-              body={
-                catalog.error instanceof Error
-                  ? catalog.error.message
-                  : "تحقق من الاتصال ثم أعد المحاولة."
-              }
-            />
-          ) : catalog.isPending ? (
-            <Text style={{ color: colors.mutedForeground, textAlign: "left" }}>
-              جارٍ تحميل المنتجات...
-            </Text>
-          ) : visibleProducts.length ? (
-            visibleProducts.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                selected={selectedProductIds.has(product.id)}
-                onToggleSelection={() => toggleProductSelection(product.id)}
-                onEdit={() =>
-                  setEditor({
-                    id: product.id,
-                    value: draftFromProduct(product),
-                    mediaPreviews: product.mediaPreviews,
-                  })
-                }
+                <View
+                  style={[
+                    styles.catalogErrorIcon,
+                    { backgroundColor: colors.secondary },
+                  ]}
+                >
+                  <Icon
+                    name="alert-circle"
+                    size={22}
+                    color={colors.destructive}
+                  />
+                </View>
+                <Text
+                  accessibilityRole="alert"
+                  style={[
+                    styles.catalogErrorTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  تعذر تحميل المنتجات
+                </Text>
+                <Text
+                  style={[
+                    styles.catalogErrorBody,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {catalogLoadErrorMessage(catalog.error)}
+                </Text>
+                <ActionButton
+                  label={
+                    catalog.isFetching
+                      ? "جارٍ التحقق..."
+                      : "إعادة المحاولة"
+                  }
+                  icon={catalog.isFetching ? "clock" : "refresh-cw"}
+                  disabled={catalog.isFetching}
+                  onPress={() => void catalog.refetch()}
+                />
+              </Panel>
+            ) : catalog.isPending ? (
+              <EmptyState
+                icon="clock"
+                title="جارٍ تجهيز كتالوجك"
+                body="نحمّل بيانات المنتجات المعتمدة."
               />
-            ))
-          ) : productSearch.trim() ? (
-            <EmptyState
-              icon="search"
-              title="لا توجد نتائج مطابقة"
-              body="جرّب اسمًا أو رقم منتج مختلفًا."
-            />
-          ) : (
-            <EmptyState
-              icon="file-text"
-              title="لا توجد منتجات بعد"
-              body="أضف منتجًا موثوقًا أو ابدأ من أحد منشوراتك المنشورة كمسودة."
-            />
-          )}
-        </View>
+            ) : visibleProducts.length ? (
+              visibleProducts.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  selected={selectedProductIds.has(product.id)}
+                  onToggleSelection={() => toggleProductSelection(product.id)}
+                  onEdit={() =>
+                    openEditor({
+                      id: product.id,
+                      value: draftFromProduct(product),
+                      mediaPreviews: product.mediaPreviews,
+                    })
+                  }
+                />
+              ))
+            ) : productSearch.trim() ? (
+              <EmptyState
+                icon="search"
+                title="لا توجد نتائج مطابقة"
+                body="جرّب اسمًا أو رقم منتج مختلفًا."
+              />
+            ) : (
+              <EmptyState
+                icon="file-text"
+                title="لا توجد منتجات بعد"
+                body="أضف منتجًا موثوقًا أو ابدأ من أحد منشوراتك المنشورة كمسودة."
+              />
+            )}
+          </View>
         ) : null}
 
         {activeTab !== "extractions" && publicationRequestKey ? (
@@ -1130,7 +1273,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         transparent
         animationType="slide"
         onRequestClose={() => {
-          if (!save.isPending && !mediaUploading) setEditor(null);
+          requestEditorClose();
         }}
       >
         <View style={styles.modalOverlay}>
@@ -1152,7 +1295,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 accessibilityRole="button"
                 accessibilityLabel="إغلاق نموذج المنتج"
                 disabled={save.isPending || mediaUploading}
-                onPress={() => setEditor(null)}
+                onPress={requestEditorClose}
               >
                 <Icon name="x" size={21} color={colors.foreground} />
               </Pressable>
@@ -1395,7 +1538,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 icon="x"
                 secondary
                 disabled={save.isPending || mediaUploading}
-                onPress={() => setEditor(null)}
+                onPress={requestEditorClose}
               />
             </View>
           </View>
@@ -2375,29 +2518,43 @@ function DropdownField({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  catalogIntro: { gap: 12, padding: 18 },
+  catalogEyebrow: {
+    alignSelf: "flex-start",
+    minHeight: 28,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 10,
+    paddingHorizontal: 9,
+  },
+  catalogEyebrowText: { fontSize: 11, fontWeight: "700" },
   addButton: {
+    minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+    justifyContent: "center",
+    gap: 7,
+    borderRadius: 14,
+    paddingHorizontal: 14,
   },
   section: { gap: 10 },
-  catalogTabsScroll: { flexGrow: 0, marginTop: -8, marginBottom: -4 },
+  catalogTabsFrame: { borderRadius: 16, padding: 4 },
+  catalogTabsScroll: { flexGrow: 0 },
   catalogTabsContent: {
     flexDirection: "row",
-    alignItems: "stretch",
+    alignItems: "center",
     gap: 4,
-    minHeight: 46,
+    minHeight: 42,
   },
   catalogTab: {
-    minHeight: 44,
+    minHeight: 38,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingHorizontal: 10,
-    borderBottomWidth: 2,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 11,
     flexShrink: 0,
   },
   catalogTabCount: {
@@ -2409,17 +2566,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 5,
   },
   productSearchRow: {
-    minHeight: 44,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 10,
+    borderRadius: 14,
+    paddingHorizontal: 12,
   },
   productSearchInput: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 46,
     textAlign: "right",
     writingDirection: "rtl",
   },
@@ -2428,6 +2585,40 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
+  },
+  productSectionTitle: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+  },
+  productCount: {
+    minWidth: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    paddingHorizontal: 6,
+  },
+  productCountText: { fontSize: 11, fontWeight: "700" },
+  catalogToolbar: { gap: 12, padding: 14 },
+  catalogError: {
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 22,
+  },
+  catalogErrorIcon: {
+    width: 52,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 17,
+  },
+  catalogErrorTitle: { fontSize: 16, fontWeight: "800", textAlign: "center" },
+  catalogErrorBody: {
+    maxWidth: 420,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
   },
   link: { fontSize: 12, fontWeight: "600" },
   sectionTitle: { fontSize: 16, fontWeight: "700", textAlign: "right" },

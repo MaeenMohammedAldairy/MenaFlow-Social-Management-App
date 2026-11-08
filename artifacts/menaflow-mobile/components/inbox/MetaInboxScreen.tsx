@@ -7,7 +7,7 @@ import {
   View,
 } from "react-native";
 import { router } from "expo-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { CairoText as Text } from "@/components/CairoTypography";
@@ -23,7 +23,6 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { formatArabicDateTime } from "@/lib/formatting";
 import {
-  activateMetaWebhookSubscriptions,
   getMetaInbox,
   metaInboxPersonId,
   type MetaInboxItem,
@@ -87,6 +86,16 @@ function latestInboxItem(group: InboxGroup): MetaInboxItem {
   );
 }
 
+function inboxErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "تعذر تحميل الرسائل والتعليقات. تحقق من اتصالك ثم أعد المحاولة.";
+  }
+  if (/failed to fetch|network request failed|networkerror/i.test(error.message)) {
+    return "تعذر الاتصال بالخادم. تحقق من اتصال الإنترنت ثم أعد المحاولة.";
+  }
+  return error.message;
+}
+
 export function MetaInboxScreen() {
   return isLocalAuthDisabled ? (
     <MetaInboxContent userId={null} />
@@ -102,34 +111,14 @@ function AuthenticatedMetaInbox() {
 
 function MetaInboxContent({ userId }: { userId: string | null }) {
   const colors = useColors();
-  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [search, setSearch] = useState("");
-  const [actionError, setActionError] = useState<string | null>(null);
   const queryKey = ["meta-inbox", userId ?? "local"] as const;
   const inbox = useQuery({
     queryKey,
     queryFn: getMetaInbox,
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
-  });
-  const setup = useMutation({
-    mutationFn: activateMetaWebhookSubscriptions,
-    onSuccess: async (result) => {
-      const failed = Object.entries(result.subscriptions).filter(
-        ([, status]) => !status.subscribed,
-      );
-      setActionError(
-        failed.length
-          ? "لم تكتمل تهيئة كل الحسابات. تحقق من الصلاحيات واشتراكات Webhooks في لوحة Meta."
-          : null,
-      );
-    },
-    onError: (error) =>
-      setActionError(
-        error instanceof Error ? error.message : "تعذر تفعيل Webhooks.",
-      ),
-    onSettled: () => queryClient.invalidateQueries({ queryKey }),
   });
   const filteredItems =
     inbox.data?.items.filter((item) => {
@@ -148,31 +137,18 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
       )
     : filteredItems;
   const groups = groupInboxItems(visibleItems);
-  const subscriptions = inbox.data?.webhook.subscriptions ?? {};
   const connectedPlatforms = (["facebook", "instagram"] as const).filter(
     (platform) => Boolean(inbox.data?.webhook.accounts[platform]),
   );
   const allConfiguredSubscriptions =
     connectedPlatforms.length > 0 &&
     connectedPlatforms.every((platform) => {
-      const subscription = subscriptions[platform];
+      const subscription = inbox.data?.webhook.subscriptions?.[platform];
       return (
         subscription?.subscribedAt &&
         subscription.accountId === inbox.data?.webhook.accounts[platform]
       );
     });
-  const setupAvailable = inbox.data?.webhook.verificationConfigured === true;
-  const subscriptionSummary = connectedPlatforms
-    .map((platform) => {
-      const subscribed =
-        subscriptions[platform]?.accountId ===
-          inbox.data?.webhook.accounts[platform] &&
-        Boolean(subscriptions[platform]?.subscribedAt);
-      return `${platform === "facebook" ? "فيسبوك" : "إنستغرام"}: ${
-        subscribed ? "مفعّل" : "بانتظار التفعيل"
-      }`;
-    })
-    .join(" · ");
 
   return (
     <Page
@@ -185,147 +161,232 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
       }
     >
       <BrandHeader />
-      <PageTitle
-        title="الرسائل والتعليقات"
-        subtitle="تابع الرسائل والتعليقات الواردة من حسابات Meta ورد عليها من مكان واحد."
-      />
-
-      {!setupAvailable || !allConfiguredSubscriptions ? (
-        <Panel style={styles.setupPanel}>
-          <View style={styles.setupHeading}>
-            <Icon name="info" size={20} color={colors.warning} />
-            <Text style={[styles.setupTitle, { color: colors.foreground }]}>
-              {setupAvailable
-                ? "فعّل استقبال الأحداث من Meta"
-                : "يلزم إعداد Webhook على الخادم"}
-            </Text>
-          </View>
-          <Text style={[styles.setupText, { color: colors.mutedForeground }]}>
-            {setupAvailable
-              ? "تأكد من إضافة عنوان الاستقبال وحقول الرسائل والتعليقات في لوحة تطبيق Meta، ثم فعّل اشتراك الحسابات."
-              : "أضف MENA_META_WEBHOOK_VERIFY_TOKEN إلى إعدادات الخادم وأعد تشغيله. ثم أكمل إعداد عنوان Webhook وحقوله في لوحة تطبيق Meta."}
+      <Panel style={styles.inboxIntro}>
+        <View
+          style={[
+            styles.inboxEyebrow,
+            { backgroundColor: colors.accent },
+          ]}
+        >
+          <Icon name="message-square" size={15} color={colors.primary} />
+          <Text style={[styles.inboxEyebrowText, { color: colors.primary }]}>
+            صندوق Meta الموحد
           </Text>
-          {subscriptionSummary ? (
-            <Text style={[styles.setupText, { color: colors.mutedForeground }]}>
-              {subscriptionSummary}
-            </Text>
-          ) : null}
-          {inbox.data?.webhook.callbackUrl ? (
-            <Text
-              selectable
-              style={[styles.callback, { color: colors.primary }]}
-            >
-              {inbox.data.webhook.callbackUrl}
-            </Text>
-          ) : null}
-          {setupAvailable ? (
-            <ActionButton
-              label={
-                setup.isPending ? "جارٍ التفعيل..." : "تفعيل الحسابات المتصلة"
-              }
-              icon="refresh-cw"
-              disabled={setup.isPending || inbox.isPending}
-              onPress={() => {
-                setActionError(null);
-                setup.mutate();
-              }}
-            />
-          ) : null}
-        </Panel>
-      ) : null}
-
-      {actionError ? (
-        <Panel style={[styles.errorPanel, { borderColor: colors.destructive }]}>
-          <Text style={{ color: colors.destructive, textAlign: "left" }}>
-            {actionError}
-          </Text>
-        </Panel>
-      ) : null}
-
-      {inbox.isError ? (
-        <EmptyState
-          icon="alert-circle"
-          title="تعذر تحميل صندوق الوارد"
-          body={
-            inbox.error instanceof Error
-              ? inbox.error.message
-              : "تحقق من اتصال الإنترنت ثم أعد المحاولة."
-          }
+        </View>
+        <PageTitle
+          title="الرسائل والتعليقات"
+          subtitle="تابع الرسائل والتعليقات الواردة من حسابات Meta ورد عليها من مكان واحد."
         />
-      ) : null}
+        <View
+          style={[
+            styles.inboxStatus,
+            {
+              backgroundColor: allConfiguredSubscriptions
+                ? colors.greenSoft
+                : colors.secondary,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.inboxStatusDot,
+              {
+                backgroundColor: allConfiguredSubscriptions
+                  ? colors.green
+                  : colors.warning,
+              },
+            ]}
+          />
+          <Text
+            style={[
+              styles.inboxStatusText,
+              {
+                color: allConfiguredSubscriptions
+                  ? colors.green
+                  : colors.warning,
+              },
+            ]}
+          >
+            {allConfiguredSubscriptions
+              ? "جاهز لاستقبال التفاعلات"
+              : "تحقق من إعداد استقبال التفاعلات"}
+          </Text>
+        </View>
+      </Panel>
 
       <MetaAutoReplySettingsPanel userId={userId} />
 
-      <View style={styles.filters}>
-        {filters.map((option) => {
-          const selected = filter === option.key;
-          return (
-            <Pressable
-              key={option.key}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() => setFilter(option.key)}
+      <Panel style={styles.inboxToolbar}>
+        <View style={styles.toolbarHeading}>
+          <View style={styles.toolbarTitleGroup}>
+            <View
               style={[
-                styles.filter,
-                {
-                  backgroundColor: selected ? colors.primary : colors.card,
-                  borderColor: selected ? colors.primary : colors.border,
-                },
+                styles.toolbarIcon,
+                { backgroundColor: colors.accent },
+              ]}
+            >
+              <Icon name="message-square" size={17} color={colors.primary} />
+            </View>
+            <Text style={[styles.toolbarTitle, { color: colors.foreground }]}>
+              المحادثات الواردة
+            </Text>
+          </View>
+          {inbox.data ? (
+            <View
+              style={[
+                styles.totalBadge,
+                { backgroundColor: colors.secondary },
               ]}
             >
               <Text
-                style={{
-                  color: selected
-                    ? colors.primaryForeground
-                    : colors.foreground,
-                }}
+                style={[
+                  styles.totalBadgeText,
+                  { color: colors.foreground },
+                ]}
               >
-                {option.label}
+                {groups.length}
               </Text>
+            </View>
+          ) : null}
+        </View>
+        <View style={styles.filters}>
+          {filters.map((option) => {
+            const selected = filter === option.key;
+            const count =
+              inbox.data?.items.filter((item) => {
+                if (option.key === "all") return true;
+                return (
+                  item.platform === option.key || item.kind === option.key
+                );
+              }).length ?? null;
+            return (
+              <Pressable
+                key={option.key}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => setFilter(option.key)}
+                style={({ pressed }) => [
+                  styles.filter,
+                  {
+                    backgroundColor: selected
+                      ? colors.primary
+                      : colors.background,
+                    borderColor: selected ? colors.primary : colors.border,
+                    opacity: pressed ? 0.78 : 1,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.filterLabel,
+                    {
+                      color: selected
+                        ? colors.primaryForeground
+                        : colors.foreground,
+                    },
+                  ]}
+                >
+                  {option.label}
+                </Text>
+                {count !== null ? (
+                  <Text
+                    style={[
+                      styles.filterCount,
+                      {
+                        color: selected
+                          ? colors.primaryForeground
+                          : colors.mutedForeground,
+                      },
+                    ]}
+                  >
+                    {count}
+                  </Text>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+        <View
+          style={[
+            styles.searchRow,
+            { borderColor: colors.border, backgroundColor: colors.background },
+          ]}
+        >
+          <Icon name="search" size={18} color={colors.mutedForeground} />
+          <TextInput
+            accessibilityLabel="ابحث في الرسائل والتعليقات"
+            value={search}
+            onChangeText={setSearch}
+            placeholder="ابحث بالاسم أو نص الرسالة"
+            placeholderTextColor={colors.mutedForeground}
+            returnKeyType="search"
+            style={[styles.searchInput, { color: colors.foreground }]}
+          />
+          {search ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="مسح البحث"
+              onPress={() => setSearch("")}
+              hitSlop={8}
+            >
+              <Icon name="x" size={17} color={colors.mutedForeground} />
             </Pressable>
-          );
-        })}
-      </View>
-      <View
-        style={[
-          styles.searchRow,
-          { borderColor: colors.border, backgroundColor: colors.card },
-        ]}
-      >
-        <Icon name="search" size={18} color={colors.mutedForeground} />
-        <TextInput
-          accessibilityLabel="ابحث في الرسائل والتعليقات"
-          value={search}
-          onChangeText={setSearch}
-          placeholder="ابحث بالاسم أو نص الرسالة"
-          placeholderTextColor={colors.mutedForeground}
-          returnKeyType="search"
-          style={[styles.searchInput, { color: colors.foreground }]}
-        />
-        {search ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="مسح البحث"
-            onPress={() => setSearch("")}
-            hitSlop={8}
-          >
-            <Icon name="x" size={17} color={colors.mutedForeground} />
-          </Pressable>
+          ) : null}
+        </View>
+        {inbox.isError ? (
+          <Panel style={[styles.loadError, { borderColor: colors.border }]}>
+            <View
+              style={[
+                styles.loadErrorIcon,
+                { backgroundColor: colors.secondary },
+              ]}
+            >
+              <Icon name="alert-circle" size={22} color={colors.destructive} />
+            </View>
+            <Text style={[styles.loadErrorTitle, { color: colors.foreground }]}>
+              تعذر تحميل صندوق الوارد
+            </Text>
+            <Text
+              accessibilityRole="alert"
+              style={[styles.loadErrorText, { color: colors.mutedForeground }]}
+            >
+              {inboxErrorMessage(inbox.error)}
+            </Text>
+            <ActionButton
+              label={inbox.isFetching ? "جارٍ التحقق..." : "إعادة المحاولة"}
+              icon={inbox.isFetching ? "clock" : "refresh-cw"}
+              disabled={inbox.isFetching}
+              onPress={() => void inbox.refetch()}
+            />
+          </Panel>
         ) : null}
-      </View>
-      {inbox.data ? (
-        <Text style={[styles.lastEvent, { color: colors.mutedForeground }]}>
-          {inbox.data.webhook.lastEventAt
-            ? `آخر رسالة أو تعليق مستلم: ${formatArabicDateTime(inbox.data.webhook.lastEventAt) ?? "غير محدد"}`
-            : "لم تُستقبل رسائل أو تعليقات من Meta حتى الآن"}
-        </Text>
-      ) : null}
+        <View style={styles.toolbarFooter}>
+          {inbox.data?.webhook.lastEventAt ? (
+            <Text style={[styles.lastEvent, { color: colors.mutedForeground }]}>
+              {`آخر نشاط: ${formatArabicDateTime(inbox.data.webhook.lastEventAt) ?? "غير محدد"}`}
+            </Text>
+          ) : null}
+          {inbox.data ? (
+            <Text
+              style={[
+                styles.resultCount,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              {visibleItems.length} نتيجة
+            </Text>
+          ) : null}
+        </View>
+      </Panel>
 
       {inbox.isPending ? (
-        <Text style={{ color: colors.mutedForeground, textAlign: "center" }}>
-          جارٍ تحميل الرسائل والتعليقات...
-        </Text>
-      ) : visibleItems.length === 0 && !inbox.isError ? (
+        <Panel style={styles.loadingPanel}>
+          <Icon name="clock" size={18} color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
+            جارٍ تحميل الرسائل والتعليقات...
+          </Text>
+        </Panel>
+      ) : inbox.isError ? null : visibleItems.length === 0 ? (
         <EmptyState
           icon="message-square"
           title={
@@ -343,9 +404,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
         />
       ) : (
         <View style={styles.groups}>
-          <Text style={[styles.resultsCount, { color: colors.mutedForeground }]}>
-            {visibleItems.length} نتيجة · عدد المحادثات: {groups.length}
-          </Text>
           {groups.map((group) => {
             const latestItem = latestInboxItem(group);
             const messageCount = group.items.filter(
@@ -519,35 +577,111 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
 }
 
 const styles = StyleSheet.create({
-  setupPanel: { gap: 12 },
-  setupHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
-  setupTitle: { fontSize: 15, fontWeight: "700", textAlign: "right" },
-  setupText: { fontSize: 13, lineHeight: 22, textAlign: "left" },
-  callback: {
-    fontSize: 12,
-    textAlign: "left",
-    writingDirection: "ltr",
+  inboxIntro: { padding: 18, gap: 12 },
+  inboxEyebrow: {
+    alignSelf: "flex-start",
+    minHeight: 28,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+    borderRadius: 10,
+    paddingHorizontal: 9,
   },
-  errorPanel: { borderWidth: 1 },
-  filters: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  inboxEyebrowText: { fontSize: 11, fontWeight: "700" },
+  inboxStatus: {
+    alignSelf: "flex-start",
+    minHeight: 30,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 7,
+    borderRadius: 11,
+    paddingHorizontal: 10,
+  },
+  inboxStatusDot: { width: 7, height: 7, borderRadius: 4 },
+  inboxStatusText: { fontSize: 11, fontWeight: "700" },
+  loadError: { alignItems: "center", gap: 10, paddingVertical: 20 },
+  loadErrorIcon: {
+    width: 52,
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 17,
+  },
+  loadErrorTitle: { fontSize: 16, fontWeight: "800", textAlign: "center" },
+  loadErrorText: {
+    maxWidth: 420,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  inboxToolbar: { gap: 12 },
+  toolbarHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  toolbarTitleGroup: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 9,
+  },
+  toolbarIcon: {
+    width: 34,
+    height: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 11,
+  },
+  toolbarTitle: { fontSize: 15, fontWeight: "800", textAlign: "right" },
+  totalBadge: {
+    minWidth: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    paddingHorizontal: 7,
+  },
+  totalBadgeText: { fontSize: 12, fontWeight: "800" },
+  filters: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   filter: {
     borderWidth: 1,
-    borderRadius: 18,
-    paddingHorizontal: 13,
-    paddingVertical: 8,
+    borderRadius: 12,
+    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 11,
   },
+  filterLabel: { fontSize: 11, fontWeight: "700" },
+  filterCount: { fontSize: 10, fontWeight: "700" },
+  toolbarFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  resultCount: { fontSize: 11, fontWeight: "700" },
+  loadingPanel: {
+    minHeight: 58,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+  },
+  loadingText: { fontSize: 12, textAlign: "center" },
   searchRow: {
-    minHeight: 44,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 12,
   },
   searchInput: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 46,
     textAlign: "right",
     writingDirection: "rtl",
     fontSize: 14,
@@ -555,22 +689,22 @@ const styles = StyleSheet.create({
   items: { gap: 12 },
   groups: { gap: 14 },
   conversationCard: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
     borderWidth: 1,
-    borderRadius: 16,
-    padding: 12,
-    minHeight: 100,
+    borderRadius: 18,
+    padding: 14,
+    minHeight: 108,
   },
   conversationAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 46,
+    height: 46,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
   },
-  conversationHeading: { flex: 1, gap: 8 },
+  conversationHeading: { flex: 1, minWidth: 0, gap: 9 },
   conversationTopLine: {
     flexDirection: "row",
     alignItems: "center",
@@ -580,14 +714,14 @@ const styles = StyleSheet.create({
   conversationTitle: {
     flex: 1,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "800",
     textAlign: "right",
   },
   conversationDate: { fontSize: 10, textAlign: "left" },
   conversationPreviewRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
   },
   conversationPreview: { flex: 1, fontSize: 12, textAlign: "right" },
   conversationBottomLine: {

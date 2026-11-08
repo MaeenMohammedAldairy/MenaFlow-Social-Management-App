@@ -1,10 +1,8 @@
-import { OwnerGuard } from "@/components/OwnerGuard";
-import SourcesScreen from "./(tabs)/sources";
+import { SourcesScreen } from "./(tabs)/sources";
 
 export default function ConnectAccountsRoute() {
-  return (
-    <OwnerGuard>
-      <SourcesScreen initialView="onboarding" />
-    </OwnerGuard>
-  );
+  return <SourcesScreen
+    initialView="onboarding"
+    back={{ href: "/onboarding", label: "العودة إلى الإعداد الأولي" }}
+  />;
 }

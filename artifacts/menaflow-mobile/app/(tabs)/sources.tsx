@@ -54,7 +54,7 @@ import {
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { useStudio } from "@/context/StudioContext";
-import { router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import {
   META_OAUTH_RETURN_CONTEXT_KEY,
   metaOAuthErrorMessage,
@@ -154,10 +154,12 @@ type DisconnectDialogState = {
   message?: string;
 };
 
-export default function SourcesScreen({
+export function SourcesScreen({
   initialView,
+  back,
 }: {
   initialView?: "publishing" | "onboarding";
+  back?: { href: "/onboarding"; label: string };
 } = {}) {
   const forcePublishing = initialView !== undefined;
   const includeWhatsApp = initialView === "onboarding";
@@ -167,6 +169,7 @@ export default function SourcesScreen({
         userId={null}
         forcePublishing={forcePublishing}
         includeWhatsApp={includeWhatsApp}
+        back={back}
       />
     );
   }
@@ -174,6 +177,7 @@ export default function SourcesScreen({
     <AuthenticatedSourcesScreen
       forcePublishing={forcePublishing}
       includeWhatsApp={includeWhatsApp}
+      back={back}
     />
   );
 }
@@ -181,9 +185,11 @@ export default function SourcesScreen({
 function AuthenticatedSourcesScreen({
   forcePublishing,
   includeWhatsApp,
+  back,
 }: {
   forcePublishing: boolean;
   includeWhatsApp: boolean;
+  back?: { href: "/onboarding"; label: string };
 }) {
   const { userId } = useAuth();
   return (
@@ -191,6 +197,7 @@ function AuthenticatedSourcesScreen({
       userId={userId ?? null}
       forcePublishing={forcePublishing}
       includeWhatsApp={includeWhatsApp}
+      back={back}
     />
   );
 }
@@ -199,10 +206,12 @@ function SourcesContent({
   userId,
   forcePublishing,
   includeWhatsApp,
+  back,
 }: {
   userId: string | null;
   forcePublishing: boolean;
   includeWhatsApp: boolean;
+  back?: { href: "/onboarding"; label: string };
 }) {
   const colors = useColors();
   const { width } = useWindowDimensions();
@@ -1600,6 +1609,7 @@ function SourcesContent({
               ? "حسابات النشر"
               : "مصادر المحتوى"
         }
+        back={back}
         subtitle={
           socialSetupPending && isPublishingAccounts
             ? "اختر منصة واحدة للبدء. يمكنك إضافة البقية لاحقًا."
@@ -1786,6 +1796,7 @@ function SourcesContent({
         refreshLabel={
           isPublishingAccounts ? "تحديث حالة الحسابات" : "تحديث حالة المصادر"
         }
+        isRefreshing={connectionsQuery.isFetching}
         connections={connections}
         busySources={busySources}
         disconnectingSource={disconnectingSource}
@@ -1969,6 +1980,27 @@ function SourcesContent({
         }}
       />
     </Page>
+  );
+}
+
+export default function SourcesRoute() {
+  const { connect, reconnect, view } = useLocalSearchParams<{
+    connect?: string;
+    reconnect?: string;
+    view?: string;
+  }>();
+
+  return (
+    <Redirect
+      href={{
+        pathname: "/(tabs)/more/sources",
+        params: {
+          ...(connect ? { connect } : {}),
+          ...(reconnect ? { reconnect } : {}),
+          ...(view ? { view } : {}),
+        },
+      }}
+    />
   );
 }
 

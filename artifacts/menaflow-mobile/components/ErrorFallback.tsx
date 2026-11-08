@@ -23,12 +23,16 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   const insets = useSafeAreaInsets();
 
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isRestarting, setIsRestarting] = useState(false);
 
   const handleRestart = async () => {
+    if (isRestarting) return;
+    setIsRestarting(true);
     try {
       await reloadAppAsync();
     } catch (restartError) {
       console.error('Failed to restart app:', restartError);
+      setIsRestarting(false);
       resetError();
     }
   };
@@ -48,7 +52,16 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   });
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: colors.background,
+          paddingTop: Math.max(insets.top, 24),
+          paddingBottom: Math.max(insets.bottom, 24),
+        },
+      ]}
+    >
       {__DEV__ ? (
         <Pressable
           onPress={() => setIsModalVisible(true)}
@@ -67,30 +80,58 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
         </Pressable>
       ) : null}
 
-      <View style={styles.content}>
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          حدث خطأ
-        </Text>
-
-        <Text style={[styles.message, { color: colors.mutedForeground }]}>
-          يرجى إعادة تحميل التطبيق للمتابعة.
-        </Text>
-
+      <View
+        accessibilityRole="alert"
+        style={[
+          styles.content,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.errorIcon,
+            {
+              backgroundColor: colors.secondary,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Icon name="alert-circle" size={28} color={colors.destructive} />
+        </View>
+        <View style={styles.messageGroup}>
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            حدث خطأ غير متوقع
+          </Text>
+          <Text style={[styles.message, { color: colors.mutedForeground }]}>
+            تعذر متابعة استخدام التطبيق. أعد المحاولة للمتابعة.
+          </Text>
+        </View>
         <Pressable
-          onPress={handleRestart}
+          accessibilityRole="button"
+          accessibilityLabel={isRestarting ? 'جارٍ إعادة تحميل التطبيق' : 'إعادة تحميل التطبيق'}
+          accessibilityState={{ disabled: isRestarting, busy: isRestarting }}
+          disabled={isRestarting}
+          onPress={() => void handleRestart()}
           style={({ pressed }) => [
             styles.button,
             {
               backgroundColor: colors.primary,
-              opacity: pressed ? 0.9 : 1,
-              transform: [{ scale: pressed ? 0.98 : 1 }],
+              opacity: isRestarting ? 0.7 : pressed ? 0.88 : 1,
             },
           ]}
         >
+          <Icon
+            name={isRestarting ? 'clock' : 'refresh-cw'}
+            size={18}
+            color={colors.primaryForeground}
+          />
           <Text
             style={[styles.buttonText, { color: colors.primaryForeground }]}
           >
-            أعد المحاولة
+            {isRestarting ? 'جارٍ إعادة التحميل…' : 'أعد المحاولة'}
           </Text>
         </Pressable>
       </View>
@@ -174,56 +215,71 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    paddingHorizontal: 20,
   },
   content: {
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
+    gap: 22,
     width: '100%',
-    maxWidth: 600,
+    maxWidth: 480,
+    padding: 32,
+    borderWidth: 1,
+    borderRadius: 28,
+    shadowColor: '#0A2540',
+    shadowOpacity: 0.08,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 3,
+  },
+  errorIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  messageGroup: {
+    alignItems: 'center',
+    gap: 10,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 23,
+    fontWeight: '800',
     textAlign: 'center',
-    lineHeight: 40,
+    lineHeight: 34,
   },
   message: {
-    alignSelf: 'stretch',
-    fontSize: 16,
-    textAlign: 'left',
+    fontSize: 15,
+    textAlign: 'center',
     lineHeight: 24,
+    maxWidth: 340,
   },
   topButton: {
     position: 'absolute',
     start: 16,
     width: 44,
     height: 44,
-    borderRadius: 8,
+    borderRadius: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
   },
   button: {
-    paddingVertical: 16,
-    borderRadius: 8,
-    paddingHorizontal: 24,
-    minWidth: 200,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    minHeight: 52,
+    alignSelf: 'stretch',
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
   },
   buttonText: {
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
-    fontSize: 16,
+    fontSize: 14,
   },
   modalOverlay: {
     flex: 1,

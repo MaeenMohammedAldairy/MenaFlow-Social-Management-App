@@ -1,5 +1,5 @@
-import { useAuth, useSignUp } from '@clerk/expo';
-import { Link, Redirect, router } from 'expo-router';
+import { useSignUp } from '@clerk/expo';
+import { Link, router } from 'expo-router';
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Check, Eye, EyeOff, LockKeyhole, Mail, UserRound } from 'lucide-react-native';
@@ -10,7 +10,6 @@ import { getAuthErrorMessage } from '@/lib/auth-error-message';
 
 export default function SignUpScreen() {
   const colors = useColors();
-  const { isSignedIn } = useAuth();
   const { signUp, fetchStatus } = useSignUp();
   const [username, setUsername] = useState('');
   const [emailAddress, setEmailAddress] = useState('');
@@ -22,6 +21,9 @@ export default function SignUpScreen() {
   const [code, setCode] = useState('');
   const [verificationSent, setVerificationSent] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [isResendingCode, setIsResendingCode] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const loading = fetchStatus === 'fetching';
   const passwordMismatch = confirmPassword.length > 0 && password !== confirmPassword;
   const canCreate =
@@ -31,8 +33,33 @@ export default function SignUpScreen() {
     password === confirmPassword &&
     acceptedTerms &&
     !loading;
+  const inputRowStyle = (field: string, borderColor = colors.border) => [
+    authStyles.inputRow,
+    {
+      borderColor: focusedField === field ? colors.primary : borderColor,
+      backgroundColor: colors.background,
+    },
+    focusedField === field && authStyles.inputFocused,
+  ];
+  const inputFocusProps = (field: string) => ({
+    onFocus: () => setFocusedField(field),
+    onBlur: () =>
+      setFocusedField((current) => (current === field ? null : current)),
+    selectionColor: colors.primary,
+  });
 
-  if (isSignedIn) return <Redirect href="/" />;
+  const finalizeVerifiedSignUp = async (): Promise<boolean> => {
+    if (signUp.verifications.emailAddress.status !== 'verified') return false;
+    if (signUp.status !== 'complete') {
+      setErrorMessage('تم تأكيد البريد، لكن لم تكتمل متطلبات الحساب. تحقق من بياناتك وحاول مرة أخرى.');
+      return true;
+    }
+
+    await signUp.finalize({
+      navigate: () => router.replace('/'),
+    });
+    return true;
+  };
 
   const startSignUp = async () => {
     setErrorMessage('');
@@ -58,6 +85,7 @@ export default function SignUpScreen() {
         setErrorMessage(getAuthErrorMessage(error, 'تعذر إنشاء الحساب. تحقق من البيانات وحاول مرة أخرى.'));
         return;
       }
+      if (await finalizeVerifiedSignUp()) return;
       const sent = await signUp.verifications.sendEmailCode();
       if (sent.error) {
         setErrorMessage(getAuthErrorMessage(sent.error, 'تعذر إرسال رمز التحقق إلى بريدك. حاول مرة أخرى.'));
@@ -72,32 +100,36 @@ export default function SignUpScreen() {
   const verifyCode = async () => {
     setErrorMessage('');
     try {
+      if (await finalizeVerifiedSignUp()) return;
       const { error } = await signUp.verifications.verifyEmailCode({ code: code.trim() });
       if (error) {
         setErrorMessage(getAuthErrorMessage(error, 'رمز التحقق غير صحيح أو انتهت صلاحيته. تحقق منه أو اطلب رمزاً جديداً.'));
         return;
       }
-      if (signUp.status === 'complete') {
-        await signUp.finalize({
-          navigate: () => router.replace('/'),
-        });
-      } else {
-        setErrorMessage('لم يكتمل التحقق. أعد المحاولة أو اطلب رمزاً جديداً.');
-      }
+      if (await finalizeVerifiedSignUp()) return;
+      setErrorMessage('لم يتم تأكيد البريد الإلكتروني بعد. تحقق من الرمز ثم حاول مرة أخرى.');
     } catch (error) {
       setErrorMessage(getAuthErrorMessage(error, 'تعذر تأكيد البريد الآن. تحقق من اتصالك وحاول مجدداً.'));
     }
   };
 
   const resendCode = async () => {
+    if (loading || isResendingCode) return;
     setErrorMessage('');
+    setSuccessMessage('');
+    setIsResendingCode(true);
     try {
+      if (await finalizeVerifiedSignUp()) return;
       const result = await signUp.verifications.sendEmailCode();
       if (result.error) {
         setErrorMessage(getAuthErrorMessage(result.error, 'تعذر إرسال رمز جديد. حاول مرة أخرى بعد قليل.'));
+      } else {
+        setSuccessMessage('تم إرسال رمز تحقق جديد إلى بريدك الإلكتروني.');
       }
     } catch (error) {
       setErrorMessage(getAuthErrorMessage(error, 'تعذر إرسال رمز جديد الآن. تحقق من اتصالك وحاول مجدداً.'));
+    } finally {
+      setIsResendingCode(false);
     }
   };
 
@@ -124,7 +156,7 @@ export default function SignUpScreen() {
               </View>
             </View>
             <Text style={[authStyles.label, { color: colors.foreground }]}>رمز التحقق</Text>
-            <View style={[authStyles.inputRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
+            <View style={inputRowStyle('verification-code')}>
               <Mail size={17} color={colors.mutedForeground} />
               <TextInput
                 value={code}
@@ -137,6 +169,7 @@ export default function SignUpScreen() {
                 placeholderTextColor={colors.mutedForeground}
                 style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
                 accessibilityLabel="رمز التحقق"
+                {...inputFocusProps('verification-code')}
                 onSubmitEditing={verifyCode}
                 returnKeyType="go"
               />
@@ -153,16 +186,28 @@ export default function SignUpScreen() {
             </Pressable>
             <Pressable
               accessibilityRole="button"
-              accessibilityState={{ disabled: loading, busy: loading }}
+              accessibilityState={{
+                disabled: loading || isResendingCode,
+                busy: loading || isResendingCode,
+              }}
               onPress={() => void resendCode()}
-              disabled={loading}
+              disabled={loading || isResendingCode}
               style={[authStyles.secondaryButton, { borderColor: colors.border, backgroundColor: colors.card }]}
             >
               <Mail size={15} color={colors.primary} />
               <Text style={[authStyles.secondaryText, { color: colors.primary }]}>
-                {loading ? 'جارٍ إرسال الرمز…' : 'إرسال رمز جديد'}
+                {loading || isResendingCode ? 'جارٍ إرسال الرمز…' : 'إرسال رمز جديد'}
               </Text>
             </Pressable>
+            {successMessage ? (
+              <Text
+                accessibilityRole="alert"
+                accessibilityLiveRegion="polite"
+                style={[authStyles.hint, { color: colors.primary, textAlign: 'center' }]}
+              >
+                {successMessage}
+              </Text>
+            ) : null}
             <Text style={[authStyles.hint, { color: colors.mutedForeground, textAlign: 'center' }]}>
               لم يصلك الرمز؟ تحقق من مجلد البريد غير الهام ثم أعد الإرسال.
             </Text>
@@ -170,7 +215,7 @@ export default function SignUpScreen() {
         ) : (
           <>
             <Text style={[authStyles.label, { color: colors.foreground }]}>اسم المستخدم</Text>
-            <View style={[authStyles.inputRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
+            <View style={inputRowStyle('username')}>
               <UserRound size={17} color={colors.mutedForeground} />
               <TextInput
                 value={username}
@@ -182,10 +227,11 @@ export default function SignUpScreen() {
                 placeholderTextColor={colors.mutedForeground}
                 style={[authStyles.input, { color: colors.foreground }]}
                 accessibilityLabel="اسم المستخدم"
+                {...inputFocusProps('username')}
               />
             </View>
             <Text style={[authStyles.label, { color: colors.foreground }]}>البريد الإلكتروني</Text>
-            <View style={[authStyles.inputRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
+            <View style={inputRowStyle('email')}>
               <Mail size={17} color={colors.mutedForeground} />
               <TextInput
                 value={emailAddress}
@@ -198,10 +244,11 @@ export default function SignUpScreen() {
                 placeholderTextColor={colors.mutedForeground}
                 style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
                 accessibilityLabel="البريد الإلكتروني"
+                {...inputFocusProps('email')}
               />
             </View>
             <Text style={[authStyles.label, { color: colors.foreground }]}>كلمة المرور</Text>
-            <View style={[authStyles.inputRow, { borderColor: colors.border, backgroundColor: colors.background }]}>
+            <View style={inputRowStyle('password')}>
               <LockKeyhole size={17} color={colors.mutedForeground} />
               <TextInput
                 value={password}
@@ -214,6 +261,7 @@ export default function SignUpScreen() {
                 placeholderTextColor={colors.mutedForeground}
                 style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
                 accessibilityLabel="كلمة المرور"
+                {...inputFocusProps('password')}
               />
               <Pressable
                 accessibilityRole="button"
@@ -227,11 +275,10 @@ export default function SignUpScreen() {
             <Text style={[authStyles.label, { color: colors.foreground }]}>تأكيد كلمة المرور</Text>
             <View
               style={[
-                authStyles.inputRow,
-                {
-                  borderColor: passwordMismatch ? colors.destructive : colors.border,
-                  backgroundColor: colors.background,
-                },
+                ...inputRowStyle(
+                  'confirm-password',
+                  passwordMismatch ? colors.destructive : colors.border,
+                ),
               ]}
             >
               <LockKeyhole size={17} color={colors.mutedForeground} />
@@ -246,6 +293,7 @@ export default function SignUpScreen() {
                 placeholderTextColor={colors.mutedForeground}
                 style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
                 accessibilityLabel="تأكيد كلمة المرور"
+                {...inputFocusProps('confirm-password')}
               />
               <Pressable
                 accessibilityRole="button"
@@ -259,13 +307,15 @@ export default function SignUpScreen() {
             {passwordMismatch ? (
               <Text style={[authStyles.hint, { color: colors.destructive }]}>كلمتا المرور غير متطابقتين.</Text>
             ) : null}
-            <Pressable
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: acceptedTerms }}
-              onPress={() => setAcceptedTerms((accepted) => !accepted)}
-              style={styles.termsRow}
-            >
-              <View
+            <View style={styles.termsRow}>
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityLabel="الموافقة على الشروط والأحكام وسياسة الخصوصية"
+                accessibilityState={{ checked: acceptedTerms }}
+                onPress={() => setAcceptedTerms((accepted) => !accepted)}
+                style={styles.checkboxButton}
+              >
+                <View
                 style={[
                   styles.checkbox,
                   {
@@ -273,13 +323,34 @@ export default function SignUpScreen() {
                     backgroundColor: acceptedTerms ? colors.primary : colors.card,
                   },
                 ]}
+                >
+                  {acceptedTerms ? <Check size={13} color={colors.primaryForeground} /> : null}
+                </View>
+              </Pressable>
+              <Text
+                style={[authStyles.hint, styles.termsText, { color: colors.mutedForeground }]}
               >
-                {acceptedTerms ? <Check size={13} color={colors.primaryForeground} /> : null}
-              </View>
-              <Text style={[authStyles.hint, styles.termsText, { color: colors.mutedForeground }]}>
-                أوافق على الشروط والأحكام وسياسة الخصوصية.
+                أوافق على{" "}
+                <Text
+                  accessibilityRole="link"
+                  accessibilityLabel="قراءة الشروط والأحكام، مسودة غير معتمدة"
+                  onPress={() => router.push("/(auth)/terms")}
+                  style={[styles.legalLink, { color: colors.primary }]}
+                >
+                  الشروط والأحكام
+                </Text>
+                {" و"}
+                <Text
+                  accessibilityRole="link"
+                  accessibilityLabel="قراءة سياسة الخصوصية، مسودة غير معتمدة"
+                  onPress={() => router.push("/(auth)/privacy")}
+                  style={[styles.legalLink, { color: colors.primary }]}
+                >
+                  سياسة الخصوصية
+                </Text>
+                .
               </Text>
-            </Pressable>
+            </View>
             <View nativeID="clerk-captcha" />
             <Pressable
               accessibilityRole="button"
@@ -291,9 +362,6 @@ export default function SignUpScreen() {
                 {loading ? 'جارٍ إنشاء الحساب…' : 'إنشاء حسابي'}
               </Text>
             </Pressable>
-            <Text style={[authStyles.hint, { color: colors.mutedForeground, textAlign: 'center' }]}>
-              سنرسل رمز تحقق إلى بريدك قبل تفعيل الحساب.
-            </Text>
           </>
         )}
         {errorMessage ? (
@@ -334,15 +402,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emailCopy: { flex: 1, gap: 2 },
-  emailCaption: { fontSize: 10 },
-  emailAddress: { fontSize: 12, fontWeight: '700', textAlign: 'left', writingDirection: 'ltr' },
+  emailCaption: { fontSize: 14, lineHeight: 21 },
+  emailAddress: { fontSize: 14, fontWeight: '700', textAlign: 'left', writingDirection: 'ltr' },
   termsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 9,
     marginTop: 1,
   },
+  checkboxButton: { padding: 2 },
   termsText: { flex: 1 },
+  legalLink: { fontWeight: '700', textDecorationLine: 'underline' },
   checkbox: {
     width: 19,
     height: 19,

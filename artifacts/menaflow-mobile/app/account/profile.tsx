@@ -1,9 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, TextInput, View } from "react-native";
-import { router } from "expo-router";
+import { usePreventRemove } from "expo-router";
 import { useUser } from "@clerk/expo";
 import { CairoText as Text } from "@/components/CairoTypography";
-import { ActionButton, BrandHeader, Page, PageTitle, Panel, SectionTitle } from "@/components/Ui";
+import {
+  BrandHeader,
+  confirmDiscardChanges,
+  Page,
+  PageTitle,
+  Panel,
+  SectionTitle,
+} from "@/components/Ui";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { useColors } from "@/hooks/useColors";
@@ -20,18 +27,16 @@ function LocalProfileScreen() {
   return (
     <Page>
       <BrandHeader />
-      <PageTitle title="الملف الشخصي" subtitle="إعداد حساب المستخدم." />
+      <PageTitle
+        title="الملف الشخصي"
+        subtitle="إعداد حساب المستخدم."
+        back={{ href: "/(tabs)/more/settings", label: "العودة إلى الإعدادات" }}
+      />
       <Panel style={styles.panel}>
         <SectionTitle title="وضع التطوير المحلي" />
         <Text style={[styles.message, { color: colors.mutedForeground }]}>
           لا توجد جلسة مستخدم موثقة في وضع التطوير المحلي. سجّل الدخول عبر Clerk لتعديل ملفك الشخصي وحفظ الإعداد.
         </Text>
-        <ActionButton
-          label="العودة إلى الإعدادات"
-          icon="settings"
-          secondary
-          onPress={() => router.replace("/(tabs)/settings")}
-        />
       </Panel>
     </Page>
   );
@@ -55,6 +60,7 @@ function AuthenticatedProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [allowRemoval, setAllowRemoval] = useState(false);
   const displayName = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
   const changed =
     firstName.trim() !== savedFirstName.trim() ||
@@ -68,6 +74,13 @@ function AuthenticatedProfileScreen() {
         year: "numeric",
       }) ?? "غير متاح"
     : "غير متاح";
+
+  usePreventRemove(changed && !saving && !allowRemoval, ({ repeat }) => {
+    confirmDiscardChanges(() => {
+      setAllowRemoval(true);
+      repeat();
+    });
+  });
 
   useEffect(() => {
     setFirstName(initialFirstName);
@@ -129,14 +142,7 @@ function AuthenticatedProfileScreen() {
       <PageTitle
         title="حساب المستخدم"
         subtitle="إدارة بيانات ملفك الشخصي ومعلومات تسجيل الدخول."
-        action={
-          <ActionButton
-            label="الإعدادات"
-            icon="settings"
-            secondary
-            onPress={() => router.replace("/(tabs)/settings")}
-          />
-        }
+        back={{ href: "/(tabs)/more/settings", label: "العودة إلى الإعدادات" }}
       />
       <Panel style={styles.panel}>
         <SectionTitle title="الملف الشخصي" />
@@ -152,12 +158,6 @@ function AuthenticatedProfileScreen() {
             <Text style={[styles.message, { color: colors.mutedForeground }]}>
               لم نعثر على جلسة مستخدم نشطة. سجّل الدخول مجدداً لعرض بيانات حسابك.
             </Text>
-            <ActionButton
-              label="العودة إلى الإعدادات"
-              icon="settings"
-              secondary
-              onPress={() => router.replace("/(tabs)/settings")}
-            />
           </View>
         ) : (
           <>

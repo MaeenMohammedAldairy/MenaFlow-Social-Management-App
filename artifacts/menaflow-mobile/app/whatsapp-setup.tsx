@@ -24,11 +24,11 @@ import {
 } from "react-native";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
-import { OwnerGuard } from "@/components/OwnerGuard";
 import {
   ActionButton,
   BrandHeader,
   EmptyState,
+  navigateBack,
   Page,
   PageTitle,
   Panel,
@@ -65,11 +65,7 @@ function errorMessage(error: unknown, fallback: string): string {
 
 export default function WhatsAppSetupScreen() {
   if (isLocalAuthDisabled) return <WhatsAppSetupContent userId={null} />;
-  return (
-    <OwnerGuard>
-      <AuthenticatedWhatsAppSetup />
-    </OwnerGuard>
-  );
+  return <AuthenticatedWhatsAppSetup />;
 }
 
 function AuthenticatedWhatsAppSetup() {
@@ -272,7 +268,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
 
   const retrySettings = () => void settingsQuery.refetch();
   const returnToSources = () =>
-    router.replace(
+    navigateBack(
       returnTo === "connect-accounts"
         ? "/connect-accounts"
         : "/(tabs)/more/sources",
