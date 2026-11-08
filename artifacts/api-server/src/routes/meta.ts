@@ -48,6 +48,8 @@ import {
 import { resolveMetaWebReturnOrigin } from "../lib/meta-web-origin";
 import { getMetaGraphVersion } from "../lib/meta-graph-config";
 import { encryptMetaToken } from "../lib/meta-token-crypto";
+import { activateMetaWebhookSubscriptionsForConnection } from "../lib/meta-webhook-subscriptions";
+import { logger } from "../lib/logger";
 import {
   canConnectChannel,
   canConnectMetaAccounts,
@@ -825,6 +827,28 @@ router.get("/social/meta/callback", async (req, res) => {
           connectedAt: new Date(),
         },
       });
+
+    try {
+      const [savedConnection] = await db
+        .select()
+        .from(menaMetaConnections)
+        .where(eq(menaMetaConnections.workspaceId, stateRow.workspaceId))
+        .limit(1);
+      if (savedConnection) {
+        await activateMetaWebhookSubscriptionsForConnection(savedConnection);
+      }
+    } catch (error) {
+      logger.warn(
+        {
+          workspaceId: stateRow.workspaceId,
+          reason:
+            error instanceof Error
+              ? error.message
+              : "META_WEBHOOK_SUBSCRIPTION_FAILED",
+        },
+        "Meta account connected but webhook subscription activation failed",
+      );
+    }
 
     appRedirect(
       res,

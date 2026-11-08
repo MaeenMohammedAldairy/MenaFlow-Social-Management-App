@@ -38,6 +38,7 @@ test("composes platform copy only from saved product facts", () => {
 });
 
 test("marks known content/account blockers for user action", () => {
+  assert.equal(isProductPublicationActionRequired("PRODUCT_NOT_AVAILABLE"), true);
   assert.equal(isProductPublicationActionRequired("INSTAGRAM_MEDIA_REQUIRED"), true);
   assert.equal(isProductPublicationActionRequired("FACEBOOK_NO_SUPPORTED_MEDIA"), true);
   assert.equal(isProductPublicationActionRequired("META_HTTP_429"), false);

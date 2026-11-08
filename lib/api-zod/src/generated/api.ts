@@ -421,7 +421,8 @@ export const CreatePostBody = zod.object({
   "body": zod.string(),
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
   "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
-  "metadata": zod.record(zod.string(), zod.unknown()).optional()
+  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
+  "mediaUrls": zod.array(zod.string()).optional()
 })
 
 export const CreatePostResponse = zod.object({

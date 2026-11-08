@@ -17,6 +17,7 @@ export type CatalogProduct = {
     mediaType: string;
   }>;
   verifiedAt: string | null;
+  createdAt: string;
   updatedAt: string;
   postIds: string[];
 };
@@ -71,7 +72,12 @@ export type ProductExtractionSuggestion = {
 
 export type ProductInput = Omit<
   CatalogProduct,
-  "id" | "updatedAt" | "verifiedAt" | "postIds" | "mediaPreviews"
+  | "id"
+  | "createdAt"
+  | "updatedAt"
+  | "verifiedAt"
+  | "postIds"
+  | "mediaPreviews"
 >;
 
 export type PublishableAccount = {

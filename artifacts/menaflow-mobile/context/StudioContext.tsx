@@ -385,6 +385,7 @@ export function StudioProvider({
           channels: post.channels,
           status: createStatus === 'approved' ? 'review' : createStatus,
           metadata: post.metadata,
+          mediaUrls: post.mediaUrls,
         });
         if (saved && saved.id) {
           commit((current) => ({
@@ -395,6 +396,8 @@ export function StudioProvider({
                     ...p,
                     id: saved.id,
                     createdAt: typeof saved.createdAt === 'string' ? saved.createdAt : new Date(saved.createdAt).toISOString(),
+                    mediaUrls: saved.mediaUrls ?? p.mediaUrls ?? [],
+                    mediaPreviewUrls: saved.mediaPreviewUrls ?? p.mediaPreviewUrls ?? [],
                   }
                 : p
             ),

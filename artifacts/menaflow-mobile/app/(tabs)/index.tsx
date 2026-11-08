@@ -193,11 +193,23 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
   const pendingPost = posts.find((post) => post.status === "failed")
     ?? posts.find((post) => post.status === "review")
     ?? posts.find((post) => post.status === "draft");
-  const recentActivities = [...posts]
+  const recentActivities = [
+    ...posts.map((post) => ({
+      type: "post" as const,
+      id: post.id,
+      timestamp: post.updatedAt ?? post.createdAt,
+      post,
+    })),
+    ...(catalogQuery.data ?? []).map((product) => ({
+      type: "product" as const,
+      id: product.id,
+      timestamp: product.createdAt,
+      product,
+    })),
+  ]
     .sort(
       (a, b) =>
-        new Date(b.updatedAt ?? b.createdAt).getTime() -
-        new Date(a.updatedAt ?? a.createdAt).getTime(),
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     )
     .slice(0, 4);
 
@@ -815,14 +827,79 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                   "نحمّل بيانات مساحة العمل قبل عرض المنشورات."
                 }
               />
-            ) : posts.length === 0 ? (
+            ) : recentActivities.length === 0 &&
+              catalogQuery.isPending &&
+              !catalogQuery.isFetched ? (
               <EmptyState
-                icon="bell"
-                title="لا توجد أنشطة بعد"
-                body="ستظهر هنا آخر تحديثات المحتوى وحالات النشر في مساحة عملك."
+                icon="clock"
+                title="جارٍ تحميل الأنشطة"
+                body="نحمّل أحدث المنتجات والمنشورات في مساحة العمل."
+              />
+            ) : recentActivities.length === 0 ? (
+              <EmptyState
+                icon={catalogQuery.isError ? "alert-circle" : "bell"}
+                title={
+                  catalogQuery.isError
+                    ? "تعذر تحميل الأنشطة"
+                    : "لا توجد أنشطة بعد"
+                }
+                body={
+                  catalogQuery.isError
+                    ? "تعذر تحميل المنتجات. اسحب للأسفل لإعادة المحاولة."
+                    : "ستظهر هنا أحدث المنتجات والمنشورات وحالات النشر في مساحة عملك."
+                }
               />
             ) : (
-              recentActivities.map((post) => {
+              recentActivities.map((activity) => {
+                if (activity.type === "product") {
+                  const productDate = formatArabicDate(
+                    activity.product.createdAt,
+                  );
+                  return (
+                    <Pressable
+                      key={`product-${activity.id}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`تمت إضافة المنتج: ${activity.product.name}`}
+                      accessibilityHint="عرض كتالوج المنتجات"
+                      onPress={() => router.push("/(tabs)/products")}
+                      style={({ pressed }) => [
+                        styles.activityRow,
+                        {
+                          borderBottomColor: colors.border,
+                          opacity: pressed ? 0.72 : 1,
+                        },
+                      ]}
+                    >
+                      <StatusPill
+                        style={styles.activityStatus}
+                        label="منتج جديد"
+                        tone="green"
+                      />
+                      <View style={styles.activityCopy}>
+                        <Text
+                          numberOfLines={2}
+                          style={[
+                            styles.activityTitle,
+                            { color: colors.foreground },
+                          ]}
+                        >
+                          {activity.product.name}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.activityMeta,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          الكتالوج{productDate ? ` · ${productDate}` : ""}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                }
+
+                const { post } = activity;
                 const title = post.title.trim();
                 const displayTitle =
                   title &&

@@ -16,4 +16,5 @@ export interface CreatePostInput {
   channels: CreatePostInputChannelsItem[];
   status: CreatePostInputStatus;
   metadata?: CreatePostInputMetadata;
+  mediaUrls?: string[];
 }

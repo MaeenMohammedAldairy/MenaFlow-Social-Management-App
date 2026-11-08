@@ -137,18 +137,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
       )
     : filteredItems;
   const groups = groupInboxItems(visibleItems);
-  const connectedPlatforms = (["facebook", "instagram"] as const).filter(
-    (platform) => Boolean(inbox.data?.webhook.accounts[platform]),
-  );
-  const allConfiguredSubscriptions =
-    connectedPlatforms.length > 0 &&
-    connectedPlatforms.every((platform) => {
-      const subscription = inbox.data?.webhook.subscriptions?.[platform];
-      return (
-        subscription?.subscribedAt &&
-        subscription.accountId === inbox.data?.webhook.accounts[platform]
-      );
-    });
 
   return (
     <Page
@@ -177,41 +165,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           title="الرسائل والتعليقات"
           subtitle="تابع الرسائل والتعليقات الواردة من حسابات Meta ورد عليها من مكان واحد."
         />
-        <View
-          style={[
-            styles.inboxStatus,
-            {
-              backgroundColor: allConfiguredSubscriptions
-                ? colors.greenSoft
-                : colors.secondary,
-            },
-          ]}
-        >
-          <View
-            style={[
-              styles.inboxStatusDot,
-              {
-                backgroundColor: allConfiguredSubscriptions
-                  ? colors.green
-                  : colors.warning,
-              },
-            ]}
-          />
-          <Text
-            style={[
-              styles.inboxStatusText,
-              {
-                color: allConfiguredSubscriptions
-                  ? colors.green
-                  : colors.warning,
-              },
-            ]}
-          >
-            {allConfiguredSubscriptions
-              ? "جاهز لاستقبال التفاعلات"
-              : "تحقق من إعداد استقبال التفاعلات"}
-          </Text>
-        </View>
       </Panel>
 
       <MetaAutoReplySettingsPanel userId={userId} />
@@ -397,9 +350,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           body={
             search
               ? "جرّب البحث باسم مختلف أو جزء من نص الرسالة."
-              : allConfiguredSubscriptions
-                ? "ستظهر هنا رسائل وتعليقات الحسابات المتصلة عند وصولها."
-                : "أكمل إعداد Webhooks وفعّل اشتراك الحسابات، ثم أرسل رسالة أو أضف تعليقًا للاختبار."
+              : "ستظهر هنا رسائل وتعليقات الحسابات المتصلة تلقائيًا عند وصولها."
           }
         />
       ) : (
@@ -588,17 +539,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
   },
   inboxEyebrowText: { fontSize: 11, fontWeight: "700" },
-  inboxStatus: {
-    alignSelf: "flex-start",
-    minHeight: 30,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 7,
-    borderRadius: 11,
-    paddingHorizontal: 10,
-  },
-  inboxStatusDot: { width: 7, height: 7, borderRadius: 4 },
-  inboxStatusText: { fontSize: 11, fontWeight: "700" },
   loadError: { alignItems: "center", gap: 10, paddingVertical: 20 },
   loadErrorIcon: {
     width: 52,

@@ -61,6 +61,7 @@ import {
 
 type ProductDraft = ProductInput;
 type CatalogTabId = "all" | "drafts" | "active" | "archived" | "extractions";
+const MAX_SELECTED_PRODUCTS = 50;
 
 const catalogTabDefinitions: Array<{ id: CatalogTabId; label: string }> = [
   { id: "all", label: "الكل" },
@@ -131,6 +132,26 @@ function normalizeProductPriceInput(price: string | null): string | null {
   const [integer, fraction] = normalizedPrice.split(".");
   const normalizedFraction = fraction?.replace(/0+$/, "");
   return normalizedFraction ? `${integer}.${normalizedFraction}` : integer;
+}
+
+function productPublicationPreview(product: CatalogProduct): string {
+  const availability = {
+    unknown: "",
+    in_stock: "متوفر",
+    out_of_stock: "غير متوفر",
+    preorder: "متاح للطلب المسبق",
+  }[product.availability];
+  return [
+    product.name.trim(),
+    product.description.trim(),
+    product.price !== null
+      ? [product.price, product.currency].filter(Boolean).join(" ")
+      : "",
+    availability,
+  ]
+    .filter(Boolean)
+    .filter((line, index, lines) => lines.indexOf(line) === index)
+    .join("\n");
 }
 
 function catalogLoadErrorMessage(error: unknown): string {
@@ -471,6 +492,15 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     );
     return searchableText.includes(normalizedProductSearch);
   });
+  const selectedProducts = allProducts.filter(
+    (product) =>
+      selectedProductIds.has(product.id) &&
+      product.status === "active" &&
+      product.verifiedAt !== null,
+  );
+  const selectableVisibleProducts = visibleProducts.filter(
+    (product) => product.status === "active" && product.verifiedAt !== null,
+  );
   const extractionCount =
     extractions.isPending || candidates.isPending
       ? null
@@ -492,40 +522,75 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     extractions: extractionCount,
   };
   const selectedAllVisible =
-    visibleProducts.length > 0 &&
-    visibleProducts.every((product) => selectedProductIds.has(product.id));
+    selectableVisibleProducts.length > 0 &&
+    selectableVisibleProducts.every((product) =>
+      selectedProductIds.has(product.id),
+    );
   const connectedAccounts = publishableAccounts.data ?? [];
   const selectedTargets = connectedAccounts.filter(
     (account) =>
       account.authorizationStatus === "ready" &&
       selectedTargetKeys.has(`${account.channel}:${account.accountId}`),
   );
+  const instagramMediaMissing =
+    selectedTargets.some(({ channel }) => channel === "instagram") &&
+    selectedProducts.some((product) => product.mediaUrls.length === 0);
   const toggleProductSelection = (productId: string) => {
+    if (
+      !selectedProductIds.has(productId) &&
+      selectedProductIds.size >= MAX_SELECTED_PRODUCTS
+    ) {
+      setError(
+        `يمكن تحديد ${MAX_SELECTED_PRODUCTS} منتجًا كحد أقصى لكل عملية نشر.`,
+      );
+      return;
+    }
     setSelectedProductIds((current) => {
       const next = new Set(current);
       if (next.has(productId)) next.delete(productId);
       else next.add(productId);
       return next;
     });
+    setError("");
   };
   const toggleAllVisibleProducts = () => {
+    const remaining = MAX_SELECTED_PRODUCTS - selectedProductIds.size;
+    const additions = selectableVisibleProducts.filter(
+      (product) => !selectedProductIds.has(product.id),
+    );
+    if (!selectedAllVisible && additions.length > remaining) {
+      setError(
+        `يمكن تحديد ${MAX_SELECTED_PRODUCTS} منتجًا كحد أقصى لكل عملية نشر.`,
+      );
+    } else {
+      setError("");
+    }
     setSelectedProductIds((current) => {
       const next = new Set(current);
       if (selectedAllVisible) {
-        visibleProducts.forEach((product) => next.delete(product.id));
+        selectableVisibleProducts.forEach((product) => next.delete(product.id));
       } else {
-        visibleProducts.forEach((product) => next.add(product.id));
+        selectableVisibleProducts
+          .filter((product) => !next.has(product.id))
+          .slice(0, Math.max(remaining, 0))
+          .forEach((product) => next.add(product.id));
       }
       return next;
     });
   };
   const startProductPublication = () => {
-    if (selectedTargets.length === 0 || selectedProductIds.size === 0) return;
+    if (selectedTargets.length === 0 || selectedProducts.length === 0) return;
+    if (
+      selectedTargets.some(({ channel }) => channel === "instagram") &&
+      selectedProducts.some((product) => product.mediaUrls.length === 0)
+    ) {
+      return;
+    }
     const requestKey = pendingRequestKey ?? randomUUID();
     setPendingRequestKey(requestKey);
     publishProducts.mutate({
       requestKey,
-      productIds: [...selectedProductIds],
+      productIds: selectedProducts.map((product) => product.id),
       targets: selectedTargets.map(({ channel, accountId }) => ({
         channel,
         accountId,
@@ -983,45 +1048,78 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     </View>
                   ) : null}
                 </View>
-                <Pressable
-                  accessibilityRole="checkbox"
-                  accessibilityLabel="تحديد جميع المنتجات المعروضة"
-                  accessibilityState={{
-                    checked: selectedAllVisible,
-                    disabled: visibleProducts.length === 0,
-                  }}
-                  disabled={visibleProducts.length === 0}
-                  onPress={toggleAllVisibleProducts}
-                  style={({ pressed }) => [
-                    styles.selectAll,
-                    { opacity: pressed ? 0.7 : 1 },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.checkbox,
+                <View style={styles.selectionActions}>
+                  {selectedProducts.length ? (
+                    <Text
+                      style={[
+                        styles.helper,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      المحدد: {formatArabicNumber(selectedProducts.length)}
+                    </Text>
+                  ) : null}
+                  {selectedProductIds.size ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="إلغاء تحديد المنتجات"
+                      onPress={() => {
+                        setSelectedProductIds(new Set());
+                        setError("");
+                      }}
+                    >
+                      <Text style={[styles.link, { color: colors.primary }]}>
+                        إلغاء التحديد
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityLabel="تحديد جميع المنتجات المعتمدة المعروضة"
+                    accessibilityState={{
+                      checked: selectedAllVisible,
+                      disabled: selectableVisibleProducts.length === 0,
+                    }}
+                    disabled={selectableVisibleProducts.length === 0}
+                    onPress={toggleAllVisibleProducts}
+                    style={({ pressed }) => [
+                      styles.selectAll,
                       {
-                        borderColor: selectedAllVisible
-                          ? colors.primary
-                          : colors.border,
-                        backgroundColor: selectedAllVisible
-                          ? colors.primary
-                          : "transparent",
+                        opacity:
+                          selectableVisibleProducts.length === 0
+                            ? 0.45
+                            : pressed
+                              ? 0.7
+                              : 1,
                       },
                     ]}
                   >
-                    {selectedAllVisible ? (
-                      <Icon
-                        name="check"
-                        size={13}
-                        color={colors.primaryForeground}
-                      />
-                    ) : null}
-                  </View>
-                  <Text style={[styles.link, { color: colors.primary }]}>
-                    تحديد الكل
-                  </Text>
-                </Pressable>
+                    <View
+                      style={[
+                        styles.checkbox,
+                        {
+                          borderColor: selectedAllVisible
+                            ? colors.primary
+                            : colors.border,
+                          backgroundColor: selectedAllVisible
+                            ? colors.primary
+                            : "transparent",
+                        },
+                      ]}
+                    >
+                      {selectedAllVisible ? (
+                        <Icon
+                          name="check"
+                          size={13}
+                          color={colors.primaryForeground}
+                        />
+                      ) : null}
+                    </View>
+                    <Text style={[styles.link, { color: colors.primary }]}>
+                      تحديد الكل
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
               <View
                 style={[
@@ -1115,7 +1213,16 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 <ProductCard
                   key={product.id}
                   product={product}
-                  selected={selectedProductIds.has(product.id)}
+                  selected={selectedProducts.some(
+                    (selectedProduct) => selectedProduct.id === product.id,
+                  )}
+                  selectionDisabledReason={
+                    product.status !== "active"
+                      ? "اعتمد المنتج أولًا قبل نشره."
+                      : !product.verifiedAt
+                        ? "تحقق من بيانات المنتج قبل نشره."
+                        : null
+                  }
                   onToggleSelection={() => toggleProductSelection(product.id)}
                   onEdit={() =>
                     openEditor({
@@ -1244,10 +1351,10 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           </View>
         ) : null}
       </Page>
-      {selectedProductIds.size > 0 ? (
+      {selectedProducts.length > 0 ? (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`النشر التلقائي، ${selectedProductIds.size} منتجات محددة`}
+          accessibilityLabel={`مراجعة النشر، ${selectedProducts.length} منتجات محددة`}
           onPress={() => {
             setSelectedTargetKeys(new Set());
             setPendingRequestKey(randomUUID());
@@ -1264,7 +1371,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         >
           <Icon name="send" size={18} color={colors.primaryForeground} />
           <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-            النشر التلقائي ({selectedProductIds.size})
+            مراجعة النشر ({selectedProducts.length})
           </Text>
         </Pressable>
       ) : null}
@@ -1561,11 +1668,11 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           >
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                اختيار منصات النشر
+                مراجعة وجدولة النشر
               </Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="إغلاق اختيار منصات النشر"
+                accessibilityLabel="إغلاق مراجعة النشر"
                 onPress={() => {
                   if (!publishProducts.isPending) setPublishModalVisible(false);
                 }}
@@ -1575,9 +1682,88 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
             </View>
             <ScrollView contentContainerStyle={styles.form}>
               <Text style={[styles.helper, { color: colors.mutedForeground }]}>
-                ستنشأ عملية مستقلة لكل منتج وحساب. عدد المنتجات المحددة:{" "}
-                {selectedProductIds.size}.
+                ستنشأ عملية مستقلة لكل منتج وحساب. المنتجات المحددة:{" "}
+                {selectedProducts.length} · إجمالي العمليات:{" "}
+                {selectedProducts.length * selectedTargets.length}.
               </Text>
+              <View
+                style={[
+                  styles.publicationReview,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.accountName, { color: colors.foreground }]}
+                >
+                  معاينة المنتجات
+                </Text>
+                {selectedProducts.map((product) => (
+                  <View
+                    key={product.id}
+                    style={[
+                      styles.reviewProduct,
+                      { borderTopColor: colors.border },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.accountName,
+                        { color: colors.foreground },
+                      ]}
+                    >
+                      {product.name}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.helper,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      معاينة نص المنشور{"\n"}
+                      {productPublicationPreview(product)}
+                    </Text>
+                    {product.mediaPreviews.length ? (
+                      <View style={styles.productMediaList}>
+                        {product.mediaPreviews.slice(0, 4).map((media) =>
+                          media.mediaType === "image" ? (
+                            <ProductMediaThumbnail
+                              key={media.id}
+                              uri={media.url}
+                              label={`معاينة صورة ${product.name}`}
+                            />
+                          ) : (
+                            <View
+                              key={media.id}
+                              style={[
+                                styles.productMediaThumbnail,
+                                styles.productVideoPlaceholder,
+                                { backgroundColor: colors.accent },
+                              ]}
+                            >
+                              <Icon
+                                name="play"
+                                size={22}
+                                color={colors.primary}
+                              />
+                            </View>
+                          ),
+                        )}
+                      </View>
+                    ) : null}
+                    {product.postIds.length ? (
+                      <Text
+                        style={[styles.helper, { color: colors.warning }]}
+                      >
+                        تنبيه: لهذا المنتج {product.postIds.length} منشور سابق؛
+                        راجع المحتوى لتجنب التكرار.
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
               {publishableAccounts.isError ? (
                 <Text
                   accessibilityRole="alert"
@@ -1683,17 +1869,27 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   لا توجد حسابات Meta جاهزة. اربط Facebook أو Instagram أولًا.
                 </Text>
               )}
+              {instagramMediaMissing ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={[styles.helper, { color: colors.destructive }]}
+                >
+                  لا يمكن النشر على Instagram: أضف صورة أو فيديو لكل منتج
+                  محدد، أو أزل Instagram من الحسابات المختارة.
+                </Text>
+              ) : null}
               <ActionButton
                 label={
                   publishProducts.isPending
                     ? "جارٍ جدولة عمليات النشر..."
-                    : `نشر ${selectedProductIds.size} منتجًا على ${selectedTargets.length} حساب`
+                    : `جدولة ${selectedProducts.length} منتجًا على ${selectedTargets.length} حساب`
                 }
                 icon={publishProducts.isPending ? "refresh-cw" : "send"}
                 disabled={
                   publishProducts.isPending ||
                   selectedTargets.length === 0 ||
-                  selectedProductIds.size === 0
+                  selectedProducts.length === 0 ||
+                  instagramMediaMissing
                 }
                 onPress={startProductPublication}
               />
@@ -2093,11 +2289,13 @@ function ProductExtractionCard({
 function ProductCard({
   product,
   selected,
+  selectionDisabledReason,
   onToggleSelection,
   onEdit,
 }: {
   product: CatalogProduct;
   selected: boolean;
+  selectionDisabledReason: string | null;
   onToggleSelection: () => void;
   onEdit: () => void;
 }) {
@@ -2125,7 +2323,12 @@ function ProductCard({
           <Pressable
             accessibilityRole="checkbox"
             accessibilityLabel={`تحديد المنتج ${product.name.trim() || "بدون اسم"}`}
-            accessibilityState={{ checked: selected }}
+            accessibilityHint={selectionDisabledReason ?? undefined}
+            accessibilityState={{
+              checked: selected,
+              disabled: Boolean(selectionDisabledReason),
+            }}
+            disabled={Boolean(selectionDisabledReason)}
             onPress={(event) => {
               event.stopPropagation();
               onToggleSelection();
@@ -2219,6 +2422,11 @@ function ProductCard({
             ? `آخر تحقق: ${formatArabicDate(product.verifiedAt) ?? "غير محدد"}`
             : "لم يتم التحقق من البيانات بعد"}
         </Text>
+        {selectionDisabledReason ? (
+          <Text style={[styles.description, { color: colors.warning }]}>
+            {selectionDisabledReason}
+          </Text>
+        ) : null}
       </Panel>
     </Pressable>
   );
@@ -2622,6 +2830,13 @@ const styles = StyleSheet.create({
   },
   link: { fontSize: 12, fontWeight: "600" },
   sectionTitle: { fontSize: 16, fontWeight: "700", textAlign: "right" },
+  selectionActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: 10,
+  },
   selectAll: {
     flexDirection: "row",
     alignItems: "center",
@@ -2669,6 +2884,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     padding: 10,
+  },
+  publicationReview: {
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+  },
+  reviewProduct: {
+    gap: 7,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 10,
   },
   accountDetails: { flex: 1, gap: 3 },
   accountName: { fontSize: 13, fontWeight: "700", textAlign: "right" },

@@ -49,7 +49,7 @@ async function preparePost(job: PublicationJob) {
       eq(products.workspaceId, job.workspaceId),
     ))
     .limit(1);
-  if (!product || product.status === "archived") {
+  if (!product || product.status !== "active" || !product.verifiedAt) {
     await markActionRequired(job, "PRODUCT_NOT_AVAILABLE");
     return null;
   }

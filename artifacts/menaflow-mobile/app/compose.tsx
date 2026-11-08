@@ -1,7 +1,9 @@
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, usePreventRemove } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Image } from 'expo-image';
 import { CairoText as Text, CairoTextInput as TextInput } from '@/components/CairoTypography';
 import { LucideIcon as Icon, type LucideIconName } from '@/components/LucideIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -9,7 +11,10 @@ import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollV
 import { ActionButton, BrandHeader, confirmDiscardChanges, navigateBack, PageTitle, Panel, SectionTitle } from '@/components/Ui';
 import { useStudio, type Channel } from '@/context/StudioContext';
 import { useColors } from '@/hooks/useColors';
+import { uploadProductMedia } from '@/lib/product-catalog-api';
 import { useGenerateAiContent } from '@workspace/api-client-react';
+
+type SelectedMedia = { id: string; url: string; mediaType: string };
 
 const channelOptions: { key: Channel; label: string; icon: LucideIconName }[] = [
   { key: 'instagram', label: 'إنستغرام', icon: 'instagram' },
@@ -37,6 +42,11 @@ export default function ComposeScreen() {
   const [businessContext, setBusinessContext] = useState('');
   const [tone, setTone] = useState<'professional' | 'friendly' | 'promotional' | 'concise'>('friendly');
   const [aiError, setAiError] = useState('');
+  const [mode, setMode] = useState<'manual' | 'ai'>('manual');
+  const [media, setMedia] = useState<SelectedMedia[]>([]);
+  const [mediaError, setMediaError] = useState('');
+  const [mediaUploading, setMediaUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const allowRemovalRef = useRef(false);
   const aiGeneration = useGenerateAiContent();
@@ -60,6 +70,7 @@ export default function ComposeScreen() {
   };
 
   const submit = async (status: 'draft' | 'review') => {
+    if (saving || mediaUploading) return;
     if (!body.trim()) {
       Alert.alert('أضف نص المنشور', 'اكتب محتوى قبل حفظ المسودة.');
       return;
@@ -68,25 +79,93 @@ export default function ComposeScreen() {
       Alert.alert('اختر قناة', 'حدد قناة واحدة على الأقل لتوضيح وجهة المحتوى.');
       return;
     }
-    await addPost({
-      title: title.trim(),
-      body: body.trim(),
-      channels: selected,
-      status,
-      ...(aiGeneratedAt
-        ? {
-            metadata: {
-              aiGenerated: true,
-              aiProvider: aiProviderUsed,
-              aiGeneratedAt,
-            },
-          }
-        : {}),
-    });
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    allowRemovalRef.current = true;
-    setHasUnsavedChanges(false);
-    navigateBack('/(tabs)/content');
+    if (
+      status === 'review' &&
+      selected.some((channel) => channel === 'instagram' || channel === 'facebook') &&
+      media.length === 0
+    ) {
+      Alert.alert('أرفق وسائط', 'أرفق صورة أو فيديو قبل إرسال منشور إنستغرام أو فيسبوك للمراجعة.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await addPost({
+        title: title.trim(),
+        body: body.trim(),
+        channels: selected,
+        mediaUrls: media.map((item) => item.id),
+        status,
+        ...(aiGeneratedAt
+          ? {
+              metadata: {
+                aiGenerated: true,
+                aiProvider: aiProviderUsed,
+                aiGeneratedAt,
+              },
+            }
+          : {}),
+      });
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      allowRemovalRef.current = true;
+      setHasUnsavedChanges(false);
+      navigateBack('/(tabs)/content');
+    } catch (error) {
+      Alert.alert('تعذّر حفظ المنشور', error instanceof Error ? error.message : 'حاول مرة أخرى.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addMedia = async () => {
+    if (mediaUploading) return;
+    setMediaError('');
+    try {
+      const selection = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images', 'videos'],
+        allowsMultipleSelection: true,
+        quality: 0.9,
+      });
+      if (selection.canceled) return;
+      const availableSlots = 20 - media.length;
+      if (availableSlots <= 0) {
+        setMediaError('يمكن إرفاق 20 وسيطًا كحد أقصى للمنشور.');
+        return;
+      }
+      if (selection.assets.length > availableSlots) {
+        setMediaError(`يمكن إضافة ${availableSlots} وسيطًا إضافيًا فقط؛ الحد الأقصى 20.`);
+      }
+      setHasUnsavedChanges(true);
+      setMediaUploading(true);
+      for (const asset of selection.assets.slice(0, availableSlots)) {
+        if (asset.fileSize && asset.fileSize > 20 * 1024 * 1024) {
+          setMediaError('حجم كل ملف يجب ألا يتجاوز 20 ميغابايت.');
+          continue;
+        }
+        if (!asset.mimeType) {
+          setMediaError('تعذّر تحديد نوع أحد الملفات المختارة.');
+          continue;
+        }
+        const uploaded = await uploadProductMedia({ uri: asset.uri, mimeType: asset.mimeType });
+        if (!uploaded.mediaPreview) throw new Error('تم رفع الوسيط لكن تعذّر إنشاء معاينته.');
+        setMedia((current) => [
+          ...current,
+          {
+            id: uploaded.id,
+            url: uploaded.mediaPreview!.url,
+            mediaType: uploaded.mediaType,
+          },
+        ]);
+      }
+    } catch (error) {
+      setMediaError(error instanceof Error ? error.message : 'تعذّر رفع الوسائط المحددة.');
+    } finally {
+      setMediaUploading(false);
+    }
+  };
+
+  const removeMedia = (mediaId: string) => {
+    setMedia((current) => current.filter((item) => item.id !== mediaId));
+    setHasUnsavedChanges(true);
   };
 
   const generateDraft = async () => {
@@ -144,7 +223,26 @@ export default function ComposeScreen() {
           </Pressable>
         }
       />
-      <Panel style={styles.aiPanel}>
+      <View style={[styles.modeTabs, { backgroundColor: colors.secondary }]} accessibilityRole="tablist">
+        {([
+          ['manual', 'إنشاء يدوي'],
+          ['ai', 'إنشاء بالذكاء الاصطناعي'],
+        ] as const).map(([value, label]) => {
+          const active = mode === value;
+          return (
+            <Pressable
+              key={value}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              onPress={() => setMode(value)}
+              style={[styles.modeTab, { backgroundColor: active ? colors.background : 'transparent' }]}
+            >
+              <Text style={[styles.modeTabLabel, { color: active ? colors.primary : colors.mutedForeground }]}>{label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {mode === 'ai' ? <Panel style={styles.aiPanel}>
         <View style={styles.sectionHeading}>
           <View style={[styles.sectionIcon, { backgroundColor: colors.accent }]}>
             <Icon name="zap" size={17} color={colors.primary} />
@@ -227,7 +325,7 @@ export default function ComposeScreen() {
           onPress={generateDraft}
           disabled={idea.trim().length < 3 || aiGeneration.isPending}
         />
-      </Panel>
+      </Panel> : null}
       <Panel style={styles.contentPanel}>
         <View style={styles.sectionHeading}>
           <View style={[styles.sectionIcon, { backgroundColor: colors.accent }]}>
@@ -301,9 +399,55 @@ export default function ComposeScreen() {
             );
           })}
         </View>
+        <View style={styles.mediaSection}>
+          <View style={styles.channelsHeading}>
+            <Text style={[styles.fieldLabel, { color: colors.foreground }]}>الوسائط</Text>
+            <Text style={[styles.optionHint, { color: colors.mutedForeground }]}>{media.length} / 20</Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="اختيار صور أو فيديو"
+            disabled={mediaUploading || media.length >= 20}
+            onPress={addMedia}
+            style={({ pressed }) => [
+              styles.addMediaButton,
+              { borderColor: colors.border, backgroundColor: colors.background, opacity: pressed || mediaUploading ? 0.65 : 1 },
+            ]}
+          >
+            <Icon name="image" size={17} color={colors.primary} />
+            <Text style={[styles.addMediaLabel, { color: colors.primary }]}>{mediaUploading ? 'جارٍ رفع الوسائط…' : 'إضافة صور أو فيديو'}</Text>
+          </Pressable>
+          {mediaError ? (
+            <Text accessibilityRole="alert" style={[styles.mediaError, { color: colors.destructive }]}>{mediaError}</Text>
+          ) : null}
+          {media.length ? (
+            <View style={styles.mediaList}>
+              {media.map((item) => (
+                <View key={item.id} style={styles.mediaPreview}>
+                  {item.mediaType === 'image' ? (
+                    <Image source={{ uri: item.url }} contentFit="cover" style={styles.mediaImage} />
+                  ) : (
+                    <View style={[styles.mediaPlaceholder, { backgroundColor: colors.accent }]}>
+                      <Icon name="play" size={20} color={colors.primary} />
+                      <Text style={[styles.mediaTypeLabel, { color: colors.primary }]}>فيديو</Text>
+                    </View>
+                  )}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="إزالة الوسيط"
+                    onPress={() => removeMedia(item.id)}
+                    style={[styles.removeMediaButton, { backgroundColor: colors.background }]}
+                  >
+                    <Icon name="x" size={14} color={colors.foreground} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
+        </View>
         <View style={styles.formActions}>
-          <ActionButton label="حفظ كمسودة" icon="save" secondary onPress={() => submit('draft')} disabled={!body.trim()} />
-          <ActionButton label="إرسال للمراجعة" icon="check" onPress={() => submit('review')} disabled={!body.trim()} />
+          <ActionButton label={saving ? 'جارٍ الحفظ…' : 'حفظ كمسودة'} icon="save" secondary onPress={() => submit('draft')} disabled={!body.trim() || saving || mediaUploading} />
+          <ActionButton label={saving ? 'جارٍ الحفظ…' : 'إرسال للمراجعة'} icon="check" onPress={() => submit('review')} disabled={!body.trim() || saving || mediaUploading} />
         </View>
         <View style={[styles.disclaimerBox, { backgroundColor: colors.secondary }]}>
           <Icon name="info" size={15} color={colors.mutedForeground} />
@@ -321,6 +465,9 @@ const styles = StyleSheet.create({
   aiPanel: { gap: 12 },
   contentPanel: { gap: 13 },
   content: { flexGrow: 1, paddingHorizontal: 18, gap: 18 },
+  modeTabs: { flexDirection: 'row-reverse', gap: 4, padding: 4, borderRadius: 13 },
+  modeTab: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10, paddingHorizontal: 8 },
+  modeTabLabel: { fontSize: 11, fontWeight: '800', textAlign: 'center' },
   closeButton: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   sectionHeading: { flexDirection: 'row-reverse', alignItems: 'center', gap: 9 },
   sectionIcon: { width: 35, height: 35, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
@@ -333,6 +480,16 @@ const styles = StyleSheet.create({
   optionHint: { fontSize: 10, textAlign: 'right' },
   characterCount: { fontSize: 10, textAlign: 'left' },
   channelsHeading: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
+  mediaSection: { gap: 9 },
+  addMediaButton: { minHeight: 44, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, paddingHorizontal: 12 },
+  addMediaLabel: { fontSize: 11, fontWeight: '700' },
+  mediaError: { fontSize: 11, textAlign: 'right', lineHeight: 17 },
+  mediaList: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  mediaPreview: { width: 82, height: 82, position: 'relative', borderRadius: 11, overflow: 'hidden' },
+  mediaImage: { width: '100%', height: '100%' },
+  mediaPlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3 },
+  mediaTypeLabel: { fontSize: 10, fontWeight: '700' },
+  removeMediaButton: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   selectionBadge: { minHeight: 24, justifyContent: 'center', borderRadius: 9, paddingHorizontal: 8 },
   selectionBadgeText: { fontSize: 10, fontWeight: '700' },
   channelChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },

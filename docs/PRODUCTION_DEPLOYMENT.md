@@ -49,8 +49,8 @@ The authenticated inbox is available in the app's **الوارد** tab. Before r
 
 1. Configure `MENA_META_WEBHOOK_VERIFY_TOKEN` in the API secret manager. Use a long random value and enter the same value in the Meta App Dashboard; never commit it.
 2. Configure the public HTTPS callback shown in the inbox as the Meta Webhooks callback URL. The callback uses `MENA_PUBLIC_MEDIA_BASE_URL` when set, otherwise the host from `MENA_FACEBOOK_REDIRECT_URI`. For local testing, run `pnpm dev:instagram`, keep its terminal open, and update the Meta callback whenever the temporary Cloudflare Tunnel URL changes. Subscribe the app to the **Page** fields `feed`, `messages`, and `messaging_postbacks`, and the **Instagram** fields `comments` and `messages`.
-3. Subscribe the connected Page and Instagram account from the inbox's **تفعيل الحسابات المتصلة** action. The API uses the connected Page token and records each account's subscription result.
-4. Confirm the app has the required access/review in Meta, then send a test message and comment. Incoming events are signature-verified using `FACEBOOK_APP_SECRET`; duplicate webhook deliveries are ignored.
+3. After a Page or Instagram account is connected, the API automatically subscribes it to the required webhook fields. A background reconciliation retries failed subscriptions for existing connections. Confirm the app has the required access/review in Meta; permission or token failures are recorded in the subscription status.
+4. Send a test message and comment. Incoming events are signature-verified using `FACEBOOK_APP_SECRET`; duplicate webhook deliveries are ignored.
 
 Apply `20261025002000_meta_inbox.sql` before deploying inbox routes. The webhook callback is unauthenticated by design for Meta delivery; its GET verification token and POST HMAC signature are validated. Inbox reads and replies remain authenticated and workspace-scoped. Replies are subject to Meta messaging windows, account eligibility, app review, and each platform's policies. A Meta permission grant alone does not prove app review or webhook delivery is active.
 

@@ -316,6 +316,7 @@ export interface CreatePostInput {
   channels: CreatePostInputChannelsItem[];
   status: CreatePostInputStatus;
   metadata?: CreatePostInputMetadata;
+  mediaUrls?: string[];
 }
 
 export type UpdatePostInputChannelsItem = typeof UpdatePostInputChannelsItem[keyof typeof UpdatePostInputChannelsItem];

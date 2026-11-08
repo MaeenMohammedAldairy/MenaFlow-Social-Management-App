@@ -8,6 +8,7 @@ import {
 import { processMetaAutoReplyQueue } from "./lib/meta-auto-reply-worker";
 import { processWhatsAppProductExtractionQueue } from "./lib/whatsapp-product-extraction";
 import { processProductPublicationQueue } from "./lib/product-publishing";
+import { processMetaWebhookSubscriptionQueue } from "./lib/meta-webhook-subscriptions";
 
 const rawPort = process.env["PORT"];
 
@@ -30,6 +31,27 @@ app.listen(port, "0.0.0.0", (err) => {
   }
 
   logger.info({ host: "0.0.0.0", port }, "Server listening");
+  if (process.env.MENA_META_WEBHOOK_VERIFY_TOKEN?.trim()) {
+    const metaWebhookSubscriptionTimer = setInterval(() => {
+      void processMetaWebhookSubscriptionQueue().catch((error) => {
+        logger.error(
+          { err: error },
+          "Meta webhook subscription reconciliation failed",
+        );
+      });
+    }, 60_000);
+    metaWebhookSubscriptionTimer.unref();
+    void processMetaWebhookSubscriptionQueue().catch((error) => {
+      logger.error(
+        { err: error },
+        "Initial Meta webhook subscription reconciliation failed",
+      );
+    });
+  } else {
+    logger.warn(
+      "Meta webhook subscription reconciliation disabled because the verification token is not configured",
+    );
+  }
   if (process.env["WHATSAPP_PRODUCT_EXTRACTION_WORKER_ENABLED"] !== "false") {
     const productExtractionTimer = setInterval(() => {
       void processWhatsAppProductExtractionQueue().catch((error) => {

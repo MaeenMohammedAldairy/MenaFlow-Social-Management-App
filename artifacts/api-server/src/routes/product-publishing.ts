@@ -146,7 +146,11 @@ router.post("/social/products/publish", requireWorkspace, async (req, res) => {
   }
 
   const productRows = await db
-    .select({ id: products.id })
+    .select({
+      id: products.id,
+      status: products.status,
+      verifiedAt: products.verifiedAt,
+    })
     .from(products)
     .where(and(
       eq(products.workspaceId, workspaceId),
@@ -154,6 +158,16 @@ router.post("/social/products/publish", requireWorkspace, async (req, res) => {
     ));
   if (productRows.length !== productIds.length) {
     res.status(404).json({ error: "بعض المنتجات المحددة غير موجودة." });
+    return;
+  }
+  const publishableProducts = productRows.filter(
+    (product) => product.status === "active" && product.verifiedAt !== null,
+  );
+  if (publishableProducts.length !== productIds.length) {
+    res.status(409).json({
+      error: "لا يمكن نشر المسودات أو المنتجات غير المعتمدة. راجع بيانات المنتجات واعتمدها أولًا.",
+      code: "PRODUCTS_NOT_APPROVED",
+    });
     return;
   }
 

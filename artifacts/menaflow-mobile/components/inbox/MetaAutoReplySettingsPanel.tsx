@@ -66,7 +66,6 @@ function readinessMessage(
   readiness: {
     connected: boolean;
     tokenReady: boolean;
-    webhookConfigured: boolean;
     messagesSubscriptionReady: boolean;
     commentsSubscriptionReady: boolean;
     aiConfigured: boolean;
@@ -78,15 +77,12 @@ function readinessMessage(
   if (!readiness.tokenReady) {
     return "تحقق من صلاحيات الحساب أو أعد ربطه من صفحة المصادر.";
   }
-  if (!readiness.webhookConfigured) {
-    return "أضف MENA_META_WEBHOOK_VERIFY_TOKEN إلى الخادم وأعد تشغيل API.";
-  }
   if (
     kind === "message"
       ? !readiness.messagesSubscriptionReady
       : !readiness.commentsSubscriptionReady
   ) {
-    return "فعّل Webhook للحساب من لوحة Meta ثم فعّل اشتراك الحسابات في الوارد.";
+    return "فعّل اشتراك استقبال التفاعلات لهذا الحساب من صندوق الوارد.";
   }
   if (!readiness.aiConfigured) {
     return "أضف مفتاح OpenAI أو Gemini إلى إعدادات الخادم.";
