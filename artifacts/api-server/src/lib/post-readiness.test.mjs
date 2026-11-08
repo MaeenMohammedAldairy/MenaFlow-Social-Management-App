@@ -77,3 +77,14 @@ test("allows a manual post title to serve as its publishing text", () => {
     availableMediaIds: new Set(),
   }), null);
 });
+
+test("allows an authorized product media ID on a manual post", () => {
+  const mediaId = "product-media-image-workspacehash-fileid-jpg";
+  assert.equal(postReadinessIssue({
+    title: "عنوان المنشور",
+    body: "",
+    sourceType: "manual",
+    mediaUrls: [mediaId],
+    availableMediaIds: new Set([mediaId]),
+  }), null);
+});

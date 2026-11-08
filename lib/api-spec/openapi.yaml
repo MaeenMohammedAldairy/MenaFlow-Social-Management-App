@@ -1061,7 +1061,7 @@ components:
         authorizationReason:
           oneOf:
             - type: string
-              enum: [token_expired, permissions_unverified, permissions_missing]
+              enum: [token_expired, token_invalid, permissions_unverified, permissions_missing]
             - type: "null"
         missingPermissions:
           type: array

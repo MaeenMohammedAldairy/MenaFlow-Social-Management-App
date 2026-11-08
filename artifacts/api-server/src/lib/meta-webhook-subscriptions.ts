@@ -3,6 +3,7 @@ import {
   and,
   eq,
   gt,
+  isNull,
   isNotNull,
   notExists,
   or,
@@ -20,6 +21,7 @@ import {
 } from "./meta-inbox-graph";
 import {
   missingMetaIntegrationPermissions,
+  isMetaAccessTokenInvalid,
   type MetaIntegration,
 } from "./meta-oauth";
 
@@ -78,6 +80,7 @@ async function saveSubscriptionResult(input: {
 
 function failureCode(error: unknown): string {
   if (error instanceof MetaInboxGraphError) {
+    if (isMetaAccessTokenInvalid(error.code)) return "token_invalid";
     return error.networkFailure
       ? "network_error"
       : `graph_${error.code ?? error.status ?? "error"}`;
@@ -209,6 +212,25 @@ export async function activateMetaWebhookSubscriptionsForConnection(
       });
       results[platform] = result;
     } catch (error) {
+      if (
+        error instanceof MetaInboxGraphError &&
+        isMetaAccessTokenInvalid(error.code)
+      ) {
+        const [invalidated] = await db
+          .update(menaMetaConnections)
+          .set({ authorizationVerifiedAt: null })
+          .where(
+            and(
+              eq(menaMetaConnections.workspaceId, connection.workspaceId),
+              eq(
+                menaMetaConnections.encryptedPageAccessToken,
+                connection.encryptedPageAccessToken,
+              ),
+            ),
+          )
+          .returning({ workspaceId: menaMetaConnections.workspaceId });
+        if (!invalidated) return results;
+      }
       const errorCode = failureCode(error);
       const result = await saveFailureForConnection(
         connection,
@@ -268,26 +290,38 @@ export async function processMetaWebhookSubscriptionQueue(): Promise<void> {
   reconciliationRunning = true;
   try {
     const retryBefore = new Date(Date.now() - 5 * 60_000);
-    const connections = await db.select().from(menaMetaConnections).where(
-      or(
+    const now = new Date();
+    const connections = await db
+      .select()
+      .from(menaMetaConnections)
+      .where(
         and(
-          isNotNull(menaMetaConnections.pageId),
-          needsSubscriptionRetry(
-            "facebook",
-            menaMetaConnections.pageId,
-            retryBefore,
+          isNotNull(menaMetaConnections.authorizationVerifiedAt),
+          or(
+            isNull(menaMetaConnections.accessTokenExpiresAt),
+            gt(menaMetaConnections.accessTokenExpiresAt, now),
+          ),
+          or(
+            and(
+              isNotNull(menaMetaConnections.pageId),
+              needsSubscriptionRetry(
+                "facebook",
+                menaMetaConnections.pageId,
+                retryBefore,
+              ),
+            ),
+            and(
+              isNotNull(menaMetaConnections.instagramUserId),
+              needsSubscriptionRetry(
+                "instagram",
+                menaMetaConnections.instagramUserId,
+                retryBefore,
+              ),
+            ),
           ),
         ),
-        and(
-          isNotNull(menaMetaConnections.instagramUserId),
-          needsSubscriptionRetry(
-            "instagram",
-            menaMetaConnections.instagramUserId,
-            retryBefore,
-          ),
-        ),
-      ),
-    ).limit(25);
+      )
+      .limit(25);
     for (const connection of connections) {
       await activateMetaWebhookSubscriptionsForConnection(connection);
     }

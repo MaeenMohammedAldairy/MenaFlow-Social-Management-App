@@ -4,6 +4,12 @@ import {
   parseProductInput,
   publishedPostProductDraft,
 } from "./product-validation.ts";
+import {
+  productMediaIdFromUrl,
+  productMediaInfo,
+  productMediaStoragePath,
+  workspaceMediaKey,
+} from "./product-utils.ts";
 
 const validProduct = {
   name: "مشط حراري",
@@ -16,6 +22,33 @@ const validProduct = {
   status: "active",
   mediaUrls: ["https://cdn.example.com/product.jpg"],
 };
+
+test("product media IDs resolve only inside their encoded workspace", () => {
+  const fileId = "12345678-1234-1234-1234-123456789abc";
+  const mediaId = `product-media-image-${workspaceMediaKey("workspace-a")}-${fileId}-jpg`;
+
+  assert.deepEqual(productMediaInfo(mediaId, "workspace-a"), {
+    mediaType: "image",
+    workspaceKey: workspaceMediaKey("workspace-a"),
+    fileId,
+    extension: "jpg",
+    mimeType: "image/jpeg",
+    fileName: `${fileId}.jpg`,
+    storagePath: `product-media/${workspaceMediaKey("workspace-a")}/${fileId}.jpg`,
+  });
+  assert.equal(productMediaInfo(mediaId, "workspace-b"), null);
+  assert.equal(productMediaStoragePath("product-media-invalid"), null);
+  assert.equal(
+    productMediaIdFromUrl(
+      `https://api.example.test/api/social/products/public-media/${encodeURIComponent(mediaId)}?expires=123&signature=abc`,
+    ),
+    mediaId,
+  );
+  assert.equal(
+    productMediaIdFromUrl("https://api.example.test/api/social/whatsapp/media/file-id"),
+    null,
+  );
+});
 
 test("normalizes product fields and removes duplicate aliases", () => {
   assert.deepEqual(parseProductInput(validProduct), {

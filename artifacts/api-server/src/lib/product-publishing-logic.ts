@@ -5,6 +5,13 @@ export type ProductPublicationTarget = {
   accountId: string;
 };
 
+export function isVerifiedActiveProduct(product: {
+  status: string;
+  verifiedAt: Date | null;
+} | null): boolean {
+  return product?.status === "active" && product.verifiedAt !== null;
+}
+
 export function buildProductPublicationMatrix(
   productIds: readonly string[],
   targets: readonly ProductPublicationTarget[],

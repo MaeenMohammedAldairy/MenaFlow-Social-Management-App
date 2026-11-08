@@ -32,9 +32,14 @@ import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import { recordOrEmpty as safeRecord } from "../lib/value-utils.ts";
 import {
   publishPostToMeta,
+  signedProductMediaUrl,
   signedWhatsAppMediaUrl,
   verifyFacebookPublishStatus,
 } from "../lib/meta-publishing";
+import {
+  productMediaIdFromUrl,
+  productMediaInfo,
+} from "../lib/product-utils.ts";
 import { unconnectedMetaChannels } from "../lib/meta-channel-routing";
 import { parsePublishRequestBody } from "../lib/publish-retry";
 import {
@@ -97,6 +102,8 @@ function normalizeStringArray(value: unknown): string[] {
 
 function normalizePostMediaUrls(value: unknown): string[] {
   return normalizeStringArray(value).map((item) => {
+    const productMediaId = productMediaIdFromUrl(item);
+    if (productMediaId) return productMediaId;
     try {
       const mediaUrl = new URL(item);
       const match = mediaUrl.pathname.match(
@@ -331,8 +338,11 @@ async function workspaceMediaIds(
     ...new Set(mediaIds.filter((id) => !/^https?:\/\//i.test(id))),
   ];
   if (localIds.length === 0) return new Set();
-  const authorizedIds = new Set<string>();
-  for (let offset = 0; offset < localIds.length; offset += 1000) {
+  const authorizedIds = new Set(
+    localIds.filter((id) => productMediaInfo(id, workspaceId) !== null),
+  );
+  const whatsappMediaIds = localIds.filter((id) => !authorizedIds.has(id));
+  for (let offset = 0; offset < whatsappMediaIds.length; offset += 1000) {
     const rows = await db
       .select({ id: menaWhatsAppMessageMedia.id })
       .from(menaWhatsAppMessageMedia)
@@ -364,7 +374,7 @@ async function workspaceMediaIds(
           eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
           inArray(
             menaWhatsAppMessageMedia.id,
-            localIds.slice(offset, offset + 1000),
+            whatsappMediaIds.slice(offset, offset + 1000),
           ),
         ),
       );
@@ -414,27 +424,24 @@ async function responseForRow(
 ) {
   const metadata = safeRecord(row.metadata);
   const mediaIds = normalizePostMediaUrls(row.mediaUrls);
-  const authorizedIds =
-    row.sourceType === "whatsapp"
-      ? (authorizedMediaIds ?? (await workspaceMediaIds(workspaceId, mediaIds)))
-      : new Set<string>();
+  const authorizedIds = authorizedMediaIds ??
+    await workspaceMediaIds(workspaceId, mediaIds);
   const mediaEntries = mediaIds
     .map((value, index) => {
       if (/^https?:\/\//i.test(value)) return { url: value, previewUrl: value };
       if (!authorizedIds.has(value)) return null;
       try {
-        const url = signedWhatsAppMediaUrl(
-          value,
-          true,
-          "original",
-          requestOrigin,
-        );
+        const isProductMedia = productMediaInfo(value, workspaceId) !== null;
+        const url = isProductMedia
+          ? signedProductMediaUrl(value, "original", requestOrigin)
+          : signedWhatsAppMediaUrl(value, true, "original", requestOrigin);
+        if (!url) return null;
+        const thumbnailUrl = isProductMedia
+          ? signedProductMediaUrl(value, "thumbnail", requestOrigin)
+          : signedWhatsAppMediaUrl(value, true, "thumbnail", requestOrigin);
         return {
           url,
-          previewUrl:
-            index < 3
-              ? signedWhatsAppMediaUrl(value, true, "thumbnail", requestOrigin)
-              : url,
+          previewUrl: index < 3 ? thumbnailUrl ?? url : url,
         };
       } catch {
         return null;
@@ -506,9 +513,7 @@ router.get("/posts", requireWorkspace, async (req, res) => {
       groupSelections.map(({ groupJid, groupName }) => [groupJid, groupName]),
     );
     const allMediaIds = list.flatMap((row) =>
-      row.sourceType === "whatsapp"
-        ? normalizePostMediaUrls(row.mediaUrls)
-        : [],
+      normalizePostMediaUrls(row.mediaUrls),
     );
     const authorizedMediaIds = await workspaceMediaIds(
       workspaceId,
@@ -647,9 +652,7 @@ router.get("/posts/page", requireWorkspace, async (req, res) => {
       groupSelections.map(({ groupJid, groupName }) => [groupJid, groupName]),
     );
     const mediaIds = pageRows.flatMap((row) =>
-      row.sourceType === "whatsapp"
-        ? normalizePostMediaUrls(row.mediaUrls)
-        : [],
+      normalizePostMediaUrls(row.mediaUrls),
     );
     const authorizedMediaIds = await workspaceMediaIds(workspaceId, mediaIds);
     const items = await Promise.all(
@@ -901,11 +904,8 @@ router.post("/posts", requireWorkspace, async (req, res) => {
       (payload as Record<string, unknown>).mediaUrls,
     );
     if (
-      (typeof payload.sourceType === "string"
-        ? payload.sourceType
-        : "manual") === "whatsapp" &&
       (await workspaceMediaIds(workspaceId, mediaUrls)).size !==
-        mediaUrls.filter((id) => !/^https?:\/\//i.test(id)).length
+      mediaUrls.filter((id) => !/^https?:\/\//i.test(id)).length
     ) {
       res
         .status(422)
@@ -1110,10 +1110,8 @@ router.patch("/posts/:id", requireWorkspace, async (req, res) => {
     if (Array.isArray(rawBody.mediaUrls)) {
       const mediaUrls = normalizePostMediaUrls(rawBody.mediaUrls);
       if (
-        (current.sourceType === "whatsapp" ||
-          rawBody.sourceType === "whatsapp") &&
         (await workspaceMediaIds(workspaceId, mediaUrls)).size !==
-          mediaUrls.filter((id) => !/^https?:\/\//i.test(id)).length
+        mediaUrls.filter((id) => !/^https?:\/\//i.test(id)).length
       ) {
         res
           .status(422)

@@ -1454,9 +1454,11 @@ function SourcesContent({
       if (
         connections.facebook.authorizationStatus === "needs_reauthorization"
       ) {
-        return connections.facebook.authorizationReason === "token_expired"
-          ? "انتهت صلاحية الرمز · أعد التفويض"
-          : "صلاحيات Meta تحتاج إلى تحقق · أعد التفويض";
+        return connections.facebook.authorizationReason === "token_invalid"
+          ? "رمز Meta غير صالح أو مرفوض · أعد التفويض"
+          : connections.facebook.authorizationReason === "token_expired"
+            ? "انتهت صلاحية الرمز · أعد التفويض"
+            : "صلاحيات Meta تحتاج إلى تحقق · أعد التفويض";
       }
       return `متصل: ${connections.facebook.accountName}`;
     }
@@ -1465,9 +1467,11 @@ function SourcesContent({
         if (
           connections.instagram.authorizationStatus === "needs_reauthorization"
         ) {
-          return connections.instagram.authorizationReason === "token_expired"
-            ? "انتهت صلاحية الرمز · أعد التفويض"
-            : "صلاحيات Meta تحتاج إلى تحقق · أعد التفويض";
+          return connections.instagram.authorizationReason === "token_invalid"
+            ? "رمز Meta غير صالح أو مرفوض · أعد التفويض"
+            : connections.instagram.authorizationReason === "token_expired"
+              ? "انتهت صلاحية الرمز · أعد التفويض"
+              : "صلاحيات Meta تحتاج إلى تحقق · أعد التفويض";
         }
         return `متصل: @${connections.instagram.accountName}`;
       }

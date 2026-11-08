@@ -12,6 +12,7 @@ import { notifyPostsChanged } from "./post-events.ts";
 import {
   composeProductPostBody,
   isProductPublicationActionRequired,
+  isVerifiedActiveProduct,
 } from "./product-publishing-logic.ts";
 
 type PublicationJob = typeof productPublicationJobs.$inferSelect;
@@ -49,7 +50,7 @@ async function preparePost(job: PublicationJob) {
       eq(products.workspaceId, job.workspaceId),
     ))
     .limit(1);
-  if (!product || product.status !== "active" || !product.verifiedAt) {
+  if (!isVerifiedActiveProduct(product ?? null)) {
     await markActionRequired(job, "PRODUCT_NOT_AVAILABLE");
     return null;
   }

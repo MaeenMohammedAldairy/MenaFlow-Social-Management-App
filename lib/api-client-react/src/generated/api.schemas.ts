@@ -188,6 +188,7 @@ export type SocialAccountStatusAuthorizationReason = typeof SocialAccountStatusA
 
 export const SocialAccountStatusAuthorizationReason = {
   token_expired: 'token_expired',
+  token_invalid: 'token_invalid',
   permissions_unverified: 'permissions_unverified',
   permissions_missing: 'permissions_missing',
 } as const;

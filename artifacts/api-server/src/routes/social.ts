@@ -4,6 +4,7 @@ import {
   db,
   pool,
   menaMetaConnections,
+  menaMetaWebhookSubscriptions,
   menaWhatsAppConnections,
   menaWhatsAppGroups,
   menaWhatsAppGroupJids,
@@ -59,6 +60,26 @@ router.get("/social/connections", requireWorkspace, async (req, res) => {
     .from(menaMetaConnections)
     .where(eq(menaMetaConnections.workspaceId, workspaceId))
     .limit(1);
+
+  const webhookSubscriptions = connection
+    ? await db
+        .select({ platform: menaMetaWebhookSubscriptions.platform, accountId: menaMetaWebhookSubscriptions.accountId, lastErrorCode: menaMetaWebhookSubscriptions.lastErrorCode })
+        .from(menaMetaWebhookSubscriptions)
+        .where(eq(menaMetaWebhookSubscriptions.workspaceId, workspaceId))
+    : [];
+  const metaStatus = (
+    platform: "facebook" | "instagram",
+    accountId: string,
+  ) => {
+    if (!connection) return null;
+    const tokenInvalid = webhookSubscriptions.some(
+      (subscription) =>
+        subscription.platform === platform &&
+        subscription.accountId === accountId &&
+        subscription.lastErrorCode === "token_invalid",
+    );
+    return metaAuthorizationStatus({ ...connection, tokenInvalid }, platform);
+  };
 
   const [waConnection] = await db
     .select()
@@ -125,7 +146,7 @@ router.get("/social/connections", requireWorkspace, async (req, res) => {
           accountId: connection.pageId,
           accountName: connection.pageName,
           connectedAt: connection.connectedAt.toISOString(),
-          ...metaAuthorizationStatus(connection, "facebook"),
+          ...metaStatus("facebook", connection.pageId),
         }
       : null,
     instagram:
@@ -134,7 +155,7 @@ router.get("/social/connections", requireWorkspace, async (req, res) => {
             accountId: connection.instagramUserId,
             accountName: connection.instagramUsername,
             connectedAt: connection.connectedAt.toISOString(),
-            ...metaAuthorizationStatus(connection, "instagram"),
+            ...metaStatus("instagram", connection.instagramUserId),
           }
         : null,
     whatsapp: waConnection

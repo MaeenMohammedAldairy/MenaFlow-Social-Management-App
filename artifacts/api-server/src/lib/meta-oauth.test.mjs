@@ -10,6 +10,7 @@ import {
   metaGraphErrorDetails,
   metaOAuthScopes,
   metaAuthorizationStatus,
+  isMetaAccessTokenInvalid,
   normalizeMetaAccountId,
   missingMetaIntegrationPermissions,
 } from "./meta-oauth.ts";
@@ -18,6 +19,12 @@ test("only workspace owners can manage Meta connections", () => {
   assert.equal(canManageMetaConnections("owner"), true);
   assert.equal(canManageMetaConnections("member"), false);
   assert.equal(canManageMetaConnections("admin"), false);
+});
+
+test("recognizes Graph error 190 as an invalid access token", () => {
+  assert.equal(isMetaAccessTokenInvalid(190), true);
+  assert.equal(isMetaAccessTokenInvalid(10), false);
+  assert.equal(isMetaAccessTokenInvalid(undefined), false);
 });
 
 test("normalizes valid Meta IDs and rejects empty or whitespace-only IDs", () => {
@@ -206,6 +213,26 @@ test("Meta accounts require verified, current integration permissions", () => {
     ).authorizationReason,
     "permissions_missing",
   );
+});
+
+test("Meta accounts with a webhook-invalidated token require reauthorization", () => {
+  const status = metaAuthorizationStatus(
+    {
+      authorizationVerifiedAt: null,
+      accessTokenExpiresAt: new Date("2026-12-01T00:00:00.000Z"),
+      grantedPermissions: [
+        "pages_manage_engagement",
+        "pages_messaging",
+        "pages_manage_metadata",
+      ],
+      tokenInvalid: true,
+    },
+    "facebook",
+    new Date("2026-11-08T00:00:00.000Z"),
+  );
+
+  assert.equal(status.authorizationStatus, "needs_reauthorization");
+  assert.equal(status.authorizationReason, "token_invalid");
 });
 
 test("maps Meta auto-reply kinds to the platform-specific permission", () => {

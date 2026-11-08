@@ -114,19 +114,48 @@ function normalizedNumber(value: string): string {
     .trim();
 }
 
-function hasMultiplePriceMentions(sourceText: string): boolean {
+function priceMentions(sourceText: string): string[] {
   const amount = String.raw`[٠-٩۰-۹\d]+(?:[٬,.][٠-٩۰-۹\d]+)*`;
   const currency = String.raw`(?:ر\s*ي+ا+ل+|ر\.?\s*س\.?|SAR|YER|USD|سعودي(?:ة|ه)?|دولار(?:ات)?)`;
   const pattern = new RegExp(
     String.raw`(?:${currency}\s*(${amount})|(${amount})\s*${currency}|(?:بالسعودي|بالريال|فقط\s*ب)\s*(${amount}))`,
     "giu",
   );
-  const mentions = new Set<string>();
+  const mentions: string[] = [];
   for (const match of sourceText.matchAll(pattern)) {
     const value = match[1] ?? match[2] ?? match[3];
-    if (value) mentions.add(normalizedNumber(value));
+    if (value) mentions.push(normalizedNumber(value));
   }
-  return mentions.size > 1;
+  return mentions;
+}
+
+function hasMultiplePriceMentions(sourceText: string): boolean {
+  return priceMentions(sourceText).length > 1;
+}
+
+function currencyCodeFromEvidence(value: string): string | null {
+  const code = /(?:^|[^A-Za-z])([A-Za-z]{3})(?:$|[^A-Za-z])/.exec(value);
+  if (code) return code[1]!.toUpperCase();
+
+  const normalized = value
+    .normalize("NFKC")
+    .replace(/[\u064B-\u065F\u0670]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .toLocaleLowerCase();
+  const explicitCurrencies: Array<[RegExp, string]> = [
+    [/ريال\s+سعودي/, "SAR"],
+    [/ريال\s+يمني/, "YER"],
+    [/ريال\s+عماني/, "OMR"],
+    [/ريال\s+قطري/, "QAR"],
+    [/دينار\s+كويتي/, "KWD"],
+    [/دينار\s+بحريني/, "BHD"],
+    [/دينار\s+اردني/, "JOD"],
+    [/درهم\s+اماراتي/, "AED"],
+    [/جنيه\s+مصري/, "EGP"],
+    [/دولار\s+امريكي/, "USD"],
+  ];
+  return explicitCurrencies.find(([pattern]) => pattern.test(normalized))?.[1] ?? null;
 }
 
 export function normalizeProductExtractionResponse(
@@ -228,14 +257,25 @@ export function normalizeProductExtractionResponse(
       /^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(normalizedPrice)
         ? normalizedPrice
         : null;
+    const priceEvidence = evidence.price ? priceMentions(evidence.price) : [];
     const price = parsedPrice &&
-      evidence.price &&
-      normalizedNumber(evidence.price).includes(parsedPrice)
+      priceEvidence.length === 1 &&
+      priceEvidence[0] === parsedPrice
       ? parsedPrice
       : null;
     const currency = extractedString(rawData.currency, 3)?.toUpperCase() ?? null;
     const normalizedCurrency =
       currency && /^[A-Z]{3}$/.test(currency) ? currency : null;
+    const evidencedCurrency = evidence.currency
+      ? currencyCodeFromEvidence(evidence.currency)
+      : null;
+    const verifiedCurrency = normalizedCurrency === evidencedCurrency
+      ? normalizedCurrency
+      : null;
+    if (!verifiedCurrency) {
+      evidence.currency = null;
+      confidence.currency = 0;
+    }
     const aliasEvidence = evidence.aliases;
     const rawAliases = Array.isArray(rawData.aliases) ? rawData.aliases : [];
     const extractedName = evidence.name
@@ -265,7 +305,7 @@ export function normalizeProductExtractionResponse(
         ? extractedString(rawData.description, 3000)
         : null,
       price: evidence.price ? price : null,
-      currency: evidence.currency ? normalizedCurrency : null,
+      currency: evidence.currency ? verifiedCurrency : null,
       availability: evidence.availability ? availability : null,
     };
 

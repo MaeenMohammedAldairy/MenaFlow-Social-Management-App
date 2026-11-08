@@ -33,13 +33,24 @@ router.post(
       res.status(409).json({ error: "اربط حساب Meta قبل تفعيل الوارد." });
       return;
     }
+    if (
+      !connection.authorizationVerifiedAt ||
+      (connection.accessTokenExpiresAt &&
+        connection.accessTokenExpiresAt <= new Date())
+    ) {
+      res.status(409).json({
+        error: "رمز Meta غير صالح أو منتهي. أعد تفويض الحساب قبل تفعيل الوارد.",
+        code: "META_REAUTH_REQUIRED",
+      });
+      return;
+    }
 
     const subscriptions =
       await activateMetaWebhookSubscriptionsForConnection(connection);
     const statuses = Object.values(subscriptions);
     const failed = statuses.some((result) => !result.subscribed);
     const authorizationFailure = statuses.some((result) =>
-      ["token_expired", "permissions_missing"].includes(
+      ["token_expired", "token_invalid", "permissions_missing"].includes(
         result.errorCode ?? "",
       ),
     );

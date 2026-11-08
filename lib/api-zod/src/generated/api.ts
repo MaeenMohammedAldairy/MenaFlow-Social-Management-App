@@ -155,7 +155,7 @@ export const GetSocialConnectionsResponse = zod.object({
   "instanceName": zod.string().optional(),
   "phoneNumber": zod.string().optional(),
   "authorizationStatus": zod.enum(['ready', 'needs_reauthorization']).optional(),
-  "authorizationReason": zod.union([zod.enum(['token_expired', 'permissions_unverified', 'permissions_missing']),zod.null()]).optional(),
+  "authorizationReason": zod.union([zod.enum(['token_expired', 'token_invalid', 'permissions_unverified', 'permissions_missing']),zod.null()]).optional(),
   "missingPermissions": zod.array(zod.string()).optional(),
   "accessTokenExpiresAt": zod.union([zod.coerce.date(),zod.null()]).optional()
 }),zod.null()]),
@@ -168,7 +168,7 @@ export const GetSocialConnectionsResponse = zod.object({
   "instanceName": zod.string().optional(),
   "phoneNumber": zod.string().optional(),
   "authorizationStatus": zod.enum(['ready', 'needs_reauthorization']).optional(),
-  "authorizationReason": zod.union([zod.enum(['token_expired', 'permissions_unverified', 'permissions_missing']),zod.null()]).optional(),
+  "authorizationReason": zod.union([zod.enum(['token_expired', 'token_invalid', 'permissions_unverified', 'permissions_missing']),zod.null()]).optional(),
   "missingPermissions": zod.array(zod.string()).optional(),
   "accessTokenExpiresAt": zod.union([zod.coerce.date(),zod.null()]).optional()
 }),zod.null()]),
@@ -181,7 +181,7 @@ export const GetSocialConnectionsResponse = zod.object({
   "instanceName": zod.string().optional(),
   "phoneNumber": zod.string().optional(),
   "authorizationStatus": zod.enum(['ready', 'needs_reauthorization']).optional(),
-  "authorizationReason": zod.union([zod.enum(['token_expired', 'permissions_unverified', 'permissions_missing']),zod.null()]).optional(),
+  "authorizationReason": zod.union([zod.enum(['token_expired', 'token_invalid', 'permissions_unverified', 'permissions_missing']),zod.null()]).optional(),
   "missingPermissions": zod.array(zod.string()).optional(),
   "accessTokenExpiresAt": zod.union([zod.coerce.date(),zod.null()]).optional()
 }),zod.null()]).optional()

@@ -9,6 +9,10 @@ export type MetaIntegration = "facebook" | "instagram";
 
 export type MetaAutoReplyKind = "message" | "comment";
 
+export function isMetaAccessTokenInvalid(errorCode: number | undefined): boolean {
+  return errorCode === 190;
+}
+
 export type MetaConnectionOwnershipConflict =
   | "facebook_page"
   | "instagram_account";
@@ -114,6 +118,7 @@ export function metaAuthorizationStatus(
     authorizationVerifiedAt: Date | null;
     accessTokenExpiresAt: Date | null;
     grantedPermissions: string[];
+    tokenInvalid?: boolean;
   },
   integration: MetaIntegration,
   now = new Date(),
@@ -127,8 +132,10 @@ export function metaAuthorizationStatus(
   const tokenExpired =
     connection.accessTokenExpiresAt !== null &&
     connection.accessTokenExpiresAt <= now;
-  const authorizationReason = tokenExpired
-    ? "token_expired"
+  const authorizationReason = connection.tokenInvalid
+    ? "token_invalid"
+    : tokenExpired
+      ? "token_expired"
     : !connection.authorizationVerifiedAt
       ? "permissions_unverified"
       : missingPermissions.length > 0

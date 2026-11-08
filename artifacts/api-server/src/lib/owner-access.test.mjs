@@ -116,6 +116,7 @@ test("production auth configuration rejects Clerk development keys", () => {
     {
       NODE_ENV: "production",
       MENA_AUTH_DISABLED: undefined,
+      MENA_ALLOW_CLERK_TEST_KEYS_IN_PRODUCTION: undefined,
       CLERK_SECRET_KEY: "sk_test_development",
       CLERK_PUBLISHABLE_KEY: "pk_test_development",
       ENCRYPTION_KEY: "a-production-encryption-key-with-at-least-32-chars",
@@ -123,7 +124,7 @@ test("production auth configuration rejects Clerk development keys", () => {
     () =>
       assert.throws(
         () => assertProductionConfiguration(),
-        /Clerk test keys must not be used in production/,
+        /Clerk test keys require MENA_ALLOW_CLERK_TEST_KEYS_IN_PRODUCTION=true/,
       ),
   );
 });

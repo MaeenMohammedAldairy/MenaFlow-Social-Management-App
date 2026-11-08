@@ -12,7 +12,7 @@ const source = {
   groupId: "group-1",
   messageTimestamp: "2026-10-30T10:00:00.000Z",
   replyToMessageId: null,
-  text: "حقيبة سفر كبيرة، السعر ١٢٥ ريال، متوفرة الآن",
+  text: "حقيبة سفر كبيرة، السعر ١٢٥ ريال سعودي، متوفرة الآن",
 };
 
 function extraction(overrides = {}) {
@@ -36,7 +36,7 @@ function extraction(overrides = {}) {
           aliases: null,
           description: "حقيبة سفر كبيرة",
           price: "١٢٥ ريال",
-          currency: "ريال",
+          currency: "ريال سعودي",
           availability: "متوفرة الآن",
           ...overrides.evidence,
         },
@@ -65,6 +65,61 @@ test("accepts a complete candidate only when every required field is grounded", 
   assert.equal(candidate.data.currency, "SAR");
   assert.equal(candidate.complete, true);
   assert.equal(isCompleteProductExtraction(candidate), true);
+});
+
+test("does not accept a price that only matches part of a longer amount", () => {
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify(extraction({
+      data: { price: "25" },
+      evidence: { price: "١٢٥ ريال سعودي" },
+    })),
+    [source],
+  );
+
+  assert.equal(candidate.data.price, null);
+  assert.equal(candidate.complete, false);
+});
+
+test("does not accept a currency that conflicts with explicit source evidence", () => {
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify(extraction({
+      data: { currency: "USD" },
+      evidence: { currency: "ريال سعودي" },
+    })),
+    [source],
+  );
+
+  assert.equal(candidate.data.currency, null);
+  assert.equal(candidate.complete, false);
+});
+
+test("keeps an ambiguous bare riyal currency for review", () => {
+  const ambiguousSource = {
+    ...source,
+    text: source.text.replace("ريال سعودي", "ريال"),
+  };
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify(extraction({ evidence: { currency: "ريال" } })),
+    [ambiguousSource],
+  );
+
+  assert.equal(candidate.data.currency, null);
+  assert.equal(candidate.complete, false);
+});
+
+test("keeps repeated amounts with different currencies for review", () => {
+  const conflictingCurrencySource = {
+    ...source,
+    text: `${source.text} أو ١٢٥ دولار أمريكي`,
+  };
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify(extraction()),
+    [conflictingCurrencySource],
+  );
+
+  assert.equal(candidate.data.price, null);
+  assert.equal(candidate.data.currency, null);
+  assert.equal(candidate.complete, false);
 });
 
 test("generates a stable SKU from source message IDs", () => {

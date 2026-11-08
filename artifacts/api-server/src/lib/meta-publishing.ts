@@ -30,37 +30,13 @@ import { makePublishActivityEvent } from "./post-activity";
 import { assertPostWorkspace } from "./workspace-record-access";
 import { selectFacebookPhotoMedia } from "./meta-publishing-media";
 import { readMediaObject, resolveWhatsAppMediaStorageRoot } from "./whatsapp-media-storage";
-import { workspaceMediaKey } from "./product-utils.ts";
+import { productMediaInfo } from "./product-utils.ts";
+import { isVerifiedActiveProduct } from "./product-publishing-logic.ts";
 
 const GRAPH_VERSION = getMetaGraphVersion();
 const INSTAGRAM_REQUEST_TIMEOUT_MS = 120_000;
 const INSTAGRAM_PROCESSING_TIMEOUT_MS = 120_000;
 const MEDIA_ROOT = resolveWhatsAppMediaStorageRoot();
-const PRODUCT_MEDIA_ID_PATTERN =
-  /^product-media-(image|video)-([a-f0-9]{16})-([a-f0-9-]{36})-(jpg|png|webp|heic|heif|mp4|mov)$/;
-
-function productMediaInfo(mediaId: string, workspaceId: string) {
-  const match = PRODUCT_MEDIA_ID_PATTERN.exec(mediaId);
-  if (!match || match[2] !== workspaceMediaKey(workspaceId)) return null;
-  const mediaType = match[1] as "image" | "video";
-  const extension = match[4]!;
-  const mimeType = ({
-    jpg: "image/jpeg",
-    png: "image/png",
-    webp: "image/webp",
-    heic: "image/heic",
-    heif: "image/heif",
-    mp4: "video/mp4",
-    mov: "video/quicktime",
-  } as const)[extension as "jpg" | "png" | "webp" | "heic" | "heif" | "mp4" | "mov"];
-  return {
-    mediaType,
-    mimeType,
-    fileName: `${match[3]}.${extension}`,
-    storagePath: `product-media/${match[2]}/${match[3]}.${extension}`,
-  };
-}
-
 type ChannelResult = {
   status: "published" | "failed" | "unknown" | "publishing" | "skipped";
   postId?: string;
@@ -143,6 +119,23 @@ export function signedWhatsAppMediaUrl(
     }
   }
   return url.toString();
+}
+
+export function signedProductMediaUrl(
+  mediaId: string,
+  variant: "original" | "thumbnail",
+  requestOrigin?: string,
+): string | null {
+  try {
+    const url = new URL(
+      signedWhatsAppMediaUrl(mediaId, true, variant, requestOrigin),
+    );
+    url.pathname = `/api/social/products/public-media/${encodeURIComponent(mediaId)}`;
+    return url.toString();
+  } catch (error) {
+    if (error instanceof PublicMediaUrlError) return null;
+    throw error;
+  }
 }
 
 export function verifySignedMediaRequest(
@@ -265,8 +258,16 @@ async function graphUpload(
 async function safeLocalMedia(row: typeof posts.$inferSelect) {
   if (!row.workspaceId) throw new Error("WORKSPACE_CONTEXT_MISSING");
   const isProductPost = row.sourceType === "product";
-  if (row.sourceType !== "whatsapp" && !isProductPost) return [];
-  let mediaIds = Array.isArray(row.mediaUrls) ? row.mediaUrls : [];
+  const rowMediaIds = Array.isArray(row.mediaUrls) ? row.mediaUrls : [];
+  const hasProductMediaReference = rowMediaIds.some((id) =>
+    id.startsWith("product-media-"),
+  );
+  if (
+    row.sourceType !== "whatsapp" &&
+    !isProductPost &&
+    !hasProductMediaReference
+  ) return [];
+  let mediaIds = rowMediaIds;
   if (isProductPost) {
     const metadata = row.metadata && typeof row.metadata === "object"
       ? row.metadata
@@ -276,7 +277,11 @@ async function safeLocalMedia(row: typeof posts.$inferSelect) {
       : "";
     const [product] = productId
       ? await db
-          .select({ mediaUrls: products.mediaUrls })
+          .select({
+            mediaUrls: products.mediaUrls,
+            status: products.status,
+            verifiedAt: products.verifiedAt,
+          })
           .from(products)
           .where(and(
             eq(products.id, productId),
@@ -285,6 +290,9 @@ async function safeLocalMedia(row: typeof posts.$inferSelect) {
           .limit(1)
       : [];
     if (!product) throw new Error("PRODUCT_POST_SOURCE_UNAVAILABLE");
+    if (!isVerifiedActiveProduct(product)) {
+      throw new Error("PRODUCT_NOT_AVAILABLE");
+    }
     mediaIds = Array.isArray(product.mediaUrls)
       ? product.mediaUrls.filter((id): id is string => typeof id === "string")
       : [];
@@ -348,9 +356,9 @@ async function safeLocalMedia(row: typeof posts.$inferSelect) {
           ))
           .then((rows) => rows.map(({ media: item }) => item))
       : [];
-  const productMediaIds = isProductPost
-    ? mediaIds.filter((id) => id.startsWith("product-media-"))
-    : [];
+  const productMediaIds = mediaIds.filter((id) =>
+    id.startsWith("product-media-"),
+  );
   const productMedia = [];
   for (const id of productMediaIds) {
     const info = productMediaInfo(id, row.workspaceId);

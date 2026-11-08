@@ -4,7 +4,25 @@ import {
   buildProductPublicationMatrix,
   composeProductPostBody,
   isProductPublicationActionRequired,
+  isVerifiedActiveProduct,
 } from "./product-publishing-logic.ts";
+
+test("only active products with a verification timestamp are publishable", () => {
+  const verifiedAt = new Date("2026-11-08T10:00:00.000Z");
+  assert.equal(
+    isVerifiedActiveProduct({ status: "active", verifiedAt }),
+    true,
+  );
+  assert.equal(
+    isVerifiedActiveProduct({ status: "draft", verifiedAt }),
+    false,
+  );
+  assert.equal(
+    isVerifiedActiveProduct({ status: "active", verifiedAt: null }),
+    false,
+  );
+  assert.equal(isVerifiedActiveProduct(null), false);
+});
 
 test("builds an independent post job for every product and selected account", () => {
   assert.deepEqual(

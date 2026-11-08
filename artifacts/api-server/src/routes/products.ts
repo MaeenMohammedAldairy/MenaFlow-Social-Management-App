@@ -30,6 +30,7 @@ import {
 import { metaString } from "../lib/meta-inbox-utils";
 import { PublicMediaUrlError } from "../lib/meta-media-url";
 import {
+  signedProductMediaUrl,
   signedWhatsAppMediaUrl,
   verifySignedMediaRequest,
 } from "../lib/meta-publishing";
@@ -48,7 +49,13 @@ import {
 import {
   queueUnprocessedWhatsAppProductMessages,
 } from "../lib/whatsapp-product-extraction";
-import { normalizedProductName, workspaceMediaKey } from "../lib/product-utils.ts";
+import {
+  normalizedProductName,
+  parseProductMediaId,
+  productMediaInfo,
+  productMediaStoragePath,
+  workspaceMediaKey,
+} from "../lib/product-utils.ts";
 import {
   parseProductInput,
   publishedPostProductDraft,
@@ -88,44 +95,6 @@ const PRODUCT_MEDIA_TYPES = {
   "video/quicktime": { mediaType: "video", extension: "mov" },
 } as const;
 
-const PRODUCT_MEDIA_ID_PATTERN =
-  /^product-media-(image|video)-([a-f0-9]{16})-([a-f0-9-]{36})-(jpg|png|webp|heic|heif|mp4|mov)$/;
-
-function parseProductMediaId(value: string) {
-  const match = PRODUCT_MEDIA_ID_PATTERN.exec(value);
-  if (!match) return null;
-  return {
-    mediaType: match[1] as "image" | "video",
-    workspaceKey: match[2],
-    fileId: match[3],
-    extension: match[4],
-  };
-}
-
-function productMediaStoragePath(mediaId: string): string | null {
-  const parsed = parseProductMediaId(mediaId);
-  return parsed
-    ? `product-media/${parsed.workspaceKey}/${parsed.fileId}.${parsed.extension}`
-    : null;
-}
-
-function signedProductMediaUrl(
-  mediaId: string,
-  variant: "original" | "thumbnail",
-  requestOrigin?: string,
-): string | null {
-  try {
-    const url = new URL(
-      signedWhatsAppMediaUrl(mediaId, true, variant, requestOrigin),
-    );
-    url.pathname = `/api/social/products/public-media/${encodeURIComponent(mediaId)}`;
-    return url.toString();
-  } catch (error) {
-    if (error instanceof PublicMediaUrlError) return null;
-    throw error;
-  }
-}
-
 function productMediaUrl(
   mediaId: string,
   mediaType: string,
@@ -163,10 +132,8 @@ async function productMediaPreviews(
   requestOrigin?: string,
 ): Promise<ProductMediaPreview[]> {
   const productMediaPreviews = mediaIds.flatMap((id) => {
-    const parsed = parseProductMediaId(id);
-    if (!parsed || parsed.workspaceKey !== workspaceMediaKey(workspaceId)) {
-      return [];
-    }
+    const parsed = productMediaInfo(id, workspaceId);
+    if (!parsed) return [];
     const url = signedProductMediaUrl(
       id,
       parsed.mediaType === "image" ? "thumbnail" : "original",
