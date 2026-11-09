@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canTransitionOrderStatus,
+  canTransitionDeliveryStatus,
   calculateOrder,
   minorUnitsToMoney,
   moneyToMinorUnits,
   parseCreateOrderInput,
+  parseDeliveryUpdate,
   parseOrderStatus,
 } from "./order-validation.ts";
 
@@ -48,6 +50,31 @@ test("validates and normalizes order input without accepting duplicate products"
   );
 });
 
+test("refuses quantities beyond tracked available stock", () => {
+  const product = {
+    id: "tracked-product",
+    sku: "T-1",
+    name: "منتج مخزني",
+    price: "20",
+    currency: "SAR",
+    availability: "in_stock",
+    status: "active",
+    verifiedAt: new Date("2026-11-09T00:00:00.000Z"),
+    inventoryTracked: true,
+    stockOnHand: 5,
+    stockReserved: 3,
+  };
+  assert.deepEqual(
+    calculateOrder([{ productId: product.id, quantity: 3 }], [product]),
+    { error: "INSUFFICIENT_STOCK" },
+  );
+  assert.equal(
+    "order" in
+      calculateOrder([{ productId: product.id, quantity: 2 }], [product]),
+    true,
+  );
+});
+
 test("allows only explicit forward transitions and cancellation before shipment", () => {
   assert.equal(canTransitionOrderStatus("draft", "confirmed"), true);
   assert.equal(canTransitionOrderStatus("confirmed", "preparing"), true);
@@ -55,6 +82,30 @@ test("allows only explicit forward transitions and cancellation before shipment"
   assert.equal(canTransitionOrderStatus("shipped", "cancelled"), false);
   assert.equal(canTransitionOrderStatus("completed", "confirmed"), false);
   assert.equal(parseOrderStatus("unknown"), null);
+});
+
+test("validates delivery transitions and normalizes delivery data", () => {
+  assert.equal(canTransitionDeliveryStatus("pending", "ready"), true);
+  assert.equal(canTransitionDeliveryStatus("delivered", "in_transit"), false);
+  assert.deepEqual(
+    parseDeliveryUpdate({
+      deliveryStatus: "in_transit",
+      deliveryProvider: "  مندوب  ",
+      trackingNumber: "  TRK-123 ",
+      deliveryFee: "12.5",
+      collectionStatus: "collected",
+      collectedAmount: "100",
+    }),
+    {
+      deliveryStatus: "in_transit",
+      deliveryProvider: "مندوب",
+      trackingNumber: "TRK-123",
+      deliveryFee: "12.50",
+      collectionStatus: "collected",
+      collectedAmount: "100.00",
+    },
+  );
+  assert.equal(parseDeliveryUpdate({ deliveryFee: "-1" }), null);
 });
 
 test("converts money through integer minor units to avoid floating point drift", () => {

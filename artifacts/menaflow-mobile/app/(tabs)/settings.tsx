@@ -269,7 +269,11 @@ function SettingsContent({
   return (
     <Page>
       <BrandHeader />
-      <PageTitle title="الإعدادات" subtitle="تحكم في تفضيلات مساحة عملك." />
+      <PageTitle
+        title="الإعدادات"
+        subtitle="تحكم في تفضيلات مساحة عملك."
+        back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
+      />
       <Panel style={styles.settingsPanel}>
         <SettingsSectionTitle icon="user" title="الحساب" />
         <Pressable
@@ -289,7 +293,7 @@ function SettingsContent({
           onPress={() =>
             router.push({
               pathname: "/(tabs)/more/sources",
-              params: { view: "publishing" },
+              params: { view: "publishing", returnTo: "settings" },
             })
           }
         >
@@ -302,7 +306,12 @@ function SettingsContent({
         </Pressable>
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.push("/product-catalog")}
+          onPress={() =>
+            router.push({
+              pathname: "/product-catalog",
+              params: { returnTo: "settings" },
+            })
+          }
         >
           <SettingRow
             icon="file-text"

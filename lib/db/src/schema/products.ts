@@ -3,6 +3,7 @@ import {
   check,
   foreignKey,
   index,
+  boolean,
   jsonb,
   numeric,
   pgTable,
@@ -33,6 +34,10 @@ export const products = pgTable(
       .$type<"unknown" | "in_stock" | "out_of_stock" | "preorder">()
       .notNull()
       .default("unknown"),
+    inventoryTracked: boolean("inventory_tracked").notNull().default(false),
+    stockOnHand: integer("stock_on_hand").notNull().default(0),
+    stockReserved: integer("stock_reserved").notNull().default(0),
+    lowStockThreshold: integer("low_stock_threshold").notNull().default(0),
     status: text("status")
       .$type<"draft" | "active" | "archived">()
       .notNull()
@@ -68,6 +73,10 @@ export const products = pgTable(
       sql`${table.status} IN ('draft', 'active', 'archived')`,
     ),
     check(
+      "mena_products_inventory_check",
+      sql`${table.stockOnHand} >= 0 AND ${table.stockReserved} >= 0 AND ${table.stockReserved} <= ${table.stockOnHand} AND ${table.lowStockThreshold} >= 0`,
+    ),
+    check(
       "mena_products_price_check",
       sql`${table.price} IS NULL OR ${table.price} >= 0`,
     ),
@@ -78,6 +87,56 @@ export const products = pgTable(
     check(
       "mena_products_price_currency_check",
       sql`${table.price} IS NULL OR ${table.currency} IS NOT NULL`,
+    ),
+  ],
+);
+
+export const inventoryMovementTypes = [
+  "opening_balance",
+  "adjustment",
+  "reservation",
+  "release",
+  "shipment",
+] as const;
+
+export type InventoryMovementType = (typeof inventoryMovementTypes)[number];
+
+export const menaInventoryMovements = pgTable(
+  "mena_inventory_movements",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    productId: text("product_id").notNull(),
+    orderId: text("order_id"),
+    actorId: text("actor_id").notNull(),
+    type: text("type").$type<InventoryMovementType>().notNull(),
+    stockDelta: integer("stock_delta").notNull().default(0),
+    reservedDelta: integer("reserved_delta").notNull().default(0),
+    reason: text("reason").notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("mena_inventory_movements_workspace_product_created_idx").on(
+      table.workspaceId,
+      table.productId,
+      table.createdAt,
+    ),
+    foreignKey({
+      columns: [table.workspaceId, table.productId],
+      foreignColumns: [products.workspaceId, products.id],
+      name: "mena_inventory_movements_product_fk",
+    }),
+    check(
+      "mena_inventory_movements_type_check",
+      sql`${table.type} IN ('opening_balance', 'adjustment', 'reservation', 'release', 'shipment')`,
+    ),
+    check(
+      "mena_inventory_movements_delta_check",
+      sql`${table.stockDelta} <> 0 OR ${table.reservedDelta} <> 0`,
     ),
   ],
 );

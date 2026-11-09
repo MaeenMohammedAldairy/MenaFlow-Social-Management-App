@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useAuth } from "@clerk/expo";
+import { useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import {
@@ -31,6 +32,7 @@ import { useColors } from "@/hooks/useColors";
 import {
   formatArabicCurrency,
   formatArabicDate,
+  formatArabicDateTime,
   formatArabicNumber,
   normalizeArabicDigits,
 } from "@/lib/formatting";
@@ -43,6 +45,7 @@ import {
   analyzeWhatsAppProductMessages,
   getProductCandidates,
   getProductCatalog,
+  getInventoryMovements,
   getWhatsAppProductExtractions,
   getPublishableAccounts,
   getProductPublicationJobs,
@@ -244,6 +247,7 @@ function AuthenticatedProductCatalog() {
 
 function ProductCatalogContent({ userId }: { userId: string | null }) {
   const colors = useColors();
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<CatalogTabId>("all");
@@ -331,6 +335,23 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     addProductMedia,
     saveProduct,
   } = useProductEditorWorkflow({ catalogKey, refresh, setError });
+  const inventoryProductId = editor?.id;
+  const inventoryMovements = useQuery({
+    queryKey: [
+      "inventory-movements",
+      userId ?? "local",
+      editor?.id ?? "new-product",
+    ],
+    queryFn: () => {
+      if (!inventoryProductId) {
+        throw new Error("لا يمكن تحميل سجل المخزون دون تحديد المنتج.");
+      }
+      return getInventoryMovements(inventoryProductId);
+    },
+    enabled:
+      (isLocalAuthDisabled || Boolean(userId)) &&
+      Boolean(editor?.id && editor.value.inventoryTracked),
+  });
   const analyzeWhatsAppMessages = useMutation({
     mutationFn: analyzeWhatsAppProductMessages,
     onSuccess: async (result) => {
@@ -639,8 +660,14 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
             title="كتالوج المنتجات"
             subtitle="مصدر معلومات المنتجات المعتمدة للرد على العملاء."
             back={{
-              href: "/(tabs)/more/settings",
-              label: "العودة إلى الإعدادات",
+              href:
+                returnTo === "settings"
+                  ? "/(tabs)/more/settings"
+                  : "/(tabs)/products",
+              label:
+                returnTo === "settings"
+                  ? "العودة إلى الإعدادات"
+                  : "العودة إلى المنتجات",
             }}
             action={
               <Pressable
@@ -1404,21 +1431,155 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   />
                 </View>
               </View>
+              {editor?.value.inventoryTracked ? (
+                <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                  حالة التوفر تُحدّث تلقائيًا بحسب الكمية المتاحة.
+                </Text>
+              ) : (
+                <ChoiceField
+                  label="التوفر"
+                  options={[
+                    { value: "unknown", label: "غير محدد" },
+                    { value: "in_stock", label: "متوفر" },
+                    { value: "out_of_stock", label: "غير متوفر" },
+                    { value: "preorder", label: "طلب مسبق" },
+                  ]}
+                  value={editor?.value.availability ?? "unknown"}
+                  onSelect={(availability) =>
+                    updateDraft({
+                      availability:
+                        availability as ProductDraft["availability"],
+                    })
+                  }
+                />
+              )}
               <ChoiceField
-                label="التوفر"
+                label="إدارة المخزون"
                 options={[
-                  { value: "unknown", label: "غير محدد" },
-                  { value: "in_stock", label: "متوفر" },
-                  { value: "out_of_stock", label: "غير متوفر" },
-                  { value: "preorder", label: "طلب مسبق" },
+                  { value: "false", label: "بدون تتبع" },
+                  { value: "true", label: "تتبع الكمية" },
                 ]}
-                value={editor?.value.availability ?? "unknown"}
-                onSelect={(availability) =>
-                  updateDraft({
-                    availability: availability as ProductDraft["availability"],
-                  })
+                value={String(editor?.value.inventoryTracked ?? false)}
+                onSelect={(value) =>
+                  updateDraft({ inventoryTracked: value === "true" })
                 }
               />
+              {editor?.value.inventoryTracked ? (
+                <Field
+                  label="الكمية الفعلية في المخزون"
+                  value={String(editor.value.stockOnHand ?? 0)}
+                  onChangeText={(value) => {
+                    const digits = normalizeArabicDigits(value).replace(
+                      /\D/g,
+                      "",
+                    );
+                    const stockOnHand = Number(digits || 0);
+                    if (stockOnHand <= 2_000_000_000) {
+                      updateDraft({ stockOnHand });
+                    }
+                  }}
+                  keyboardType="number-pad"
+                  writingDirection="ltr"
+                />
+              ) : null}
+              {editor?.value.inventoryTracked ? (
+                <Field
+                  label="حد التنبيه عند انخفاض المخزون (0 لتعطيله)"
+                  value={String(editor.value.lowStockThreshold ?? 0)}
+                  onChangeText={(value) => {
+                    const digits = normalizeArabicDigits(value).replace(
+                      /\D/g,
+                      "",
+                    );
+                    const lowStockThreshold = Number(digits || 0);
+                    if (lowStockThreshold <= 2_000_000_000) {
+                      updateDraft({ lowStockThreshold });
+                    }
+                  }}
+                  keyboardType="number-pad"
+                  writingDirection="ltr"
+                />
+              ) : null}
+              {editor?.value.inventoryTracked ? (
+                <Field
+                  label="سبب تعديل المخزون (اختياري)"
+                  value={editor.value.inventoryReason ?? ""}
+                  onChangeText={(inventoryReason) =>
+                    updateDraft({ inventoryReason })
+                  }
+                />
+              ) : null}
+              {editor?.id && editor.value.inventoryTracked ? (
+                <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                  المحجوز للطلبات: {formatArabicNumber(
+                    catalog.data?.find((product) => product.id === editor.id)
+                      ?.stockReserved ?? 0,
+                  )} · المتاح: {formatArabicNumber(
+                    Math.max(
+                      0,
+                      (editor.value.stockOnHand ?? 0) -
+                        (catalog.data?.find((product) => product.id === editor.id)
+                          ?.stockReserved ?? 0),
+                    ),
+                  )}
+                </Text>
+              ) : null}
+              {editor?.id && editor.value.inventoryTracked ? (
+                <View style={styles.inventoryHistory}>
+                  <Text
+                    style={[styles.fieldLabel, { color: colors.foreground }]}
+                  >
+                    آخر حركات المخزون
+                  </Text>
+                  {inventoryMovements.isPending ? (
+                    <Text
+                      style={[styles.helper, { color: colors.mutedForeground }]}
+                    >
+                      جارٍ تحميل سجل المخزون...
+                    </Text>
+                  ) : inventoryMovements.isError ? (
+                    <View style={styles.inventoryHistory}>
+                      <Text
+                        style={[
+                          styles.helper,
+                          { color: colors.destructive },
+                        ]}
+                      >
+                        {inventoryMovements.error instanceof Error
+                          ? inventoryMovements.error.message
+                          : "تعذّر تحميل سجل حركات المخزون."}
+                      </Text>
+                      <ActionButton
+                        label="إعادة تحميل سجل المخزون"
+                        icon="refresh-cw"
+                        secondary
+                        onPress={() => void inventoryMovements.refetch()}
+                      />
+                    </View>
+                  ) : inventoryMovements.data?.length ? (
+                    inventoryMovements.data.slice(0, 5).map((movement) => (
+                      <Text
+                        key={movement.id}
+                        style={[
+                          styles.helper,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        {movement.reason} ·{" "}
+                        {movement.stockDelta > 0 ? "+" : ""}
+                        {formatArabicNumber(movement.stockDelta)} ·{" "}
+                        {formatArabicDateTime(movement.createdAt) ?? ""}
+                      </Text>
+                    ))
+                  ) : (
+                    <Text
+                      style={[styles.helper, { color: colors.mutedForeground }]}
+                    >
+                      لا توجد حركات مسجلة بعد.
+                    </Text>
+                  )}
+                </View>
+              ) : null}
               {!editor?.extractionSuggestionId ? (
                 <ChoiceField
                   label="حالة السجل"
@@ -2195,6 +2356,32 @@ function ProductCard({
             ? ` · ${formatArabicCurrency(product.price, product.currency)}`
             : " · لا يوجد سعر معتمد"}
         </Text>
+        {product.inventoryTracked ? (
+          <View style={styles.inventoryHistory}>
+            <Text
+              style={[styles.description, { color: colors.mutedForeground }]}
+            >
+              المخزون المتاح:{" "}
+              {formatArabicNumber(
+                Math.max(0, product.stockOnHand - product.stockReserved),
+              )}{" "}
+              · محجوز: {formatArabicNumber(product.stockReserved)}
+            </Text>
+            {product.lowStockThreshold > 0 &&
+            product.stockOnHand - product.stockReserved <=
+              product.lowStockThreshold ? (
+              <Text
+                style={[
+                  styles.description,
+                  { color: colors.warning, fontWeight: "700" },
+                ]}
+              >
+                مخزون منخفض · حد التنبيه{" "}
+                {formatArabicNumber(product.lowStockThreshold)}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
         {product.description ? (
           <Text
             numberOfLines={2}
@@ -2378,7 +2565,7 @@ function Field({
   onChangeText: (value: string) => void;
   multiline?: boolean;
   required?: boolean;
-  keyboardType?: "default" | "decimal-pad";
+  keyboardType?: "default" | "decimal-pad" | "number-pad";
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   writingDirection?: "ltr" | "rtl";
 }) {
@@ -2824,6 +3011,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 17, fontWeight: "700" },
   form: { gap: 14, paddingHorizontal: 16, paddingBottom: 16 },
   field: { gap: 6 },
+  inventoryHistory: { gap: 4, paddingTop: 6 },
   fieldLabel: { fontSize: 13, fontWeight: "600", textAlign: "right" },
   input: {
     minHeight: 42,

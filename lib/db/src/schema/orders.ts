@@ -3,6 +3,7 @@ import {
   check,
   foreignKey,
   index,
+  boolean,
   integer,
   numeric,
   pgTable,
@@ -24,6 +25,26 @@ export const orderStatuses = [
 
 export type OrderStatus = (typeof orderStatuses)[number];
 
+export const deliveryStatuses = [
+  "pending",
+  "ready",
+  "picked_up",
+  "in_transit",
+  "delivered",
+  "failed",
+  "returned",
+] as const;
+
+export type DeliveryStatus = (typeof deliveryStatuses)[number];
+
+export const collectionStatuses = [
+  "not_collected",
+  "collected",
+  "remitted",
+] as const;
+
+export type CollectionStatus = (typeof collectionStatuses)[number];
+
 export const menaOrders = pgTable(
   "mena_orders",
   {
@@ -42,6 +63,27 @@ export const menaOrders = pgTable(
     sourcePlatform: text("source_platform"),
     sourceConversationId: text("source_conversation_id"),
     status: text("status").$type<OrderStatus>().notNull().default("draft"),
+    inventoryReserved: boolean("inventory_reserved").notNull().default(false),
+    deliveryStatus: text("delivery_status")
+      .$type<DeliveryStatus>()
+      .notNull()
+      .default("pending"),
+    deliveryProvider: text("delivery_provider"),
+    trackingNumber: text("tracking_number"),
+    deliveryFee: numeric("delivery_fee", { precision: 12, scale: 2 })
+      .notNull()
+      .default("0"),
+    collectionStatus: text("collection_status")
+      .$type<CollectionStatus>()
+      .notNull()
+      .default("not_collected"),
+    collectedAmount: numeric("collected_amount", {
+      precision: 12,
+      scale: 2,
+    })
+      .notNull()
+      .default("0"),
+    deliveredAt: timestamp("delivered_at", { withTimezone: true }),
     currency: text("currency").notNull(),
     total: numeric("total", { precision: 12, scale: 2 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -69,6 +111,18 @@ export const menaOrders = pgTable(
     check(
       "mena_orders_status_check",
       sql`${table.status} IN ('draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled')`,
+    ),
+    check(
+      "mena_orders_delivery_status_check",
+      sql`${table.deliveryStatus} IN ('pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned')`,
+    ),
+    check(
+      "mena_orders_collection_status_check",
+      sql`${table.collectionStatus} IN ('not_collected', 'collected', 'remitted')`,
+    ),
+    check(
+      "mena_orders_delivery_money_check",
+      sql`${table.deliveryFee} >= 0 AND ${table.collectedAmount} >= 0`,
     ),
     check("mena_orders_total_check", sql`${table.total} >= 0`),
     check("mena_orders_currency_check", sql`${table.currency} ~ '^[A-Z]{3}$'`),
@@ -157,6 +211,44 @@ export const menaOrderEvents = pgTable(
   ],
 );
 
+export const menaOrderDeliveryEvents = pgTable(
+  "mena_order_delivery_events",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    orderId: text("order_id").notNull(),
+    actorId: text("actor_id").notNull(),
+    fromStatus: text("from_status").$type<DeliveryStatus>(),
+    toStatus: text("to_status").$type<DeliveryStatus>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("mena_order_delivery_events_workspace_order_created_idx").on(
+      table.workspaceId,
+      table.orderId,
+      table.createdAt,
+    ),
+    foreignKey({
+      columns: [table.workspaceId, table.orderId],
+      foreignColumns: [menaOrders.workspaceId, menaOrders.id],
+      name: "mena_order_delivery_events_order_fk",
+    }).onDelete("cascade"),
+    check(
+      "mena_order_delivery_events_from_status_check",
+      sql`${table.fromStatus} IS NULL OR ${table.fromStatus} IN ('pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned')`,
+    ),
+    check(
+      "mena_order_delivery_events_to_status_check",
+      sql`${table.toStatus} IN ('pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned')`,
+    ),
+  ],
+);
+
 export type MenaOrder = typeof menaOrders.$inferSelect;
 export type MenaOrderItem = typeof menaOrderItems.$inferSelect;
 export type MenaOrderEvent = typeof menaOrderEvents.$inferSelect;
+export type MenaOrderDeliveryEvent = typeof menaOrderDeliveryEvents.$inferSelect;

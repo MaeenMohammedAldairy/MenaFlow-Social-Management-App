@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import {
   Alert,
+  Modal,
   Pressable,
   Platform,
   RefreshControl,
@@ -42,7 +43,10 @@ import {
   getOrders,
   getOrderSummary,
   updateOrderStatus,
+  updateOrderDelivery,
   type CustomerOrder,
+  type CollectionStatus,
+  type DeliveryStatus,
   type OrderStatus,
 } from "@/lib/orders-api";
 import {
@@ -74,6 +78,26 @@ const nextStatus: Partial<Record<OrderStatus, OrderStatus>> = {
   confirmed: "preparing",
   preparing: "shipped",
   shipped: "completed",
+};
+
+const deliveryStatusLabels: Record<DeliveryStatus, string> = {
+  pending: "بانتظار التجهيز",
+  ready: "جاهز للاستلام",
+  picked_up: "استلمه المندوب",
+  in_transit: "في الطريق",
+  delivered: "تم التسليم",
+  failed: "تعذر التسليم",
+  returned: "مرتجع",
+};
+
+const nextDeliveryStatuses: Record<DeliveryStatus, DeliveryStatus[]> = {
+  pending: ["ready", "failed"],
+  ready: ["picked_up", "failed"],
+  picked_up: ["in_transit", "failed"],
+  in_transit: ["delivered", "failed"],
+  delivered: ["returned"],
+  failed: ["ready", "returned"],
+  returned: ["ready"],
 };
 
 function orderErrorMessage(error: unknown): string {
@@ -154,6 +178,16 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
   const [productSearch, setProductSearch] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [deliveryEditOrder, setDeliveryEditOrder] =
+    useState<CustomerOrder | null>(null);
+  const [deliveryForm, setDeliveryForm] = useState({
+    deliveryStatus: "pending" as DeliveryStatus,
+    deliveryProvider: "",
+    trackingNumber: "",
+    deliveryFee: "0",
+    collectionStatus: "not_collected" as CollectionStatus,
+    collectedAmount: "0",
+  });
   const queryKey = ["orders", userId ?? "local", statusFilter, search] as const;
   const orders = useInfiniteQuery({
     queryKey,
@@ -186,6 +220,10 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
       void queryClient.invalidateQueries({
         queryKey: ["order-summary", userId ?? "local"],
       });
+      void queryClient.invalidateQueries({
+        queryKey: ["order-products", userId ?? "local"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["product-catalog"] });
     },
     onError: (error) => setFormError(orderErrorMessage(error)),
   });
@@ -200,6 +238,34 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
       void queryClient.invalidateQueries({
         queryKey: ["order-summary", userId ?? "local"],
       });
+      void queryClient.invalidateQueries({
+        queryKey: ["order-products", userId ?? "local"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["product-catalog"] });
+    },
+    onError: (error) => setFormError(orderErrorMessage(error)),
+  });
+  const deliveryMutation = useMutation({
+    mutationFn: ({
+      orderId,
+      input,
+    }: {
+      orderId: string;
+      input: {
+        deliveryStatus: DeliveryStatus;
+        deliveryProvider: string | null;
+        trackingNumber: string | null;
+        deliveryFee: string;
+        collectionStatus: CollectionStatus;
+        collectedAmount: string;
+      };
+    }) => updateOrderDelivery(orderId, input),
+    onSuccess: () => {
+      setDeliveryEditOrder(null);
+      setFormError(null);
+      void queryClient.invalidateQueries({
+        queryKey: ["orders", userId ?? "local"],
+      });
     },
     onError: (error) => setFormError(orderErrorMessage(error)),
   });
@@ -211,7 +277,9 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           product.price !== null &&
           product.currency !== null &&
           product.verifiedAt !== null &&
-          product.availability !== "out_of_stock",
+          product.availability !== "out_of_stock" &&
+          (!product.inventoryTracked ||
+            product.stockOnHand > product.stockReserved),
       ),
     [products.data],
   );
@@ -266,7 +334,15 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
   };
 
   const adjustQuantity = (productId: string, delta: number) => {
-    if ((quantities[productId] ?? 0) + delta > 999) return;
+    const product = availableProducts.find((item) => item.id === productId);
+    if (!product) return;
+    const maxQuantity = product.inventoryTracked
+      ? product.stockOnHand - product.stockReserved
+      : 999;
+    if ((quantities[productId] ?? 0) + delta > Math.min(999, maxQuantity)) {
+      setFormError("الكمية المطلوبة تتجاوز المخزون المتاح.");
+      return;
+    }
     setClientRequestId(null);
     setQuantities((current) => {
       const quantity = (current[productId] ?? 0) + delta;
@@ -311,6 +387,32 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
     });
   };
 
+  const openDeliveryEditor = (order: CustomerOrder) => {
+    setFormError(null);
+    deliveryMutation.reset();
+    setDeliveryEditOrder(order);
+    setDeliveryForm({
+      deliveryStatus: order.deliveryStatus,
+      deliveryProvider: order.deliveryProvider ?? "",
+      trackingNumber: order.trackingNumber ?? "",
+      deliveryFee: order.deliveryFee,
+      collectionStatus: order.collectionStatus,
+      collectedAmount: order.collectedAmount,
+    });
+  };
+
+  const submitDeliveryUpdate = () => {
+    if (!deliveryEditOrder) return;
+    deliveryMutation.mutate({
+      orderId: deliveryEditOrder.id,
+      input: {
+        ...deliveryForm,
+        deliveryProvider: deliveryForm.deliveryProvider.trim() || null,
+        trackingNumber: deliveryForm.trackingNumber.trim() || null,
+      },
+    });
+  };
+
   return (
     <Page
       refreshControl={
@@ -324,7 +426,8 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
       <BrandHeader />
       <PageTitle
         title="الطلبات"
-        subtitle="سجّل الطلبات الواردة وتابع تجهيزها. لا تشمل هذه النسخة تحصيل الدفع أو خصم المخزون."
+        subtitle="سجّل الطلبات وتابع حجز المخزون وتجهيز الشحنات والتحصيل."
+        back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
         action={
           <Pressable
             accessibilityRole="button"
@@ -353,6 +456,240 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           </Pressable>
         }
       />
+
+      <Modal
+        visible={Boolean(deliveryEditOrder)}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!deliveryMutation.isPending) setDeliveryEditOrder(null);
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <Panel style={styles.deliveryModal}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                بيانات التوصيل والتحصيل
+              </Text>
+              {deliveryEditOrder ? (
+                <Text style={[styles.fieldHint, { color: colors.mutedForeground }]}>
+                  الطلب {deliveryEditOrder.orderNumber}
+                </Text>
+              ) : null}
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                حالة الشحنة
+              </Text>
+              <View style={styles.deliveryChoices}>
+                {[
+                  deliveryForm.deliveryStatus,
+                  ...nextDeliveryStatuses[deliveryForm.deliveryStatus],
+                ].map((status) => (
+                  <Pressable
+                    key={status}
+                    accessibilityRole="radio"
+                    accessibilityState={{
+                      checked: deliveryForm.deliveryStatus === status,
+                    }}
+                    onPress={() =>
+                      setDeliveryForm((current) => ({
+                        ...current,
+                        deliveryStatus: status,
+                      }))
+                    }
+                    style={[
+                      styles.deliveryChoice,
+                      {
+                        backgroundColor:
+                          deliveryForm.deliveryStatus === status
+                            ? colors.primary
+                            : colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          deliveryForm.deliveryStatus === status
+                            ? colors.primaryForeground
+                            : colors.foreground,
+                        fontSize: 11,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {deliveryStatusLabels[status]}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                شركة التوصيل أو المندوب
+              </Text>
+              <CairoTextInput
+                accessibilityLabel="شركة التوصيل أو المندوب"
+                value={deliveryForm.deliveryProvider}
+                onChangeText={(deliveryProvider) =>
+                  setDeliveryForm((current) => ({
+                    ...current,
+                    deliveryProvider,
+                  }))
+                }
+                maxLength={120}
+                style={[
+                  styles.input,
+                  {
+                    color: colors.foreground,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
+              />
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                رقم التتبع
+              </Text>
+              <CairoTextInput
+                accessibilityLabel="رقم تتبع الشحنة"
+                value={deliveryForm.trackingNumber}
+                onChangeText={(trackingNumber) =>
+                  setDeliveryForm((current) => ({
+                    ...current,
+                    trackingNumber,
+                  }))
+                }
+                maxLength={160}
+                style={[
+                  styles.input,
+                  {
+                    color: colors.foreground,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
+              />
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                رسوم التوصيل
+              </Text>
+              <CairoTextInput
+                accessibilityLabel="رسوم التوصيل"
+                value={deliveryForm.deliveryFee}
+                onChangeText={(deliveryFee) =>
+                  setDeliveryForm((current) => ({ ...current, deliveryFee }))
+                }
+                keyboardType="decimal-pad"
+                style={[
+                  styles.input,
+                  {
+                    color: colors.foreground,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
+              />
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                حالة التحصيل
+              </Text>
+              <View style={styles.deliveryChoices}>
+                {(
+                  [
+                    ["not_collected", "غير محصّل"],
+                    ["collected", "تم التحصيل"],
+                    ["remitted", "تم التوريد"],
+                  ] as const
+                ).map(([status, label]) => (
+                  <Pressable
+                    key={status}
+                    accessibilityRole="radio"
+                    accessibilityState={{
+                      checked: deliveryForm.collectionStatus === status,
+                    }}
+                    onPress={() =>
+                      setDeliveryForm((current) => ({
+                        ...current,
+                        collectionStatus: status,
+                      }))
+                    }
+                    style={[
+                      styles.deliveryChoice,
+                      {
+                        backgroundColor:
+                          deliveryForm.collectionStatus === status
+                            ? colors.primary
+                            : colors.background,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={{
+                        color:
+                          deliveryForm.collectionStatus === status
+                            ? colors.primaryForeground
+                            : colors.foreground,
+                        fontSize: 11,
+                        fontWeight: "700",
+                      }}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
+                المبلغ المحصّل
+              </Text>
+              <CairoTextInput
+                accessibilityLabel="المبلغ المحصّل"
+                value={deliveryForm.collectedAmount}
+                onChangeText={(collectedAmount) =>
+                  setDeliveryForm((current) => ({
+                    ...current,
+                    collectedAmount,
+                  }))
+                }
+                keyboardType="decimal-pad"
+                style={[
+                  styles.input,
+                  {
+                    color: colors.foreground,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
+              />
+              {deliveryMutation.error ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={{ color: colors.destructive, textAlign: "right" }}
+                >
+                  {orderErrorMessage(deliveryMutation.error)}
+                </Text>
+              ) : null}
+              <View style={styles.orderActions}>
+                <ActionButton
+                  label={
+                    deliveryMutation.isPending
+                      ? "جارٍ الحفظ..."
+                      : "حفظ بيانات التوصيل"
+                  }
+                  icon={deliveryMutation.isPending ? "clock" : "save"}
+                  disabled={deliveryMutation.isPending}
+                  onPress={submitDeliveryUpdate}
+                />
+                <ActionButton
+                  label="إغلاق"
+                  icon="x"
+                  secondary
+                  disabled={deliveryMutation.isPending}
+                  onPress={() => setDeliveryEditOrder(null)}
+                />
+              </View>
+            </Panel>
+          </ScrollView>
+        </View>
+      </Modal>
 
       {successMessage ? (
         <Panel style={[styles.noticePanel, { backgroundColor: colors.accent }]}>
@@ -597,6 +934,9 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                             Number(product.price),
                             product.currency ?? "",
                           )}
+                          {product.inventoryTracked
+                            ? ` · متاح ${formatArabicNumber(product.stockOnHand - product.stockReserved)}`
+                            : ""}
                         </Text>
                       </View>
                     </Pressable>
@@ -786,6 +1126,11 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                 onStatusChange={(status) =>
                   statusMutation.mutate({ id: order.id, status })
                 }
+                onDeliveryEdit={() => openDeliveryEditor(order)}
+                deliveryPending={
+                  deliveryMutation.isPending &&
+                  deliveryMutation.variables?.orderId === order.id
+                }
               />
             ))}
             {orders.hasNextPage ? (
@@ -835,10 +1180,14 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
     order,
     isUpdating,
     onStatusChange,
+    onDeliveryEdit,
+    deliveryPending,
   }: {
     order: CustomerOrder;
     isUpdating: boolean;
     onStatusChange: (status: OrderStatus) => void;
+    onDeliveryEdit: () => void;
+    deliveryPending: boolean;
   }) {
     const statusColor = getStatusColor(order.status, colors);
     return (
@@ -908,6 +1257,28 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
             </Text>
           </View>
         ) : null}
+        <View style={styles.detailRow}>
+          <Icon name="truck" size={14} color={colors.primary} />
+          <Text style={[styles.detailText, { color: colors.primary }]}>
+            {deliveryStatusLabels[order.deliveryStatus]}
+            {order.deliveryProvider ? ` · ${order.deliveryProvider}` : ""}
+            {order.trackingNumber ? ` · ${order.trackingNumber}` : ""}
+          </Text>
+        </View>
+        {Number(order.deliveryFee) > 0 ? (
+          <Text style={[styles.detailText, { color: colors.mutedForeground }]}>
+            رسوم التوصيل:{" "}
+            {formatArabicCurrency(Number(order.deliveryFee), order.currency)}
+          </Text>
+        ) : null}
+        {order.collectionStatus !== "not_collected" ? (
+          <Text style={[styles.detailText, { color: colors.mutedForeground }]}>
+            {order.collectionStatus === "remitted"
+              ? "تم توريد المبلغ المحصّل"
+              : "تم تحصيل المبلغ"}{" "}
+            · {formatArabicCurrency(Number(order.collectedAmount), order.currency)}
+          </Text>
+        ) : null}
         {order.sourceMetaInboxItemId ? (
           <View style={styles.detailRow}>
             <Icon name="message-square" size={14} color={colors.primary} />
@@ -949,7 +1320,38 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
             ))}
           </View>
         ) : null}
+        {order.deliveryEvents.length ? (
+          <View style={[styles.history, { borderTopColor: colors.border }]}>
+            <Text
+              style={[styles.historyTitle, { color: colors.mutedForeground }]}
+            >
+              سجل التوصيل
+            </Text>
+            {order.deliveryEvents.slice(-4).map((event) => (
+              <Text
+                key={event.id}
+                style={[styles.historyText, { color: colors.mutedForeground }]}
+              >
+                {deliveryStatusLabels[event.toStatus]} ·{" "}
+                {formatArabicDateTime(event.createdAt) ?? ""}
+              </Text>
+            ))}
+          </View>
+        ) : null}
         <View style={styles.orderActions}>
+          {order.status !== "draft" && order.status !== "cancelled" ? (
+            <ActionButton
+              label={
+                deliveryPending
+                  ? "جارٍ حفظ بيانات التوصيل..."
+                  : "إدارة التوصيل والتحصيل"
+              }
+              icon={deliveryPending ? "clock" : "truck"}
+              secondary
+              disabled={deliveryPending}
+              onPress={onDeliveryEdit}
+            />
+          ) : null}
           {nextStatus[order.status] ? (
             <ActionButton
               label={
@@ -998,6 +1400,26 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
 }
 
 const styles = StyleSheet.create({
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.48)",
+    padding: 14,
+  },
+  modalScrollContent: { flexGrow: 1, justifyContent: "center" },
+  deliveryModal: { gap: 10, padding: 16 },
+  deliveryChoices: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    gap: 7,
+  },
+  deliveryChoice: {
+    minHeight: 36,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+  },
   addButton: {
     minHeight: 40,
     flexDirection: "row",

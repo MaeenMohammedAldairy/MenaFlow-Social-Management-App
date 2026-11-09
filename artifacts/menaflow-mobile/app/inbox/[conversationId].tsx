@@ -1,10 +1,5 @@
 import React, { useState } from "react";
-import {
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  View,
-} from "react-native";
+import { RefreshControl, StyleSheet, View } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
@@ -14,7 +9,6 @@ import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   BrandHeader,
   EmptyState,
-  navigateBack,
   ActionButton,
   Page,
   PageTitle,
@@ -170,18 +164,6 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
       }
     >
       <BrandHeader />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="العودة إلى صندوق الوارد"
-        onPress={() => navigateBack("/(tabs)/inbox")}
-        style={styles.backButton}
-      >
-        <Icon name="chevron-right" size={18} color={colors.primary} />
-        <Text style={[styles.backLabel, { color: colors.primary }]}>
-          العودة إلى الوارد
-        </Text>
-      </Pressable>
-
       <PageTitle
         title={title}
         subtitle={
@@ -189,6 +171,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
             ? `محادثة ${platformLabel} · الرسائل والتعليقات مرتبة حسب وقت الاستلام`
             : "تعذر تحديد المنصة لهذه المحادثة."
         }
+        back={{ href: "/(tabs)/inbox", label: "العودة إلى صندوق الوارد" }}
       />
 
       {actionError ? (
@@ -380,14 +363,6 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
 }
 
 const styles = StyleSheet.create({
-  backButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    alignSelf: "flex-start",
-    gap: 4,
-    minHeight: 40,
-  },
-  backLabel: { fontSize: 13, fontWeight: "700" },
   errorPanel: { borderWidth: 1 },
   notice: { textAlign: "center", paddingVertical: 16 },
   thread: { gap: 12 },

@@ -1,8 +1,14 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, ne, or, sql } from "drizzle-orm";
 import { Router } from "express";
-import { db, posts, productPosts, products } from "@workspace/db";
+import {
+  db,
+  menaInventoryMovements,
+  posts,
+  productPosts,
+  products,
+} from "@workspace/db";
 import { metaString } from "../lib/meta-inbox-utils";
 
 import { requestOwnerId } from "../lib/owner-access";
@@ -24,6 +30,53 @@ import {
   catalogProductResponse,
 } from "./product-route-helpers";
 
+router.get(
+  "/social/products/:id/inventory-movements",
+  requireWorkspace,
+  async (req, res) => {
+    if (!requestOwnerId(req)) {
+      res.status(401).json({ error: "سجّل الدخول أولاً." });
+      return;
+    }
+    const workspaceId = requestWorkspaceId(req);
+    const productId = metaString(req.params.id);
+    if (!productId) {
+      res.status(400).json({ error: "معرّف المنتج غير صالح." });
+      return;
+    }
+    const [product] = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(
+        and(eq(products.id, productId), eq(products.workspaceId, workspaceId)),
+      )
+      .limit(1);
+    if (!product) {
+      res.status(404).json({ error: "لم يتم العثور على المنتج." });
+      return;
+    }
+    const movements = await db
+      .select({
+        id: menaInventoryMovements.id,
+        type: menaInventoryMovements.type,
+        stockDelta: menaInventoryMovements.stockDelta,
+        reservedDelta: menaInventoryMovements.reservedDelta,
+        reason: menaInventoryMovements.reason,
+        createdAt: menaInventoryMovements.createdAt,
+      })
+      .from(menaInventoryMovements)
+      .where(
+        and(
+          eq(menaInventoryMovements.workspaceId, workspaceId),
+          eq(menaInventoryMovements.productId, productId),
+        ),
+      )
+      .orderBy(desc(menaInventoryMovements.createdAt))
+      .limit(20);
+    res.json({ movements });
+  },
+);
+
 router.post("/social/products", requireWorkspace, async (req, res) => {
   const ownerId = requestOwnerId(req);
   const workspaceId = requestWorkspaceId(req);
@@ -36,6 +89,7 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
     res.status(400).json({ error: "تحقق من بيانات المنتج المدخلة." });
     return;
   }
+  const { inventoryReason, ...productInput } = input;
   if (input.sku) {
     const [existing] = await db
       .select({ id: products.id })
@@ -51,17 +105,39 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
       return;
     }
   }
-  const [created] = await db
-    .insert(products)
-    .values({
-      id: randomUUID(),
-      ownerId,
-      workspaceId,
-      ...input,
-      verifiedAt: input.status === "active" ? new Date() : null,
-      updatedAt: new Date(),
-    })
-    .returning();
+  const created = await db.transaction(async (transaction) => {
+    const now = new Date();
+    const [product] = await transaction
+      .insert(products)
+      .values({
+        id: randomUUID(),
+        ownerId,
+        workspaceId,
+        ...productInput,
+        availability:
+          input.inventoryTracked && (input.stockOnHand ?? 0) <= 0
+            ? "out_of_stock"
+            : input.inventoryTracked
+              ? "in_stock"
+              : input.availability,
+        verifiedAt: input.status === "active" ? now : null,
+        updatedAt: now,
+      })
+      .returning();
+    if (product.stockOnHand > 0) {
+      await transaction.insert(menaInventoryMovements).values({
+        id: randomUUID(),
+        workspaceId,
+        productId: product.id,
+        actorId: ownerId,
+        type: "opening_balance",
+        stockDelta: product.stockOnHand,
+        reason: inventoryReason || "رصيد افتتاحي",
+        createdAt: now,
+      });
+    }
+    return product;
+  });
   res.status(201).json({
     product: await catalogProductResponse(
       created,
@@ -74,7 +150,8 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
 });
 
 router.put("/social/products/:id", requireWorkspace, async (req, res) => {
-  if (!requestOwnerId(req)) {
+  const ownerId = requestOwnerId(req);
+  if (!ownerId) {
     res.status(401).json({ error: "سجّل الدخول أولاً." });
     return;
   }
@@ -89,6 +166,7 @@ router.put("/social/products/:id", requireWorkspace, async (req, res) => {
     res.status(400).json({ error: "تحقق من بيانات المنتج المدخلة." });
     return;
   }
+  const { inventoryReason, ...productInput } = input;
   if (input.sku) {
     const [existing] = await db
       .select({ id: products.id })
@@ -108,17 +186,66 @@ router.put("/social/products/:id", requireWorkspace, async (req, res) => {
       return;
     }
   }
-  const [updated] = await db
-    .update(products)
-    .set({
-      ...input,
-      verifiedAt: input.status === "active" ? new Date() : null,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(eq(products.id, productId), eq(products.workspaceId, workspaceId)),
-    )
-    .returning();
+  const updateResult = await db.transaction(async (transaction) => {
+    const [current] = await transaction
+      .select()
+      .from(products)
+      .where(
+        and(eq(products.id, productId), eq(products.workspaceId, workspaceId)),
+      )
+      .for("update")
+      .limit(1);
+    if (!current) return { error: "NOT_FOUND" as const };
+    const nextStock = input.stockOnHand ?? current.stockOnHand;
+    const nextTracking = input.inventoryTracked ?? current.inventoryTracked;
+    if (nextStock < current.stockReserved || (!nextTracking && current.stockReserved > 0)) {
+      return { error: "RESERVED_STOCK" as const };
+    }
+    const now = new Date();
+    const [updated] = await transaction
+      .update(products)
+      .set({
+        ...productInput,
+        availability: nextTracking
+          ? nextStock > current.stockReserved
+            ? "in_stock"
+            : "out_of_stock"
+          : input.availability,
+        stockOnHand: nextStock,
+        inventoryTracked: nextTracking,
+        verifiedAt: input.status === "active" ? now : null,
+        updatedAt: now,
+      })
+      .where(
+        and(eq(products.id, productId), eq(products.workspaceId, workspaceId)),
+      )
+      .returning();
+    const stockDelta = nextStock - current.stockOnHand;
+    if (stockDelta !== 0) {
+      await transaction.insert(menaInventoryMovements).values({
+        id: randomUUID(),
+        workspaceId,
+        productId,
+        actorId: ownerId,
+        type: "adjustment",
+        stockDelta,
+        reason: inventoryReason || "تعديل من كتالوج المنتجات",
+        createdAt: now,
+      });
+    }
+    return { product: updated };
+  });
+  if ("error" in updateResult) {
+    if (updateResult.error === "NOT_FOUND") {
+      res.status(404).json({ error: "لم يتم العثور على المنتج." });
+      return;
+    }
+    res.status(409).json({
+      error: "لا يمكن أن يكون المخزون أقل من الكمية المحجوزة للطلبات.",
+    });
+    return;
+  }
+  const updated = updateResult.product;
   if (!updated) {
     res.status(404).json({ error: "لم يتم العثور على المنتج." });
     return;

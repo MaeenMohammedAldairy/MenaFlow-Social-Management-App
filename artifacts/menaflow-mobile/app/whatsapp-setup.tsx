@@ -280,16 +280,16 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
       <PageTitle
         title="إعداد حساب واتساب"
         subtitle="أكمل إعدادات حسابك لتبدأ إدارة الرسائل عبر MenaFlow."
-        action={
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="العودة إلى المصادر"
-            onPress={returnToSources}
-            style={styles.backButton}
-          >
-            <Icon name="chevron-right" size={18} color={colors.primary} />
-          </Pressable>
-        }
+        back={{
+          href:
+            returnTo === "connect-accounts"
+              ? "/connect-accounts"
+              : "/(tabs)/more/sources",
+          label:
+            returnTo === "connect-accounts"
+              ? "العودة إلى الإعداد الأولي"
+              : "العودة إلى المصادر",
+        }}
       />
 
       {settingsQuery.isLoading ? (

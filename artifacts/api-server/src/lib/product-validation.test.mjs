@@ -45,7 +45,9 @@ test("product media IDs resolve only inside their encoded workspace", () => {
     mediaId,
   );
   assert.equal(
-    productMediaIdFromUrl("https://api.example.test/api/social/whatsapp/media/file-id"),
+    productMediaIdFromUrl(
+      "https://api.example.test/api/social/whatsapp/media/file-id",
+    ),
     null,
   );
 });
@@ -74,22 +76,25 @@ test("permits unverified draft products without price or currency", () => {
 
 test("imports published post text only as high-confidence extracted product fields", () => {
   assert.deepEqual(
-    publishedPostProductDraft({
-      title: "محتوى يحتاج إلى مراجعة",
-      body: "خلاط منزلي — السعر 20 ريال، متوفر الآن",
-      mediaUrls: ["https://cdn.example.com/blender.jpg"],
-    }, {
-      complete: true,
-      data: {
-        name: "خلاط منزلي",
-        sku: null,
-        aliases: [],
-        description: "خلاط منزلي",
-        price: "20",
-        currency: "YER",
-        availability: "in_stock",
+    publishedPostProductDraft(
+      {
+        title: "محتوى يحتاج إلى مراجعة",
+        body: "خلاط منزلي — السعر 20 ريال، متوفر الآن",
+        mediaUrls: ["https://cdn.example.com/blender.jpg"],
       },
-    }),
+      {
+        complete: true,
+        data: {
+          name: "خلاط منزلي",
+          sku: null,
+          aliases: [],
+          description: "خلاط منزلي",
+          price: "20",
+          currency: "YER",
+          availability: "in_stock",
+        },
+      },
+    ),
     {
       sku: null,
       name: "خلاط منزلي",
@@ -106,22 +111,25 @@ test("imports published post text only as high-confidence extracted product fiel
 
 test("keeps incomplete post extraction in a draft with all extracted fields", () => {
   assert.deepEqual(
-    publishedPostProductDraft({
-      title: "خلاط منزلي",
-      body: "خلاط منزلي سعة 2 لتر ويعرف بالخلاط",
-      mediaUrls: [],
-    }, {
-      complete: false,
-      data: {
-        name: "خلاط منزلي",
-        sku: null,
-        aliases: ["الخلاط"],
-        description: "خلاط منزلي سعة 2 لتر",
-        price: null,
-        currency: null,
-        availability: null,
+    publishedPostProductDraft(
+      {
+        title: "خلاط منزلي",
+        body: "خلاط منزلي سعة 2 لتر ويعرف بالخلاط",
+        mediaUrls: [],
       },
-    }),
+      {
+        complete: false,
+        data: {
+          name: "خلاط منزلي",
+          sku: null,
+          aliases: ["الخلاط"],
+          description: "خلاط منزلي سعة 2 لتر",
+          price: null,
+          currency: null,
+          availability: null,
+        },
+      },
+    ),
     {
       sku: null,
       name: "خلاط منزلي",
@@ -162,6 +170,46 @@ test("rejects out-of-range values and malformed requests", () => {
   assert.equal(parseProductInput({ ...validProduct, price: {} }), null);
   assert.equal(
     parseProductInput({ ...validProduct, aliases: Array(21).fill("a") }),
+    null,
+  );
+});
+
+test("validates optional stock tracking and normalizes its audit reason", () => {
+  const parsed = parseProductInput({
+    name: " منتج ",
+    availability: "unknown",
+    status: "active",
+    inventoryTracked: true,
+    stockOnHand: 12,
+    lowStockThreshold: 3,
+    inventoryReason: "  توريد جديد  ",
+  });
+  assert.equal(parsed?.name, "منتج");
+  assert.equal(parsed?.inventoryTracked, true);
+  assert.equal(parsed?.stockOnHand, 12);
+  assert.equal(parsed?.lowStockThreshold, 3);
+  assert.equal(parsed?.inventoryReason, "توريد جديد");
+});
+
+test("rejects invalid stock balances and audit reasons", () => {
+  const base = {
+    name: "منتج",
+    availability: "unknown",
+    status: "active",
+  };
+  assert.equal(
+    parseProductInput({ ...base, inventoryTracked: true, stockOnHand: -1 }),
+    null,
+  );
+  assert.equal(
+    parseProductInput({ ...base, lowStockThreshold: -1 }),
+    null,
+  );
+  assert.equal(
+    parseProductInput({
+      ...base,
+      inventoryReason: "x".repeat(241),
+    }),
     null,
   );
 });

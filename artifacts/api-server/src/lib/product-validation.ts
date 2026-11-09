@@ -12,6 +12,10 @@ export type ProductInput = {
   availability: ProductAvailability;
   status: ProductStatus;
   mediaUrls: string[];
+  inventoryTracked?: boolean;
+  stockOnHand?: number;
+  lowStockThreshold?: number;
+  inventoryReason?: string;
 };
 
 export type PublishedPostExtraction = {
@@ -95,6 +99,10 @@ export function parseProductInput(value: unknown): ProductInput | null {
       : null;
   const availability = input.availability;
   const status = input.status;
+  const inventoryTracked = input.inventoryTracked;
+  const stockOnHand = input.stockOnHand;
+  const lowStockThreshold = input.lowStockThreshold;
+  const inventoryReason = input.inventoryReason;
   const aliases = Array.isArray(input.aliases) ? input.aliases : [];
   const mediaUrls = Array.isArray(input.mediaUrls) ? input.mediaUrls : [];
 
@@ -108,6 +116,19 @@ export function parseProductInput(value: unknown): ProductInput | null {
     (price !== null && currency === null) ||
     !availabilities.has(availability as ProductAvailability) ||
     !statuses.has(status as ProductStatus) ||
+    (inventoryTracked !== undefined &&
+      typeof inventoryTracked !== "boolean") ||
+    (stockOnHand !== undefined &&
+      (!Number.isInteger(stockOnHand) ||
+        (stockOnHand as number) < 0 ||
+        (stockOnHand as number) > 2_000_000_000)) ||
+    (lowStockThreshold !== undefined &&
+      (!Number.isInteger(lowStockThreshold) ||
+        (lowStockThreshold as number) < 0 ||
+        (lowStockThreshold as number) > 2_000_000_000)) ||
+    (inventoryReason !== undefined &&
+      (typeof inventoryReason !== "string" ||
+        inventoryReason.trim().length > 240)) ||
     aliases.length > 20 ||
     aliases.some(
       (alias) =>
@@ -134,5 +155,15 @@ export function parseProductInput(value: unknown): ProductInput | null {
     availability: availability as ProductAvailability,
     status: status as ProductStatus,
     mediaUrls: [...new Set(mediaUrls.map((url) => url.trim()))],
+    ...(inventoryTracked !== undefined ? { inventoryTracked } : {}),
+    ...(stockOnHand !== undefined
+      ? { stockOnHand: stockOnHand as number }
+      : {}),
+    ...(lowStockThreshold !== undefined
+      ? { lowStockThreshold: lowStockThreshold as number }
+      : {}),
+    ...(typeof inventoryReason === "string"
+      ? { inventoryReason: inventoryReason.trim() }
+      : {}),
   };
 }

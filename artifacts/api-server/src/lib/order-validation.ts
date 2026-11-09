@@ -1,4 +1,8 @@
-import type { OrderStatus } from "@workspace/db";
+import type {
+  CollectionStatus,
+  DeliveryStatus,
+  OrderStatus,
+} from "@workspace/db";
 
 export type CreateOrderInput = {
   clientRequestId: string;
@@ -19,6 +23,9 @@ export type OrderableProduct = {
   availability: "unknown" | "in_stock" | "out_of_stock" | "preorder";
   status: "draft" | "active" | "archived";
   verifiedAt: Date | null;
+  inventoryTracked?: boolean;
+  stockOnHand?: number;
+  stockReserved?: number;
 };
 
 export type CalculatedOrder = {
@@ -43,6 +50,29 @@ const orderStatuses: readonly OrderStatus[] = [
   "cancelled",
 ];
 const validStatuses = new Set<string>(orderStatuses);
+const deliveryStatuses: readonly DeliveryStatus[] = [
+  "pending",
+  "ready",
+  "picked_up",
+  "in_transit",
+  "delivered",
+  "failed",
+  "returned",
+];
+const collectionStatuses: readonly CollectionStatus[] = [
+  "not_collected",
+  "collected",
+  "remitted",
+];
+const deliveryTransitions: Record<DeliveryStatus, readonly DeliveryStatus[]> = {
+  pending: ["ready", "failed"],
+  ready: ["picked_up", "failed"],
+  picked_up: ["in_transit", "failed"],
+  in_transit: ["delivered", "failed"],
+  delivered: ["returned"],
+  failed: ["ready", "returned"],
+  returned: ["ready"],
+};
 const transitions: Record<OrderStatus, readonly OrderStatus[]> = {
   draft: ["confirmed", "cancelled"],
   confirmed: ["preparing", "cancelled"],
@@ -142,6 +172,94 @@ export function parseOrderStatus(value: unknown): OrderStatus | null {
     : null;
 }
 
+export function canTransitionDeliveryStatus(
+  current: DeliveryStatus,
+  next: DeliveryStatus,
+): boolean {
+  return deliveryTransitions[current].includes(next);
+}
+
+export type DeliveryUpdateInput = {
+  deliveryStatus?: DeliveryStatus;
+  deliveryProvider?: string | null;
+  trackingNumber?: string | null;
+  deliveryFee?: string;
+  collectionStatus?: CollectionStatus;
+  collectedAmount?: string;
+};
+
+function parseMoneyField(value: unknown): string | null {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const normalized = String(value).trim();
+  const amount = moneyToMinorUnits(normalized);
+  return amount === null ? null : minorUnitsToMoney(amount);
+}
+
+export function parseDeliveryUpdate(
+  value: unknown,
+): DeliveryUpdateInput | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const input = value as Record<string, unknown>;
+  const result: DeliveryUpdateInput = {};
+  if ("deliveryStatus" in input) {
+    if (
+      typeof input.deliveryStatus !== "string" ||
+      !deliveryStatuses.includes(input.deliveryStatus as DeliveryStatus)
+    ) {
+      return null;
+    }
+    result.deliveryStatus = input.deliveryStatus as DeliveryStatus;
+  }
+  if ("deliveryProvider" in input) {
+    if (
+      input.deliveryProvider !== null &&
+      typeof input.deliveryProvider !== "string"
+    ) {
+      return null;
+    }
+    const provider =
+      typeof input.deliveryProvider === "string"
+        ? input.deliveryProvider.trim()
+        : "";
+    if (provider.length > 120) return null;
+    result.deliveryProvider = provider || null;
+  }
+  if ("trackingNumber" in input) {
+    if (
+      input.trackingNumber !== null &&
+      typeof input.trackingNumber !== "string"
+    ) {
+      return null;
+    }
+    const trackingNumber =
+      typeof input.trackingNumber === "string"
+        ? input.trackingNumber.trim()
+        : "";
+    if (trackingNumber.length > 160) return null;
+    result.trackingNumber = trackingNumber || null;
+  }
+  if ("deliveryFee" in input) {
+    const deliveryFee = parseMoneyField(input.deliveryFee);
+    if (deliveryFee === null) return null;
+    result.deliveryFee = deliveryFee;
+  }
+  if ("collectionStatus" in input) {
+    if (
+      typeof input.collectionStatus !== "string" ||
+      !collectionStatuses.includes(input.collectionStatus as CollectionStatus)
+    ) {
+      return null;
+    }
+    result.collectionStatus = input.collectionStatus as CollectionStatus;
+  }
+  if ("collectedAmount" in input) {
+    const collectedAmount = parseMoneyField(input.collectedAmount);
+    if (collectedAmount === null) return null;
+    result.collectedAmount = collectedAmount;
+  }
+  return Object.keys(result).length ? result : null;
+}
+
 export function canTransitionOrderStatus(
   current: OrderStatus,
   next: OrderStatus,
@@ -172,6 +290,7 @@ export function calculateOrder(
         | "PRODUCT_NOT_FOUND"
         | "PRODUCT_UNAVAILABLE"
         | "PRODUCT_NOT_ORDERABLE"
+        | "INSUFFICIENT_STOCK"
         | "INVALID_PRODUCT_PRICE"
         | "ORDER_TOTAL_TOO_LARGE";
     } {
@@ -194,6 +313,13 @@ export function calculateOrder(
       product.verifiedAt === null
     ) {
       return { error: "PRODUCT_NOT_ORDERABLE" };
+    }
+    if (
+      product.inventoryTracked &&
+      requestedItem.quantity >
+        (product.stockOnHand ?? 0) - (product.stockReserved ?? 0)
+    ) {
+      return { error: "INSUFFICIENT_STOCK" };
     }
     const unitPriceMinorUnits = moneyToMinorUnits(product.price);
     if (

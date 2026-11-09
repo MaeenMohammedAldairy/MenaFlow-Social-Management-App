@@ -3,6 +3,17 @@ import { fetchApiResponse } from "@workspace/api-client-react";
 export type OrderStatus =
   "draft" | "confirmed" | "preparing" | "shipped" | "completed" | "cancelled";
 
+export type DeliveryStatus =
+  | "pending"
+  | "ready"
+  | "picked_up"
+  | "in_transit"
+  | "delivered"
+  | "failed"
+  | "returned";
+
+export type CollectionStatus = "not_collected" | "collected" | "remitted";
+
 export type OrderSummary = Record<OrderStatus, number> & { total: number };
 
 export type OrderItem = {
@@ -33,12 +44,24 @@ export type CustomerOrder = {
   sourcePlatform: "facebook" | "instagram" | null;
   sourceConversationId: string | null;
   status: OrderStatus;
+  deliveryStatus: DeliveryStatus;
+  deliveryProvider: string | null;
+  trackingNumber: string | null;
+  deliveryFee: string;
+  collectionStatus: CollectionStatus;
+  collectedAmount: string;
+  deliveredAt: string | null;
   currency: string;
   total: string;
   createdAt: string;
   updatedAt: string;
   items: OrderItem[];
   events: OrderEvent[];
+  deliveryEvents: Array<{
+    id: string;
+    toStatus: DeliveryStatus;
+    createdAt: string;
+  }>;
 };
 
 export type CreateOrderInput = {
@@ -115,6 +138,29 @@ export async function updateOrderStatus(
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status }),
+    },
+  );
+  const result = await responseJson<{ order: CustomerOrder }>(response);
+  return result.order;
+}
+
+export async function updateOrderDelivery(
+  orderId: string,
+  input: {
+    deliveryStatus?: DeliveryStatus;
+    deliveryProvider?: string | null;
+    trackingNumber?: string | null;
+    deliveryFee?: string;
+    collectionStatus?: CollectionStatus;
+    collectedAmount?: string;
+  },
+): Promise<CustomerOrder> {
+  const response = await fetchApiResponse(
+    `/api/social/orders/${encodeURIComponent(orderId)}/delivery`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
     },
   );
   const result = await responseJson<{ order: CustomerOrder }>(response);

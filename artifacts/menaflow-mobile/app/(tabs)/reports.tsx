@@ -82,7 +82,11 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
       }
     >
       <BrandHeader />
-      <PageTitle title="التقارير" subtitle="ملخص المحتوى وحالاته وتوزيعه على القنوات." />
+      <PageTitle
+        title="التقارير"
+        subtitle="ملخص المحتوى وحالاته وتوزيعه على القنوات."
+        back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
+      />
 
       {reportSummaryQuery.isError ? (
         <Panel style={styles.connectionNotice}>

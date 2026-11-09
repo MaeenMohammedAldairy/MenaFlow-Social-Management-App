@@ -34,6 +34,10 @@ export const emptyDraft: ProductDraft = {
   availability: "unknown",
   status: "draft",
   mediaUrls: [],
+  inventoryTracked: false,
+  stockOnHand: 0,
+  lowStockThreshold: 0,
+  inventoryReason: "",
 };
 
 export function draftFromProduct(product: CatalogProduct): ProductDraft {
@@ -47,6 +51,10 @@ export function draftFromProduct(product: CatalogProduct): ProductDraft {
     availability: product.availability,
     status: product.status,
     mediaUrls: product.mediaUrls,
+    inventoryTracked: product.inventoryTracked,
+    stockOnHand: product.stockOnHand,
+    lowStockThreshold: product.lowStockThreshold,
+    inventoryReason: "",
   };
 }
 

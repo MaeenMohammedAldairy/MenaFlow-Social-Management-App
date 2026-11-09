@@ -9,6 +9,10 @@ export type CatalogProduct = {
   price: string | null;
   currency: string | null;
   availability: "unknown" | "in_stock" | "out_of_stock" | "preorder";
+  inventoryTracked: boolean;
+  stockOnHand: number;
+  stockReserved: number;
+  lowStockThreshold: number;
   status: "draft" | "active" | "archived";
   mediaUrls: string[];
   mediaPreviews: Array<{
@@ -20,6 +24,15 @@ export type CatalogProduct = {
   createdAt: string;
   updatedAt: string;
   postIds: string[];
+};
+
+export type InventoryMovement = {
+  id: string;
+  type: "opening_balance" | "adjustment" | "reservation" | "release" | "shipment";
+  stockDelta: number;
+  reservedDelta: number;
+  reason: string;
+  createdAt: string;
 };
 
 export type ProductCandidate = {
@@ -78,7 +91,16 @@ export type ProductInput = Omit<
   | "verifiedAt"
   | "postIds"
   | "mediaPreviews"
->;
+  | "inventoryTracked"
+  | "stockOnHand"
+  | "stockReserved"
+  | "lowStockThreshold"
+> & {
+  inventoryTracked?: boolean;
+  stockOnHand?: number;
+  lowStockThreshold?: number;
+  inventoryReason?: string;
+};
 
 export type PublishableAccount = {
   channel: "facebook" | "instagram";
@@ -144,6 +166,18 @@ export async function getProductCatalog(
   );
   const result = await responseJson<{ products: CatalogProduct[] }>(response);
   return result.products;
+}
+
+export async function getInventoryMovements(
+  productId: string,
+): Promise<InventoryMovement[]> {
+  const response = await fetchApiResponse(
+    `/api/social/products/${encodeURIComponent(productId)}/inventory-movements`,
+  );
+  const result = await responseJson<{ movements: InventoryMovement[] }>(
+    response,
+  );
+  return result.movements;
 }
 
 export async function getPublishableAccounts(): Promise<PublishableAccount[]> {

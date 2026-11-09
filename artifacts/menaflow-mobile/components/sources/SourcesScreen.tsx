@@ -234,10 +234,12 @@ function SourcesContent({
   const {
     connect: requestedConnect,
     reconnect: requestedReconnect,
+    returnTo,
     view,
   } = useLocalSearchParams<{
     connect?: string;
     reconnect?: string;
+    returnTo?: string;
     view?: string;
   }>();
   const isPublishingAccounts =
@@ -1479,9 +1481,12 @@ function SourcesContent({
         }
         back={
           back ??
-          (isPublishingAccounts
-            ? { href: "/(tabs)/more", label: "العودة إلى المزيد" }
-            : undefined)
+          (returnTo === "settings"
+            ? {
+                href: "/(tabs)/more/settings",
+                label: "العودة إلى الإعدادات",
+              }
+            : { href: "/(tabs)/more", label: "العودة إلى المزيد" })
         }
         subtitle={
           socialSetupPending && isPublishingAccounts

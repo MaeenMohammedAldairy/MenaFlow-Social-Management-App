@@ -19,6 +19,7 @@ The initial SQL is generated from the current Drizzle schema and is tracked as S
 - `supabase/migrations/20261019001000_lock_down_app_tables.sql`
 - `supabase/migrations/20261020000000_workspace_onboarding.sql`
 - `supabase/migrations/20261020002000_social_accounts_setup.sql`
+- `supabase/migrations/20261110001000_inventory_delivery.sql`
 
 The onboarding migration adds a progress table keyed by both user and
 workspace. Accounts without a progress row (including existing accounts) are
@@ -44,6 +45,11 @@ npx supabase db push --dry-run --linked
 ```
 
 The initial schema and access-control migrations were already applied to the linked project. The onboarding migration was reviewed with a dry run and then applied to the confirmed development database. Review and dry-run the social-accounts migration before applying it to any deployed database. Do not paste or re-run the initial SQL in the SQL Editor for this linked project. The initial migration creates all application tables; never apply it to a database that already contains these tables unless you have reviewed the migration state and schema.
+
+The inventory and delivery migration adds optional per-product stock tracking,
+order reservations and shipment deductions, inventory movement history, and
+manual delivery/collection tracking. Review and apply it before deploying the
+API and mobile changes that read or write these fields.
 
 Do not use `drizzle-kit push --force` against either database. The checked-in SQL files are the reviewed baseline for a new Supabase database and should be evolved as incremental migrations.
 

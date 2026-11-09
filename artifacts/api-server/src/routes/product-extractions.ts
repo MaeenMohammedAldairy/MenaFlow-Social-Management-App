@@ -6,6 +6,7 @@ import {
   db,
   menaWhatsAppGroups,
   menaWhatsAppMessageMedia,
+  menaInventoryMovements,
   menaWhatsAppMessages,
   productExtractionSources,
   productExtractionSuggestions,
@@ -333,6 +334,7 @@ router.post(
             },
       );
       if (!input) return { status: "incomplete" as const };
+      const { inventoryReason, ...productInput } = input;
       const sourceMedia = await transaction
         .select({ id: menaWhatsAppMessageMedia.id })
         .from(productExtractionSources)
@@ -367,13 +369,31 @@ router.post(
           id: randomUUID(),
           ownerId,
           workspaceId,
-          ...input,
+          ...productInput,
+          availability:
+            input.inventoryTracked && (input.stockOnHand ?? 0) <= 0
+              ? "out_of_stock"
+              : input.inventoryTracked
+                ? "in_stock"
+                : input.availability,
           mediaUrls: sourceMedia.map(({ id }) => id),
           verifiedAt: null,
           updatedAt: new Date(),
         })
         .returning();
       if (!product) throw new Error("PRODUCT_EXTRACTION_DRAFT_CREATE_FAILED");
+      if (product.stockOnHand > 0) {
+        await transaction.insert(menaInventoryMovements).values({
+          id: randomUUID(),
+          workspaceId,
+          productId: product.id,
+          actorId: ownerId,
+          type: "opening_balance",
+          stockDelta: product.stockOnHand,
+          reason: inventoryReason || "رصيد افتتاحي",
+          createdAt: new Date(),
+        });
+      }
       await transaction
         .update(productExtractionSuggestions)
         .set({
