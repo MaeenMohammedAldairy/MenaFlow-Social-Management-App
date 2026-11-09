@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, ilike, inArray, lt, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { Router } from "express";
 import {
   db,
@@ -94,6 +94,28 @@ function orderResponse(
     })),
   };
 }
+
+router.get("/social/orders/summary", requireWorkspace, async (req, res) => {
+  const ownerId = requestOwnerId(req);
+  if (!ownerId) {
+    res.status(401).json({ error: "سجّل الدخول أولاً." });
+    return;
+  }
+  const workspaceId = requestWorkspaceId(req);
+  const [summary] = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      draft: sql<number>`count(*) filter (where ${menaOrders.status} = 'draft')::int`,
+      confirmed: sql<number>`count(*) filter (where ${menaOrders.status} = 'confirmed')::int`,
+      preparing: sql<number>`count(*) filter (where ${menaOrders.status} = 'preparing')::int`,
+      shipped: sql<number>`count(*) filter (where ${menaOrders.status} = 'shipped')::int`,
+      completed: sql<number>`count(*) filter (where ${menaOrders.status} = 'completed')::int`,
+      cancelled: sql<number>`count(*) filter (where ${menaOrders.status} = 'cancelled')::int`,
+    })
+    .from(menaOrders)
+    .where(eq(menaOrders.workspaceId, workspaceId));
+  res.json(summary);
+});
 
 router.get("/social/orders", requireWorkspace, async (req, res) => {
   const ownerId = requestOwnerId(req);

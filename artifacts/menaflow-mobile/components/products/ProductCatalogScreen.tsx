@@ -4,6 +4,7 @@ import {
   Alert,
   Modal,
   Pressable,
+  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -90,6 +91,18 @@ function productPublicationPreview(product: CatalogProduct): string {
     .filter(Boolean)
     .filter((line, index, lines) => lines.indexOf(line) === index)
     .join("\n");
+}
+
+function productPublicationDisabledReason(
+  product: CatalogProduct,
+): string | null {
+  if (product.status !== "active") {
+    return "فعّل المنتج من حالة السجل قبل نشره.";
+  }
+  if (!product.verifiedAt) {
+    return "راجع بيانات المنتج واحفظها بعد التحقق قبل نشره.";
+  }
+  return null;
 }
 
 function catalogLoadErrorMessage(error: unknown): string {
@@ -418,11 +431,10 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   const selectedProducts = allProducts.filter(
     (product) =>
       selectedProductIds.has(product.id) &&
-      product.status === "active" &&
-      product.verifiedAt !== null,
+      productPublicationDisabledReason(product) === null,
   );
   const selectableVisibleProducts = visibleProducts.filter(
-    (product) => product.status === "active" && product.verifiedAt !== null,
+    (product) => productPublicationDisabledReason(product) === null,
   );
   const extractionCount =
     extractions.isPending || candidates.isPending
@@ -598,6 +610,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   return (
     <View style={styles.screen}>
       <Page
+        bottomPadding={selectedProducts.length ? 184 : undefined}
         refreshControl={
           <RefreshControl
             refreshing={
@@ -945,6 +958,17 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   </Pressable>
                 ) : null}
               </View>
+              {selectableVisibleProducts.length > 0 &&
+              selectedProducts.length === 0 ? (
+                <Text
+                  style={[
+                    styles.selectionHint,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  حدد مربع الاختيار بجانب منتج معتمد لمراجعة النشر.
+                </Text>
+              ) : null}
             </Panel>
             {catalog.isError ? (
               <Panel
@@ -1002,13 +1026,9 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   selected={selectedProducts.some(
                     (selectedProduct) => selectedProduct.id === product.id,
                   )}
-                  selectionDisabledReason={
-                    product.status !== "active"
-                      ? "اعتمد المنتج أولًا قبل نشره."
-                      : !product.verifiedAt
-                        ? "تحقق من بيانات المنتج قبل نشره."
-                        : null
-                  }
+                  selectionDisabledReason={productPublicationDisabledReason(
+                    product,
+                  )}
                   onToggleSelection={() => toggleProductSelection(product.id)}
                   onEdit={() =>
                     openEditor({
@@ -1144,28 +1164,38 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         ) : null}
       </Page>
       {selectedProducts.length > 0 ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`مراجعة النشر، ${selectedProducts.length} منتجات محددة`}
-          onPress={() => {
-            setSelectedTargetKeys(new Set());
-            setPendingRequestKey(randomUUID());
-            setPublishModalVisible(true);
-          }}
+        <Panel
           style={[
-            styles.publishFab,
+            styles.publishBar,
             {
-              start: 16,
-              bottom: insets.bottom + 16,
-              backgroundColor: colors.primary,
+              start: 12,
+              end: 12,
+              bottom: insets.bottom + (Platform.OS === "web" ? 96 : 72),
             },
           ]}
         >
-          <Icon name="send" size={18} color={colors.primaryForeground} />
-          <Text style={{ color: colors.primaryForeground, fontWeight: "700" }}>
-            مراجعة النشر ({selectedProducts.length})
-          </Text>
-        </Pressable>
+          <View style={styles.publishBarCopy}>
+            <Text
+              style={[styles.publishBarCount, { color: colors.foreground }]}
+            >
+              {formatArabicNumber(selectedProducts.length)} منتجات محددة
+            </Text>
+            <Text
+              style={[styles.publishBarHint, { color: colors.mutedForeground }]}
+            >
+              راجع الحسابات والمحتوى قبل الجدولة
+            </Text>
+          </View>
+          <ActionButton
+            label="مراجعة النشر"
+            icon="send"
+            onPress={() => {
+              setSelectedTargetKeys(new Set());
+              setPendingRequestKey(randomUUID());
+              setPublishModalVisible(true);
+            }}
+          />
+        </Panel>
       ) : null}
       <Modal
         visible={editor !== null}
@@ -2625,6 +2655,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 10,
   },
+  selectionHint: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   selectAll: {
     flexDirection: "row",
     alignItems: "center",
@@ -2638,18 +2669,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  publishFab: {
+  publishBar: {
     position: "absolute",
-    minHeight: 48,
-    flexDirection: "row",
+    minHeight: 76,
+    flexDirection: "row-reverse",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderRadius: 28,
-    paddingHorizontal: 18,
+    justifyContent: "space-between",
+    gap: 12,
+    padding: 12,
     elevation: 8,
     zIndex: 50,
   },
+  publishBarCopy: { flex: 1, gap: 4, alignItems: "flex-start" },
+  publishBarCount: { fontSize: 13, fontWeight: "800", textAlign: "right" },
+  publishBarHint: { fontSize: 11, lineHeight: 16, textAlign: "right" },
   productCard: { gap: 7 },
   publicationPanel: { gap: 10 },
   publicationJob: {

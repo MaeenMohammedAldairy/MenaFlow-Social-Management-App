@@ -3,6 +3,8 @@ import { fetchApiResponse } from "@workspace/api-client-react";
 export type OrderStatus =
   "draft" | "confirmed" | "preparing" | "shipped" | "completed" | "cancelled";
 
+export type OrderSummary = Record<OrderStatus, number> & { total: number };
+
 export type OrderItem = {
   id: string;
   productId: string | null;
@@ -68,6 +70,11 @@ async function responseJson<T>(response: Response): Promise<T> {
     );
   }
   return payload as T;
+}
+
+export async function getOrderSummary(): Promise<OrderSummary> {
+  const response = await fetchApiResponse("/api/social/orders/summary");
+  return responseJson<OrderSummary>(response);
 }
 
 export async function getOrders(

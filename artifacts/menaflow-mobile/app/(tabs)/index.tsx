@@ -31,11 +31,15 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
-import { formatArabicDate } from "@/lib/formatting";
+import { formatArabicDate, formatArabicDateTime } from "@/lib/formatting";
 import {
-  getMetaInbox,
-  metaInboxPersonId,
-} from "@/lib/meta-inbox-api";
+  getActivityPostMeta,
+  getActivityPostStatusLabel,
+  getActivityPostStatusTone,
+  getActivityPostTitle,
+} from "@/lib/activity-formatting";
+import { getMetaInbox, metaInboxPersonId } from "@/lib/meta-inbox-api";
+import { getOrderSummary } from "@/lib/orders-api";
 import { getProductCatalog } from "@/lib/product-catalog-api";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 
@@ -85,6 +89,13 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
     staleTime: 60_000,
     refetchOnWindowFocus: true,
   });
+  const orderSummaryQuery = useQuery({
+    queryKey: ["order-summary", userId ?? "local"],
+    queryFn: getOrderSummary,
+    enabled: isLocalAuthDisabled || Boolean(userId),
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
   const conversationCount = inboxQuery.data
     ? new Set(
         inboxQuery.data.items.map(
@@ -98,13 +109,17 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([
-      refreshPosts(),
-      connectionsQuery.refetch(),
-      inboxQuery.refetch(),
-      catalogQuery.refetch(),
-    ]);
-    setRefreshing(false);
+    try {
+      await Promise.all([
+        refreshPosts(),
+        connectionsQuery.refetch(),
+        inboxQuery.refetch(),
+        catalogQuery.refetch(),
+        orderSummaryQuery.refetch(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const retryConnections = async (
@@ -128,11 +143,9 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       accountName: connections?.instagram?.accountName
         ? `@${connections.instagram.accountName}`
         : null,
-      connected:
-        connections?.instagram?.authorizationStatus === "ready",
+      connected: connections?.instagram?.authorizationStatus === "ready",
       needsReauthorization:
-        connections?.instagram?.authorizationStatus ===
-        "needs_reauthorization",
+        connections?.instagram?.authorizationStatus === "needs_reauthorization",
       needsReconnection: false,
       isConnecting: false,
       isUnavailable: false,
@@ -143,8 +156,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       accountName: connections?.facebook?.accountName || null,
       connected: connections?.facebook?.authorizationStatus === "ready",
       needsReauthorization:
-        connections?.facebook?.authorizationStatus ===
-        "needs_reauthorization",
+        connections?.facebook?.authorizationStatus === "needs_reauthorization",
       needsReconnection: false,
       isConnecting: false,
       isUnavailable: false,
@@ -153,19 +165,16 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       platform: "whatsapp" as const,
       name: "واتساب",
       accountName: connections?.whatsapp?.accountName || null,
-      connected:
-        connections?.whatsapp?.connectionState === "connected",
+      connected: connections?.whatsapp?.connectionState === "connected",
       needsReauthorization: false,
       needsReconnection: Boolean(
         connections?.whatsapp &&
-          connections.whatsapp.connectionState !== "connected" &&
-          connections.whatsapp.connectionState !== "connecting" &&
-          connections.whatsapp.connectionState !== "unavailable",
+        connections.whatsapp.connectionState !== "connected" &&
+        connections.whatsapp.connectionState !== "connecting" &&
+        connections.whatsapp.connectionState !== "unavailable",
       ),
-      isConnecting:
-        connections?.whatsapp?.connectionState === "connecting",
-      isUnavailable:
-        connections?.whatsapp?.connectionState === "unavailable",
+      isConnecting: connections?.whatsapp?.connectionState === "connecting",
+      isUnavailable: connections?.whatsapp?.connectionState === "unavailable",
     },
   ];
   const connectionsUnavailable =
@@ -190,9 +199,10 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
   const whatsappNeedsReconnection = channelsData.some(
     (channel) => channel.platform === "whatsapp" && channel.needsReconnection,
   );
-  const pendingPost = posts.find((post) => post.status === "failed")
-    ?? posts.find((post) => post.status === "review")
-    ?? posts.find((post) => post.status === "draft");
+  const pendingPost =
+    posts.find((post) => post.status === "failed") ??
+    posts.find((post) => post.status === "review") ??
+    posts.find((post) => post.status === "draft");
   const recentActivities = [
     ...posts.map((post) => ({
       type: "post" as const,
@@ -470,11 +480,19 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
           },
           {
             label: "الطلبات",
-            description: "لا تتوفر بيانات طلبات حاليًا",
+            description: orderSummaryQuery.isError
+              ? "تعذّر تحميل ملخص الطلبات"
+              : orderSummaryQuery.data
+                ? `${orderSummaryQuery.data.draft + orderSummaryQuery.data.confirmed + orderSummaryQuery.data.preparing} بحاجة إلى متابعة`
+                : "جارٍ تحميل الطلبات",
             icon: "shopping-bag" as const,
-            value: "—",
-            href: null,
-            disabled: true,
+            value: orderSummaryQuery.isLoading
+              ? "…"
+              : orderSummaryQuery.isError
+                ? "—"
+                : (orderSummaryQuery.data?.total ?? 0),
+            href: "/(tabs)/more/orders" as const,
+            disabled: false,
           },
         ].map((metric) => (
           <Pressable
@@ -533,6 +551,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       <View
         style={[
           styles.contentGrid,
+          width < 480 && styles.contentGridPhone,
           isWideScreen && styles.contentGridWide,
         ]}
       >
@@ -570,10 +589,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
               </Text>
             </View>
             <View
-              style={[
-                styles.channelRow,
-                width < 480 && styles.channelRowPhone,
-              ]}
+              style={[styles.channelRow, width < 480 && styles.channelRowPhone]}
             >
               {channelsData.map((channel) => {
                 const isRetrying =
@@ -588,7 +604,9 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                   : connectionsUnavailable
                     ? {
                         label: isRetrying ? "جارٍ التحقق" : "إعادة المحاولة",
-                        icon: isRetrying ? ("clock" as const) : ("refresh-cw" as const),
+                        icon: isRetrying
+                          ? ("clock" as const)
+                          : ("refresh-cw" as const),
                         color: colors.blue,
                         background: colors.blueSoft,
                       }
@@ -635,150 +653,139 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                                 };
 
                 return (
-                <Pressable
-                  key={channel.name}
-                  accessibilityRole="button"
-                  accessibilityHint={
-                    connectionsUnavailable
-                      ? "اضغط لإعادة التحقق من حالة هذا الحساب"
-                      : undefined
-                  }
-                  accessibilityLabel={
-                    connectionsLoading
-                      ? `جارٍ التحقق من حالة حساب ${channel.name}`
-                      : connectionsUnavailable
-                        ? retryingConnectionsFor[channel.platform]
-                          ? `جارٍ إعادة التحقق من حساب ${channel.name}`
-                          : `تعذر التحقق من حساب ${channel.name}. إعادة المحاولة`
-                        : channel.connected
-                          ? `حساب ${channel.name} متصل${channel.accountName ? `: ${channel.accountName}` : ""}. عرض التفاصيل`
-                          : channel.needsReauthorization
-                            ? `إعادة تفويض حساب ${channel.name}`
-                            : channel.isConnecting
-                              ? `جارٍ الاتصال بحساب ${channel.name}`
-                              : channel.isUnavailable
-                                ? "فتح إعدادات واتساب"
-                                : channel.needsReconnection
-                                  ? `إعادة اتصال حساب ${channel.name}`
-                                  : `ربط حساب ${channel.name}`
-                  }
-                  accessibilityState={{
-                    disabled:
-                      connectionsLoading ||
-                      isRetrying,
-                    busy:
-                      connectionsLoading ||
-                      retryingConnectionsFor[channel.platform] === true,
-                  }}
-                  disabled={
-                    connectionsLoading ||
-                    isRetrying
-                  }
-                  onPress={() => {
-                    if (connectionsUnavailable) {
-                      void retryConnections(channel.platform);
-                      return;
+                  <Pressable
+                    key={channel.name}
+                    accessibilityRole="button"
+                    accessibilityHint={
+                      connectionsUnavailable
+                        ? "اضغط لإعادة التحقق من حالة هذا الحساب"
+                        : undefined
                     }
-                    if (channel.platform === "whatsapp") {
+                    accessibilityLabel={
+                      connectionsLoading
+                        ? `جارٍ التحقق من حالة حساب ${channel.name}`
+                        : connectionsUnavailable
+                          ? retryingConnectionsFor[channel.platform]
+                            ? `جارٍ إعادة التحقق من حساب ${channel.name}`
+                            : `تعذر التحقق من حساب ${channel.name}. إعادة المحاولة`
+                          : channel.connected
+                            ? `حساب ${channel.name} متصل${channel.accountName ? `: ${channel.accountName}` : ""}. عرض التفاصيل`
+                            : channel.needsReauthorization
+                              ? `إعادة تفويض حساب ${channel.name}`
+                              : channel.isConnecting
+                                ? `جارٍ الاتصال بحساب ${channel.name}`
+                                : channel.isUnavailable
+                                  ? "فتح إعدادات واتساب"
+                                  : channel.needsReconnection
+                                    ? `إعادة اتصال حساب ${channel.name}`
+                                    : `ربط حساب ${channel.name}`
+                    }
+                    accessibilityState={{
+                      disabled: connectionsLoading || isRetrying,
+                      busy:
+                        connectionsLoading ||
+                        retryingConnectionsFor[channel.platform] === true,
+                    }}
+                    disabled={connectionsLoading || isRetrying}
+                    onPress={() => {
+                      if (connectionsUnavailable) {
+                        void retryConnections(channel.platform);
+                        return;
+                      }
+                      if (channel.platform === "whatsapp") {
+                        router.push({
+                          pathname: "/(tabs)/more/sources",
+                          params: { view: "publishing" },
+                        });
+                        return;
+                      }
+                      if (channel.connected) {
+                        router.push({
+                          pathname: "/account/[platform]",
+                          params: { platform: channel.platform },
+                        });
+                        return;
+                      }
                       router.push({
                         pathname: "/(tabs)/more/sources",
-                        params: { view: "publishing" },
+                        ...(channel.isConnecting || channel.isUnavailable
+                          ? {}
+                          : {
+                              params: {
+                                connect: channel.platform,
+                                ...(channel.needsReauthorization
+                                  ? { reconnect: "true" }
+                                  : {}),
+                              },
+                            }),
                       });
-                      return;
-                    }
-                    if (channel.connected) {
-                      router.push({
-                        pathname: "/account/[platform]",
-                        params: { platform: channel.platform },
-                      });
-                      return;
-                    }
-                    router.push({
-                      pathname: "/(tabs)/more/sources",
-                      ...(channel.isConnecting || channel.isUnavailable
-                        ? {}
-                        : {
-                            params: {
-                              connect: channel.platform,
-                              ...(channel.needsReauthorization
-                                ? { reconnect: "true" }
-                                : {}),
-                            },
-                          }),
-                    });
-                  }}
-                  style={({ pressed }) => [
-                    styles.channelTile,
-                    width < 480 && styles.channelTilePhone,
-                    {
-                      borderColor: connectionsUnavailable
-                        ? colors.blue
-                        : channel.needsReauthorization || channel.isUnavailable
-                          ? colors.warning
-                          : channel.connected
-                            ? colors.greenSoft
-                            : colors.border,
-                      backgroundColor: colors.card,
-                      opacity: pressed ? 0.82 : 1,
-                      transform: [{ scale: pressed ? 0.99 : 1 }],
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.channelIdentity,
-                      width < 480 && styles.channelIdentityPhone,
+                    }}
+                    style={({ pressed }) => [
+                      styles.channelTile,
+                      width < 480 && styles.channelTilePhone,
+                      {
+                        borderColor: connectionsUnavailable
+                          ? colors.blue
+                          : channel.needsReauthorization ||
+                              channel.isUnavailable
+                            ? colors.warning
+                            : channel.connected
+                              ? colors.greenSoft
+                              : colors.border,
+                        backgroundColor: colors.card,
+                        opacity: pressed ? 0.82 : 1,
+                        transform: [{ scale: pressed ? 0.99 : 1 }],
+                      },
                     ]}
                   >
-                    <View style={styles.channelIdentityTitle}>
-                      <SocialPlatformIcon
-                        platform={channel.platform}
-                        size={24}
-                      />
-                      <Text
-                        style={[
-                          styles.channelName,
-                          { color: colors.foreground },
-                        ]}
-                      >
-                        {channel.name}
-                      </Text>
-                    </View>
-                    {channel.connected && channel.accountName ? (
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.channelAccount,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        {channel.accountName}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View
-                    style={[
-                      styles.channelDetails,
-                      width < 480 && styles.channelDetailsPhone,
-                      { backgroundColor: status.background },
-                    ]}
-                  >
-                    <Icon
-                      name={status.icon}
-                      size={13}
-                      color={status.color}
-                    />
-                    <Text
-                      numberOfLines={1}
+                    <View
                       style={[
-                        styles.channelState,
-                        { color: status.color },
+                        styles.channelIdentity,
+                        width < 480 && styles.channelIdentityPhone,
                       ]}
                     >
-                      {status.label}
-                    </Text>
-                  </View>
-                </Pressable>
+                      <View style={styles.channelIdentityTitle}>
+                        <SocialPlatformIcon
+                          platform={channel.platform}
+                          size={24}
+                        />
+                        <Text
+                          style={[
+                            styles.channelName,
+                            { color: colors.foreground },
+                          ]}
+                        >
+                          {channel.name}
+                        </Text>
+                      </View>
+                      {channel.connected && channel.accountName ? (
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.channelAccount,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          {channel.accountName}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View
+                      style={[
+                        styles.channelDetails,
+                        width < 480 && styles.channelDetailsPhone,
+                        { backgroundColor: status.background },
+                      ]}
+                    >
+                      <Icon name={status.icon} size={13} color={status.color} />
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.channelState, { color: status.color }]}
+                      >
+                        {status.label}
+                      </Text>
+                    </View>
+                  </Pressable>
                 );
               })}
             </View>
@@ -830,17 +837,43 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                 </Pressable>
               }
             />
+            {inboxQuery.isError || catalogQuery.isError ? (
+              <View style={styles.activityError}>
+                <Text
+                  style={[
+                    styles.activityErrorText,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  تعذّر تحميل {inboxQuery.isError ? "الرسائل والتعليقات" : null}
+                  {inboxQuery.isError && catalogQuery.isError ? " و" : null}
+                  {catalogQuery.isError ? "المنتجات" : null}. قد تظهر الأنشطة
+                  جزئيًا.
+                </Text>
+                <ActionButton
+                  label="إعادة المحاولة"
+                  icon="refresh-cw"
+                  secondary
+                  compact
+                  disabled={
+                    (inboxQuery.isError && inboxQuery.isFetching) ||
+                    (catalogQuery.isError && catalogQuery.isFetching)
+                  }
+                  onPress={() => {
+                    void Promise.all([
+                      inboxQuery.isError ? inboxQuery.refetch() : undefined,
+                      catalogQuery.isError ? catalogQuery.refetch() : undefined,
+                    ]);
+                  }}
+                />
+              </View>
+            ) : null}
             {!ready ? (
               <EmptyState
                 icon={storageError ? "alert-circle" : "clock"}
-                title={
-                  storageError
-                    ? "محتواك غير جاهز"
-                    : "جارٍ تحميل المحتوى"
-                }
+                title={storageError ? "محتواك غير جاهز" : "جارٍ تحميل المحتوى"}
                 body={
-                  storageError ||
-                  "نحمّل بيانات مساحة العمل قبل عرض المنشورات."
+                  storageError || "نحمّل بيانات مساحة العمل قبل عرض المنشورات."
                 }
               />
             ) : recentActivities.length === 0 &&
@@ -853,7 +886,11 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
               />
             ) : recentActivities.length === 0 ? (
               <EmptyState
-                icon={catalogQuery.isError || inboxQuery.isError ? "alert-circle" : "bell"}
+                icon={
+                  catalogQuery.isError || inboxQuery.isError
+                    ? "alert-circle"
+                    : "bell"
+                }
                 title={
                   catalogQuery.isError || inboxQuery.isError
                     ? "تعذر تحميل الأنشطة"
@@ -869,13 +906,17 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
               recentActivities.map((activity) => {
                 if (activity.type === "inbox") {
                   const label =
-                    activity.item.kind === "comment" ? "تعليق جديد" : "رسالة جديدة";
+                    activity.item.kind === "comment"
+                      ? "تعليق جديد"
+                      : "رسالة جديدة";
                   const platformLabel =
                     activity.item.platform === "facebook"
                       ? "فيسبوك"
                       : "إنستغرام";
                   const actorName = activity.item.actorName || "اسم غير متاح";
-                  const itemDate = formatArabicDate(activity.item.occurredAt);
+                  const itemDate = formatArabicDateTime(
+                    activity.item.occurredAt,
+                  );
                   return (
                     <Pressable
                       key={`inbox-${activity.id}`}
@@ -915,7 +956,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                           {actorName}
                         </Text>
                         <Text
-                          numberOfLines={1}
+                          numberOfLines={2}
                           style={[
                             styles.activityMeta,
                             { color: colors.mutedForeground },
@@ -923,7 +964,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                         >
                           {activity.item.text || "عنصر بدون نص"}
                           {itemDate
-                            ? ` · ${platformLabel} · ${itemDate}`
+                            ? ` · ${platformLabel} · استلام ${itemDate}`
                             : ` · ${platformLabel}`}
                         </Text>
                       </View>
@@ -932,7 +973,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                 }
 
                 if (activity.type === "product") {
-                  const productDate = formatArabicDate(
+                  const productDate = formatArabicDateTime(
                     activity.product.createdAt,
                   );
                   return (
@@ -966,13 +1007,14 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                           {activity.product.name}
                         </Text>
                         <Text
-                          numberOfLines={1}
+                          numberOfLines={2}
                           style={[
                             styles.activityMeta,
                             { color: colors.mutedForeground },
                           ]}
                         >
-                          الكتالوج{productDate ? ` · ${productDate}` : ""}
+                          تاريخ الإضافة للكتالوج
+                          {productDate ? ` · ${productDate}` : ""}
                         </Text>
                       </View>
                     </Pressable>
@@ -980,38 +1022,8 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                 }
 
                 const { post } = activity;
-                const title = post.title.trim();
-                const displayTitle =
-                  title &&
-                  ![
-                    "محتوى يحتاج إلى مراجعة",
-                    "محتوى من واتساب",
-                    "منشور بدون عنوان",
-                  ].includes(title)
-                    ? title
-                    : post.body
-                        .trim()
-                        .split(/\r?\n/)
-                        .find(Boolean)
-                        ?.replace(/^[*#\s]+/, "")
-                        .slice(0, 72) || "منشور بدون عنوان";
-                const statusLabel =
-                  post.status === "review"
-                    ? "بانتظار المراجعة"
-                    : post.status === "draft"
-                      ? "حُفظت كمسودة"
-                      : post.status === "scheduled"
-                        ? "تمت الجدولة"
-                        : post.status === "publishing"
-                          ? "جارٍ النشر"
-                          : post.status === "failed"
-                            ? "تعذر النشر"
-                            : post.status === "approved"
-                              ? "تم الاعتماد"
-                              : "تم النشر";
-                const postDate = formatArabicDate(
-                  post.updatedAt ?? post.createdAt,
-                );
+                const displayTitle = getActivityPostTitle(post);
+                const statusLabel = getActivityPostStatusLabel(post);
                 return (
                   <Pressable
                     key={post.id}
@@ -1035,18 +1047,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                     <StatusPill
                       style={styles.activityStatus}
                       label={statusLabel}
-                      tone={
-                        post.status === "review"
-                          ? "amber"
-                          : post.status === "published"
-                            ? "green"
-                            : post.status === "failed"
-                              ? "amber"
-                              : post.status === "scheduled" ||
-                                  post.status === "publishing"
-                                ? "blue"
-                            : "muted"
-                      }
+                      tone={getActivityPostStatusTone(post)}
                     />
                     <View style={styles.activityCopy}>
                       <Text
@@ -1059,28 +1060,27 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                         {displayTitle}
                       </Text>
                       <Text
-                        numberOfLines={1}
+                        numberOfLines={2}
                         style={[
                           styles.activityMeta,
                           { color: colors.mutedForeground },
                         ]}
                       >
-                        {post.channels
-                          .map((channel) =>
-                            channel === "instagram"
-                              ? "إنستغرام"
-                              : channel === "facebook"
-                                ? "فيسبوك"
-                                : "واتساب",
-                          )
-                          .join("، ") || "بدون قنوات"}
-                        {postDate ? ` · ${postDate}` : ""}
+                        {getActivityPostMeta(post)}
                       </Text>
                     </View>
                   </Pressable>
                 );
               })
             )}
+            {!ready && storageError ? (
+              <ActionButton
+                label="إعادة المحاولة"
+                icon="refresh-cw"
+                secondary
+                onPress={() => void onRefresh()}
+              />
+            ) : null}
           </Panel>
         </View>
       </View>
@@ -1121,6 +1121,7 @@ const styles = StyleSheet.create({
   },
   metricsRow: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   contentGrid: { gap: 18 },
+  contentGridPhone: { gap: 10 },
   contentGridWide: { flexDirection: "row", alignItems: "flex-start" },
   contentColumn: { flex: 1, minWidth: 0 },
   metricPressable: { flexBasis: "48%", flexGrow: 0, minWidth: 0 },
@@ -1151,7 +1152,7 @@ const styles = StyleSheet.create({
   channelRow: { flexDirection: "row", gap: 10, alignItems: "stretch" },
   channelRowPhone: {
     flexDirection: "column",
-    rowGap: 9,
+    rowGap: 6,
   },
   channelTile: {
     flex: 1,
@@ -1170,7 +1171,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     flexBasis: "auto",
     width: "100%",
-    minHeight: 66,
+    minHeight: 56,
+    paddingVertical: 7,
   },
   channelIdentity: {
     flex: 1,
@@ -1216,7 +1218,12 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     marginTop: 10,
   },
-  channelHintText: { flex: 1, fontSize: 11, lineHeight: 17, textAlign: "right" },
+  channelHintText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: "right",
+  },
   channelAccount: {
     maxWidth: "100%",
     fontSize: 9,
@@ -1235,6 +1242,8 @@ const styles = StyleSheet.create({
   activityStatus: { alignSelf: "center" },
   activityTitle: { fontSize: 13, fontWeight: "700" },
   activityMeta: { fontSize: 11, textAlign: "left" },
+  activityError: { gap: 8, paddingVertical: 10 },
+  activityErrorText: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   reviewButton: {
     minHeight: 34,
     justifyContent: "center",

@@ -40,6 +40,7 @@ import {
 import {
   createOrder,
   getOrders,
+  getOrderSummary,
   updateOrderStatus,
   type CustomerOrder,
   type OrderStatus,
@@ -182,6 +183,9 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
       void queryClient.invalidateQueries({
         queryKey: ["orders", userId ?? "local"],
       });
+      void queryClient.invalidateQueries({
+        queryKey: ["order-summary", userId ?? "local"],
+      });
     },
     onError: (error) => setFormError(orderErrorMessage(error)),
   });
@@ -192,6 +196,9 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
       setFormError(null);
       void queryClient.invalidateQueries({
         queryKey: ["orders", userId ?? "local"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["order-summary", userId ?? "local"],
       });
     },
     onError: (error) => setFormError(orderErrorMessage(error)),

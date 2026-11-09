@@ -53,7 +53,12 @@ import {
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { useStudio } from "@/context/StudioContext";
-import { Redirect, router, useLocalSearchParams } from "expo-router";
+import {
+  Redirect,
+  router,
+  useLocalSearchParams,
+  type Href,
+} from "expo-router";
 import {
   META_OAUTH_RETURN_CONTEXT_KEY,
   metaOAuthErrorMessage,
@@ -159,7 +164,7 @@ export function SourcesScreen({
   back,
 }: {
   initialView?: "publishing" | "onboarding";
-  back?: { href: "/onboarding"; label: string };
+  back?: { href: Href; label: string };
 } = {}) {
   const forcePublishing = initialView !== undefined;
   const includeWhatsApp = initialView === "onboarding";
@@ -189,7 +194,7 @@ function AuthenticatedSourcesScreen({
 }: {
   forcePublishing: boolean;
   includeWhatsApp: boolean;
-  back?: { href: "/onboarding"; label: string };
+  back?: { href: Href; label: string };
 }) {
   const { userId } = useAuth();
   return (
@@ -211,7 +216,7 @@ function SourcesContent({
   userId: string | null;
   forcePublishing: boolean;
   includeWhatsApp: boolean;
-  back?: { href: "/onboarding"; label: string };
+  back?: { href: Href; label: string };
 }) {
   const colors = useColors();
   const { width } = useWindowDimensions();
@@ -1472,7 +1477,12 @@ function SourcesContent({
               ? "حسابات النشر"
               : "مصادر البيانات"
         }
-        back={back}
+        back={
+          back ??
+          (isPublishingAccounts
+            ? { href: "/(tabs)/more", label: "العودة إلى المزيد" }
+            : undefined)
+        }
         subtitle={
           socialSetupPending && isPublishingAccounts
             ? "اختر منصة واحدة للبدء. يمكنك إضافة البقية لاحقًا."
