@@ -167,7 +167,12 @@ export default function SignUpScreen() {
                 textContentType="oneTimeCode"
                 placeholder="أدخل الرمز المرسل إلى بريدك"
                 placeholderTextColor={colors.mutedForeground}
-                style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
+                style={[
+                  authStyles.input,
+                  authStyles.ltrInput,
+                  !code && { textAlign: 'right' },
+                  { color: colors.foreground },
+                ]}
                 accessibilityLabel="رمز التحقق"
                 {...inputFocusProps('verification-code')}
                 onSubmitEditing={verifyCode}
@@ -242,7 +247,12 @@ export default function SignUpScreen() {
                 textContentType="emailAddress"
                 placeholder="name@example.com"
                 placeholderTextColor={colors.mutedForeground}
-                style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
+                style={[
+                  authStyles.input,
+                  authStyles.ltrInput,
+                  !emailAddress && { textAlign: 'right' },
+                  { color: colors.foreground },
+                ]}
                 accessibilityLabel="البريد الإلكتروني"
                 {...inputFocusProps('email')}
               />
@@ -259,7 +269,12 @@ export default function SignUpScreen() {
                 secureTextEntry={!showPassword}
                 placeholder="أنشئ كلمة مرور قوية"
                 placeholderTextColor={colors.mutedForeground}
-                style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
+                style={[
+                  authStyles.input,
+                  authStyles.ltrInput,
+                  !password && { textAlign: 'right' },
+                  { color: colors.foreground },
+                ]}
                 accessibilityLabel="كلمة المرور"
                 {...inputFocusProps('password')}
               />
@@ -291,7 +306,12 @@ export default function SignUpScreen() {
                 secureTextEntry={!showConfirmPassword}
                 placeholder="أعد كتابة كلمة المرور"
                 placeholderTextColor={colors.mutedForeground}
-                style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
+                style={[
+                  authStyles.input,
+                  authStyles.ltrInput,
+                  !confirmPassword && { textAlign: 'right' },
+                  { color: colors.foreground },
+                ]}
                 accessibilityLabel="تأكيد كلمة المرور"
                 {...inputFocusProps('confirm-password')}
               />

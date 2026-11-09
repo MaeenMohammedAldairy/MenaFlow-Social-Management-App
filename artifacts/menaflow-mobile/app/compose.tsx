@@ -19,7 +19,6 @@ type SelectedMedia = { id: string; url: string; mediaType: string };
 const channelOptions: { key: Channel; label: string; icon: LucideIconName }[] = [
   { key: 'instagram', label: 'إنستغرام', icon: 'instagram' },
   { key: 'facebook', label: 'فيسبوك', icon: 'facebook' },
-  { key: 'whatsapp', label: 'واتساب', icon: 'message-circle' },
 ];
 
 export default function ComposeScreen() {
@@ -29,8 +28,7 @@ export default function ComposeScreen() {
   const { channel: initialChannel } = useLocalSearchParams<{ channel?: string }>();
   const initialSelected: Channel[] =
     initialChannel === 'facebook' ||
-    initialChannel === 'instagram' ||
-    initialChannel === 'whatsapp'
+    initialChannel === 'instagram'
       ? [initialChannel]
       : ['instagram'];
   const [title, setTitle] = useState('');

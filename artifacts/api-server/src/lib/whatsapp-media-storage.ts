@@ -150,6 +150,14 @@ export async function createMediaThumbnail(buffer: Buffer): Promise<Buffer> {
     .toBuffer();
 }
 
+export async function createMediaJpeg(buffer: Buffer): Promise<Buffer> {
+  return sharp(buffer, { failOn: "error", limitInputPixels: 100_000_000 })
+    .rotate()
+    .flatten({ background: "#ffffff" })
+    .jpeg({ quality: 90 })
+    .toBuffer();
+}
+
 export function thumbnailObjectPath(objectPath: string): string {
   const extension = path.posix.extname(objectPath);
   return `${objectPath.slice(0, -extension.length)}.thumb.webp`;

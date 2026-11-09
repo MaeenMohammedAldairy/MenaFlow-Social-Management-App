@@ -28,6 +28,7 @@ import type {
   DeleteMetaConnectionParams,
   DeleteWhatsAppConnectionParams,
   GetKnownPostIds200,
+  GetPostReportSummaryParams,
   GetPostsPage200,
   GetPostsPageParams,
   GetWhatsAppConnectionStatusParams,
@@ -40,6 +41,7 @@ import type {
   OnboardingStatus,
   PostDeleteResult,
   PostItem,
+  PostReportSummary,
   SocialConnectionsResponse,
   SubscriptionOverview,
   TestWhatsAppAutoReply200,
@@ -1951,6 +1953,90 @@ export function useGetPostsPage<TData = Awaited<ReturnType<typeof getPostsPage>>
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPostsPageQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPostReportSummaryUrl = (params: GetPostReportSummaryParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/posts/report-summary?${stringifiedParams}` : `/api/posts/report-summary`
+}
+
+/**
+ * @summary Get workspace post report totals
+ */
+export const getPostReportSummary = async (params: GetPostReportSummaryParams, options?: Parameters<typeof customFetch>[1]): Promise<PostReportSummary> => {
+
+  return customFetch<PostReportSummary>(getGetPostReportSummaryUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPostReportSummaryQueryKey = (params?: GetPostReportSummaryParams,) => {
+    return [
+    `/api/posts/report-summary`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPostReportSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getPostReportSummary>>, TError = ErrorType<ApiError>>(params: GetPostReportSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPostReportSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPostReportSummaryQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPostReportSummary>>> = ({ signal }) => getPostReportSummary(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPostReportSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPostReportSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getPostReportSummary>>>
+export type GetPostReportSummaryQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get workspace post report totals
+ */
+
+export function useGetPostReportSummary<TData = Awaited<ReturnType<typeof getPostReportSummary>>, TError = ErrorType<ApiError>>(
+ params: GetPostReportSummaryParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPostReportSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPostReportSummaryQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

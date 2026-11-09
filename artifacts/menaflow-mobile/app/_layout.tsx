@@ -168,9 +168,9 @@ function AppNavigator({ isSignedIn }: { isSignedIn: boolean }) {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
       </Stack.Protected>
       <Stack.Protected guard={isSignedIn} redirectTo="/(auth)/sign-in">
-        <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="product-catalog" options={{ headerShown: false }} />
+        <Stack.Screen name="activities" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="connect-accounts" options={{ headerShown: false }} />
         <Stack.Screen name="whatsapp-setup" options={{ headerShown: false }} />
@@ -186,6 +186,7 @@ function AppNavigator({ isSignedIn }: { isSignedIn: boolean }) {
         <Stack.Screen name="account/[platform]" options={{ headerShown: false }} />
         <Stack.Screen name="oauth/meta" options={{ headerShown: false }} />
       </Stack.Protected>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="sso-callback" options={{ headerShown: false }} />
     </Stack>
   );

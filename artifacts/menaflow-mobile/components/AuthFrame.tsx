@@ -85,6 +85,8 @@ export function AuthFrame({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 760;
+  const showWideArtwork = wide && mode === 'sign-up';
+  const compactSignIn = mode === 'sign-in' && !wide;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -120,10 +122,15 @@ export function AuthFrame({
               borderColor: colors.border,
               shadowColor: colors.foreground,
             },
-            wide && styles.wideSurface,
+            showWideArtwork && styles.wideSurface,
           ]}
         >
-          <View style={[styles.formColumn, wide && styles.wideFormColumn]}>
+          <View
+            style={[
+              styles.formColumn,
+              showWideArtwork && styles.wideFormColumn,
+            ]}
+          >
             <View style={styles.brand}>
               {mode === 'sign-up' ? (
                 <Link href="/(auth)/sign-in" asChild>
@@ -141,8 +148,8 @@ export function AuthFrame({
               <Text style={[styles.brandName, { color: colors.foreground }]}>MenaFlow</Text>
             </View>
 
-            <View style={[styles.headingRow, mode === 'sign-in' && styles.signInHeadingRow]}>
-              <View style={[styles.heading, mode === 'sign-in' && styles.signInHeading]}>
+            <View style={[styles.headingRow, compactSignIn && styles.signInHeadingRow]}>
+              <View style={[styles.heading, compactSignIn && styles.signInHeading]}>
                 <Text
                   style={[
                     styles.title,
@@ -162,7 +169,7 @@ export function AuthFrame({
                   {subtitle}
                 </Text>
               </View>
-              {mode === 'sign-in' && !wide ? <AuthArtwork compact /> : null}
+              {compactSignIn ? <AuthArtwork compact /> : null}
             </View>
 
             {children}
@@ -171,7 +178,7 @@ export function AuthFrame({
             </Text>
           </View>
 
-          {wide ? (
+          {showWideArtwork ? (
             <LinearGradient
               colors={[colors.background, colors.secondary, colors.accent]}
               style={styles.wideArtworkPanel}

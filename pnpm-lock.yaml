@@ -231,6 +231,9 @@ importers:
       expo-crypto:
         specifier: ~58.0.7
         version: 58.0.7(expo@58.0.22)
+      expo-document-picker:
+        specifier: ~58.0.4
+        version: 58.0.4(expo@58.0.22)
       expo-secure-store:
         specifier: ~58.0.2
         version: 58.0.2(expo@58.0.22)
@@ -3390,6 +3393,11 @@ packages:
 
   expo-crypto@58.0.7:
     resolution: {integrity: sha512-g+4i4UpqQ5jNy1VPRvVVvr9aIdh8WwvxbpwL2ntiSESDRsXyVSeb8JM6tHVdC3b9J2nGxjtrhrsaWOo0jbSxlA==}
+    peerDependencies:
+      expo: '*'
+
+  expo-document-picker@58.0.4:
+    resolution: {integrity: sha512-rxs+9RrpI55/BEGNB/3sXjoBG6yZDLyn6Z7KzjbbBLdX8bE2cZT4IozQ3Q5wufaEEeaHQn48EgPiuMoTsAidpg==}
     peerDependencies:
       expo: '*'
 
@@ -8724,6 +8732,10 @@ snapshots:
       - typescript
 
   expo-crypto@58.0.7(expo@58.0.22):
+    dependencies:
+      expo: 58.0.22(@babel/core@7.29.7(supports-color@8.1.1))(@expo/metro-runtime@58.0.16)(expo-router@58.0.29)(react-dom@19.3.0(react@19.3.0))(react-native-web@0.21.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native-worklets@0.13.0(@babel/core@7.29.7(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@6.0.3)
+
+  expo-document-picker@58.0.4(expo@58.0.22):
     dependencies:
       expo: 58.0.22(@babel/core@7.29.7(supports-color@8.1.1))(@expo/metro-runtime@58.0.16)(expo-router@58.0.29)(react-dom@19.3.0(react@19.3.0))(react-native-web@0.21.4(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react-native-worklets@0.13.0(@babel/core@7.29.7(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1))(react-native@0.88.1(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1))(react@19.3.0)(supports-color@8.1.1)(typescript@6.0.3)
 

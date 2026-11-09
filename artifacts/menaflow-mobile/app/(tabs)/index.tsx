@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import React, { useState } from "react";
 import {
   Pressable,
@@ -71,7 +71,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
 
   const inboxQuery = useQuery({
     queryKey: ["meta-inbox", userId ?? "local"],
-    queryFn: getMetaInbox,
+    queryFn: () => getMetaInbox(),
     enabled: isLocalAuthDisabled || Boolean(userId),
     retry: false,
     refetchInterval: 15_000,
@@ -79,10 +79,10 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
   });
   const catalogQuery = useQuery({
     queryKey: ["product-catalog", userId ?? "local"],
-    queryFn: () => getProductCatalog(true),
+    queryFn: () => getProductCatalog(false),
     enabled: isLocalAuthDisabled || Boolean(userId),
     retry: false,
-    refetchInterval: 10_000,
+    staleTime: 60_000,
     refetchOnWindowFocus: true,
   });
   const conversationCount = inboxQuery.data
@@ -205,6 +205,12 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       id: product.id,
       timestamp: product.createdAt,
       product,
+    })),
+    ...(inboxQuery.data?.items ?? []).map((item) => ({
+      type: "inbox" as const,
+      id: item.id,
+      timestamp: item.occurredAt,
+      item,
     })),
   ]
     .sort(
@@ -673,6 +679,13 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                       void retryConnections(channel.platform);
                       return;
                     }
+                    if (channel.platform === "whatsapp") {
+                      router.push({
+                        pathname: "/(tabs)/more/sources",
+                        params: { view: "publishing" },
+                      });
+                      return;
+                    }
                     if (channel.connected) {
                       router.push({
                         pathname: "/account/[platform]",
@@ -807,7 +820,10 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
             <SectionTitle
               title="أحدث الأنشطة"
               action={
-                <Pressable onPress={() => router.push("/(tabs)/content")}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/activities" as Href)}
+                >
                   <Text style={[styles.link, { color: colors.primary }]}>
                     عرض الكل
                   </Text>
@@ -828,29 +844,93 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                 }
               />
             ) : recentActivities.length === 0 &&
-              catalogQuery.isPending &&
-              !catalogQuery.isFetched ? (
+              ((catalogQuery.isPending && !catalogQuery.isFetched) ||
+                (inboxQuery.isPending && !inboxQuery.isFetched)) ? (
               <EmptyState
                 icon="clock"
                 title="جارٍ تحميل الأنشطة"
-                body="نحمّل أحدث المنتجات والمنشورات في مساحة العمل."
+                body="نحمّل أحدث الرسائل والمنشورات والمنتجات في مساحة العمل."
               />
             ) : recentActivities.length === 0 ? (
               <EmptyState
-                icon={catalogQuery.isError ? "alert-circle" : "bell"}
+                icon={catalogQuery.isError || inboxQuery.isError ? "alert-circle" : "bell"}
                 title={
-                  catalogQuery.isError
+                  catalogQuery.isError || inboxQuery.isError
                     ? "تعذر تحميل الأنشطة"
                     : "لا توجد أنشطة بعد"
                 }
                 body={
-                  catalogQuery.isError
-                    ? "تعذر تحميل المنتجات. اسحب للأسفل لإعادة المحاولة."
-                    : "ستظهر هنا أحدث المنتجات والمنشورات وحالات النشر في مساحة عملك."
+                  catalogQuery.isError || inboxQuery.isError
+                    ? "تعذر تحميل بعض الأنشطة. اسحب للأسفل لإعادة المحاولة."
+                    : "ستظهر هنا أحدث الرسائل والتعليقات والمنتجات والمنشورات في مساحة عملك."
                 }
               />
             ) : (
               recentActivities.map((activity) => {
+                if (activity.type === "inbox") {
+                  const label =
+                    activity.item.kind === "comment" ? "تعليق جديد" : "رسالة جديدة";
+                  const platformLabel =
+                    activity.item.platform === "facebook"
+                      ? "فيسبوك"
+                      : "إنستغرام";
+                  const actorName = activity.item.actorName || "اسم غير متاح";
+                  const itemDate = formatArabicDate(activity.item.occurredAt);
+                  return (
+                    <Pressable
+                      key={`inbox-${activity.id}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${label} من ${actorName} على ${platformLabel}`}
+                      accessibilityHint="فتح المحادثة المرتبطة بهذا النشاط"
+                      onPress={() =>
+                        router.push({
+                          pathname: "/inbox/[conversationId]",
+                          params: {
+                            conversationId: metaInboxPersonId(activity.item),
+                            platform: activity.item.platform,
+                          },
+                        })
+                      }
+                      style={({ pressed }) => [
+                        styles.activityRow,
+                        {
+                          borderBottomColor: colors.border,
+                          opacity: pressed ? 0.72 : 1,
+                        },
+                      ]}
+                    >
+                      <StatusPill
+                        style={styles.activityStatus}
+                        label={label}
+                        tone="blue"
+                      />
+                      <View style={styles.activityCopy}>
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.activityTitle,
+                            { color: colors.foreground },
+                          ]}
+                        >
+                          {actorName}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.activityMeta,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          {activity.item.text || "عنصر بدون نص"}
+                          {itemDate
+                            ? ` · ${platformLabel} · ${itemDate}`
+                            : ` · ${platformLabel}`}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                }
+
                 if (activity.type === "product") {
                   const productDate = formatArabicDate(
                     activity.product.createdAt,

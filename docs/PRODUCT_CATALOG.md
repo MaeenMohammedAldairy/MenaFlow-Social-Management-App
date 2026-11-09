@@ -74,3 +74,24 @@ When the source has no SKU, the system generates a stable `MF-` SKU from the
 source message IDs. Generated aliases are limited to names that share product
 identity terms with the extracted name, and neither SKU nor aliases determine
 whether an extraction is complete.
+
+## Internal order management
+
+The internal order workflow uses active, verified catalog products with an explicit
+price and currency. Create an order from **المزيد > الطلبات** or from a Meta
+conversation. Orders start as drafts and can move through confirmed, preparing,
+shipped, and completed; drafts, confirmed orders, and orders being prepared may
+also be cancelled. A shipped or completed order cannot be cancelled through
+the current workflow.
+
+Order items retain the product name, SKU, unit price, currency, and line total
+as they were when the order was created. Updating a catalog price does not
+change prior orders. Products in one order must use the same currency.
+Order submissions use a workspace-scoped client request ID so retrying after a
+network timeout does not create a duplicate order.
+The current release records customer details and fulfillment progress only;
+it does not collect payment, reserve stock, calculate shipping or taxes, or
+send customer notifications. The order and status-change actor/timestamp are
+workspace-scoped. Apply
+`supabase/migrations/20261109001000_order_management.sql` before deploying the
+API or mobile app.

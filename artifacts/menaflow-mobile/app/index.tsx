@@ -2,8 +2,15 @@ import { useAuth } from '@clerk/expo';
 import { Redirect } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { CairoText as Text } from '@/components/CairoTypography';
+import { MarketingLandingPage } from '@/components/MarketingLandingPage';
 import {
   getOnboardingStatus,
   getOnboardingStatusQueryKey,
@@ -40,7 +47,18 @@ export default function AppIndex() {
     return <Redirect href="/(tabs)" />;
   }
 
-  return <AuthenticatedAppIndex />;
+  return <RoutedAppIndex />;
+}
+
+function RoutedAppIndex() {
+  const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded) return <LoadingState />;
+  if (isSignedIn) return <AuthenticatedAppIndex />;
+  return Platform.OS === 'web' ? (
+    <MarketingLandingPage />
+  ) : (
+    <Redirect href="/(auth)/sign-in" />
+  );
 }
 
 function AuthenticatedAppIndex() {
@@ -67,7 +85,10 @@ function AuthenticatedAppIndex() {
         </Text>
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ busy: onboarding.isFetching, disabled: onboarding.isFetching }}
+          accessibilityState={{
+            busy: onboarding.isFetching,
+            disabled: onboarding.isFetching,
+          }}
           disabled={onboarding.isFetching}
           onPress={() => void onboarding.refetch()}
           style={[
@@ -91,6 +112,11 @@ function AuthenticatedAppIndex() {
     );
   }
 
+  return <LoadingState />;
+}
+
+function LoadingState() {
+  const colors = useColors();
   return (
     <View style={[styles.loading, { backgroundColor: colors.background }]}>
       <ActivityIndicator color={colors.primary} size="large" />

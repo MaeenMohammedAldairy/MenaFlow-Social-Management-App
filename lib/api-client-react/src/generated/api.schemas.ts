@@ -320,6 +320,20 @@ export interface CreatePostInput {
   mediaUrls?: string[];
 }
 
+export interface PostReportSummary {
+  total: number;
+  draft: number;
+  review: number;
+  scheduled: number;
+  approved: number;
+  publishing: number;
+  published: number;
+  failed: number;
+  instagram: number;
+  facebook: number;
+  whatsapp: number;
+}
+
 export type UpdatePostInputChannelsItem = typeof UpdatePostInputChannelsItem[keyof typeof UpdatePostInputChannelsItem];
 
 
@@ -555,6 +569,19 @@ export type GetPostsPage200 = {
   items: PostItem[];
   nextCursor: string | null;
 };
+
+export type GetPostReportSummaryParams = {
+range: GetPostReportSummaryRange;
+};
+
+export type GetPostReportSummaryRange = typeof GetPostReportSummaryRange[keyof typeof GetPostReportSummaryRange];
+
+
+export const GetPostReportSummaryRange = {
+  NUMBER_7: '7',
+  NUMBER_30: '30',
+  all: 'all',
+} as const;
 
 export type GetKnownPostIds200 = {
   ids: string[];

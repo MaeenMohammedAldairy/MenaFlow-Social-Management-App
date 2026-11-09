@@ -9,6 +9,7 @@ import { processMetaAutoReplyQueue } from "./lib/meta-auto-reply-worker";
 import { processWhatsAppProductExtractionQueue } from "./lib/whatsapp-product-extraction";
 import { processProductPublicationQueue } from "./lib/product-publishing";
 import { processMetaWebhookSubscriptionQueue } from "./lib/meta-webhook-subscriptions";
+import { markStaleWhatsAppAutoRepliesUnknown } from "./lib/whatsapp-auto-reply-recovery";
 
 const rawPort = process.env["PORT"];
 
@@ -31,6 +32,21 @@ app.listen(port, "0.0.0.0", (err) => {
   }
 
   logger.info({ host: "0.0.0.0", port }, "Server listening");
+  const whatsappAutoReplyRecoveryTimer = setInterval(() => {
+    void markStaleWhatsAppAutoRepliesUnknown().catch((error) => {
+      logger.error(
+        { err: error },
+        "Stale WhatsApp auto-reply reconciliation failed",
+      );
+    });
+  }, 60_000);
+  whatsappAutoReplyRecoveryTimer.unref();
+  void markStaleWhatsAppAutoRepliesUnknown().catch((error) => {
+    logger.error(
+      { err: error },
+      "Initial stale WhatsApp auto-reply reconciliation failed",
+    );
+  });
   if (process.env.MENA_META_WEBHOOK_VERIFY_TOKEN?.trim()) {
     const metaWebhookSubscriptionTimer = setInterval(() => {
       void processMetaWebhookSubscriptionQueue().catch((error) => {

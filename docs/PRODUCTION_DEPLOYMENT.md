@@ -37,6 +37,15 @@ Apply `supabase/migrations/20261104001000_workspace_subscriptions.sql` before de
 
 Payment collection and plan changes are intentionally disabled until a payment provider is selected and configured. Do not present paid plans as purchasable until checkout, payment webhooks, cancellation, and renewal handling have been integrated and verified.
 
+### Internal order management
+
+Apply `supabase/migrations/20261109001000_order_management.sql` before
+deploying the order API and mobile app. The initial workflow records orders
+internally and tracks fulfillment status; it does not collect payments,
+reserve inventory, calculate delivery fees or taxes, or notify customers.
+Validate the migration and order isolation on a staging database before
+production rollout.
+
 ### Meta permissions for comments and messaging
 
 In the Meta App Dashboard, enable and complete any required review/advanced access for the permissions used by the product. The Facebook connection flow requests `pages_manage_engagement`, `pages_messaging`, and `pages_manage_metadata`; the Instagram connection flow requests `instagram_manage_comments`, `instagram_manage_messages`, and `pages_manage_metadata`. Existing publishing, insights, and page-selection scopes remain requested for both flows. In particular, Instagram Messaging through Facebook Login requires `instagram_manage_messages`; Instagram Messaging webhooks also require `instagram_basic` and `pages_manage_metadata`.

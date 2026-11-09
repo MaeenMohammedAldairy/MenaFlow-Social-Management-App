@@ -1,4 +1,5 @@
 export { CountryPickerModal } from "./CountryPickerModal";
+export { CsvProductImportCard } from "./CsvProductImportCard";
 export { MediaPreviewModal } from "./MediaPreviewModal";
 export {
   SourcesConnectionsPanel,

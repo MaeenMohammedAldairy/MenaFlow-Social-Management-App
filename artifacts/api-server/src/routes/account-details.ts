@@ -31,6 +31,7 @@ type AccountPost = {
   publishedAt: string | null;
   url: string | null;
   imageUrl: string | null;
+  mediaType: string | null;
   likes: number | null;
   comments: number | null;
   views: number | null;
@@ -50,9 +51,12 @@ async function graphRequest(
   params: Record<string, string> = {},
 ): Promise<Record<string, unknown>> {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`);
-  url.search = new URLSearchParams({ ...params, access_token: accessToken }).toString();
+  url.search = new URLSearchParams(params).toString();
   const response = await fetch(url, {
-    headers: { Accept: "application/json" },
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
     signal: AbortSignal.timeout(15_000),
   });
   const payload: unknown = await response.json().catch(() => null);
@@ -117,7 +121,12 @@ function mapMetaPost(value: unknown): AccountPost | null {
     text: stringValue(post?.message) ?? stringValue(post?.caption) ?? "",
     publishedAt: stringValue(post?.created_time) ?? stringValue(post?.timestamp),
     url: stringValue(post?.permalink_url) ?? stringValue(post?.permalink),
-    imageUrl: stringValue(post?.full_picture) ?? stringValue(post?.thumbnail_url),
+    imageUrl:
+      stringValue(post?.full_picture) ??
+      (stringValue(post?.media_type) === "VIDEO"
+        ? stringValue(post?.thumbnail_url)
+        : stringValue(post?.media_url) ?? stringValue(post?.thumbnail_url)),
+    mediaType: stringValue(post?.media_type),
     likes: likes ?? numberValue(post?.like_count),
     comments: comments ?? numberValue(post?.comments_count),
     views: null,

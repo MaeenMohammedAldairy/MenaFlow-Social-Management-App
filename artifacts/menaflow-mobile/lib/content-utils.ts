@@ -12,7 +12,7 @@ export function statusInfo(status: PostStatus): {
     case "approved":
       return { label: "معتمد للنشر التلقائي", tone: "green" };
     case "scheduled":
-      return { label: "بانتظار النشر", tone: "amber" };
+      return { label: "مؤجلة (دون موعد)", tone: "amber" };
     case "publishing":
       return { label: "قيد الإرسال", tone: "amber" };
     case "published":
@@ -116,7 +116,14 @@ export function publishReasonLabel(reason: unknown): string | null {
   if (reason === "PUBLIC_MEDIA_URL_MUST_USE_HTTPS") {
     return "يجب أن يستخدم عنوان الخادم العام HTTPS حتى يتمكن إنستغرام من جلب الوسائط. حدّث MENA_PUBLIC_MEDIA_BASE_URL ثم أعد النشر.";
   }
-  return reason;
+  if (/[\u0600-\u06FF]/.test(reason)) return reason;
+  if (/permission|not authorized|OAuthException|access token|expired/i.test(reason)) {
+    return "تعذّر النشر بسبب صلاحيات الحساب أو انتهاء الربط. أعد ربط الحساب ثم حاول مجددًا.";
+  }
+  if (/^#?\d+$|^[A-Z0-9_:-]+$|Graph API|HTTP \d{3}|Unsupported post request/i.test(reason)) {
+    return "تعذّر النشر على هذه المنصة. تحقق من اتصال الحساب وصلاحياته ثم أعد المحاولة.";
+  }
+  return "تعذّر النشر على هذه المنصة. راجع إعدادات الحساب ثم أعد المحاولة.";
 }
 
 export function whatsappMediaIdFromUrl(mediaUrl: string): string | null {

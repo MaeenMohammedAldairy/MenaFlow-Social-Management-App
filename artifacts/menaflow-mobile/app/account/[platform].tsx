@@ -72,7 +72,31 @@ function accountErrorMessage(error: unknown, fallback: string): string {
   if (/failed to fetch|fetch failed|network request failed/i.test(message)) {
     return "تعذّر الاتصال بخدمة Meta الآن. تحقق من الاتصال ثم أعد المحاولة.";
   }
-  return message || fallback;
+  if (/190|token.*(expired|invalid)|session.*invalid|OAuthException/i.test(message)) {
+    return "انتهت صلاحية ربط الحساب أو تعذّر التحقق منه. أعد ربط الحساب ثم حاول مجددًا.";
+  }
+  if (/permission|not authorized|(#10|#200)|insufficient/i.test(message)) {
+    return "لا تسمح صلاحيات الحساب بتحميل هذه البيانات. أعد ربط الحساب ووافق على الصلاحيات المطلوبة.";
+  }
+  return /[\u0600-\u06FF]/.test(message) ? message : fallback;
+}
+
+function activityReasonMessage(reason: string): string {
+  if (/failed to fetch|fetch failed|network/i.test(reason)) {
+    return "تعذّر الاتصال بالمنصة أثناء النشر. تحقق من الاتصال ثم أعد المحاولة.";
+  }
+  if (/permission|not authorized|(#10|#200)|OAuthException|token/i.test(reason)) {
+    return "تحتاج صلاحيات الحساب إلى التحديث. أعد ربط الحساب قبل إعادة النشر.";
+  }
+  if (reason === "PUBLIC_MEDIA_BASE_URL_REQUIRED" ||
+      reason === "PUBLIC_MEDIA_URL_MUST_USE_HTTPS" ||
+      reason === "PUBLIC_MEDIA_BASE_URL_INVALID") {
+    return "تعذّر الوصول إلى الوسائط. تحقّق من إعداد رابط الوسائط العام قبل إعادة النشر.";
+  }
+  if (reason === "PREVIOUS_RESULT_UNCERTAIN") {
+    return "لم يتسنّ التحقق من نتيجة المحاولة السابقة؛ تحقق من المنصة قبل إعادة النشر لتجنب التكرار.";
+  }
+  return "تعذّر إكمال النشر. راجع اتصال الحساب وصلاحياته، ثم أعد المحاولة.";
 }
 
 function activityLabel(eventType: string): string {
@@ -81,7 +105,7 @@ function activityLabel(eventType: string): string {
     post_edited: "تم تعديل المنشور",
     post_submitted_for_review: "بانتظار المراجعة",
     post_approved: "تمت الموافقة",
-    post_scheduled: "تمت الجدولة",
+    post_scheduled: "وُضع في قائمة مؤجلة بلا موعد",
     publish_attempt_started: "بدأت محاولة النشر",
     publish_succeeded: "تم النشر بنجاح",
     publish_verified: "تم التحقق من النشر",
@@ -143,7 +167,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
       await detailsQuery.refetch();
     } catch (error) {
       setActionError(
-        error instanceof Error ? error.message : "تعذّر تحديث بيانات الحساب.",
+        accountErrorMessage(error, "تعذّر تحديث بيانات الحساب. تحقق من اتصال الحساب وصلاحياته ثم أعد المحاولة."),
       );
     } finally {
       setActionBusy(false);
@@ -185,7 +209,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
       router.replace("/(tabs)/more/sources");
     } catch (error) {
       setActionError(
-        error instanceof Error ? error.message : "تعذّر فصل الحساب.",
+        accountErrorMessage(error, "تعذّر فصل الحساب. أعد المحاولة أو أدر الحساب من صفحة المصادر."),
       );
     } finally {
       setActionBusy(false);
@@ -409,7 +433,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
               <View style={styles.metricsGrid}>
                 {[
                   { label: "منشورات منشورة", value: performance.publishedCount, tint: colors.facebook },
-                  { label: "بانتظار موعد", value: performance.scheduledCount, tint: colors.primary },
+                  { label: "مؤجلة دون موعد", value: performance.scheduledCount, tint: colors.primary },
                   { label: "بانتظار المراجعة", value: performance.reviewCount, tint: colors.warning },
                   { label: "تحتاج مراجعة", value: performance.failedCount, tint: colors.destructive },
                 ].map(({ label, value, tint }) => (
@@ -512,9 +536,31 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
                         {event.attempt ? ` · المحاولة ${formatCount(event.attempt)}` : ""}
                       </Text>
                       {event.reason ? (
-                        <Text style={[styles.activityReason, { color: colors.destructive }]}>
-                          السبب: {event.reason}
-                        </Text>
+                        <>
+                          <Text style={[styles.activityReason, { color: colors.destructive }]}>
+                            {activityReasonMessage(event.reason)}
+                          </Text>
+                          <View style={styles.actionRow}>
+                            <ActionButton
+                              label="عرض المحتوى"
+                              icon="file-text"
+                              secondary
+                              disabled={actionBusy}
+                              onPress={() =>
+                                router.push({
+                                  pathname: "/(tabs)/content",
+                                  params: { status: "failed" },
+                                })
+                              }
+                            />
+                            <ActionButton
+                              label="إعادة ربط الحساب"
+                              icon="link"
+                              onPress={relinkAccount}
+                              disabled={actionBusy}
+                            />
+                          </View>
+                        </>
                       ) : null}
                     </View>
                   ))
@@ -558,11 +604,30 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
                 لا توفر واجهة المنصة إحصاءات لهذا الحساب أو أن الصلاحيات غير كافية.
               </Text>
             )}
-            {details.issues.map((issue) => (
-              <Text key={issue} style={[styles.issue, { color: colors.warning }]}>
-                {issue}
-              </Text>
-            ))}
+            {details.issues.length > 0 ? (
+              <View style={styles.issueList}>
+                {details.issues.map((issue) => (
+                  <Text key={issue} style={[styles.issue, { color: colors.warning }]}>
+                    {accountErrorMessage(new Error(issue), "تعذّر تحميل بعض بيانات الحساب.")}
+                  </Text>
+                ))}
+                <View style={styles.actionRow}>
+                  <ActionButton
+                    label="إعادة المحاولة"
+                    icon="refresh-cw"
+                    secondary
+                    disabled={actionBusy || detailsQuery.isFetching}
+                    onPress={() => void refreshDetails()}
+                  />
+                  <ActionButton
+                    label="إعادة ربط الحساب"
+                    icon="link"
+                    onPress={relinkAccount}
+                    disabled={actionBusy}
+                  />
+                </View>
+              </View>
+            ) : null}
           </Panel>
 
           <Panel>
@@ -672,13 +737,33 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
                         {formatDate(post.publishedAt)}
                       </Text>
                     ) : null}
-                    {platform === "facebook" && post.imageUrl ? (
-                      <Image
-                        source={{ uri: post.imageUrl }}
-                        style={styles.postImage}
-                        resizeMode="cover"
-                        accessibilityLabel="صورة مرفقة بمنشور فيسبوك"
-                      />
+                    {post.imageUrl ? (
+                      <View style={styles.postMedia}>
+                        <Image
+                          source={{ uri: post.imageUrl }}
+                          style={styles.postImage}
+                          resizeMode="cover"
+                          accessibilityLabel={`وسائط منشور ${platformInfo.name}`}
+                        />
+                        {post.mediaType === "VIDEO" ? (
+                          <View style={styles.postVideoBadge}>
+                            <Icon name="play" size={18} color="#FFFFFF" />
+                          </View>
+                        ) : null}
+                        {post.mediaType === "VIDEO" && !post.imageUrl ? (
+                          <View
+                            style={[
+                              styles.videoPlaceholder,
+                              { backgroundColor: colors.secondary },
+                            ]}
+                          >
+                            <Icon name="play" size={22} color={colors.primary} />
+                            <Text style={[styles.bodyText, { color: colors.foreground }]}>
+                              فيديو منشور
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
                     ) : null}
                     <View style={styles.postStats}>
                       {post.likes !== null ? (
@@ -876,7 +961,27 @@ const styles = StyleSheet.create({
   },
   facebookPostHeading: { flex: 1, alignItems: "flex-start", gap: 2 },
   facebookPostTitle: { fontSize: 11, fontWeight: "700", textAlign: "right" },
+  postMedia: { position: "relative", width: "100%" },
+  videoPlaceholder: {
+    minHeight: 110,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderRadius: 10,
+  },
   postImage: { width: "100%", height: 190, borderRadius: 10, backgroundColor: "#EAF2FC" },
+  postVideoBadge: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+    backgroundColor: "rgba(0, 0, 0, 0.18)",
+  },
   postText: { fontSize: 12, lineHeight: 19, textAlign: "left", fontWeight: "700" },
   postStats: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   postStat: { flexDirection: "row", alignItems: "center", gap: 5 },
@@ -886,6 +991,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   issue: { fontSize: 11, lineHeight: 17, textAlign: "left" },
+  issueList: { gap: 8, marginTop: 10 },
   permissionText: { fontSize: 11, textAlign: "left" },
   link: { fontSize: 12, fontWeight: "700", textAlign: "right" },
   facebookQuickActions: {

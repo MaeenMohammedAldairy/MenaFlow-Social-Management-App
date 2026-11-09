@@ -84,7 +84,7 @@ class MetaNetworkError extends Error {
 export function signedWhatsAppMediaUrl(
   mediaId: string,
   allowLocalHttp = false,
-  variant: "original" | "thumbnail" = "original",
+  variant: "original" | "thumbnail" | "instagram-jpeg" = "original",
   requestOrigin?: string,
 ): string {
   const development = process.env.NODE_ENV === "development";
@@ -111,7 +111,7 @@ export function signedWhatsAppMediaUrl(
   const url = new URL(`/api/social/whatsapp/public-media/${encodeURIComponent(mediaId)}`, base);
   url.searchParams.set("expires", String(expires));
   url.searchParams.set("signature", signature);
-  if (variant === "thumbnail") url.searchParams.set("variant", variant);
+  if (variant !== "original") url.searchParams.set("variant", variant);
   if (url.protocol !== "https:") {
     const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
     if (!allowLocalHttp || process.env.NODE_ENV !== "development" || !isLocalHost) {
@@ -123,7 +123,7 @@ export function signedWhatsAppMediaUrl(
 
 export function signedProductMediaUrl(
   mediaId: string,
-  variant: "original" | "thumbnail",
+  variant: "original" | "thumbnail" | "instagram-jpeg",
   requestOrigin?: string,
 ): string | null {
   try {
@@ -142,7 +142,7 @@ export function verifySignedMediaRequest(
   mediaId: string,
   expiresValue: string,
   signature: string,
-  variant: "original" | "thumbnail" = "original",
+  variant: "original" | "thumbnail" | "instagram-jpeg" = "original",
 ): boolean {
   const expires = Number(expiresValue);
   if (!Number.isSafeInteger(expires) || expires <= Math.floor(Date.now() / 1000)) return false;
@@ -580,14 +580,15 @@ async function publishInstagram(
   if (media.some((item) => item.mediaType !== "image" && item.mediaType !== "video")) {
     return { status: "failed", reason: "INSTAGRAM_MEDIA_TYPE_UNSUPPORTED" };
   }
-  if (media.some((item) => item.mediaType === "image" && item.mimeType?.toLowerCase() !== "image/jpeg")) {
-    return { status: "failed", reason: "INSTAGRAM_IMAGE_JPEG_REQUIRED" };
-  }
   if (media.some((item) => item.mediaType === "video" && item.mimeType?.toLowerCase() !== "video/mp4")) {
     return { status: "failed", reason: "INSTAGRAM_VIDEO_MP4_REQUIRED" };
   }
   const mediaUrls = media.map((item) => {
-    const url = new URL(signedWhatsAppMediaUrl(item.id));
+    const url = new URL(signedWhatsAppMediaUrl(
+      item.id,
+      false,
+      item.mediaType === "image" ? "instagram-jpeg" : "original",
+    ));
     if (item.id.startsWith("product-media-")) {
       url.pathname = `/api/social/products/public-media/${encodeURIComponent(item.id)}`;
     }

@@ -97,14 +97,20 @@ export function BrandHeader({ showBell = false }: { showBell?: boolean }) {
 
   const handleNotifications = () => {
     if (pendingReview > 0) {
-      Alert.alert(
-        'مركز التنبيهات',
-        `لديك ${pendingReview} من المنشورات بانتظار المراجعة والاعتماد للنشر.`
-      );
+      router.push({
+        pathname: "/(tabs)/content",
+        params: { status: "review" },
+      });
+      return;
+    }
+
+    const message = 'لا توجد تنبيهات جديدة. جميع مساحات العمل والربط بحالة مستقرة.';
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.alert(`مركز التنبيهات\n\n${message}`);
     } else {
       Alert.alert(
         'مركز التنبيهات',
-        'لا توجد تنبيهات جديدة. جميع مساحات العمل والربط بحالة مستقرة.'
+        message
       );
     }
   };

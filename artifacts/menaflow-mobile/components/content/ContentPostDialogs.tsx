@@ -103,6 +103,21 @@ export function ContentPostDialogs({
   setRetryConfirmationVisible,
 }: ContentPostDialogsProps) {
   const colors = useColors();
+  const publishDialogPost = posts.find((post) => post.id === publishDialogPostId);
+  const alreadyPublishedChannels = new Set(
+    publishDialogPost?.channels.filter((channel) => {
+      const result = publishDialogPost.publishResults?.[channel];
+      return (
+        result !== null &&
+        typeof result === "object" &&
+        "status" in result &&
+        result.status === "published"
+      );
+    }) ?? [],
+  );
+  const selectablePublishChannels = connectedChannels.filter(
+    (channel) => !alreadyPublishedChannels.has(channel),
+  );
   const [saving, setSaving] = useState(false);
   const editingBaseline = useRef<{
     postId: string;
@@ -525,7 +540,8 @@ export function ContentPostDialogs({
                                 { color: colors.mutedForeground },
                               ]}
                             >
-                              {publishReasonLabel(result.reason) ?? result.reason}
+                              {publishReasonLabel(result.reason) ??
+                                "تعذّر النشر على هذه المنصة. راجع إعدادات الحساب ثم أعد المحاولة."}
                             </Text>
                           ) : null}
                           {result.status === "failed" ? (
@@ -569,7 +585,7 @@ export function ContentPostDialogs({
                     : "جارٍ التحقق من المنصات المرتبطة…"}
                 </Text>
                 <View style={styles.publishOptions}>
-                  {connectedChannels.map((channel) => {
+                  {selectablePublishChannels.map((channel) => {
                     const selected = selectedPublishChannels.includes(channel);
                     return (
                       <Pressable
@@ -602,14 +618,16 @@ export function ContentPostDialogs({
                       </Pressable>
                     );
                   })}
-                  {connectionsLoaded && connectedChannels.length === 0 ? (
+                  {connectionsLoaded && selectablePublishChannels.length === 0 ? (
                     <Text
                       style={[
                         styles.publishMessage,
                         { color: colors.mutedForeground },
                       ]}
                     >
-                      لا توجد منصة Meta مرتبطة. اربط فيسبوك أو إنستغرام أولاً.
+                      {alreadyPublishedChannels.size > 0
+                        ? "سبق نشر المنشور على القنوات الناجحة. لا توجد قنوات أخرى متاحة لإعادة النشر."
+                        : "لا توجد منصة Meta مرتبطة. اربط فيسبوك أو إنستغرام أولاً."}
                     </Text>
                   ) : null}
                 </View>

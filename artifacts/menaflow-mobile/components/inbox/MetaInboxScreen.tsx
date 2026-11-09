@@ -21,6 +21,7 @@ import {
   Panel,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
+import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { formatArabicDateTime } from "@/lib/formatting";
 import {
   getMetaInbox,
@@ -57,7 +58,7 @@ function groupInboxItems(items: MetaInboxItem[]): InboxGroup[] {
     const group = groups.get(key);
     if (group) {
       group.items.push(item);
-      if (!group.title || group.title === "مستخدم") {
+      if (!group.title || group.title === "اسم غير متاح") {
         group.title = item.actorName || group.title;
       }
       const occurredAt = Date.parse(item.occurredAt);
@@ -69,7 +70,7 @@ function groupInboxItems(items: MetaInboxItem[]): InboxGroup[] {
     const occurredAt = Date.parse(item.occurredAt);
     groups.set(key, {
       key,
-      title: item.actorName || "مستخدم",
+      title: item.actorName || "اسم غير متاح",
       platform: item.platform,
       items: [item],
       latestAt: Number.isFinite(occurredAt) ? occurredAt : 0,
@@ -113,15 +114,50 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [search, setSearch] = useState("");
+  const [olderPages, setOlderPages] = useState<
+    Awaited<ReturnType<typeof getMetaInbox>>[]
+  >([]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState<string | null>(null);
   const queryKey = ["meta-inbox", userId ?? "local"] as const;
   const inbox = useQuery({
     queryKey,
-    queryFn: getMetaInbox,
+    queryFn: () => getMetaInbox(),
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
   });
+  const loadedItems = [
+    ...(inbox.data?.items ?? []),
+    ...olderPages.flatMap((page) => page.items),
+  ].filter(
+    (item, index, items) =>
+      items.findIndex((candidate) => candidate.id === item.id) === index,
+  );
+  const lastPage = olderPages.at(-1);
+  const hasMore = lastPage?.hasMore ?? inbox.data?.hasMore ?? false;
+  const nextCursor = lastPage?.nextCursor ?? inbox.data?.nextCursor ?? null;
+  const loadOlder = async () => {
+    if (!nextCursor || loadingOlder) return;
+    setLoadingOlder(true);
+    setOlderError(null);
+    try {
+      const page = await getMetaInbox({ cursor: nextCursor });
+      setOlderPages((current) => [...current, page]);
+    } catch (error) {
+      setOlderError(
+        error instanceof Error ? error.message : "تعذر تحميل العناصر الأقدم.",
+      );
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+  const refreshInbox = () => {
+    setOlderPages([]);
+    setOlderError(null);
+    void inbox.refetch();
+  };
   const filteredItems =
-    inbox.data?.items.filter((item) => {
+    loadedItems.filter((item) => {
       if (filter === "all") return true;
       return item.platform === filter || item.kind === filter;
     }) ?? [];
@@ -143,7 +179,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
       refreshControl={
         <RefreshControl
           refreshing={inbox.isRefetching}
-          onRefresh={() => void inbox.refetch()}
+          onRefresh={refreshInbox}
           tintColor={colors.primary}
         />
       }
@@ -206,7 +242,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           {filters.map((option) => {
             const selected = filter === option.key;
             const count =
-              inbox.data?.items.filter((item) => {
+              loadedItems.filter((item) => {
                 if (option.key === "all") return true;
                 return (
                   item.platform === option.key || item.kind === option.key
@@ -326,7 +362,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                 { color: colors.mutedForeground },
               ]}
             >
-              {visibleItems.length} نتيجة
+              {visibleItems.length} عنصر محمّل
             </Text>
           ) : null}
         </View>
@@ -353,7 +389,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
               : "ستظهر هنا رسائل وتعليقات الحسابات المتصلة تلقائيًا عند وصولها."
           }
         />
-      ) : (
+      ) : visibleItems.length > 0 ? (
         <View style={styles.groups}>
           {groups.map((group) => {
             const latestItem = latestInboxItem(group);
@@ -365,7 +401,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
               <Pressable
                 key={group.key}
                 accessibilityRole="button"
-                accessibilityLabel={`فتح محادثة ${group.title}، ${messageCount} رسالة و${commentCount} تعليق`}
+                accessibilityLabel={`فتح محادثة ${group.title}، ${messageCount} رسالة محمّلة و${commentCount} تعليق محمّل`}
                 onPress={() =>
                   router.push({
                     pathname: "/inbox/[conversationId]",
@@ -389,15 +425,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                     { backgroundColor: colors.accent },
                   ]}
                 >
-                  <Icon
-                    name="user"
-                    size={20}
-                    color={
-                      group.platform === "instagram"
-                        ? colors.instagram
-                        : colors.facebook
-                    }
-                  />
+                  <SocialPlatformIcon platform={group.platform} size={25} />
                 </View>
                 <View style={styles.conversationHeading}>
                   <View style={styles.conversationTopLine}>
@@ -452,15 +480,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                         { backgroundColor: colors.accent },
                       ]}
                     >
-                      <Icon
-                        name={group.platform}
-                        size={13}
-                        color={
-                          group.platform === "instagram"
-                            ? colors.instagram
-                            : colors.facebook
-                        }
-                      />
+                      <SocialPlatformIcon platform={group.platform} size={16} />
                       <Text
                         style={[
                           styles.platformLabel,
@@ -522,7 +542,20 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
             );
           })}
         </View>
-      )}
+      ) : null}
+      {olderError ? (
+        <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
+          {olderError}
+        </Text>
+      ) : null}
+      {hasMore ? (
+        <ActionButton
+          label={loadingOlder ? "جارٍ تحميل الأقدم..." : "تحميل عناصر أقدم"}
+          icon={loadingOlder ? "clock" : "chevron-down"}
+          disabled={loadingOlder}
+          onPress={() => void loadOlder()}
+        />
+      ) : null}
     </Page>
   );
 }

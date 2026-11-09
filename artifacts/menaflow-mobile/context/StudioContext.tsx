@@ -495,7 +495,12 @@ export function StudioProvider({
                 publishResults: payload.results,
                 error: payload.post.error,
                 updatedAt: new Date().toISOString(),
-                channels: selectedChannels.length > 0 ? selectedChannels : post.channels,
+                channels: payload.post.channels.filter(
+                  (channel): channel is Channel =>
+                    channel === "facebook" ||
+                    channel === "instagram" ||
+                    channel === "whatsapp",
+                ),
               }
             : post,
         ),

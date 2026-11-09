@@ -15,6 +15,7 @@ import {
   BrandHeader,
   EmptyState,
   navigateBack,
+  ActionButton,
   Page,
   PageTitle,
   Panel,
@@ -24,7 +25,6 @@ import { formatArabicDateTime } from "@/lib/formatting";
 import {
   confirmMetaInboxReplyNotSent,
   getMetaInbox,
-  metaInboxPersonId,
   sendMetaInboxReply,
   type MetaInboxItem,
   type MetaInboxPlatform,
@@ -61,10 +61,24 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
     ? rawPlatform[0]
     : rawPlatform;
   const platform = isMetaPlatform(platformParam) ? platformParam : null;
-  const queryKey = ["meta-inbox", userId ?? "local"] as const;
+  const queryKey = [
+    "meta-inbox",
+    userId ?? "local",
+    personId,
+    platform,
+  ] as const;
+  const [olderPages, setOlderPages] = useState<
+    Awaited<ReturnType<typeof getMetaInbox>>[]
+  >([]);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState<string | null>(null);
   const inbox = useQuery({
     queryKey,
-    queryFn: getMetaInbox,
+    queryFn: () =>
+      getMetaInbox({
+        personId,
+        platform: platform ?? undefined,
+      }),
     enabled: Boolean(personId && platform && (isLocalAuthDisabled || userId)),
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
@@ -96,19 +110,50 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
     onSettled: () => queryClient.invalidateQueries({ queryKey }),
   });
 
-  const items = (inbox.data?.items ?? [])
-    .filter(
-      (item) =>
-        platform !== null &&
-        personId !== undefined &&
-        item.platform === platform &&
-        metaInboxPersonId(item) === personId,
-    )
+  const loadedItems = [
+    ...(inbox.data?.items ?? []),
+    ...olderPages.flatMap((page) => page.items),
+  ].filter(
+    (item, index, items) =>
+      items.findIndex((candidate) => candidate.id === item.id) === index,
+  );
+  const items = loadedItems
     .sort(
-      (first, second) =>
-        Date.parse(first.occurredAt) - Date.parse(second.occurredAt),
+      (first, second) => {
+        const byDate =
+          Date.parse(first.occurredAt) - Date.parse(second.occurredAt);
+        return byDate || first.id.localeCompare(second.id);
+      },
     );
-  const title = items.find((item) => item.actorName)?.actorName || "مستخدم";
+  const lastPage = olderPages.at(-1);
+  const hasMore = lastPage?.hasMore ?? inbox.data?.hasMore ?? false;
+  const nextCursor = lastPage?.nextCursor ?? inbox.data?.nextCursor ?? null;
+  const loadOlder = async () => {
+    if (!nextCursor || !personId || !platform || loadingOlder) return;
+    setLoadingOlder(true);
+    setOlderError(null);
+    try {
+      const page = await getMetaInbox({
+        cursor: nextCursor,
+        personId,
+        platform,
+      });
+      setOlderPages((current) => [...current, page]);
+    } catch (error) {
+      setOlderError(
+        error instanceof Error ? error.message : "تعذر تحميل العناصر الأقدم.",
+      );
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+  const refreshInbox = () => {
+    setOlderPages([]);
+    setOlderError(null);
+    void inbox.refetch();
+  };
+  const title =
+    items.find((item) => item.actorName)?.actorName || "اسم غير متاح";
   const platformLabel = platform === "facebook" ? "فيسبوك" : "إنستغرام";
   const latestItem = items.at(-1);
   const messageCount = items.filter((item) => item.kind === "message").length;
@@ -119,7 +164,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
       refreshControl={
         <RefreshControl
           refreshing={inbox.isRefetching}
-          onRefresh={() => void inbox.refetch()}
+          onRefresh={refreshInbox}
           tintColor={colors.primary}
         />
       }
@@ -188,7 +233,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
                 <Text
                   style={[styles.summaryName, { color: colors.foreground }]}
                 >
-                  سجل المحادثة
+                  سجل المحادثة المحمّل
                 </Text>
                 <Text
                   style={[
@@ -225,7 +270,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
                   color={colors.primary}
                 />
                 <Text style={[styles.count, { color: colors.foreground }]}>
-                  {messageCount} رسالة
+                  {messageCount} رسالة محمّلة
                 </Text>
               </View>
               <View
@@ -240,11 +285,27 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
                   color={colors.primary}
                 />
                 <Text style={[styles.count, { color: colors.foreground }]}>
-                  {commentCount} تعليق
+                  {commentCount} تعليق محمّل
                 </Text>
               </View>
             </View>
           </Panel>
+
+          {latestItem ? (
+            <ActionButton
+              label="إنشاء طلب من هذه المحادثة"
+              icon="shopping-bag"
+              onPress={() =>
+                router.push({
+                  pathname: "/(tabs)/more/orders",
+                  params: {
+                    sourceMetaInboxItemId: latestItem.id,
+                    customerName: title,
+                  },
+                })
+              }
+            />
+          ) : null}
 
           <View style={styles.timeline}>
             {items.map((item, index) => (
@@ -296,6 +357,22 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
               </View>
             ))}
           </View>
+          {olderError ? (
+            <Text
+              accessibilityRole="alert"
+              style={{ color: colors.destructive, textAlign: "right" }}
+            >
+              {olderError}
+            </Text>
+          ) : null}
+          {hasMore ? (
+            <ActionButton
+              label={loadingOlder ? "جارٍ تحميل الأقدم..." : "تحميل عناصر أقدم"}
+              icon={loadingOlder ? "clock" : "chevron-down"}
+              disabled={loadingOlder}
+              onPress={() => void loadOlder()}
+            />
+          ) : null}
         </View>
       )}
     </Page>

@@ -106,7 +106,12 @@ export default function SignInScreen() {
                 textContentType="emailAddress"
                 placeholder="name@example.com"
                 placeholderTextColor={colors.mutedForeground}
-                style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
+                style={[
+                  authStyles.input,
+                  authStyles.ltrInput,
+                  !emailAddress && { textAlign: 'right' },
+                  { color: colors.foreground },
+                ]}
                 accessibilityLabel="البريد الإلكتروني"
                 {...inputFocusProps('email')}
               />
@@ -123,7 +128,12 @@ export default function SignInScreen() {
                 secureTextEntry={!showPassword}
                 placeholder="أدخل كلمة المرور"
                 placeholderTextColor={colors.mutedForeground}
-                style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
+                style={[
+                  authStyles.input,
+                  authStyles.ltrInput,
+                  !password && { textAlign: 'right' },
+                  { color: colors.foreground },
+                ]}
                 accessibilityLabel="كلمة المرور"
                 {...inputFocusProps('password')}
                 onSubmitEditing={submit}

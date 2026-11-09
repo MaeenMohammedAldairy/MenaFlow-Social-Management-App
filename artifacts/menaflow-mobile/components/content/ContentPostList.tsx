@@ -274,6 +274,36 @@ export function ContentPostList({
               const readinessMessage = postReadinessMessage(post);
               const expanded = expandedPostIds.has(post.id);
               const actionsExpanded = expandedActionPostIds.has(post.id);
+              const publishChannelResults = post.channels.flatMap((channel) => {
+                if (channel !== "facebook" && channel !== "instagram") return [];
+                const result = post.publishResults?.[channel];
+                if (!result || typeof result !== "object") return [];
+                const resultRecord = result as Record<string, unknown>;
+                return typeof resultRecord.status === "string"
+                  ? [{ channel, status: resultRecord.status, reason: resultRecord.reason }]
+                  : [];
+              });
+              const publishedChannels = publishChannelResults
+                .filter((result) => result.status === "published")
+                .map((result) => platformLabel(result.channel));
+              const failedChannels = publishChannelResults.filter(
+                (result) => result.status !== "published",
+              );
+              const partiallyPublished =
+                post.status === "failed" &&
+                publishedChannels.length > 0 &&
+                failedChannels.length > 0;
+              const allChannelsPublished =
+                post.status === "failed" &&
+                publishChannelResults.length > 0 &&
+                publishChannelResults.every(
+                  (result) => result.status === "published",
+                );
+              const displayedStatus = partiallyPublished
+                ? { label: "نجح جزئيًا", tone: "amber" as const }
+                : allChannelsPublished
+                  ? { label: "تم النشر", tone: "green" as const }
+                  : status;
               const primaryAction =
                 post.status === "review"
                   ? "preview"
@@ -286,7 +316,7 @@ export function ContentPostList({
               const canExpand =
                 post.body.length > 240 || sourceText.length > 160;
               const reviewReason =
-                post.error ||
+                (publishChannelResults.length === 0 ? post.error : null) ||
                 (typeof post.metadata?.reviewReason === "string"
                   ? post.metadata.reviewReason
                   : null);
@@ -301,7 +331,10 @@ export function ContentPostList({
                   style={[styles.postCard, { borderColor: colors.border }]}
                 >
                   <View style={styles.postHeader}>
-                    <StatusPill label={status.label} tone={status.tone} />
+                    <StatusPill
+                      label={displayedStatus.label}
+                      tone={displayedStatus.tone}
+                    />
                     <View style={styles.postTitleWrap}>
                       <Text
                         style={[styles.postTitle, { color: colors.foreground }]}
@@ -478,8 +511,42 @@ export function ContentPostList({
                       style={[styles.sourceText, { color: colors.mutedForeground }]}
                     >
                       {post.status === "review" ? "سبب المراجعة: " : "سبب الفشل: "}
-                      {publishReasonLabel(reviewReason) ?? reviewReason}
+                      {publishReasonLabel(reviewReason) ??
+                        (post.status === "failed"
+                          ? "تعذّر النشر. راجع اتصال الحساب وصلاحياته ثم أعد المحاولة."
+                          : reviewReason)}
                     </Text>
+                  ) : null}
+                  {post.status === "failed" && publishChannelResults.length > 0 ? (
+                    <View style={{ gap: 5 }}>
+                      {publishedChannels.length > 0 ? (
+                        <Text
+                          style={[
+                            styles.sourceText,
+                            { color: colors.green },
+                          ]}
+                        >
+                          تم النشر بنجاح على {publishedChannels.join(" و")}.
+                        </Text>
+                      ) : null}
+                      {failedChannels.map((result) => (
+                        <Text
+                          key={result.channel}
+                          style={[
+                            styles.sourceText,
+                            { color: colors.destructive },
+                          ]}
+                        >
+                          {result.status === "unknown"
+                            ? `لم يتأكد النشر على ${platformLabel(result.channel)}: `
+                            : `تعذّر النشر على ${platformLabel(result.channel)}: `}
+                          {publishReasonLabel(result.reason) ??
+                            (result.status === "unknown"
+                              ? "تحقق من المنصة قبل إعادة المحاولة لتجنب نشر نسخة مكررة."
+                              : "تعذّر النشر على هذه المنصة. راجع إعدادات الحساب ثم أعد المحاولة.")}
+                        </Text>
+                      ))}
+                    </View>
                   ) : null}
                   {readinessMessage &&
                   post.status !== "published" &&

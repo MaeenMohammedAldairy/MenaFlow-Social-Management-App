@@ -470,6 +470,28 @@ export const GetPostsPageResponse = zod.object({
 
 
 /**
+ * @summary Get workspace post report totals
+ */
+export const GetPostReportSummaryQueryParams = zod.object({
+  "range": zod.enum(['7', '30', 'all'])
+})
+
+export const GetPostReportSummaryResponse = zod.object({
+  "total": zod.number().int(),
+  "draft": zod.number().int(),
+  "review": zod.number().int(),
+  "scheduled": zod.number().int(),
+  "approved": zod.number().int(),
+  "publishing": zod.number().int(),
+  "published": zod.number().int(),
+  "failed": zod.number().int(),
+  "instagram": zod.number().int(),
+  "facebook": zod.number().int(),
+  "whatsapp": zod.number().int()
+})
+
+
+/**
  * @summary Check cached post IDs in the active workspace
  */
 export const getKnownPostIdsBodyIdsItemMax = 150;

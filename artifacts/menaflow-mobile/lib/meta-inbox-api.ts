@@ -86,6 +86,8 @@ export type MetaInboxResponse = {
       >
     >;
   };
+  hasMore: boolean;
+  nextCursor: string | null;
   items: MetaInboxItem[];
 };
 
@@ -115,8 +117,24 @@ async function responseJson<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function getMetaInbox(): Promise<MetaInboxResponse> {
-  const response = await fetchApiResponse("/api/social/meta-inbox");
+export type MetaInboxQuery = {
+  cursor?: string;
+  personId?: string;
+  platform?: MetaInboxPlatform;
+};
+
+export async function getMetaInbox(
+  query: MetaInboxQuery = {},
+): Promise<MetaInboxResponse> {
+  const search = new URLSearchParams();
+  if (query.cursor) search.set("cursor", query.cursor);
+  if (query.personId) search.set("personId", query.personId);
+  if (query.platform) search.set("platform", query.platform);
+  const searchText = search.toString();
+  const suffix = searchText ? `?${searchText}` : "";
+  const response = await fetchApiResponse(
+    `/api/social/meta-inbox${suffix}`,
+  );
   return responseJson<MetaInboxResponse>(response);
 }
 

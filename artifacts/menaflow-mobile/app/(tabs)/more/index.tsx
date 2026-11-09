@@ -15,16 +15,33 @@ const destinations: Array<{
   description: string;
   icon: LucideIconName;
   accent: "primary" | "blue" | "purple";
+  params?: { view: "publishing" };
   path:
+    | "/(tabs)/more/orders"
     | "/(tabs)/more/sources"
     | "/(tabs)/more/reports"
     | "/(tabs)/more/settings";
 }> = [
   {
-    title: "المصادر والحسابات",
-    description: "إدارة حسابات التواصل ومزامنة مصادر المحتوى",
+    title: "الطلبات",
+    description: "تسجيل طلبات العملاء ومتابعة تجهيزها",
+    icon: "shopping-bag",
+    accent: "primary",
+    path: "/(tabs)/more/orders",
+  },
+  {
+    title: "حسابات النشر",
+    description: "إدارة حسابات فيسبوك وإنستغرام وواتساب المرتبطة بالمساحة",
     icon: "share-2",
     accent: "primary",
+    path: "/(tabs)/more/sources",
+    params: { view: "publishing" },
+  },
+  {
+    title: "مصادر البيانات",
+    description: "مزامنة رسائل واتساب واستيراد بيانات المنتجات من ملفات CSV",
+    icon: "share-2",
+    accent: "blue",
     path: "/(tabs)/more/sources",
   },
   {
@@ -49,7 +66,7 @@ export default function MoreScreen() {
   return (
     <Page>
       <BrandHeader />
-      <PageTitle title="المزيد" subtitle="إدارة التطبيق وحساباتك." />
+      <PageTitle title="المزيد" subtitle="إدارة التطبيق ومصادر بياناتك وحسابات النشر." />
       <Panel style={styles.managementPanel}>
         <View style={styles.sectionHeading}>
           <View
@@ -68,7 +85,14 @@ export default function MoreScreen() {
         </View>
         <View style={styles.destinations}>
           {destinations.map((destination, index) => (
-            <Link key={destination.path} href={destination.path} asChild>
+            <Link
+              key={`${destination.title}-${destination.path}`}
+              href={{
+                pathname: destination.path,
+                ...(destination.params ? { params: destination.params } : {}),
+              }}
+              asChild
+            >
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${destination.title}: ${destination.description}`}

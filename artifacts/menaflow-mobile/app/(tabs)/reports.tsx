@@ -1,12 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { CairoText as Text } from '@/components/CairoTypography';
 import { LucideIcon as Icon } from '@/components/LucideIcon';
 import { ActionButton, BrandHeader, EmptyState, Page, PageTitle, Panel, SectionTitle } from '@/components/Ui';
-import { useStudio } from '@/context/StudioContext';
 import { useColors } from '@/hooks/useColors';
 import { Redirect, router } from 'expo-router';
-import { getGetSocialConnectionsQueryKey, getSocialConnections } from '@workspace/api-client-react';
+import { getGetSocialConnectionsQueryKey, getPostReportSummary, getSocialConnections } from '@workspace/api-client-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@clerk/expo';
 import { isLocalAuthDisabled } from '@/constants/auth';
@@ -27,10 +26,13 @@ function AuthenticatedReportsScreen() {
 
 function ReportsScreenContent({ userId }: { userId: string | null }) {
   const colors = useColors();
-  const { posts, refreshPosts, syncing } = useStudio();
   const [refreshing, setRefreshing] = useState(false);
   const [dateRange, setDateRange] = useState<"all" | "7" | "30">("30");
 
+  const reportSummaryQuery = useQuery({
+    queryKey: ['posts', 'report-summary', userId ?? 'local', dateRange],
+    queryFn: () => getPostReportSummary({ range: dateRange }),
+  });
   const connectionsQuery = useQuery({
     queryKey: [
       ...getGetSocialConnectionsQueryKey(),
@@ -40,33 +42,26 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
   });
   const connections = connectionsQuery.data;
 
-  const reportPosts = useMemo(() => {
-    if (dateRange === "all") return posts;
-    const cutoff = Date.now() - Number(dateRange) * 24 * 60 * 60 * 1000;
-    return posts.filter((post) => {
-      const reportDate = Date.parse(post.sourceMessageDate || post.createdAt);
-      return Number.isFinite(reportDate) && reportDate >= cutoff;
-    });
-  }, [dateRange, posts]);
-
-  const published = reportPosts.filter((post) => post.status === 'published').length;
-  const draft = reportPosts.filter((post) => post.status === 'draft').length;
-  const review = reportPosts.filter((post) => post.status === 'review').length;
-  const scheduled = reportPosts.filter((post) => post.status === 'scheduled').length;
-  const approved = reportPosts.filter((post) => post.status === 'approved').length;
-  const publishing = reportPosts.filter((post) => post.status === 'publishing').length;
-  const failed = reportPosts.filter((post) => post.status === 'failed').length;
-
-  const igPosts = reportPosts.filter((p) => p.channels.includes('instagram')).length;
-  const fbPosts = reportPosts.filter((p) => p.channels.includes('facebook')).length;
-  const waPosts = reportPosts.filter((p) => p.channels.includes('whatsapp')).length;
+  const summary = reportSummaryQuery.data;
+  const published = summary?.published ?? 0;
+  const draft = summary?.draft ?? 0;
+  const review = summary?.review ?? 0;
+  const scheduled = summary?.scheduled ?? 0;
+  const approved = summary?.approved ?? 0;
+  const publishing = summary?.publishing ?? 0;
+  const failed = summary?.failed ?? 0;
+  const igPosts = summary?.instagram ?? 0;
+  const fbPosts = summary?.facebook ?? 0;
+  const waPosts = summary?.whatsapp ?? 0;
+  const totalPosts = summary?.total ?? 0;
+  const displayCount = (value: number) => summary ? value : "—";
 
   const hasConnections = Boolean(connections?.facebook || connections?.instagram);
 
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([refreshPosts(), connectionsQuery.refetch()]);
+      await Promise.all([reportSummaryQuery.refetch(), connectionsQuery.refetch()]);
     } finally {
       setRefreshing(false);
     }
@@ -76,7 +71,11 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
     <Page
       refreshControl={
         <RefreshControl
-          refreshing={refreshing || syncing}
+          refreshing={
+            refreshing ||
+            reportSummaryQuery.isFetching ||
+            connectionsQuery.isFetching
+          }
           onRefresh={onRefresh}
           tintColor={colors.primary}
         />
@@ -84,6 +83,25 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
     >
       <BrandHeader />
       <PageTitle title="التقارير" subtitle="ملخص المحتوى وحالاته وتوزيعه على القنوات." />
+
+      {reportSummaryQuery.isError ? (
+        <Panel style={styles.connectionNotice}>
+          <Text style={[styles.connectionNoticeText, { color: colors.mutedForeground }]}>
+            تعذّر تحميل أرقام التقرير كاملة من الخادم.
+          </Text>
+          <ActionButton
+            label={reportSummaryQuery.isFetching ? "جارٍ التحميل…" : "إعادة المحاولة"}
+            icon={reportSummaryQuery.isFetching ? "clock" : "refresh-cw"}
+            secondary
+            disabled={reportSummaryQuery.isFetching}
+            onPress={() => void reportSummaryQuery.refetch()}
+          />
+        </Panel>
+      ) : reportSummaryQuery.isLoading ? (
+        <Text style={[styles.rangeHint, { color: colors.mutedForeground }]}>
+          جارٍ تحميل ملخص جميع المنشورات…
+        </Text>
+      ) : null}
 
       <Panel style={styles.rangeSection}>
         <View style={styles.rangeHeading}>
@@ -153,10 +171,10 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
 
       <View style={styles.statsGrid}>
         {[
-          { label: 'إجمالي المحتوى', value: reportPosts.length, icon: 'file-text' as const, tint: colors.primary, status: 'all' },
-          { label: 'مسودات', value: draft, icon: 'edit-3' as const, tint: colors.blue, status: 'draft' },
-          { label: 'قيد المراجعة', value: review, icon: 'eye' as const, tint: colors.warning, status: 'review' },
-          { label: 'منشورات منشورة', value: published, icon: 'send' as const, tint: colors.green, status: 'published' },
+          { label: 'إجمالي المحتوى', value: displayCount(totalPosts), icon: 'file-text' as const, tint: colors.primary, status: 'all' },
+          { label: 'مسودات', value: displayCount(draft), icon: 'edit-3' as const, tint: colors.blue, status: 'draft' },
+          { label: 'قيد المراجعة', value: displayCount(review), icon: 'eye' as const, tint: colors.warning, status: 'review' },
+          { label: 'منشورات منشورة', value: displayCount(published), icon: 'send' as const, tint: colors.green, status: 'published' },
         ].map((item) => (
           <Pressable
             key={item.label}
@@ -222,7 +240,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
                 <Icon name="instagram" size={18} color={colors.instagram} />
               </View>
               <View style={styles.channelInfo}>
-                <Text style={[styles.channelTitle, { color: colors.foreground }]}>
+                <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.channelTitle, { color: colors.foreground }]}>
                   {connections?.instagram
                     ? `إنستغرام (@${connections.instagram.accountName})`
                     : "إنستغرام"}
@@ -233,7 +251,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
               </View>
             </View>
             <View style={[styles.channelCount, { backgroundColor: colors.accent }]}>
-              <Text style={[styles.channelCountText, { color: colors.instagram }]}>{igPosts}</Text>
+              <Text style={[styles.channelCountText, { color: colors.instagram }]}>{displayCount(igPosts)}</Text>
             </View>
           </View>
           <View style={[styles.channelItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
@@ -242,7 +260,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
                 <Icon name="facebook" size={18} color={colors.facebook} />
               </View>
               <View style={styles.channelInfo}>
-                <Text style={[styles.channelTitle, { color: colors.foreground }]}>
+                <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.channelTitle, { color: colors.foreground }]}>
                   {connections?.facebook
                     ? `فيسبوك (${connections.facebook.accountName})`
                     : "فيسبوك"}
@@ -253,7 +271,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
               </View>
             </View>
             <View style={[styles.channelCount, { backgroundColor: colors.accent }]}>
-              <Text style={[styles.channelCountText, { color: colors.facebook }]}>{fbPosts}</Text>
+              <Text style={[styles.channelCountText, { color: colors.facebook }]}>{displayCount(fbPosts)}</Text>
             </View>
           </View>
           <View style={[styles.channelItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
@@ -271,7 +289,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
               </View>
             </View>
             <View style={[styles.channelCount, { backgroundColor: colors.accent }]}>
-              <Text style={[styles.channelCountText, { color: colors.whatsapp }]}>{waPosts}</Text>
+              <Text style={[styles.channelCountText, { color: colors.whatsapp }]}>{displayCount(waPosts)}</Text>
             </View>
           </View>
         </View>
@@ -313,13 +331,13 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
         <SectionTitle title="حالة سير العمل والمحتوى" />
         <View style={styles.workflowList}>
           {[
-            { label: 'المسودات', value: draft, tint: colors.blue, status: 'draft' },
-            { label: 'قيد المراجعة', value: review, tint: colors.warning, status: 'review' },
-            { label: 'معتمدة', value: approved, tint: colors.blue, status: 'approved' },
-            { label: 'مجدولة', value: scheduled, tint: colors.instagram, status: 'scheduled' },
-            { label: 'قيد النشر', value: publishing, tint: colors.blue, status: 'publishing' },
-            { label: 'تعذّر نشرها', value: failed, tint: colors.warning, status: 'failed' },
-            { label: 'منشورة', value: published, tint: colors.primary, status: 'published' },
+            { label: 'المسودات', value: displayCount(draft), tint: colors.blue, status: 'draft' },
+            { label: 'قيد المراجعة', value: displayCount(review), tint: colors.warning, status: 'review' },
+            { label: 'معتمدة', value: displayCount(approved), tint: colors.blue, status: 'approved' },
+            { label: 'مؤجلة دون موعد', value: displayCount(scheduled), tint: colors.instagram, status: 'scheduled' },
+            { label: 'قيد النشر', value: displayCount(publishing), tint: colors.blue, status: 'publishing' },
+            { label: 'تعذّر نشرها', value: displayCount(failed), tint: colors.warning, status: 'failed' },
+            { label: 'منشورة', value: displayCount(published), tint: colors.primary, status: 'published' },
           ].map((item) => (
             <Pressable
               key={item.label}
@@ -369,7 +387,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
                       styles.bar,
                       {
                         backgroundColor: item.tint,
-                        width: `${reportPosts.length ? Math.min(100, (item.value / reportPosts.length) * 100) : 0}%`,
+                        width: `${summary && totalPosts ? Math.min(100, (Number(item.value) / totalPosts) * 100) : 0}%`,
                       },
                     ]}
                   />
@@ -442,10 +460,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 15,
   },
-  channelMeta: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  channelMeta: { flex: 1, minWidth: 0, flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
   channelIconWrap: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  channelInfo: { alignItems: 'flex-start', gap: 3 },
-  channelTitle: { fontSize: 13, fontWeight: '700' },
+  channelInfo: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 3 },
+  channelTitle: { maxWidth: '100%', fontSize: 13, fontWeight: '700', textAlign: 'right' },
   channelSub: { fontSize: 10, textAlign: 'right' },
   channelCount: { minWidth: 36, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 11, paddingHorizontal: 8 },
   channelCountText: { fontSize: 14, fontWeight: '800' },

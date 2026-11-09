@@ -127,7 +127,7 @@ router.post("/ai/content", requireWorkspace, async (req, res): Promise<void> => 
     res.json(
       GenerateAiContentResponse.parse({
         content: generated.content,
-        provider,
+        provider: generated.provider,
         model: generated.model,
       }),
     );

@@ -92,7 +92,12 @@ export function SecondFactorForm({
               textContentType="oneTimeCode"
               placeholder="أدخل الرمز"
               placeholderTextColor={colors.mutedForeground}
-              style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
+              style={[
+                authStyles.input,
+                authStyles.ltrInput,
+                !verificationCode && { textAlign: 'right' },
+                { color: colors.foreground },
+              ]}
               accessibilityLabel="رمز التحقق"
               {...inputFocusProps('second-factor')}
               onSubmitEditing={verifySecondFactor}
@@ -188,7 +193,12 @@ export function PasswordResetForm({
               textContentType="oneTimeCode"
               placeholder="أدخل الرمز المرسل لبريدك"
               placeholderTextColor={colors.mutedForeground}
-              style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
+              style={[
+                authStyles.input,
+                authStyles.ltrInput,
+                !verificationCode && { textAlign: 'right' },
+                { color: colors.foreground },
+              ]}
               accessibilityLabel="رمز استعادة كلمة المرور"
               {...inputFocusProps('reset-code')}
             />
@@ -234,7 +244,12 @@ export function PasswordResetForm({
               secureTextEntry={!showNewPassword}
               placeholder="أدخل كلمة مرور جديدة"
               placeholderTextColor={colors.mutedForeground}
-              style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
+              style={[
+                authStyles.input,
+                authStyles.ltrInput,
+                !newPassword && { textAlign: 'right' },
+                { color: colors.foreground },
+              ]}
               accessibilityLabel="كلمة المرور الجديدة"
               {...inputFocusProps('new-password')}
             />
@@ -282,7 +297,12 @@ export function PasswordResetForm({
               textContentType="emailAddress"
               placeholder="name@example.com"
               placeholderTextColor={colors.mutedForeground}
-              style={[authStyles.input, authStyles.ltrInput, { color: colors.foreground }]}
+              style={[
+                authStyles.input,
+                authStyles.ltrInput,
+                !emailAddress && { textAlign: 'right' },
+                { color: colors.foreground },
+              ]}
               accessibilityLabel="البريد الإلكتروني"
               {...inputFocusProps('reset-email')}
             />

@@ -15,6 +15,7 @@ export interface SocialAccountPost {
   publishedAt: string | null;
   url: string | null;
   imageUrl: string | null;
+  mediaType?: string | null;
   likes: number | null;
   comments: number | null;
   views: number | null;

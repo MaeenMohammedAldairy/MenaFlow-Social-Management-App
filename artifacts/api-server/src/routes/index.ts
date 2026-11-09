@@ -20,6 +20,7 @@ import workspacesRouter from "./workspaces";
 import onboardingRouter from "./onboarding";
 import whatsappAutoRepliesRouter from "./whatsapp-auto-replies";
 import subscriptionsRouter from "./subscriptions";
+import ordersRouter from "./orders";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(accountDetailsRouter);
 router.use(workspacesRouter);
 router.use(onboardingRouter);
 router.use(subscriptionsRouter);
+router.use(ordersRouter);
 
 export default router;

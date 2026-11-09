@@ -1,6 +1,7 @@
 import { and, asc, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
-import { stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import path from "node:path";
 import {
@@ -23,7 +24,9 @@ import {
 } from "../lib/meta-publishing";
 import {
   assertMediaObjectPath,
+  createMediaJpeg,
   hasMediaObject,
+  readMediaObject,
   resolveWhatsAppMediaStorageRoot,
   streamMediaObject,
 } from "../lib/whatsapp-media-storage";
@@ -93,7 +96,7 @@ function serializeWhatsAppMessageMedia(
 
 async function mediaResponse(
   media: typeof menaWhatsAppMessageMedia.$inferSelect,
-  variant: "original" | "thumbnail",
+  variant: "original" | "thumbnail" | "instagram-jpeg",
 ) {
   const thumbnailPath =
     variant === "thumbnail" &&
@@ -103,6 +106,28 @@ async function mediaResponse(
       : null;
   const useThumbnail = Boolean(thumbnailPath);
   const storagePath = thumbnailPath ?? media.storagePath;
+  if (variant === "instagram-jpeg") {
+    let buffer: Buffer;
+    if (media.storageProvider === "supabase") {
+      buffer = await readMediaObject(storagePath);
+    } else {
+      const rootPath = path.resolve(WHATSAPP_MEDIA_STORAGE_ROOT);
+      const resolvedPath = path.resolve(storagePath);
+      if (!resolvedPath.startsWith(`${rootPath}${path.sep}`)) {
+        throw new Error("INVALID_MEDIA_STORAGE_PATH");
+      }
+      const file = await stat(resolvedPath);
+      if (!file.isFile() || file.size === 0) throw new Error("MEDIA_FILE_MISSING");
+      buffer = await readFile(resolvedPath);
+    }
+    const jpeg = await createMediaJpeg(buffer);
+    return {
+      stream: Readable.from([jpeg]),
+      contentLength: String(jpeg.length),
+      mimeType: "image/jpeg",
+      fileName: `${media.id}.jpg`,
+    };
+  }
   if (media.storageProvider === "supabase") {
     assertMediaObjectPath(storagePath);
     const storedObject = await streamMediaObject(storagePath);
@@ -881,7 +906,10 @@ router.get("/social/whatsapp/public-media/:mediaId", async (req, res) => {
     typeof req.query.expires === "string" ? req.query.expires : "";
   const signature =
     typeof req.query.signature === "string" ? req.query.signature : "";
-  const variant = req.query.variant === "thumbnail" ? "thumbnail" : "original";
+  const variant = req.query.variant === "thumbnail" ||
+      req.query.variant === "instagram-jpeg"
+    ? req.query.variant
+    : "original";
   if (!verifySignedMediaRequest(mediaId, expires, signature, variant)) {
     res.status(403).json({ error: "رابط الوسائط غير صالح أو منتهي الصلاحية." });
     return;
@@ -891,6 +919,10 @@ router.get("/social/whatsapp/public-media/:mediaId", async (req, res) => {
     const media = await getWhatsAppMediaRecord(mediaId);
     if (!media) {
       res.status(404).json({ error: "الوسيط غير موجود." });
+      return;
+    }
+    if (variant === "instagram-jpeg" && media.mediaType !== "image") {
+      res.status(400).json({ error: "تحويل JPEG متاح للصور فقط." });
       return;
     }
     const file = await mediaResponse(media, variant);

@@ -1314,6 +1314,7 @@ export async function processWebhookEvent(
         .onConflictDoNothing()
         .returning({ id: menaWhatsAppAutoReplyEvents.id });
       if (claim) {
+        let sendStarted = false;
         try {
           // Re-check the toggle after generation so a merchant who disabled
           // auto replies while the AI call was running never gets a reply sent.
@@ -1339,6 +1340,7 @@ export async function processWebhookEvent(
                 instructions: connection.autoReplyInstructions ?? "",
               },
             );
+            sendStarted = true;
             const replyMessageId = await sendWhatsAppAutoReply(
               instanceName,
               eventRemoteJid!,
@@ -1388,13 +1390,15 @@ export async function processWebhookEvent(
           console.error("WhatsApp automatic reply failed", {
             workspaceId: connection.workspaceId,
             instanceName,
-            errorCode,
+            errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
           });
           await db
             .update(menaWhatsAppAutoReplyEvents)
             .set({
-              status: "failed",
-              errorCode,
+              status: sendStarted ? "unknown" : "failed",
+              errorCode: sendStarted
+                ? "AUTO_REPLY_RESULT_UNKNOWN"
+                : errorCode,
               completedAt: new Date(),
             })
             .where(

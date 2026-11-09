@@ -772,6 +772,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /posts/report-summary:
+    get:
+      operationId: getPostReportSummary
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Get workspace post report totals
+      parameters:
+        - name: range
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: ["7", "30", all]
+      responses:
+        "200":
+          description: Aggregated workspace post counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostReportSummary"
+        "400":
+          description: Invalid report range
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /posts/known-ids:
     post:
       operationId: getKnownPostIds
@@ -1182,6 +1215,32 @@ components:
           items:
             type: string
       required: [title, body, channels, status]
+    PostReportSummary:
+      type: object
+      properties:
+        total:
+          type: integer
+        draft:
+          type: integer
+        review:
+          type: integer
+        scheduled:
+          type: integer
+        approved:
+          type: integer
+        publishing:
+          type: integer
+        published:
+          type: integer
+        failed:
+          type: integer
+        instagram:
+          type: integer
+        facebook:
+          type: integer
+        whatsapp:
+          type: integer
+      required: [total, draft, review, scheduled, approved, publishing, published, failed, instagram, facebook, whatsapp]
     UpdatePostInput:
       type: object
       properties:
