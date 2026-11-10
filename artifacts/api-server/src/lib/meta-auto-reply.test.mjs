@@ -8,6 +8,7 @@ import {
   buildMetaAutoReplyUnderstandingProviderOptions,
   buildMetaAutoReplyUnderstandingSystemInstruction,
   buildMetaAutoReplyPrompt,
+  appendMetaProductImagesSentConfirmation,
   finalizeMetaAutoReplyText,
   formatMetaAutoReplyPrice,
   hasPreviousMetaAutoReplyInteraction,
@@ -1139,28 +1140,35 @@ test("retries only transient AI generation failures and caps attempts", () => {
   );
 });
 
-test("keeps generated product answers while adding a safe image footer only when needed", () => {
+test("keeps non-image answers separate from image delivery confirmation", () => {
   assert.equal(
     finalizeMetaAutoReplyText("السعر 199 ريال", true),
-    "السعر 199 ريال تفضل الصور المتوفرة.",
+    "السعر 199 ريال",
   );
   assert.equal(
     finalizeMetaAutoReplyText("تفضل صور المنتج المتوفرة.", true),
-    "تفضل صور المنتج المتوفرة.",
+    "",
   );
   assert.equal(
     finalizeMetaAutoReplyText(
       "عذرا لاتتوفر صور لهذا المنتج حاليا",
       true,
     ),
-    "تفضل الصور المتوفرة.",
+    "",
   );
   assert.equal(
     finalizeMetaAutoReplyText(
       "عذرًا لا تتوفر صور لهذا المنتج حاليًا. السعر 199 ريال.",
       true,
     ),
-    "السعر 199 ريال. تفضل الصور المتوفرة.",
+    "السعر 199 ريال.",
+  );
+  assert.equal(
+    finalizeMetaAutoReplyText(
+      "Sorry, images are not available. The price is 199.",
+      true,
+    ),
+    "The price is 199.",
   );
   assert.equal(
     finalizeMetaAutoReplyText("السعر 199 ريال", false),
@@ -1169,6 +1177,14 @@ test("keeps generated product answers while adding a safe image footer only when
   assert.equal(
     finalizeMetaAutoReplyText("لا تتوفر صور إضافية لهذا المنتج", false),
     "لا تتوفر صور لهذا المنتج",
+  );
+  assert.equal(
+    appendMetaProductImagesSentConfirmation("السعر 199 ريال."),
+    "السعر 199 ريال. أرفقت الصور.",
+  );
+  assert.equal(
+    appendMetaProductImagesSentConfirmation(""),
+    "أرفقت الصور.",
   );
 });
 

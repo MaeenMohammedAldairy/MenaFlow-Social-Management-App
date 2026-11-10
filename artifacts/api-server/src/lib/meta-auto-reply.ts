@@ -982,27 +982,32 @@ export function finalizeMetaAutoReplyText(
   reply: string,
   productImagesWillBeSent: boolean,
 ): string {
-  let normalized = reply
+  const normalized = reply
     .trim()
     .replace(/(صور|صورة)\s+(?:إضافية|اضافية|أخرى|اخرى)/giu, "$1");
   if (productImagesWillBeSent) {
-    normalized = normalized
-      .replace(
-        /(?:عذرًا|عذرا|نعتذر)?\s*،?\s*لا\s*(?:تتوفر|توجد|تتوفر لدينا|توجد لدينا)\s+(?:حاليًا\s+|حاليا\s+)?(?:أي\s+)?(?:صور|صورة|الصور)[^.!؟]*(?:[.!؟]|$)/giu,
-        " ",
-      )
+    return normalized
+      .split(/(?<=[.!؟?،,؛;])\s*/u)
+      .filter((part) => {
+        const mentionsImages =
+          /(?:صور|صورة|الصورة|الصور|image|photo|picture|pics?)/iu.test(part);
+        const isStandaloneApology =
+          /^(?:عذرًا|عذرا|نعتذر|آسفين|اسفين|sorry|we apologize)[\s،,]*$/iu.test(
+            part.trim(),
+          );
+        return !mentionsImages && !isStandaloneApology;
+      })
+      .join(" ")
       .trim();
   }
-  if (!normalized) {
-    return productImagesWillBeSent ? "تفضل الصور المتوفرة." : "";
-  }
-  if (!productImagesWillBeSent) return normalized;
-  if (
-    /(?:تفضل|أرسل|أرسِل|ارسل|صور|صورة|image|photo|picture)/i.test(normalized)
-  ) {
-    return normalized;
-  }
-  return `${normalized} تفضل الصور المتوفرة.`;
+  return normalized;
+}
+
+export function appendMetaProductImagesSentConfirmation(reply: string): string {
+  const normalized = reply.trim();
+  return normalized
+    ? `${normalized.replace(/[.!؟?]+$/u, "")}. أرفقت الصور.`
+    : "أرفقت الصور.";
 }
 
 export function formatMetaAutoReplyPrice(price: string | null): string | null {

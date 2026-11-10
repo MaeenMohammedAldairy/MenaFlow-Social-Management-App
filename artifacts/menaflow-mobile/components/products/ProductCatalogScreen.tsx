@@ -723,6 +723,8 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         return;
       }
       const { extractedData } = result;
+      const postImageUrl =
+        post.imageUrl?.startsWith("https://") ? post.imageUrl : null;
       openEditor({
         id: null,
         value: {
@@ -740,8 +742,11 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               ? extractedData.currency
               : null,
           availability: extractedData.availability ?? "unknown",
+          mediaUrls: postImageUrl ? [postImageUrl] : [],
         },
-        mediaPreviews: [],
+        mediaPreviews: postImageUrl
+          ? [{ id: postImageUrl, url: postImageUrl, mediaType: "image" }]
+          : [],
         sourceContext: [post.text],
         importedMetaPost:
           platform === "facebook" || platform === "instagram"
@@ -751,7 +756,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 text: post.text,
                 publishedAt: post.publishedAt,
                 url: post.url,
-                imageUrl: post.imageUrl,
+                imageUrl: postImageUrl,
                 mediaType: post.mediaType,
               }
             : undefined,

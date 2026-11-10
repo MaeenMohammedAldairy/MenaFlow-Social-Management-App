@@ -31,6 +31,7 @@ import {
   metaPostSearchText,
   requestedMetaProductImages,
   formatMetaAutoReplyPrice,
+  appendMetaProductImagesSentConfirmation,
   retryMetaAutoReplyGeneration,
   buildMetaAutoReplyConversationContext,
   hasPreviousMetaAutoReplyInteraction,
@@ -927,7 +928,6 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
 
     const pageAccessToken = await getAccessToken();
     externalSendStarted = true;
-    const replyText = reply;
     const replyExternalIds: string[] = [];
     for (const imageUrl of productImageUrls) {
       externalSendStarted = true;
@@ -939,7 +939,7 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
         recipientId: item.conversationId,
         externalId: item.externalId,
         accessToken: pageAccessToken,
-        text: replyText,
+        text: "",
         imageUrl,
       });
       const id =
@@ -949,6 +949,10 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       if (id) replyExternalIds.push(id);
       externalSendSucceeded = true;
     }
+    const replyText =
+      productImageUrls.length > 0
+        ? appendMetaProductImagesSentConfirmation(reply)
+        : reply;
     externalSendStarted = true;
     const result = await sendMetaInboxReply({
       platform: item.platform,
