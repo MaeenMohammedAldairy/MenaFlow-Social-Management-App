@@ -578,9 +578,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   );
   const activeScanPlatform =
     selectedScanPlatform &&
-    scanAccounts.some(
-      (account) => account.platform === selectedScanPlatform,
-    )
+    scanAccounts.some((account) => account.platform === selectedScanPlatform)
       ? selectedScanPlatform
       : (scanAccounts.find((account) => account.ready)?.platform ??
         scanAccounts[0]?.platform ??
@@ -711,11 +709,17 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
       ),
   });
   const extractScannedPost = useMutation({
-    mutationFn: (post: SocialAccountPost) =>
-      extractScannedPostProduct(post.text),
-    onSuccess: (result, post) => {
+    mutationFn: ({
+      post,
+    }: {
+      platform: AccountPlatform;
+      post: SocialAccountPost;
+    }) => extractScannedPostProduct(post.text),
+    onSuccess: (result, { platform, post }) => {
       if (result.classification !== "product" || !result.extractedData) {
-        setError("لم يظهر في نص المنشور منتج واضح. راجع المنشور أو أدخل البيانات يدويًا.");
+        setError(
+          "لم يظهر في نص المنشور منتج واضح. راجع المنشور أو أدخل البيانات يدويًا.",
+        );
         return;
       }
       const { extractedData } = result;
@@ -739,6 +743,18 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         },
         mediaPreviews: [],
         sourceContext: [post.text],
+        importedMetaPost:
+          platform === "facebook" || platform === "instagram"
+            ? {
+                platform,
+                id: post.id,
+                text: post.text,
+                publishedAt: post.publishedAt,
+                url: post.url,
+                imageUrl: post.imageUrl,
+                mediaType: post.mediaType,
+              }
+            : undefined,
       });
       setError("");
     },
@@ -894,7 +910,9 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 اختر الحساب ثم نوع المحتوى الذي تريد مراجعته.
               </Text>
               {connections.isPending ? (
-                <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                <Text
+                  style={[styles.helper, { color: colors.mutedForeground }]}
+                >
                   جارٍ تحميل الحسابات المتصلة...
                 </Text>
               ) : scanAccounts.length ? (
@@ -915,11 +933,17 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                           checked: selected,
                           disabled: !account.ready,
                         }}
-                        disabled={!account.ready || scanConnectedPosts.isPending || analyzeWhatsAppMessages.isPending}
+                        disabled={
+                          !account.ready ||
+                          scanConnectedPosts.isPending ||
+                          analyzeWhatsAppMessages.isPending
+                        }
                         onPress={() => {
                           setSelectedScanPlatform(account.platform);
                           setSelectedScanOperation(
-                            account.platform === "whatsapp" ? "messages" : "posts",
+                            account.platform === "whatsapp"
+                              ? "messages"
+                              : "posts",
                           );
                           setScannedPosts([]);
                           setAnalysisSummary("");
@@ -928,21 +952,37 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                         style={[
                           styles.scanAccountOption,
                           {
-                            borderColor: selected ? colors.primary : colors.border,
-                            backgroundColor: selected ? colors.accent : colors.card,
+                            borderColor: selected
+                              ? colors.primary
+                              : colors.border,
+                            backgroundColor: selected
+                              ? colors.accent
+                              : colors.card,
                             opacity: account.ready ? 1 : 0.55,
                           },
                         ]}
                       >
                         <View style={styles.scanAccountCopy}>
-                          <Text style={[styles.accountName, { color: colors.foreground }]}>
+                          <Text
+                            style={[
+                              styles.accountName,
+                              { color: colors.foreground },
+                            ]}
+                          >
                             {platformName}
                           </Text>
-                          <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                          <Text
+                            style={[
+                              styles.helper,
+                              { color: colors.mutedForeground },
+                            ]}
+                          >
                             {account.accountName}
                           </Text>
                           {!account.ready ? (
-                            <Text style={[styles.helper, { color: colors.warning }]}>
+                            <Text
+                              style={[styles.helper, { color: colors.warning }]}
+                            >
                               تحقق من اتصال الحساب وصلاحياته
                             </Text>
                           ) : null}
@@ -951,13 +991,21 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                           style={[
                             styles.scanRadio,
                             {
-                              borderColor: selected ? colors.primary : colors.border,
-                              backgroundColor: selected ? colors.primary : "transparent",
+                              borderColor: selected
+                                ? colors.primary
+                                : colors.border,
+                              backgroundColor: selected
+                                ? colors.primary
+                                : "transparent",
                             },
                           ]}
                         >
                           {selected ? (
-                            <Icon name="check" size={12} color={colors.primaryForeground} />
+                            <Icon
+                              name="check"
+                              size={12}
+                              color={colors.primaryForeground}
+                            />
                           ) : null}
                         </View>
                       </Pressable>
@@ -965,12 +1013,18 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   })}
                 </View>
               ) : connections.isError ? (
-                <Text accessibilityRole="alert" style={[styles.helper, { color: colors.destructive }]}>
-                  تعذر تحميل الحسابات المتصلة. أعد المحاولة أو تحقق من صفحة المصادر.
+                <Text
+                  accessibilityRole="alert"
+                  style={[styles.helper, { color: colors.destructive }]}
+                >
+                  تعذر تحميل الحسابات المتصلة. أعد المحاولة أو تحقق من صفحة
+                  المصادر.
                 </Text>
               ) : (
                 <View style={styles.scanEmpty}>
-                  <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                  <Text
+                    style={[styles.helper, { color: colors.mutedForeground }]}
+                  >
                     اربط حساب WhatsApp أو Facebook أو Instagram لبدء الفحص.
                   </Text>
                   <ActionButton
@@ -983,7 +1037,9 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               )}
               {activeScanAccount ? (
                 <>
-                  <Text style={[styles.scanLabel, { color: colors.foreground }]}>
+                  <Text
+                    style={[styles.scanLabel, { color: colors.foreground }]}
+                  >
                     نوع الفحص
                   </Text>
                   <View style={styles.scanOperations}>
@@ -1015,12 +1071,26 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                         },
                       ]}
                     >
-                      <Icon name="message-circle" size={18} color={colors.primary} />
+                      <Icon
+                        name="message-circle"
+                        size={18}
+                        color={colors.primary}
+                      />
                       <View style={styles.scanAccountCopy}>
-                        <Text style={[styles.accountName, { color: colors.foreground }]}>
+                        <Text
+                          style={[
+                            styles.accountName,
+                            { color: colors.foreground },
+                          ]}
+                        >
                           فحص رسائل WhatsApp
                         </Text>
-                        <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                        <Text
+                          style={[
+                            styles.helper,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
                           استخراج المنتجات من الرسائل غير المفحوصة.
                         </Text>
                       </View>
@@ -1055,10 +1125,20 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     >
                       <Icon name="file-text" size={18} color={colors.primary} />
                       <View style={styles.scanAccountCopy}>
-                        <Text style={[styles.accountName, { color: colors.foreground }]}>
+                        <Text
+                          style={[
+                            styles.accountName,
+                            { color: colors.foreground },
+                          ]}
+                        >
                           فحص المنشورات
                         </Text>
-                        <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                        <Text
+                          style={[
+                            styles.helper,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
                           جلب أحدث 25 منشورًا من حساب Meta للمراجعة.
                         </Text>
                       </View>
@@ -1105,9 +1185,11 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
             {scannedPosts.map((post) => (
               <Panel key={post.id} style={styles.scannedPost}>
                 <View style={styles.scannedPostHeader}>
-                  <Text style={[styles.accountName, { color: colors.foreground }]}>
+                  <Text
+                    style={[styles.accountName, { color: colors.foreground }]}
+                  >
                     {post.publishedAt
-                      ? formatArabicDateTime(post.publishedAt) ?? "منشور حديث"
+                      ? (formatArabicDateTime(post.publishedAt) ?? "منشور حديث")
                       : "منشور حديث"}
                   </Text>
                   {post.url ? (
@@ -1121,7 +1203,11 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                       }}
                       style={styles.scanPostLink}
                     >
-                      <Icon name="external-link" size={16} color={colors.primary} />
+                      <Icon
+                        name="external-link"
+                        size={16}
+                        color={colors.primary}
+                      />
                     </Pressable>
                   ) : null}
                 </View>
@@ -1133,31 +1219,44 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     {post.text}
                   </Text>
                 ) : (
-                  <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                  <Text
+                    style={[styles.helper, { color: colors.mutedForeground }]}
+                  >
                     لا يحتوي المنشور على نص.
                   </Text>
                 )}
                 {post.imageUrl ? (
-                  <ProductMediaThumbnail uri={post.imageUrl} label="وسائط المنشور" />
+                  <ProductMediaThumbnail
+                    uri={post.imageUrl}
+                    label="وسائط المنشور"
+                  />
                 ) : null}
-                <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                <Text
+                  style={[styles.helper, { color: colors.mutedForeground }]}
+                >
                   الإعجابات: {formatArabicNumber(post.likes ?? 0)} · التعليقات:{" "}
                   {formatArabicNumber(post.comments ?? 0)}
                 </Text>
                 <ActionButton
                   label={
                     extractScannedPost.isPending &&
-                    extractScannedPost.variables.id === post.id
+                    extractScannedPost.variables.post.id === post.id
                       ? "جارٍ استخراج البيانات..."
                       : "استخراج كمسودة"
                   }
                   icon="file-plus"
-                  disabled={
-                    !post.text.trim() || extractScannedPost.isPending
-                  }
+                  disabled={!post.text.trim() || extractScannedPost.isPending}
                   onPress={() => {
                     setError("");
-                    extractScannedPost.mutate(post);
+                    if (
+                      activeScanPlatform === "facebook" ||
+                      activeScanPlatform === "instagram"
+                    ) {
+                      extractScannedPost.mutate({
+                        platform: activeScanPlatform,
+                        post,
+                      });
+                    }
                   }}
                 />
                 {post.text.trim() ? (
@@ -1708,12 +1807,26 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   وراجعها قبل اعتماد المنتج للرد الآلي.
                 </Text>
               ) : null}
+              {editor?.importedMetaPost ? (
+                <Text
+                  style={[styles.helper, { color: colors.mutedForeground }]}
+                >
+                  عند حفظ المنتج سيظهر المنشور الأصلي في صفحة المنشورات كمنشور
+                  منشور على{" "}
+                  {editor.importedMetaPost.platform === "facebook"
+                    ? "فيسبوك"
+                    : "إنستغرام"}
+                  ، ولن يُعاد نشره.
+                </Text>
+              ) : null}
               {editor?.sourceContext?.length ? (
                 <View style={styles.sourceMessage}>
                   <Text
                     style={[styles.fieldLabel, { color: colors.foreground }]}
                   >
-                    الرسائل المصدر للمراجعة
+                    {editor.importedMetaPost
+                      ? "نص المنشور المصدر للمراجعة"
+                      : "الرسائل المصدر للمراجعة"}
                   </Text>
                   {editor.sourceContext.map((sourceText, index) => (
                     <Text
@@ -1866,7 +1979,9 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 </View>
               </View>
               {editor?.value.inventoryTracked ? (
-                <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                <Text
+                  style={[styles.helper, { color: colors.mutedForeground }]}
+                >
                   حالة التوفر تُحدّث تلقائيًا بحسب الكمية المتاحة.
                 </Text>
               ) : (
@@ -1944,16 +2059,22 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 />
               ) : null}
               {editor?.id && editor.value.inventoryTracked ? (
-                <Text style={[styles.helper, { color: colors.mutedForeground }]}>
-                  المحجوز للطلبات: {formatArabicNumber(
+                <Text
+                  style={[styles.helper, { color: colors.mutedForeground }]}
+                >
+                  المحجوز للطلبات:{" "}
+                  {formatArabicNumber(
                     catalog.data?.find((product) => product.id === editor.id)
                       ?.stockReserved ?? 0,
-                  )} · المتاح: {formatArabicNumber(
+                  )}{" "}
+                  · المتاح:{" "}
+                  {formatArabicNumber(
                     Math.max(
                       0,
                       (editor.value.stockOnHand ?? 0) -
-                        (catalog.data?.find((product) => product.id === editor.id)
-                          ?.stockReserved ?? 0),
+                        (catalog.data?.find(
+                          (product) => product.id === editor.id,
+                        )?.stockReserved ?? 0),
                     ),
                   )}
                 </Text>
@@ -1974,10 +2095,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   ) : inventoryMovements.isError ? (
                     <View style={styles.inventoryHistory}>
                       <Text
-                        style={[
-                          styles.helper,
-                          { color: colors.destructive },
-                        ]}
+                        style={[styles.helper, { color: colors.destructive }]}
                       >
                         {inventoryMovements.error instanceof Error
                           ? inventoryMovements.error.message
@@ -1999,8 +2117,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                           { color: colors.mutedForeground },
                         ]}
                       >
-                        {movement.reason} ·{" "}
-                        {movement.stockDelta > 0 ? "+" : ""}
+                        {movement.reason} · {movement.stockDelta > 0 ? "+" : ""}
                         {formatArabicNumber(movement.stockDelta)} ·{" "}
                         {formatArabicDateTime(movement.createdAt) ?? ""}
                       </Text>

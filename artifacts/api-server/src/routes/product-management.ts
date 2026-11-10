@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { and, desc, eq, ne, or, sql } from "drizzle-orm";
 import { Router } from "express";
@@ -22,6 +22,7 @@ import {
   publishedPostProductDraft,
 } from "../lib/product-validation";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
+import { notifyPostsChanged } from "../lib/post-events";
 
 const router = Router();
 import {
@@ -29,6 +30,85 @@ import {
   mediaRequestOrigin,
   catalogProductResponse,
 } from "./product-route-helpers";
+
+type ImportedMetaPost = {
+  platform: "facebook" | "instagram";
+  id: string;
+  text: string;
+  publishedAt: Date | null;
+  url: string | null;
+  imageUrl: string | null;
+  mediaType: string | null;
+};
+
+function parseImportedMetaPost(
+  value: unknown,
+): ImportedMetaPost | null | false {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const input = value as Record<string, unknown>;
+  const postUrlValue = input.url;
+  const imageUrlValue = input.imageUrl;
+  const mediaTypeValue = input.mediaType;
+  if (
+    (input.platform !== "facebook" && input.platform !== "instagram") ||
+    typeof input.id !== "string" ||
+    !input.id.trim() ||
+    input.id.length > 500 ||
+    typeof input.text !== "string" ||
+    input.text.length > 6000 ||
+    (input.publishedAt !== null && typeof input.publishedAt !== "string") ||
+    (postUrlValue !== null && typeof postUrlValue !== "string") ||
+    (imageUrlValue !== null && typeof imageUrlValue !== "string") ||
+    (mediaTypeValue !== undefined &&
+      mediaTypeValue !== null &&
+      (typeof mediaTypeValue !== "string" || mediaTypeValue.length > 50))
+  ) {
+    return false;
+  }
+  const publishedAt =
+    typeof input.publishedAt === "string" ? new Date(input.publishedAt) : null;
+  if (publishedAt && Number.isNaN(publishedAt.getTime())) return false;
+  const parseHttpsUrl = (value: string | null): string | null | false => {
+    if (value === null) return null;
+    if (value.length > 2048) return false;
+    try {
+      const url = new URL(value);
+      return url.protocol === "https:" ? url.toString() : false;
+    } catch {
+      return false;
+    }
+  };
+  const url = parseHttpsUrl(
+    typeof postUrlValue === "string" ? postUrlValue : null,
+  );
+  const imageUrl = parseHttpsUrl(
+    typeof imageUrlValue === "string" ? imageUrlValue : null,
+  );
+  if (url === false || imageUrl === false) return false;
+  if (imageUrl) {
+    const host = new URL(imageUrl).hostname.toLowerCase();
+    if (
+      host !== "fbcdn.net" &&
+      !host.endsWith(".fbcdn.net") &&
+      host !== "cdninstagram.com" &&
+      !host.endsWith(".cdninstagram.com") &&
+      host !== "fbsbx.com" &&
+      !host.endsWith(".fbsbx.com")
+    ) {
+      return false;
+    }
+  }
+  return {
+    platform: input.platform,
+    id: input.id.trim(),
+    text: input.text,
+    publishedAt,
+    url,
+    imageUrl,
+    mediaType: typeof mediaTypeValue === "string" ? mediaTypeValue : null,
+  };
+}
 
 router.post(
   "/social/products/extract-scanned-post",
@@ -155,6 +235,11 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
     res.status(400).json({ error: "تحقق من بيانات المنتج المدخلة." });
     return;
   }
+  const importedMetaPost = parseImportedMetaPost(req.body?.importedMetaPost);
+  if (importedMetaPost === false) {
+    res.status(400).json({ error: "بيانات المنشور المستورد غير صالحة." });
+    return;
+  }
   const { inventoryReason, ...productInput } = input;
   if (input.sku) {
     const [existing] = await db
@@ -202,16 +287,109 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
         createdAt: now,
       });
     }
-    return product;
+    let importedPostId: string | null = null;
+    if (importedMetaPost) {
+      const [existingPublishedPost] = await transaction
+        .select({ id: posts.id })
+        .from(posts)
+        .where(
+          and(
+            eq(posts.workspaceId, workspaceId),
+            or(
+              and(
+                sql`${posts.publishResults}->${importedMetaPost.platform}->>'postId' = ${importedMetaPost.id}`,
+                sql`${posts.publishResults}->${importedMetaPost.platform}->>'status' = 'published'`,
+              ),
+              and(
+                eq(posts.sourceType, "meta_import"),
+                sql`${posts.metadata}->>'externalPlatform' = ${importedMetaPost.platform}`,
+                sql`${posts.metadata}->>'externalPostId' = ${importedMetaPost.id}`,
+              ),
+            ),
+          ),
+        )
+        .limit(1);
+      importedPostId = existingPublishedPost?.id ?? null;
+      if (!importedPostId) {
+        importedPostId = `meta-import-${createHash("sha256")
+          .update(
+            `${workspaceId}\0${importedMetaPost.platform}\0${importedMetaPost.id}`,
+          )
+          .digest("hex")}`;
+        const [importedPost] = await transaction
+          .insert(posts)
+          .values({
+            id: importedPostId,
+            ownerId,
+            workspaceId,
+            title:
+              importedMetaPost.text
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .find(Boolean)
+                ?.slice(0, 120) ?? "",
+            body: importedMetaPost.text,
+            channels: [importedMetaPost.platform],
+            status: "published",
+            sourceType: "meta_import",
+            sourceMessageDate: importedMetaPost.publishedAt,
+            mediaUrls: importedMetaPost.imageUrl
+              ? [importedMetaPost.imageUrl]
+              : [],
+            metadata: {
+              importedFromMeta: true,
+              externalPlatform: importedMetaPost.platform,
+              externalPostId: importedMetaPost.id,
+              permalinkUrl: importedMetaPost.url,
+              mediaType: importedMetaPost.mediaType,
+            },
+            publishResults: {
+              [importedMetaPost.platform]: {
+                status: "published",
+                postId: importedMetaPost.id,
+                permalink: importedMetaPost.url,
+                imported: true,
+              },
+            },
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing()
+          .returning({ id: posts.id });
+        if (!importedPost) {
+          const [existingImportedPost] = await transaction
+            .select({ id: posts.id })
+            .from(posts)
+            .where(
+              and(
+                eq(posts.id, importedPostId),
+                eq(posts.workspaceId, workspaceId),
+                eq(posts.sourceType, "meta_import"),
+              ),
+            )
+            .limit(1);
+          if (!existingImportedPost) {
+            throw new Error("IMPORTED_META_POST_CONFLICT");
+          }
+        }
+      }
+      await transaction.insert(productPosts).values({
+        workspaceId,
+        productId: product.id,
+        postId: importedPostId,
+      });
+    }
+    return { product, importedPostId };
   });
+  if (created.importedPostId) notifyPostsChanged(ownerId);
   res.status(201).json({
     product: await catalogProductResponse(
-      created,
+      created.product,
       workspaceId,
-      [],
+      created.importedPostId ? [created.importedPostId] : [],
       mediaRequestOrigin(req),
     ),
-    postIds: [],
+    postIds: created.importedPostId ? [created.importedPostId] : [],
   });
 });
 
@@ -264,7 +442,10 @@ router.put("/social/products/:id", requireWorkspace, async (req, res) => {
     if (!current) return { error: "NOT_FOUND" as const };
     const nextStock = input.stockOnHand ?? current.stockOnHand;
     const nextTracking = input.inventoryTracked ?? current.inventoryTracked;
-    if (nextStock < current.stockReserved || (!nextTracking && current.stockReserved > 0)) {
+    if (
+      nextStock < current.stockReserved ||
+      (!nextTracking && current.stockReserved > 0)
+    ) {
       return { error: "RESERVED_STOCK" as const };
     }
     const now = new Date();

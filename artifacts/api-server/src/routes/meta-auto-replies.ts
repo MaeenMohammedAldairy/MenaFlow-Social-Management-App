@@ -246,8 +246,7 @@ async function historicalCommentCandidates(
         isNotNull(products.verifiedAt),
       ),
     )
-    .orderBy(desc(posts.updatedAt))
-    .limit(200);
+    .orderBy(desc(posts.updatedAt));
   const productPublicationRows = await db
     .select({
       id: posts.id,
@@ -288,8 +287,7 @@ async function historicalCommentCandidates(
         isNotNull(products.verifiedAt),
       ),
     )
-    .orderBy(desc(posts.updatedAt))
-    .limit(200);
+    .orderBy(desc(posts.updatedAt));
   const grouped = new Map<
     string,
     {
@@ -375,23 +373,20 @@ async function historicalCommentCandidates(
     allMediaIds,
     requestOrigin,
   );
-  const previewById = new Map(
-    previews.map((preview) => [preview.id, preview]),
-  );
+  const previewById = new Map(previews.map((preview) => [preview.id, preview]));
   const candidates = [...grouped.values()].map((post) => ({
-      id: post.id,
-      title: post.title,
-      body: post.body,
-      createdAt: post.createdAt.toISOString(),
-      imageUrl:
-        post.mediaUrls
-          .slice(0, 4)
-          .map((id) => previewById.get(id))
-          .find((preview) => preview?.mediaType === "image")?.url ?? null,
-      products: [...post.productNames],
-      eligibleCommentCount:
-        commentsByPost.get(post.externalPostId)?.length ?? 0,
-      eligibleCommentIds: commentsByPost.get(post.externalPostId) ?? [],
+    id: post.id,
+    title: post.title,
+    body: post.body,
+    createdAt: post.createdAt.toISOString(),
+    imageUrl:
+      post.mediaUrls
+        .slice(0, 4)
+        .map((id) => previewById.get(id))
+        .find((preview) => preview?.mediaType === "image")?.url ?? null,
+    products: [...post.productNames],
+    eligibleCommentCount: commentsByPost.get(post.externalPostId)?.length ?? 0,
+    eligibleCommentIds: commentsByPost.get(post.externalPostId) ?? [],
   }));
   return candidates.sort(
     (left, right) =>
@@ -423,22 +418,26 @@ router.get(
     ]);
     const platforms = {} as Record<
       MetaIntegration,
-      { ready: boolean; reason: string | null; posts: Array<{
-        id: string;
-        title: string;
-        body: string;
-        createdAt: string;
-        imageUrl: string | null;
-        products: string[];
-        eligibleCommentCount: number;
-      }> }
+      {
+        ready: boolean;
+        reason: string | null;
+        posts: Array<{
+          id: string;
+          title: string;
+          body: string;
+          createdAt: string;
+          imageUrl: string | null;
+          products: string[];
+          eligibleCommentCount: number;
+        }>;
+      }
     >;
     for (const platform of ["facebook", "instagram"] as const) {
       const commentReplyEnabled = Boolean(
         settings?.enabled &&
-          (platform === "facebook"
-            ? settings.facebookCommentsEnabled
-            : settings.instagramCommentsEnabled),
+        (platform === "facebook"
+          ? settings.facebookCommentsEnabled
+          : settings.instagramCommentsEnabled),
       );
       const readiness = await integrationReadiness(
         workspaceId,
@@ -499,23 +498,25 @@ router.post(
       return;
     }
     const platform = req.body?.platform;
+    const allEligible = req.body?.allEligible === true;
     const postIds = req.body?.postIds;
     if (
       (platform !== "facebook" && platform !== "instagram") ||
-      !Array.isArray(postIds) ||
-      postIds.length < 1 ||
-      postIds.length > 100 ||
-      postIds.some((id) => typeof id !== "string" || !id.trim())
+      (allEligible
+        ? postIds !== undefined
+        : !Array.isArray(postIds) ||
+          postIds.length < 1 ||
+          postIds.length > 100 ||
+          postIds.some((id) => typeof id !== "string" || !id.trim()))
     ) {
       res.status(400).json({ error: "حدد منصة ومنشورات صالحة للمعالجة." });
       return;
     }
-    const selectedPostIds = [
-      ...new Set(
-        postIds.filter((id: unknown): id is string => typeof id === "string"),
-      ),
-    ];
-    if (selectedPostIds.length !== postIds.length) {
+    const selectedPostIds = allEligible ? [] : (postIds as string[]);
+    if (
+      !allEligible &&
+      new Set(selectedPostIds).size !== selectedPostIds.length
+    ) {
       res.status(400).json({ error: "تحتوي القائمة على منشورات مكررة." });
       return;
     }
@@ -534,9 +535,9 @@ router.post(
     ]);
     const enabled = Boolean(
       settings?.enabled &&
-        (platform === "facebook"
-          ? settings.facebookCommentsEnabled
-          : settings.instagramCommentsEnabled),
+      (platform === "facebook"
+        ? settings.facebookCommentsEnabled
+        : settings.instagramCommentsEnabled),
     );
     const readiness = await integrationReadiness(
       workspaceId,
@@ -560,11 +561,11 @@ router.post(
       accountId,
       mediaRequestOrigin(req),
     );
-    const selected = candidates.filter((post) =>
-      selectedPostIds.includes(post.id),
-    );
+    const selected = allEligible
+      ? candidates.filter((post) => post.eligibleCommentCount > 0)
+      : candidates.filter((post) => selectedPostIds.includes(post.id));
     if (
-      selected.length !== selectedPostIds.length ||
+      (!allEligible && selected.length !== selectedPostIds.length) ||
       selected.some((post) => post.eligibleCommentCount === 0)
     ) {
       res.status(409).json({
@@ -577,18 +578,34 @@ router.post(
       (total, post) => total + post.eligibleCommentCount,
       0,
     );
-    if (totalEligibleComments > historicalCommentBatchLimit) {
+    if (!totalEligibleComments) {
+      res.status(409).json({
+        error: "لا توجد تعليقات مؤهلة متبقية للرد ضمن الفترة المحددة.",
+      });
+      return;
+    }
+    if (!allEligible && totalEligibleComments > historicalCommentBatchLimit) {
       res.status(400).json({
         error: `الحد الأقصى للدفعة ${historicalCommentBatchLimit} تعليقًا. قلل عدد المنشورات المحددة ثم أعد المحاولة.`,
       });
       return;
     }
     const inboxItemIds = selected.flatMap((post) => post.eligibleCommentIds);
-    const queued = inboxItemIds.length
-      ? await db
+    const queuedCount = await db.transaction(async (transaction) => {
+      let totalQueued = 0;
+      for (
+        let offset = 0;
+        offset < inboxItemIds.length;
+        offset += historicalCommentBatchLimit
+      ) {
+        const batch = inboxItemIds.slice(
+          offset,
+          offset + historicalCommentBatchLimit,
+        );
+        const queued = await transaction
           .insert(menaMetaAutoReplyJobs)
           .values(
-            inboxItemIds.map((inboxItemId) => ({
+            batch.map((inboxItemId) => ({
               id: randomUUID(),
               ownerId,
               workspaceId,
@@ -596,9 +613,15 @@ router.post(
             })),
           )
           .onConflictDoNothing()
-          .returning({ id: menaMetaAutoReplyJobs.id })
-      : [];
-    res.status(202).json({ queuedCount: queued.length });
+          .returning({ id: menaMetaAutoReplyJobs.id });
+        totalQueued += queued.length;
+      }
+      return totalQueued;
+    });
+    res.status(202).json({
+      queuedCount,
+      batchCount: Math.ceil(queuedCount / historicalCommentBatchLimit),
+    });
   },
 );
 

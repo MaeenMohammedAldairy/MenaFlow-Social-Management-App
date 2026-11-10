@@ -7,6 +7,7 @@ import {
   createCatalogProduct,
   updateCatalogProduct,
   uploadProductMedia,
+  type ImportedMetaPost,
   type CatalogProduct,
   type ProductInput,
   type ProductExtractionSuggestion,
@@ -22,6 +23,7 @@ export type EditorState = {
   importedFromPost?: boolean;
   extractionSuggestionId?: string;
   sourceContext?: string[];
+  importedMetaPost?: ImportedMetaPost;
 };
 
 export const emptyDraft: ProductDraft = {
@@ -119,7 +121,7 @@ export function useProductEditorWorkflow({
               state.extractionSuggestionId,
               state.value,
             )
-          : createCatalogProduct(state.value),
+          : createCatalogProduct(state.value, state.importedMetaPost),
     onError: (cause) =>
       setError(cause instanceof Error ? cause.message : "تعذر حفظ المنتج."),
   });

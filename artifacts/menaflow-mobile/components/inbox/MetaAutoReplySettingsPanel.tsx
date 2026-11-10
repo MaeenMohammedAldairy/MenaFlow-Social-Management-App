@@ -131,6 +131,9 @@ export function MetaAutoReplySettingsPanel({
     useState(false);
   const [historicalPlatform, setHistoricalPlatform] =
     useState<MetaInboxPlatform>("facebook");
+  const [historicalSelectionMode, setHistoricalSelectionMode] = useState<
+    "selected" | "all"
+  >("selected");
   const [selectedHistoricalPostIds, setSelectedHistoricalPostIds] = useState<
     Set<string>
   >(new Set());
@@ -184,13 +187,13 @@ export function MetaAutoReplySettingsPanel({
   });
   const queueHistoricalComments = useMutation({
     mutationFn: queueMetaAutoReplyHistoricalComments,
-    onSuccess: async ({ queuedCount }) => {
+    onSuccess: async ({ queuedCount, batchCount }) => {
       setIsHistoricalModalOpen(false);
       setIsHistoricalConfirmationOpen(false);
       setSelectedHistoricalPostIds(new Set());
       setHistoricalQueueMessage(
         queuedCount
-          ? `تمت إضافة ${formatArabicNumber(queuedCount)} تعليق إلى طابور الرد. راجع حالات الإرسال في صندوق الوارد.`
+          ? `تمت إضافة ${formatArabicNumber(queuedCount)} تعليق إلى طابور الرد على ${formatArabicNumber(batchCount)} دفعة (20 تعليقًا كحد أقصى للدفعة). راجع حالة كل تعليق في صندوق الوارد.`
           : "لم تعد هناك تعليقات مؤهلة للرد.",
       );
       await Promise.all([
@@ -228,14 +231,21 @@ export function MetaAutoReplySettingsPanel({
   };
   const historicalPlatformData =
     historicalPosts.data?.platforms[historicalPlatform];
-  const selectedHistoricalPosts =
-    historicalPlatformData?.posts.filter((post) =>
-      selectedHistoricalPostIds.has(post.id),
+  const allEligibleHistoricalPosts =
+    historicalPlatformData?.posts.filter(
+      (post) => post.eligibleCommentCount > 0,
     ) ?? [];
+  const selectedHistoricalPosts =
+    historicalSelectionMode === "all"
+      ? allEligibleHistoricalPosts
+      : (historicalPlatformData?.posts.filter((post) =>
+          selectedHistoricalPostIds.has(post.id),
+        ) ?? []);
   const selectedHistoricalCommentCount = selectedHistoricalPosts.reduce(
     (total, post) => total + post.eligibleCommentCount,
     0,
   );
+  const historicalBatchCount = Math.ceil(selectedHistoricalCommentCount / 20);
   const toggleHistoricalPost = (postId: string) => {
     const post = historicalPlatformData?.posts.find(
       (candidate) => candidate.id === postId,
@@ -276,7 +286,9 @@ export function MetaAutoReplySettingsPanel({
   const confirmHistoricalQueue = () => {
     if (
       !historicalPlatformData?.ready ||
-      !selectedHistoricalPostIds.size ||
+      (historicalSelectionMode === "all"
+        ? !allEligibleHistoricalPosts.length
+        : !selectedHistoricalPostIds.size) ||
       queueHistoricalComments.isPending
     ) {
       return;
@@ -320,6 +332,7 @@ export function MetaAutoReplySettingsPanel({
               setError("");
               setHistoricalQueueMessage("");
               setSelectedHistoricalPostIds(new Set());
+              setHistoricalSelectionMode("selected");
               setHistoricalPlatform("facebook");
               setIsHistoricalModalOpen(true);
             }}
@@ -467,6 +480,59 @@ export function MetaAutoReplySettingsPanel({
                   </Text>
                 ) : null}
               </View>
+              <View style={styles.choiceRow}>
+                {(
+                  [
+                    ["selected", "منشورات محددة"],
+                    ["all", "جميع التعليقات المؤهلة"],
+                  ] as const
+                ).map(([mode, label]) => {
+                  const selected = historicalSelectionMode === mode;
+                  return (
+                    <Pressable
+                      key={mode}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected }}
+                      disabled={queueHistoricalComments.isPending}
+                      onPress={() => {
+                        setHistoricalSelectionMode(mode);
+                        setError("");
+                      }}
+                      style={[
+                        styles.historicalModeOption,
+                        {
+                          backgroundColor: selected
+                            ? colors.primary
+                            : colors.background,
+                          borderColor: selected
+                            ? colors.primary
+                            : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.platformChoiceLabel,
+                          {
+                            color: selected
+                              ? colors.primaryForeground
+                              : colors.foreground,
+                          },
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <Text
+                style={[styles.bodySmall, { color: colors.mutedForeground }]}
+              >
+                خيار جميع التعليقات يعالج كل تعليق مؤهل محفوظ في صندوق الوارد
+                خلال آخر 24 ساعة، ويضيفها إلى الطابور على دفعات بحد أقصى 20
+                تعليقًا لكل دفعة.
+              </Text>
               {historicalPosts.isPending ? (
                 <Text style={[styles.body, { color: colors.mutedForeground }]}>
                   جارٍ تحميل المنشورات والتعليقات المؤهلة...
@@ -487,9 +553,11 @@ export function MetaAutoReplySettingsPanel({
                   {historicalPlatformData.reason}
                 </Text>
               ) : null}
-              {selectedHistoricalCommentCount > 20 ? (
+              {historicalSelectionMode === "selected" &&
+              selectedHistoricalCommentCount > 20 ? (
                 <Text style={[styles.bodySmall, { color: colors.warning }]}>
-                  الحد الأقصى لكل دفعة 20 تعليقًا. أزل بعض المنشورات للمتابعة.
+                  الحد الأقصى للدفعة 20 تعليقًا. أزل بعض المنشورات للمتابعة أو
+                  اختر جميع التعليقات المؤهلة.
                 </Text>
               ) : null}
               {historicalPlatformData?.posts.length ? (
@@ -498,21 +566,27 @@ export function MetaAutoReplySettingsPanel({
                     accessibilityLiveRegion="polite"
                     style={[styles.body, { color: colors.foreground }]}
                   >
-                    المحدد للدفعة:{" "}
-                    {formatArabicNumber(selectedHistoricalCommentCount)} / 20
-                    تعليقًا
+                    {historicalSelectionMode === "all"
+                      ? "جميع التعليقات المؤهلة: "
+                      : "المحدد للدفعة: "}
+                    {formatArabicNumber(selectedHistoricalCommentCount)}
+                    {historicalSelectionMode === "selected" ? " / 20" : ""}
+                    {" تعليقًا"}
                   </Text>
                   <View style={styles.historicalSelectionActions}>
-                    <Pressable
-                      accessibilityRole="button"
-                      disabled={queueHistoricalComments.isPending}
-                      onPress={selectAvailableHistoricalPosts}
-                    >
-                      <Text style={{ color: colors.primary }}>
-                        تحديد المتاح
-                      </Text>
-                    </Pressable>
-                    {selectedHistoricalPostIds.size ? (
+                    {historicalSelectionMode === "selected" ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={queueHistoricalComments.isPending}
+                        onPress={selectAvailableHistoricalPosts}
+                      >
+                        <Text style={{ color: colors.primary }}>
+                          تحديد دفعة حتى 20
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                    {historicalSelectionMode === "selected" &&
+                    selectedHistoricalPostIds.size ? (
                       <Pressable
                         accessibilityRole="button"
                         disabled={queueHistoricalComments.isPending}
@@ -527,9 +601,13 @@ export function MetaAutoReplySettingsPanel({
                 </View>
               ) : null}
               {historicalPlatformData?.posts.map((post) => {
-                const checked = selectedHistoricalPostIds.has(post.id);
+                const checked =
+                  historicalSelectionMode === "all"
+                    ? post.eligibleCommentCount > 0
+                    : selectedHistoricalPostIds.has(post.id);
                 const disabled =
                   post.eligibleCommentCount === 0 ||
+                  historicalSelectionMode === "all" ||
                   (!checked &&
                     selectedHistoricalCommentCount + post.eligibleCommentCount >
                       20) ||
@@ -628,8 +706,8 @@ export function MetaAutoReplySettingsPanel({
                         <Text
                           style={[styles.bodySmall, { color: colors.warning }]}
                         >
-                          عدد التعليقات يتجاوز حد الدفعة؛ لا يمكن اختيار
-                          المنشور.
+                          يتجاوز عدد التعليقات حد الدفعة؛ اختر «جميع التعليقات
+                          المؤهلة» لمعالجتها على دفعات.
                         </Text>
                       ) : null}
                     </View>
@@ -765,11 +843,14 @@ export function MetaAutoReplySettingsPanel({
                 </View>
               </View>
               <Text style={[styles.body, { color: colors.foreground }]}>
-                سيتم إضافة {formatArabicNumber(selectedHistoricalCommentCount)}{" "}
-                تعليقًا من {formatArabicNumber(selectedHistoricalPosts.length)}{" "}
-                منشور إلى طابور الرد:
+                {historicalSelectionMode === "all"
+                  ? `ستتم معالجة جميع التعليقات المؤهلة (${formatArabicNumber(selectedHistoricalCommentCount)}) على ${formatArabicNumber(selectedHistoricalPosts.length)} منشور.`
+                  : `سيتم إضافة ${formatArabicNumber(selectedHistoricalCommentCount)} تعليقًا من ${formatArabicNumber(selectedHistoricalPosts.length)} منشور.`}
+                {" وتُضاف إلى الطابور على "}
+                {formatArabicNumber(historicalBatchCount)}
+                {" دفعة، بحد أقصى 20 تعليقًا للدفعة."}
               </Text>
-              {selectedHistoricalPosts.map((post) => (
+              {selectedHistoricalPosts.slice(0, 5).map((post) => (
                 <View key={post.id} style={styles.confirmationPost}>
                   <Text
                     style={[styles.bodySmall, { color: colors.foreground }]}
@@ -786,6 +867,14 @@ export function MetaAutoReplySettingsPanel({
                   </Text>
                 </View>
               ))}
+              {selectedHistoricalPosts.length > 5 ? (
+                <Text
+                  style={[styles.bodySmall, { color: colors.mutedForeground }]}
+                >
+                  ومنشورات أخرى:{" "}
+                  {formatArabicNumber(selectedHistoricalPosts.length - 5)}.
+                </Text>
+              ) : null}
               <Text style={[styles.bodySmall, { color: colors.warning }]}>
                 بعد التأكيد، قد ينشئ الذكاء الاصطناعي ردودًا تُنشر علنًا أسفل
                 التعليقات. لا يمكن التراجع عن الرد بعد إرساله.
@@ -820,7 +909,13 @@ export function MetaAutoReplySettingsPanel({
                 onPress={() =>
                   queueHistoricalComments.mutate({
                     platform: historicalPlatform,
-                    postIds: selectedHistoricalPosts.map((post) => post.id),
+                    ...(historicalSelectionMode === "all"
+                      ? { allEligible: true }
+                      : {
+                          postIds: selectedHistoricalPosts.map(
+                            (post) => post.id,
+                          ),
+                        }),
                   })
                 }
               />
@@ -1265,6 +1360,16 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  historicalModeOption: {
+    flex: 1,
+    minWidth: 150,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+  },
   platformOption: {
     flexDirection: "row",
     alignItems: "center",

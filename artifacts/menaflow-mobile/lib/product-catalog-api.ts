@@ -1,5 +1,15 @@
 import { fetchApiResponse } from "@workspace/api-client-react";
 
+export type ImportedMetaPost = {
+  platform: "facebook" | "instagram";
+  id: string;
+  text: string;
+  publishedAt: string | null;
+  url: string | null;
+  imageUrl: string | null;
+  mediaType?: string | null;
+};
+
 export type CatalogProduct = {
   id: string;
   sku: string | null;
@@ -37,7 +47,8 @@ export type ProductPublicationHistory = {
 
 export type InventoryMovement = {
   id: string;
-  type: "opening_balance" | "adjustment" | "reservation" | "release" | "shipment";
+  type:
+    "opening_balance" | "adjustment" | "reservation" | "release" | "shipment";
   stockDelta: number;
   reservedDelta: number;
   reason: string;
@@ -333,11 +344,15 @@ export async function reviewProductExtraction(input: {
 
 export async function createCatalogProduct(
   product: ProductInput,
+  importedMetaPost?: ImportedMetaPost,
 ): Promise<CatalogProduct> {
   const response = await fetchApiResponse("/api/social/products", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(product),
+    body: JSON.stringify({
+      ...product,
+      ...(importedMetaPost && { importedMetaPost }),
+    }),
   });
   const result = await responseJson<{ product: CatalogProduct }>(response);
   return result.product;

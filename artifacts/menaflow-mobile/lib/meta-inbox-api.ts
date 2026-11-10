@@ -151,9 +151,7 @@ export async function getMetaInbox(
   if (query.platform) search.set("platform", query.platform);
   const searchText = search.toString();
   const suffix = searchText ? `?${searchText}` : "";
-  const response = await fetchApiResponse(
-    `/api/social/meta-inbox${suffix}`,
-  );
+  const response = await fetchApiResponse(`/api/social/meta-inbox${suffix}`);
   return responseJson<MetaInboxResponse>(response);
 }
 
@@ -182,8 +180,9 @@ export async function getMetaAutoReplyHistoricalPosts(): Promise<MetaAutoReplyHi
 
 export async function queueMetaAutoReplyHistoricalComments(input: {
   platform: MetaInboxPlatform;
-  postIds: string[];
-}): Promise<{ queuedCount: number }> {
+  postIds?: string[];
+  allEligible?: boolean;
+}): Promise<{ queuedCount: number; batchCount: number }> {
   const response = await fetchApiResponse(
     "/api/social/meta-auto-replies/historical-comments",
     {
@@ -192,7 +191,7 @@ export async function queueMetaAutoReplyHistoricalComments(input: {
       body: JSON.stringify(input),
     },
   );
-  return responseJson<{ queuedCount: number }>(response);
+  return responseJson<{ queuedCount: number; batchCount: number }>(response);
 }
 
 export async function activateMetaWebhookSubscriptions(): Promise<{

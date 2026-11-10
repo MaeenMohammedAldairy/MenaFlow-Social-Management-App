@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { Alert, Modal, Pressable, ScrollView, View } from "react-native";
+import {
+  Alert,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  View,
+} from "react-native";
 import { Image } from "expo-image";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
@@ -86,7 +93,9 @@ function displayPostTitle(post: Post): string {
   const title = post.title.trim();
   if (
     title &&
-    !["محتوى يحتاج إلى مراجعة", "محتوى من واتساب", "منشور بدون عنوان"].includes(title)
+    !["محتوى يحتاج إلى مراجعة", "محتوى من واتساب", "منشور بدون عنوان"].includes(
+      title,
+    )
   ) {
     return title;
   }
@@ -140,9 +149,9 @@ export function ContentPostList({
   const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [expandedActionPostIds, setExpandedActionPostIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [expandedActionPostIds, setExpandedActionPostIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(
     () => new Set(),
   );
@@ -185,10 +194,7 @@ export function ContentPostList({
                     color={colors.primary}
                   />
                   <Text
-                    style={[
-                      styles.mediaVideoLabel,
-                      { color: colors.primary },
-                    ]}
+                    style={[styles.mediaVideoLabel, { color: colors.primary }]}
                   >
                     {mediaType === "video" ? "فيديو" : "مستند"}
                   </Text>
@@ -210,7 +216,10 @@ export function ContentPostList({
                   color={colors.destructive}
                 />
                 <Text
-                  style={[styles.mediaVideoLabel, { color: colors.destructive }]}
+                  style={[
+                    styles.mediaVideoLabel,
+                    { color: colors.destructive },
+                  ]}
                 >
                   تعذر التحميل
                 </Text>
@@ -254,7 +263,10 @@ export function ContentPostList({
             <Pressable
               accessibilityRole="button"
               onPress={onClearFilters}
-              style={[styles.clearFiltersButton, { borderColor: colors.border }]}
+              style={[
+                styles.clearFiltersButton,
+                { borderColor: colors.border },
+              ]}
             >
               <Text style={[styles.reviewAction, { color: colors.primary }]}>
                 مسح المرشحات
@@ -275,12 +287,19 @@ export function ContentPostList({
               const expanded = expandedPostIds.has(post.id);
               const actionsExpanded = expandedActionPostIds.has(post.id);
               const publishChannelResults = post.channels.flatMap((channel) => {
-                if (channel !== "facebook" && channel !== "instagram") return [];
+                if (channel !== "facebook" && channel !== "instagram")
+                  return [];
                 const result = post.publishResults?.[channel];
                 if (!result || typeof result !== "object") return [];
                 const resultRecord = result as Record<string, unknown>;
                 return typeof resultRecord.status === "string"
-                  ? [{ channel, status: resultRecord.status, reason: resultRecord.reason }]
+                  ? [
+                      {
+                        channel,
+                        status: resultRecord.status,
+                        reason: resultRecord.reason,
+                      },
+                    ]
                   : [];
               });
               const publishedChannels = publishChannelResults
@@ -313,6 +332,17 @@ export function ContentPostList({
                       ? "publish"
                       : null;
               const sourceText = post.sourceText ?? "";
+              const isMetaImported = post.sourceType === "meta_import";
+              const importedPlatform =
+                post.metadata?.externalPlatform === "facebook" ||
+                post.metadata?.externalPlatform === "instagram"
+                  ? post.metadata.externalPlatform
+                  : null;
+              const importedPermalink =
+                typeof post.metadata?.permalinkUrl === "string" &&
+                post.metadata.permalinkUrl.startsWith("https://")
+                  ? post.metadata.permalinkUrl
+                  : null;
               const canExpand =
                 post.body.length > 240 || sourceText.length > 160;
               const reviewReason =
@@ -354,6 +384,59 @@ export function ContentPostList({
                       </Text>
                     </View>
                   </View>
+
+                  {isMetaImported ? (
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: 8,
+                      }}
+                    >
+                      {importedPlatform ? (
+                        <SocialPlatformIcon
+                          platform={importedPlatform}
+                          size={18}
+                        />
+                      ) : null}
+                      <Text
+                        style={[
+                          styles.postDate,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        منشور مستورد من{" "}
+                        {importedPlatform
+                          ? platformLabel(importedPlatform)
+                          : "منصة Meta"}{" "}
+                        · لا يُعاد نشره من هنا
+                      </Text>
+                      {importedPermalink ? (
+                        <Pressable
+                          accessibilityRole="link"
+                          accessibilityLabel="فتح المنشور الأصلي على المنصة"
+                          onPress={() => {
+                            void Linking.openURL(importedPermalink).catch(() =>
+                              Alert.alert(
+                                "تعذر فتح المنشور",
+                                "تحقق من اتصال الجهاز ثم أعد المحاولة.",
+                              ),
+                            );
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.reviewAction,
+                              { color: colors.primary },
+                            ]}
+                          >
+                            عرض على المنصة
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
 
                   {post.mediaUrls && post.mediaUrls.length > 0 && (
                     <View style={styles.mediaPreview}>
@@ -450,8 +533,13 @@ export function ContentPostList({
                       </Text>
                     </View>
                   )}
-                  {(!post.mediaUrls || post.mediaUrls.length === 0) ? (
-                    <Text style={[styles.missingMedia, { color: colors.mutedForeground }]}>
+                  {!post.mediaUrls || post.mediaUrls.length === 0 ? (
+                    <Text
+                      style={[
+                        styles.missingMedia,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
                       لا توجد وسائط مرفقة
                     </Text>
                   ) : null}
@@ -499,7 +587,9 @@ export function ContentPostList({
                       }
                       style={styles.expandContentButton}
                     >
-                      <Text style={[styles.reviewAction, { color: colors.primary }]}>
+                      <Text
+                        style={[styles.reviewAction, { color: colors.primary }]}
+                      >
                         {expanded ? "عرض أقل" : "عرض النص كاملاً"}
                       </Text>
                     </Pressable>
@@ -508,23 +598,26 @@ export function ContentPostList({
                   (post.status === "review" || post.status === "failed") ? (
                     <Text
                       accessibilityRole="text"
-                      style={[styles.sourceText, { color: colors.mutedForeground }]}
+                      style={[
+                        styles.sourceText,
+                        { color: colors.mutedForeground },
+                      ]}
                     >
-                      {post.status === "review" ? "سبب المراجعة: " : "سبب الفشل: "}
+                      {post.status === "review"
+                        ? "سبب المراجعة: "
+                        : "سبب الفشل: "}
                       {publishReasonLabel(reviewReason) ??
                         (post.status === "failed"
                           ? "تعذّر النشر. راجع اتصال الحساب وصلاحياته ثم أعد المحاولة."
                           : reviewReason)}
                     </Text>
                   ) : null}
-                  {post.status === "failed" && publishChannelResults.length > 0 ? (
+                  {post.status === "failed" &&
+                  publishChannelResults.length > 0 ? (
                     <View style={{ gap: 5 }}>
                       {publishedChannels.length > 0 ? (
                         <Text
-                          style={[
-                            styles.sourceText,
-                            { color: colors.green },
-                          ]}
+                          style={[styles.sourceText, { color: colors.green }]}
                         >
                           تم النشر بنجاح على {publishedChannels.join(" و")}.
                         </Text>
@@ -553,10 +646,7 @@ export function ContentPostList({
                   post.status !== "publishing" ? (
                     <Text
                       accessibilityRole="text"
-                      style={[
-                        styles.sourceText,
-                        { color: colors.destructive },
-                      ]}
+                      style={[styles.sourceText, { color: colors.destructive }]}
                     >
                       {readinessMessage}
                     </Text>
@@ -616,7 +706,10 @@ export function ContentPostList({
                           <View
                             key={channel}
                             accessibilityLabel={`منصة ${platformLabel(channel)}`}
-                            style={[styles.postChannelBadge, { borderColor: colors.border }]}
+                            style={[
+                              styles.postChannelBadge,
+                              { borderColor: colors.border },
+                            ]}
                           >
                             <SocialPlatformIcon platform={channel} size={16} />
                             <Text
@@ -666,8 +759,7 @@ export function ContentPostList({
                             {
                               backgroundColor: colors.primary,
                               opacity:
-                                primaryAction === "publish" &&
-                                readinessMessage
+                                primaryAction === "publish" && readinessMessage
                                   ? 0.5
                                   : 1,
                             },
@@ -950,19 +1042,27 @@ export function ContentPostList({
           <View
             style={[
               styles.previewModal,
-              { backgroundColor: colors.background, borderColor: colors.border },
+              {
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+              },
             ]}
           >
             {previewPost ? (
               <>
                 <View style={styles.previewHeader}>
                   <View style={styles.previewHeading}>
-                    <Text style={[styles.postTitle, { color: colors.foreground }]}>
+                    <Text
+                      style={[styles.postTitle, { color: colors.foreground }]}
+                    >
                       معاينة المنشور
                     </Text>
                     <Text
                       numberOfLines={2}
-                      style={[styles.previewTitle, { color: colors.mutedForeground }]}
+                      style={[
+                        styles.previewTitle,
+                        { color: colors.mutedForeground },
+                      ]}
                     >
                       {displayPostTitle(previewPost)}
                     </Text>
@@ -981,7 +1081,9 @@ export function ContentPostList({
                     label={statusInfo(previewPost.status).label}
                     tone={statusInfo(previewPost.status).tone}
                   />
-                  <Text style={[styles.postDate, { color: colors.mutedForeground }]}>
+                  <Text
+                    style={[styles.postDate, { color: colors.mutedForeground }]}
+                  >
                     {formatArabicDateTime(
                       previewPost.sourceMessageDate ?? previewPost.createdAt,
                     ) ?? "غير محدد"}
@@ -999,8 +1101,12 @@ export function ContentPostList({
                         style={[
                           styles.previewPlatformTab,
                           {
-                            borderColor: selected ? colors.primary : colors.border,
-                            backgroundColor: selected ? colors.accent : colors.background,
+                            borderColor: selected
+                              ? colors.primary
+                              : colors.border,
+                            backgroundColor: selected
+                              ? colors.accent
+                              : colors.background,
                           },
                         ]}
                       >
@@ -1008,7 +1114,11 @@ export function ContentPostList({
                         <Text
                           style={[
                             styles.reviewAction,
-                            { color: selected ? colors.primary : colors.mutedForeground },
+                            {
+                              color: selected
+                                ? colors.primary
+                                : colors.mutedForeground,
+                            },
                           ]}
                         >
                           {platformLabel(channel)}
@@ -1027,42 +1137,54 @@ export function ContentPostList({
                       { backgroundColor: colors.accent },
                     ]}
                   >
-                    {previewTextLines(previewText(previewPost, previewChannel)).map(
-                      ({ text, isBullet, isHeading }, index) => (
-                        <View
-                          key={`${index}-${text}`}
-                          style={[
-                            isBullet ? styles.previewBulletRow : styles.previewLine,
-                            isHeading && styles.previewSectionHeading,
-                          ]}
-                        >
-                          {isBullet ? (
-                            <Text style={[styles.previewBullet, { color: colors.primary }]}>
-                              •
-                            </Text>
-                          ) : null}
+                    {previewTextLines(
+                      previewText(previewPost, previewChannel),
+                    ).map(({ text, isBullet, isHeading }, index) => (
+                      <View
+                        key={`${index}-${text}`}
+                        style={[
+                          isBullet
+                            ? styles.previewBulletRow
+                            : styles.previewLine,
+                          isHeading && styles.previewSectionHeading,
+                        ]}
+                      >
+                        {isBullet ? (
                           <Text
-                            selectable
                             style={[
-                              styles.previewBody,
-                              { color: colors.foreground },
-                              isHeading && styles.previewHeadingText,
+                              styles.previewBullet,
+                              { color: colors.primary },
                             ]}
                           >
-                            {text}
+                            •
                           </Text>
-                        </View>
-                      ),
-                    )}
+                        ) : null}
+                        <Text
+                          selectable
+                          style={[
+                            styles.previewBody,
+                            { color: colors.foreground },
+                            isHeading && styles.previewHeadingText,
+                          ]}
+                        >
+                          {text}
+                        </Text>
+                      </View>
+                    ))}
                   </View>
                   {previewPost.mediaUrls?.length ? (
                     <View style={styles.previewMediaSection}>
-                      <Text style={[styles.mediaLabel, { color: colors.primary }]}>
+                      <Text
+                        style={[styles.mediaLabel, { color: colors.primary }]}
+                      >
                         الوسائط ({previewPost.mediaUrls.length})
                       </Text>
                       <View style={styles.previewMediaList}>
                         {previewPost.mediaUrls.map((mediaUrl, index) => {
-                          const mediaType = postMediaType(previewPost, mediaUrl);
+                          const mediaType = postMediaType(
+                            previewPost,
+                            mediaUrl,
+                          );
                           return mediaType === "image" ? (
                             <Image
                               key={`${mediaUrl}-${index}`}
@@ -1087,11 +1209,18 @@ export function ContentPostList({
                               ]}
                             >
                               <Icon
-                                name={mediaType === "video" ? "play" : "file-text"}
+                                name={
+                                  mediaType === "video" ? "play" : "file-text"
+                                }
                                 size={18}
                                 color={colors.primary}
                               />
-                              <Text style={[styles.mediaVideoLabel, { color: colors.primary }]}>
+                              <Text
+                                style={[
+                                  styles.mediaVideoLabel,
+                                  { color: colors.primary },
+                                ]}
+                              >
                                 {mediaType === "video" ? "فيديو" : "مستند"}
                               </Text>
                             </View>
@@ -1106,7 +1235,9 @@ export function ContentPostList({
                   onPress={() => setPreviewPost(null)}
                   style={styles.previewCloseAction}
                 >
-                  <Text style={[styles.reviewAction, { color: colors.primary }]}>
+                  <Text
+                    style={[styles.reviewAction, { color: colors.primary }]}
+                  >
                     إغلاق
                   </Text>
                 </Pressable>

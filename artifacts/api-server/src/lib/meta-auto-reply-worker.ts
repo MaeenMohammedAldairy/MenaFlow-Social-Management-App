@@ -290,7 +290,9 @@ async function publishedPostImageUrls(
   });
   const productImages = productMediaIds.flatMap((mediaId) => {
     try {
-      const url = new URL(signedWhatsAppMediaUrl(mediaId, true, "thumbnail"));
+      const url = new URL(
+        signedWhatsAppMediaUrl(mediaId, true, "instagram-jpeg"),
+      );
       url.pathname = `/api/social/products/public-media/${encodeURIComponent(mediaId)}`;
       return [url.toString()];
     } catch (error) {
@@ -331,7 +333,7 @@ async function publishedPostImageUrls(
     )
     .flatMap((media) => {
       try {
-        return [signedWhatsAppMediaUrl(media.id)];
+        return [signedWhatsAppMediaUrl(media.id, false, "instagram-jpeg")];
       } catch (error) {
         logger.warn(
           {
