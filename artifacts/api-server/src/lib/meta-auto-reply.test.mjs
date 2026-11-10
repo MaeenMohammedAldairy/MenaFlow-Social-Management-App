@@ -1149,6 +1149,20 @@ test("keeps generated product answers while adding a safe image footer only when
     "تفضل صور المنتج المتوفرة.",
   );
   assert.equal(
+    finalizeMetaAutoReplyText(
+      "عذرا لاتتوفر صور لهذا المنتج حاليا",
+      true,
+    ),
+    "تفضل الصور المتوفرة.",
+  );
+  assert.equal(
+    finalizeMetaAutoReplyText(
+      "عذرًا لا تتوفر صور لهذا المنتج حاليًا. السعر 199 ريال.",
+      true,
+    ),
+    "السعر 199 ريال. تفضل الصور المتوفرة.",
+  );
+  assert.equal(
     finalizeMetaAutoReplyText("السعر 199 ريال", false),
     "السعر 199 ريال",
   );
