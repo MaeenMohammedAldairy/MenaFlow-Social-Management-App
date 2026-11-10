@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import {
+  getGetSocialConnectionsQueryKey,
+  getSocialConnections,
+} from "@workspace/api-client-react";
+import {
   Alert,
   Modal,
   Pressable,
@@ -15,6 +19,7 @@ import {
 } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, Panel, SectionTitle } from "@/components/Ui";
+import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { useColors } from "@/hooks/useColors";
 import {
   getMetaAutoReplySettings,
@@ -134,6 +139,15 @@ export function MetaAutoReplySettingsPanel({
   const historicalPosts = useQuery({
     queryKey: historicalQueryKey,
     queryFn: getMetaAutoReplyHistoricalPosts,
+    enabled: isHistoricalModalOpen,
+    retry: false,
+  });
+  const connections = useQuery({
+    queryKey: [
+      ...getGetSocialConnectionsQueryKey(),
+      userId ?? "local",
+    ] as const,
+    queryFn: getSocialConnections,
     enabled: isHistoricalModalOpen,
     retry: false,
   });
@@ -348,6 +362,8 @@ export function MetaAutoReplySettingsPanel({
                 {platforms.map(({ key, label }) => {
                   const data = historicalPosts.data?.platforms[key];
                   const selected = historicalPlatform === key;
+                  const accountName =
+                    connections.data?.[key]?.accountName ?? "الحساب غير متاح";
                   return (
                     <Pressable
                       key={key}
@@ -363,7 +379,7 @@ export function MetaAutoReplySettingsPanel({
                         setError("");
                       }}
                       style={[
-                        styles.choice,
+                        styles.platformOption,
                         {
                           backgroundColor: selected
                             ? colors.primary
@@ -373,10 +389,45 @@ export function MetaAutoReplySettingsPanel({
                         },
                       ]}
                     >
-                      {label}
+                      <SocialPlatformIcon platform={key} size={22} />
+                      <View style={styles.platformChoiceCopy}>
+                        <Text
+                          style={[
+                            styles.platformChoiceLabel,
+                            {
+                              color: selected
+                                ? colors.primaryForeground
+                                : colors.foreground,
+                            },
+                          ]}
+                        >
+                          {label}
+                        </Text>
+                        <Text
+                          numberOfLines={1}
+                          style={[
+                            styles.bodySmall,
+                            {
+                              color: selected
+                                ? colors.primaryForeground
+                                : colors.mutedForeground,
+                            },
+                          ]}
+                        >
+                          {accountName}
+                        </Text>
+                      </View>
                     </Pressable>
                   );
                 })}
+              {connections.isError ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={[styles.bodySmall, { color: colors.destructive }]}
+                >
+                  تعذر تحميل اسم الحساب المتصل.
+                </Text>
+              ) : null}
               </View>
               {historicalPosts.isPending ? (
                 <Text style={[styles.body, { color: colors.mutedForeground }]}>
@@ -859,23 +910,7 @@ function SettingSwitch({
 }
 
 function PlatformIcon({ platform }: { platform: MetaInboxPlatform }) {
-  const isFacebook = platform === "facebook";
-  return (
-    <View
-      accessibilityElementsHidden
-      importantForAccessibility="no-hide-descendants"
-      style={[
-        styles.platformIcon,
-        { backgroundColor: isFacebook ? "#1877F2" : "#C13584" },
-      ]}
-    >
-      {isFacebook ? (
-        <Text style={styles.facebookGlyph}>f</Text>
-      ) : (
-        <Icon name="instagram" size={17} color="#FFFFFF" />
-      )}
-    </View>
-  );
+  return <SocialPlatformIcon platform={platform} size={28} />;
 }
 
 const styles = StyleSheet.create({
@@ -945,19 +980,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  platformIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  facebookGlyph: {
-    color: "#FFFFFF",
-    fontSize: 23,
-    fontWeight: "800",
-    lineHeight: 26,
-  },
+  platformChoiceCopy: { flex: 1, gap: 2, alignItems: "flex-start" },
+  platformChoiceLabel: { fontSize: 13, fontWeight: "600" },
   platformTitle: { fontSize: 15, fontWeight: "700", textAlign: "right" },
   platformState: { fontSize: 12, fontWeight: "600" },
   switchBlock: { gap: 3 },
@@ -979,6 +1003,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  platformOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+    minWidth: 140,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
   historicalPost: {
     flexDirection: "row",
     alignItems: "center",

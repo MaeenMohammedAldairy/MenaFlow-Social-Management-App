@@ -19,6 +19,7 @@ import {
   menaMetaConnections,
   menaMetaInboxItems,
   menaMetaWebhookSubscriptions,
+  productPublicationJobs,
   posts,
   productPosts,
   products,
@@ -238,6 +239,45 @@ async function historicalCommentCandidates(
     )
     .orderBy(desc(posts.updatedAt))
     .limit(200);
+  const productPublicationRows = await db
+    .select({
+      id: posts.id,
+      externalPostId: platformPostId,
+      title: posts.title,
+      productName: products.name,
+    })
+    .from(productPublicationJobs)
+    .innerJoin(
+      posts,
+      and(
+        eq(posts.workspaceId, productPublicationJobs.workspaceId),
+        eq(posts.id, productPublicationJobs.postId),
+      ),
+    )
+    .innerJoin(
+      products,
+      and(
+        eq(products.workspaceId, productPublicationJobs.workspaceId),
+        eq(products.id, productPublicationJobs.productId),
+      ),
+    )
+    .where(
+      and(
+        eq(productPublicationJobs.workspaceId, workspaceId),
+        eq(productPublicationJobs.channel, platform),
+        eq(productPublicationJobs.accountId, accountId),
+        eq(productPublicationJobs.status, "published"),
+        isNotNull(productPublicationJobs.postId),
+        eq(posts.workspaceId, workspaceId),
+        published,
+        isNotNull(platformPostId),
+        ne(platformPostId, ""),
+        eq(products.status, "active"),
+        isNotNull(products.verifiedAt),
+      ),
+    )
+    .orderBy(desc(posts.updatedAt))
+    .limit(200);
   const grouped = new Map<
     string,
     {
@@ -247,7 +287,7 @@ async function historicalCommentCandidates(
       productNames: Set<string>;
     }
   >();
-  for (const row of rows) {
+  for (const row of [...rows, ...productPublicationRows]) {
     let post = grouped.get(row.id);
     if (!post) {
       post = {
