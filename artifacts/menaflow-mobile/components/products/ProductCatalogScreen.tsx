@@ -562,18 +562,14 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
       ? {
           platform: "facebook" as const,
           accountName: connections.data.facebook.accountName,
-          ready:
-            connections.data.facebook.connectionState === "connected" &&
-            connections.data.facebook.authorizationStatus === "ready",
+          ready: connections.data.facebook.authorizationStatus === "ready",
         }
       : null,
     connections.data?.instagram
       ? {
           platform: "instagram" as const,
           accountName: connections.data.instagram.accountName,
-          ready:
-            connections.data.instagram.connectionState === "connected" &&
-            connections.data.instagram.authorizationStatus === "ready",
+          ready: connections.data.instagram.authorizationStatus === "ready",
         }
       : null,
   ].filter(
