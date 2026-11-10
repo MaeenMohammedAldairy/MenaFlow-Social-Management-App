@@ -710,11 +710,17 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   });
   const extractScannedPost = useMutation({
     mutationFn: ({
+      platform,
       post,
     }: {
-      platform: AccountPlatform;
+      platform: "facebook" | "instagram";
       post: SocialAccountPost;
-    }) => extractScannedPostProduct(post.text),
+    }) =>
+      extractScannedPostProduct({
+        text: post.text,
+        platform,
+        postId: post.id,
+      }),
     onSuccess: (result, { platform, post }) => {
       if (result.classification !== "product" || !result.extractedData) {
         setError(

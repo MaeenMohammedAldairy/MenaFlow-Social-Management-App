@@ -386,14 +386,18 @@ export async function importProductCandidate(
 }
 
 export async function extractScannedPostProduct(
-  text: string,
+  input: {
+    text: string;
+    platform: "facebook" | "instagram";
+    postId: string;
+  },
 ): Promise<ScannedPostProductExtraction> {
   const response = await fetchApiResponse(
     "/api/social/products/extract-scanned-post",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(input),
     },
   );
   return responseJson(response);

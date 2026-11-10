@@ -126,6 +126,14 @@ test("generates a stable SKU from source message IDs", () => {
   const sku = generatedProductSku(["message-1", "message-2"]);
   assert.match(sku, /^MF-[A-F0-9]{16}$/);
   assert.equal(sku, generatedProductSku(["message-2", "message-1"]));
+  assert.notEqual(
+    generatedProductSku(["facebook:post-1"]),
+    generatedProductSku(["instagram:post-1"]),
+  );
+  assert.notEqual(
+    generatedProductSku(["facebook:post-1"]),
+    generatedProductSku(["facebook:post-2"]),
+  );
 });
 
 test("parses fenced JSON and numeric prices when the source has one grounded price", () => {

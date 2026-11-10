@@ -119,6 +119,8 @@ router.post(
       return;
     }
     const text = metaString(req.body?.text)?.trim() ?? "";
+    const platform = req.body?.platform;
+    const postId = metaString(req.body?.postId)?.trim() ?? "";
     if (!text || text.length > 6000) {
       res.status(400).json({
         error: text
@@ -127,12 +129,20 @@ router.post(
       });
       return;
     }
+    if (
+      (platform !== "facebook" && platform !== "instagram") ||
+      !postId ||
+      postId.length > 500
+    ) {
+      res.status(400).json({ error: "بيانات المنشور غير صالحة للاستخراج." });
+      return;
+    }
     const workspaceId = requestWorkspaceId(req);
     try {
       const extraction = await extractWhatsAppProductCandidates(workspaceId, [
         {
-          id: "scanned-post",
-          groupId: "scanned-post",
+          id: `${platform}:${postId}`,
+          groupId: `${platform}:${postId}`,
           messageTimestamp: null,
           replyToMessageId: null,
           text,
