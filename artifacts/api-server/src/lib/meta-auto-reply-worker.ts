@@ -34,6 +34,7 @@ import {
   retryMetaAutoReplyGeneration,
   buildMetaAutoReplyConversationContext,
   hasPreviousMetaAutoReplyInteraction,
+  matchMetaAutoReplyProductFromPublishedPost,
   type MetaAutoReplyConversationEvent,
 } from "./meta-auto-reply";
 import { signedWhatsAppMediaUrl } from "./meta-publishing";
@@ -85,6 +86,7 @@ async function findRelevantCatalogProduct(
   workspaceId: string,
   item: typeof menaMetaInboxItems.$inferSelect,
   conversationText: string,
+  relevantPost: RelevantPost | null,
 ): Promise<typeof products.$inferSelect | null> {
   if (item.kind === "comment" && item.parentId) {
     const linkedProducts = await db
@@ -114,9 +116,28 @@ async function findRelevantCatalogProduct(
       )
       .limit(50);
     if (linkedProducts.length === 1) return linkedProducts[0]?.product ?? null;
-    return matchMetaAutoReplyProduct(
-      linkedProducts.map(({ product }) => product),
-      conversationText,
+    if (linkedProducts.length > 1) {
+      return matchMetaAutoReplyProduct(
+        linkedProducts.map(({ product }) => product),
+        conversationText,
+      );
+    }
+    if (!relevantPost) return null;
+    const candidates = await db
+      .select()
+      .from(products)
+      .where(
+        and(
+          eq(products.workspaceId, workspaceId),
+          eq(products.status, "active"),
+          isNotNull(products.verifiedAt),
+        ),
+      )
+      .orderBy(desc(products.updatedAt))
+      .limit(500);
+    return matchMetaAutoReplyProductFromPublishedPost(
+      candidates,
+      `${relevantPost.title}\n${relevantPost.body}`,
     );
   }
   if (item.kind !== "message") return null;
@@ -269,9 +290,7 @@ async function publishedPostImageUrls(
   });
   const productImages = productMediaIds.flatMap((mediaId) => {
     try {
-      const url = new URL(
-        signedWhatsAppMediaUrl(mediaId, true, "thumbnail"),
-      );
+      const url = new URL(signedWhatsAppMediaUrl(mediaId, true, "thumbnail"));
       url.pathname = `/api/social/products/public-media/${encodeURIComponent(mediaId)}`;
       return [url.toString()];
     } catch (error) {
@@ -696,11 +715,6 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
     return accessToken;
   };
   const searchText = metaPostSearchText(item.text, context);
-  const matchingProduct = await findRelevantCatalogProduct(
-    job.workspaceId,
-    item,
-    searchText,
-  );
   let post = await findRelevantPost(job.workspaceId, item, searchText);
   if (!post) {
     const readPermission =
@@ -744,6 +758,12 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       );
     }
   }
+  const matchingProduct = await findRelevantCatalogProduct(
+    job.workspaceId,
+    item,
+    searchText,
+    post,
+  );
   const wantsProductImages =
     item.kind === "message" && requestedMetaProductImages(item.text, context);
   const productImageUrls =

@@ -1,6 +1,12 @@
-import { and, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { Router } from "express";
-import { db, posts, productPosts, products } from "@workspace/db";
+import {
+  db,
+  posts,
+  productPosts,
+  productPublicationJobs,
+  products,
+} from "@workspace/db";
 
 import { requestOwnerId } from "../lib/owner-access";
 
@@ -53,11 +59,64 @@ router.get("/social/products", requireWorkspace, async (req, res) => {
     if (row.postId) current.postIds.push(row.postId);
     grouped.set(row.product.id, current);
   }
+  const productIds = [...grouped.keys()];
+  const publicationRows = productIds.length
+    ? await db
+        .selectDistinctOn(
+          [
+            productPublicationJobs.productId,
+            productPublicationJobs.channel,
+            productPublicationJobs.accountId,
+          ],
+          {
+            productId: productPublicationJobs.productId,
+            channel: productPublicationJobs.channel,
+            accountId: productPublicationJobs.accountId,
+            permalink: productPublicationJobs.permalink,
+            createdAt: productPublicationJobs.createdAt,
+            completedAt: productPublicationJobs.completedAt,
+          },
+        )
+        .from(productPublicationJobs)
+        .where(
+          and(
+            eq(productPublicationJobs.workspaceId, workspaceId),
+            inArray(productPublicationJobs.productId, productIds),
+            eq(productPublicationJobs.status, "published"),
+          ),
+        )
+        .orderBy(
+          productPublicationJobs.productId,
+          productPublicationJobs.channel,
+          productPublicationJobs.accountId,
+          desc(productPublicationJobs.createdAt),
+        )
+    : [];
+  const publicationHistoryByProduct = new Map<string, typeof publicationRows>();
+  for (const publication of publicationRows) {
+    const history =
+      publicationHistoryByProduct.get(publication.productId) ?? [];
+    history.push(publication);
+    publicationHistoryByProduct.set(publication.productId, history);
+  }
+  for (const history of publicationHistoryByProduct.values()) {
+    history.sort(
+      (a, b) =>
+        (b.completedAt ?? b.createdAt).getTime() -
+        (a.completedAt ?? a.createdAt).getTime(),
+    );
+  }
   res.json({
     products: await Promise.all(
-      [...grouped.values()].map(({ product, postIds }) =>
-        catalogProductResponse(product, workspaceId, postIds, requestOrigin),
-      ),
+      [...grouped.values()].map(async ({ product, postIds }) => ({
+        ...(await catalogProductResponse(
+          product,
+          workspaceId,
+          postIds,
+          requestOrigin,
+        )),
+        publicationHistory: publicationHistoryByProduct.get(product.id) ?? [],
+      })),
     ),
   });
 });

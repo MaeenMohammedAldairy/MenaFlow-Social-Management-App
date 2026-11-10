@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import {
   Alert,
+  Linking,
   Modal,
   Pressable,
   Platform,
@@ -54,6 +55,7 @@ import {
   importProductCandidate,
   reviewProductExtraction,
   type CatalogProduct,
+  type PublishableAccount,
   type ProductExtractionSuggestion,
   type ProductPublicationSnapshot,
 } from "@/lib/product-catalog-api";
@@ -314,6 +316,18 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     refetchInterval: (query) =>
       query.state.data?.summary.inProgress ? 2000 : false,
   });
+  useEffect(() => {
+    if (!publicationRequestKey || !publication.data) return;
+    if (publication.data.summary.inProgress > 0) return;
+    void queryClient.invalidateQueries({
+      queryKey: ["product-catalog", userId ?? "local"],
+    });
+  }, [
+    publication.data?.summary.inProgress,
+    publicationRequestKey,
+    queryClient,
+    userId,
+  ]);
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({
@@ -488,6 +502,15 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
       account.authorizationStatus === "ready" &&
       selectedTargetKeys.has(`${account.channel}:${account.accountId}`),
   );
+  const repeatedPublicationCount = selectedProducts.filter((product) =>
+    (product.publicationHistory ?? []).some((publication) =>
+      selectedTargets.some(
+        (target) =>
+          target.channel === publication.channel &&
+          target.accountId === publication.accountId,
+      ),
+    ),
+  ).length;
   const instagramMediaMissing =
     selectedTargets.some(({ channel }) => channel === "instagram") &&
     selectedProducts.some((product) => product.mediaUrls.length === 0);
@@ -1732,10 +1755,13 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     ) : null}
                     {product.postIds.length ? (
                       <Text style={[styles.helper, { color: colors.warning }]}>
-                        تنبيه: لهذا المنتج {product.postIds.length} منشور سابق؛
-                        راجع المحتوى لتجنب التكرار.
+                        مرتبط بـ {product.postIds.length} منشور سابق.
                       </Text>
                     ) : null}
+                    <ProductPublicationHistory
+                      history={product.publicationHistory}
+                      accounts={connectedAccounts}
+                    />
                   </View>
                 ))}
               </View>
@@ -1853,11 +1879,23 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   أو أزل Instagram من الحسابات المختارة.
                 </Text>
               ) : null}
+              {repeatedPublicationCount > 0 ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={[styles.helper, { color: colors.warning }]}
+                >
+                  سبق نشر {repeatedPublicationCount} من المنتجات المحددة على
+                  الحساب نفسه. المتابعة ستنشئ منشورًا جديدًا ولن تعدّل المنشور
+                  السابق.
+                </Text>
+              ) : null}
               <ActionButton
                 label={
                   publishProducts.isPending
                     ? "جارٍ جدولة عمليات النشر..."
-                    : `جدولة ${selectedProducts.length} منتجًا على ${selectedTargets.length} حساب`
+                    : repeatedPublicationCount > 0
+                      ? `تأكيد إنشاء منشورات جديدة · ${selectedProducts.length} منتج`
+                      : `جدولة ${selectedProducts.length} منتجًا على ${selectedTargets.length} حساب`
                 }
                 icon={publishProducts.isPending ? "refresh-cw" : "send"}
                 disabled={
@@ -2422,6 +2460,7 @@ function ProductCard({
             مرتبط بـ {product.postIds.length} منشور سابق
           </Text>
         ) : null}
+        <ProductPublicationHistory history={product.publicationHistory} />
         <Text style={[styles.description, { color: colors.mutedForeground }]}>
           {product.verifiedAt
             ? `آخر تحقق: ${formatArabicDate(product.verifiedAt) ?? "غير محدد"}`
@@ -2434,6 +2473,66 @@ function ProductCard({
         ) : null}
       </Panel>
     </Pressable>
+  );
+}
+
+function ProductPublicationHistory({
+  history,
+  accounts = [],
+}: {
+  history: CatalogProduct["publicationHistory"];
+  accounts?: PublishableAccount[];
+}) {
+  const colors = useColors();
+  if (!history?.length) return null;
+
+  return (
+    <View style={styles.inventoryHistory}>
+      <Text style={[styles.description, { color: colors.warning }]}>
+        سجل النشر السابق · إعادة النشر تنشئ منشورًا جديدًا
+      </Text>
+      {history.slice(0, 4).map((publication, index) => {
+        const accountName = accounts.find(
+          (account) =>
+            account.channel === publication.channel &&
+            account.accountId === publication.accountId,
+        )?.accountName;
+        return (
+          <View
+            key={`${publication.channel}:${publication.accountId}:${publication.createdAt}:${index}`}
+            style={styles.productPublicationHistoryRow}
+          >
+            <Text
+              style={[styles.description, { color: colors.mutedForeground }]}
+            >
+              {publication.channel === "facebook" ? "فيسبوك" : "إنستغرام"}
+              {accountName ? ` · ${accountName}` : ""} ·{" "}
+              {formatArabicDateTime(
+                publication.completedAt ?? publication.createdAt,
+              ) ?? "وقت غير محدد"}
+            </Text>
+            {publication.permalink ? (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`فتح منشور ${publication.channel === "facebook" ? "فيسبوك" : "إنستغرام"} السابق`}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  const permalink = publication.permalink;
+                  if (!permalink) return;
+                  void Linking.openURL(permalink).catch(() =>
+                    Alert.alert("تعذر فتح المنشور", "تحقق من اتصال الإنترنت."),
+                  );
+                }}
+              >
+                <Text style={[styles.description, { color: colors.primary }]}>
+                  فتح المنشور السابق
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
   );
 }
 
@@ -3012,6 +3111,7 @@ const styles = StyleSheet.create({
   form: { gap: 14, paddingHorizontal: 16, paddingBottom: 16 },
   field: { gap: 6 },
   inventoryHistory: { gap: 4, paddingTop: 6 },
+  productPublicationHistoryRow: { gap: 2 },
   fieldLabel: { fontSize: 13, fontWeight: "600", textAlign: "right" },
   input: {
     minHeight: 42,

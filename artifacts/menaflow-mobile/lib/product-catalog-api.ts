@@ -24,6 +24,15 @@ export type CatalogProduct = {
   createdAt: string;
   updatedAt: string;
   postIds: string[];
+  publicationHistory?: ProductPublicationHistory[];
+};
+
+export type ProductPublicationHistory = {
+  channel: "facebook" | "instagram";
+  accountId: string;
+  permalink: string | null;
+  createdAt: string;
+  completedAt: string | null;
 };
 
 export type InventoryMovement = {
