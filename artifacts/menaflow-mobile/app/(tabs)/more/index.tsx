@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
-import { Link } from "expo-router";
+import { Link, useNavigation } from "expo-router";
 import {
   BrandHeader,
   Page,
@@ -60,8 +61,24 @@ const destinations: Array<{
   },
 ];
 
+type TabNavigation = {
+  addListener(type: "tabPress", listener: () => void): () => void;
+};
+
 export default function MoreScreen() {
   const colors = useColors();
+  const navigation = useNavigation();
+
+  useEffect(() => {
+    const tabsNavigation = navigation.getParent<TabNavigation>();
+    if (!tabsNavigation) return;
+
+    return tabsNavigation.addListener("tabPress", () => {
+      if ((navigation.getState()?.index ?? 0) > 0) {
+        navigation.dispatch({ type: "POP_TO_TOP" });
+      }
+    });
+  }, [navigation]);
 
   return (
     <Page>
