@@ -4,7 +4,6 @@ import {
   getSocialConnections,
 } from "@workspace/api-client-react";
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -12,6 +11,7 @@ import {
   Switch,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CairoText as Text,
@@ -20,6 +20,7 @@ import {
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, Panel, SectionTitle } from "@/components/Ui";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
+import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 import { useColors } from "@/hooks/useColors";
 import {
   getMetaAutoReplySettings,
@@ -126,12 +127,15 @@ export function MetaAutoReplySettingsPanel({
     useState<MetaAutoReplySettings>(initialSettings);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHistoricalModalOpen, setIsHistoricalModalOpen] = useState(false);
+  const [isHistoricalConfirmationOpen, setIsHistoricalConfirmationOpen] =
+    useState(false);
   const [historicalPlatform, setHistoricalPlatform] =
     useState<MetaInboxPlatform>("facebook");
   const [selectedHistoricalPostIds, setSelectedHistoricalPostIds] = useState<
     Set<string>
   >(new Set());
   const [error, setError] = useState("");
+  const [historicalQueueMessage, setHistoricalQueueMessage] = useState("");
   const historicalQueryKey = [
     "meta-auto-reply-historical-comments",
     userId ?? "local",
@@ -182,19 +186,19 @@ export function MetaAutoReplySettingsPanel({
     mutationFn: queueMetaAutoReplyHistoricalComments,
     onSuccess: async ({ queuedCount }) => {
       setIsHistoricalModalOpen(false);
+      setIsHistoricalConfirmationOpen(false);
       setSelectedHistoricalPostIds(new Set());
+      setHistoricalQueueMessage(
+        queuedCount
+          ? `تمت إضافة ${formatArabicNumber(queuedCount)} تعليق إلى طابور الرد. راجع حالات الإرسال في صندوق الوارد.`
+          : "لم تعد هناك تعليقات مؤهلة للرد.",
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: historicalQueryKey }),
         queryClient.invalidateQueries({
           queryKey: ["meta-inbox", userId ?? "local"],
         }),
       ]);
-      Alert.alert(
-        "تمت جدولة المعالجة",
-        queuedCount
-          ? `تمت إضافة ${queuedCount} تعليق إلى طابور الرد. راجع حالات الإرسال في صندوق الوارد.`
-          : "لم تعد هناك تعليقات مؤهلة للرد.",
-      );
     },
     onError: (cause) => {
       setError(
@@ -232,6 +236,43 @@ export function MetaAutoReplySettingsPanel({
     (total, post) => total + post.eligibleCommentCount,
     0,
   );
+  const toggleHistoricalPost = (postId: string) => {
+    const post = historicalPlatformData?.posts.find(
+      (candidate) => candidate.id === postId,
+    );
+    if (!post) return;
+    setSelectedHistoricalPostIds((current) => {
+      const next = new Set(current);
+      if (next.has(postId)) {
+        next.delete(postId);
+      } else {
+        const selectedCount = (historicalPlatformData?.posts ?? [])
+          .filter((candidate) => next.has(candidate.id))
+          .reduce(
+            (total, selectedPost) => total + selectedPost.eligibleCommentCount,
+            0,
+          );
+        if (selectedCount + post.eligibleCommentCount > 20) return current;
+        next.add(postId);
+      }
+      return next;
+    });
+  };
+  const selectAvailableHistoricalPosts = () => {
+    const next = new Set<string>();
+    let remaining = 20;
+    for (const post of historicalPlatformData?.posts ?? []) {
+      if (
+        post.eligibleCommentCount <= 0 ||
+        post.eligibleCommentCount > remaining
+      ) {
+        continue;
+      }
+      next.add(post.id);
+      remaining -= post.eligibleCommentCount;
+    }
+    setSelectedHistoricalPostIds(next);
+  };
   const confirmHistoricalQueue = () => {
     if (
       !historicalPlatformData?.ready ||
@@ -240,24 +281,8 @@ export function MetaAutoReplySettingsPanel({
     ) {
       return;
     }
-    const platformLabel =
-      historicalPlatform === "facebook" ? "Facebook" : "Instagram";
-    Alert.alert(
-      "تأكيد الرد على التعليقات",
-      `سيُجدول الرد على ${selectedHistoricalCommentCount} تعليقًا غير مجاب عليه من ${selectedHistoricalPosts.length} منشور في ${platformLabel}. لا يمكن التراجع عن الرد بعد إرساله.`,
-      [
-        { text: "إلغاء", style: "cancel" },
-        {
-          text: "تأكيد وجدولة",
-          style: "destructive",
-          onPress: () =>
-            queueHistoricalComments.mutate({
-              platform: historicalPlatform,
-              postIds: [...selectedHistoricalPostIds],
-            }),
-        },
-      ],
-    );
+    setError("");
+    setIsHistoricalConfirmationOpen(true);
   };
 
   return (
@@ -281,8 +306,8 @@ export function MetaAutoReplySettingsPanel({
             onPress={() => setIsModalOpen(true)}
           />
           <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-            يمكنك جدولة الرد على التعليقات السابقة المحفوظة في صندوق الوارد
-            ضمن نافذة الرد المسموحة.
+            يمكنك جدولة الرد على التعليقات السابقة المحفوظة في صندوق الوارد ضمن
+            نافذة الرد المسموحة.
           </Text>
           <SettingSwitch
             label="الرد على التعليقات السابقة"
@@ -293,6 +318,7 @@ export function MetaAutoReplySettingsPanel({
             onChange={(enabled) => {
               if (!enabled) return;
               setError("");
+              setHistoricalQueueMessage("");
               setSelectedHistoricalPostIds(new Set());
               setHistoricalPlatform("facebook");
               setIsHistoricalModalOpen(true);
@@ -300,6 +326,14 @@ export function MetaAutoReplySettingsPanel({
           />
         </View>
       </Panel>
+      {historicalQueueMessage ? (
+        <Text
+          accessibilityRole="alert"
+          style={[styles.body, { color: colors.primary }]}
+        >
+          {historicalQueueMessage}
+        </Text>
+      ) : null}
 
       <Modal
         visible={isHistoricalModalOpen}
@@ -326,7 +360,9 @@ export function MetaAutoReplySettingsPanel({
                 <Text style={[styles.modalTitle, { color: colors.foreground }]}>
                   الرد على التعليقات السابقة
                 </Text>
-                <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+                <Text
+                  style={[styles.bodySmall, { color: colors.mutedForeground }]}
+                >
                   اختر منصة ومنشورات مرتبطة بمنتجات فعالة وموثقة.
                 </Text>
               </View>
@@ -353,7 +389,7 @@ export function MetaAutoReplySettingsPanel({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator
             >
-              <Text style={[styles.bodySmall, { color: colors.warning }]}>
+              <Text style={[styles.bodySmall, { color: colors.destructive }]}>
                 ستظهر التعليقات المحفوظة مسبقًا في صندوق الوارد فقط، والواقعة
                 ضمن نافذة الرد الحالية (24 ساعة). لا يجلب هذا الإجراء تعليقات
                 قديمة غير محفوظة.
@@ -372,7 +408,9 @@ export function MetaAutoReplySettingsPanel({
                         checked: selected,
                         disabled: !data?.ready,
                       }}
-                      disabled={!data?.ready || queueHistoricalComments.isPending}
+                      disabled={
+                        !data?.ready || queueHistoricalComments.isPending
+                      }
                       onPress={() => {
                         setHistoricalPlatform(key);
                         setSelectedHistoricalPostIds(new Set());
@@ -420,14 +458,14 @@ export function MetaAutoReplySettingsPanel({
                     </Pressable>
                   );
                 })}
-              {connections.isError ? (
-                <Text
-                  accessibilityRole="alert"
-                  style={[styles.bodySmall, { color: colors.destructive }]}
-                >
-                  تعذر تحميل اسم الحساب المتصل.
-                </Text>
-              ) : null}
+                {connections.isError ? (
+                  <Text
+                    accessibilityRole="alert"
+                    style={[styles.bodySmall, { color: colors.destructive }]}
+                  >
+                    تعذر تحميل اسم الحساب المتصل.
+                  </Text>
+                ) : null}
               </View>
               {historicalPosts.isPending ? (
                 <Text style={[styles.body, { color: colors.mutedForeground }]}>
@@ -454,10 +492,47 @@ export function MetaAutoReplySettingsPanel({
                   الحد الأقصى لكل دفعة 20 تعليقًا. أزل بعض المنشورات للمتابعة.
                 </Text>
               ) : null}
+              {historicalPlatformData?.posts.length ? (
+                <View style={styles.historicalSelectionHeader}>
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    style={[styles.body, { color: colors.foreground }]}
+                  >
+                    المحدد للدفعة:{" "}
+                    {formatArabicNumber(selectedHistoricalCommentCount)} / 20
+                    تعليقًا
+                  </Text>
+                  <View style={styles.historicalSelectionActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={queueHistoricalComments.isPending}
+                      onPress={selectAvailableHistoricalPosts}
+                    >
+                      <Text style={{ color: colors.primary }}>
+                        تحديد المتاح
+                      </Text>
+                    </Pressable>
+                    {selectedHistoricalPostIds.size ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={queueHistoricalComments.isPending}
+                        onPress={() => setSelectedHistoricalPostIds(new Set())}
+                      >
+                        <Text style={{ color: colors.primary }}>
+                          إلغاء التحديد
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+              ) : null}
               {historicalPlatformData?.posts.map((post) => {
                 const checked = selectedHistoricalPostIds.has(post.id);
                 const disabled =
                   post.eligibleCommentCount === 0 ||
+                  (!checked &&
+                    selectedHistoricalCommentCount + post.eligibleCommentCount >
+                      20) ||
                   queueHistoricalComments.isPending;
                 return (
                   <Pressable
@@ -465,14 +540,7 @@ export function MetaAutoReplySettingsPanel({
                     accessibilityRole="checkbox"
                     accessibilityState={{ checked, disabled }}
                     disabled={disabled}
-                    onPress={() =>
-                      setSelectedHistoricalPostIds((current) => {
-                        const next = new Set(current);
-                        if (next.has(post.id)) next.delete(post.id);
-                        else next.add(post.id);
-                        return next;
-                      })
-                    }
+                    onPress={() => toggleHistoricalPost(post.id)}
                     style={[
                       styles.historicalPost,
                       {
@@ -482,11 +550,54 @@ export function MetaAutoReplySettingsPanel({
                       },
                     ]}
                   >
-                    <View style={styles.historicalPostCopy}>
-                      <Text
-                        style={[styles.body, { color: colors.foreground }]}
+                    {post.imageUrl ? (
+                      <Image
+                        source={{ uri: post.imageUrl }}
+                        style={styles.historicalPostImage}
+                        contentFit="cover"
+                        cachePolicy="disk"
+                        accessibilityLabel="معاينة صورة المنشور"
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.historicalPostImage,
+                          styles.historicalPostImagePlaceholder,
+                          { backgroundColor: colors.accent },
+                        ]}
+                        accessibilityLabel="لا توجد صورة معاينة"
                       >
+                        <Icon
+                          name="image"
+                          size={20}
+                          color={colors.mutedForeground}
+                        />
+                      </View>
+                    )}
+                    <View style={styles.historicalPostCopy}>
+                      <Text style={[styles.body, { color: colors.foreground }]}>
                         {post.title || "منشور بدون عنوان"}
+                      </Text>
+                      {post.body.trim() ? (
+                        <Text
+                          numberOfLines={2}
+                          style={[
+                            styles.bodySmall,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          {post.body}
+                        </Text>
+                      ) : null}
+                      <Text
+                        style={[
+                          styles.bodySmall,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        نُشر:{" "}
+                        {formatArabicDateTime(post.createdAt) ??
+                          "التاريخ غير متاح"}
                       </Text>
                       <Text
                         style={[
@@ -504,6 +615,23 @@ export function MetaAutoReplySettingsPanel({
                       >
                         تعليقات مؤهلة للرد: {post.eligibleCommentCount}
                       </Text>
+                      {post.eligibleCommentCount === 0 ? (
+                        <Text
+                          style={[
+                            styles.bodySmall,
+                            { color: colors.mutedForeground },
+                          ]}
+                        >
+                          لا توجد تعليقات جديدة مؤهلة على هذا المنشور.
+                        </Text>
+                      ) : post.eligibleCommentCount > 20 ? (
+                        <Text
+                          style={[styles.bodySmall, { color: colors.warning }]}
+                        >
+                          عدد التعليقات يتجاوز حد الدفعة؛ لا يمكن اختيار
+                          المنشور.
+                        </Text>
+                      ) : null}
                     </View>
                     <View
                       style={[
@@ -572,6 +700,129 @@ export function MetaAutoReplySettingsPanel({
                   selectedHistoricalCommentCount > 20
                 }
                 onPress={confirmHistoricalQueue}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isHistoricalConfirmationOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!queueHistoricalComments.isPending) {
+            setIsHistoricalConfirmationOpen(false);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            accessibilityRole="alert"
+            style={[
+              styles.dialog,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View
+              style={[styles.modalHeader, { borderBottomColor: colors.border }]}
+            >
+              <View style={styles.modalHeading}>
+                <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                  تأكيد جدولة الردود
+                </Text>
+                <Text
+                  style={[styles.bodySmall, { color: colors.mutedForeground }]}
+                >
+                  راجع تفاصيل الإرسال قبل التأكيد.
+                </Text>
+              </View>
+            </View>
+            <ScrollView
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalContent}
+            >
+              <View style={styles.confirmationPlatform}>
+                <SocialPlatformIcon platform={historicalPlatform} size={28} />
+                <View style={styles.platformChoiceCopy}>
+                  <Text
+                    style={[
+                      styles.platformChoiceLabel,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    {historicalPlatform === "facebook" ? "فيسبوك" : "إنستغرام"}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.bodySmall,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {connections.data?.[historicalPlatform]?.accountName ??
+                      "الحساب المتصل"}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.body, { color: colors.foreground }]}>
+                سيتم إضافة {formatArabicNumber(selectedHistoricalCommentCount)}{" "}
+                تعليقًا من {formatArabicNumber(selectedHistoricalPosts.length)}{" "}
+                منشور إلى طابور الرد:
+              </Text>
+              {selectedHistoricalPosts.map((post) => (
+                <View key={post.id} style={styles.confirmationPost}>
+                  <Text
+                    style={[styles.bodySmall, { color: colors.foreground }]}
+                  >
+                    • {post.title || "منشور بدون عنوان"}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.bodySmall,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {formatArabicNumber(post.eligibleCommentCount)} تعليق
+                  </Text>
+                </View>
+              ))}
+              <Text style={[styles.bodySmall, { color: colors.warning }]}>
+                بعد التأكيد، قد ينشئ الذكاء الاصطناعي ردودًا تُنشر علنًا أسفل
+                التعليقات. لا يمكن التراجع عن الرد بعد إرساله.
+              </Text>
+              {error ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={[styles.bodySmall, { color: colors.destructive }]}
+                >
+                  {error}
+                </Text>
+              ) : null}
+            </ScrollView>
+            <View
+              style={[styles.modalFooter, { borderTopColor: colors.border }]}
+            >
+              <ActionButton
+                label="إلغاء"
+                icon="x"
+                secondary
+                disabled={queueHistoricalComments.isPending}
+                onPress={() => setIsHistoricalConfirmationOpen(false)}
+              />
+              <ActionButton
+                label={
+                  queueHistoricalComments.isPending
+                    ? "جارٍ الإضافة للطابور..."
+                    : "تأكيد وإرسال الردود"
+                }
+                icon={queueHistoricalComments.isPending ? "clock" : "send"}
+                disabled={queueHistoricalComments.isPending}
+                onPress={() =>
+                  queueHistoricalComments.mutate({
+                    platform: historicalPlatform,
+                    postIds: selectedHistoricalPosts.map((post) => post.id),
+                  })
+                }
               />
             </View>
           </View>
@@ -951,6 +1202,17 @@ const styles = StyleSheet.create({
   },
   modalScroll: { flexShrink: 1 },
   modalContent: { gap: 16, padding: 20 },
+  confirmationPlatform: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  confirmationPost: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
   modalFooter: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1016,14 +1278,36 @@ const styles = StyleSheet.create({
   },
   historicalPost: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: 12,
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
   },
+  historicalPostImage: {
+    width: 68,
+    height: 68,
+    borderRadius: 9,
+    overflow: "hidden",
+  },
+  historicalPostImagePlaceholder: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
   historicalPostCopy: { flex: 1, gap: 4 },
+  historicalSelectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  historicalSelectionActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
   historicalCheckbox: {
     width: 20,
     height: 20,

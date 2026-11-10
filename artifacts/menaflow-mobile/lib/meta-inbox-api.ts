@@ -105,6 +105,9 @@ export type MetaAutoReplyHistoricalPostsResponse = {
       posts: Array<{
         id: string;
         title: string;
+        body: string;
+        createdAt: string;
+        imageUrl: string | null;
         products: string[];
         eligibleCommentCount: number;
       }>;

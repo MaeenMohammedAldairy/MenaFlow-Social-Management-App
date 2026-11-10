@@ -32,6 +32,11 @@ import {
 } from "../lib/meta-oauth";
 import { isRecord } from "../lib/value-utils.ts";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
+import {
+  mediaRequestOrigin,
+  mediaUrls,
+  productMediaPreviews,
+} from "./product-route-helpers";
 
 const router = Router();
 
@@ -198,6 +203,7 @@ async function historicalCommentCandidates(
   workspaceId: string,
   platform: MetaIntegration,
   accountId: string,
+  requestOrigin?: string,
 ) {
   const platformPostId = sql<string>`${posts.publishResults}->${platform}->>'postId'`;
   const platformPublished =
@@ -210,6 +216,9 @@ async function historicalCommentCandidates(
       id: posts.id,
       externalPostId: platformPostId,
       title: posts.title,
+      body: posts.body,
+      mediaUrls: posts.mediaUrls,
+      createdAt: posts.createdAt,
       productName: products.name,
     })
     .from(posts)
@@ -244,6 +253,9 @@ async function historicalCommentCandidates(
       id: posts.id,
       externalPostId: platformPostId,
       title: posts.title,
+      body: posts.body,
+      mediaUrls: posts.mediaUrls,
+      createdAt: posts.createdAt,
       productName: products.name,
     })
     .from(productPublicationJobs)
@@ -284,6 +296,9 @@ async function historicalCommentCandidates(
       id: string;
       externalPostId: string;
       title: string;
+      body: string;
+      mediaUrls: string[];
+      createdAt: Date;
       productNames: Set<string>;
     }
   >();
@@ -294,6 +309,9 @@ async function historicalCommentCandidates(
         id: row.id,
         externalPostId: row.externalPostId,
         title: row.title,
+        body: row.body,
+        mediaUrls: mediaUrls(row.mediaUrls),
+        createdAt: row.createdAt,
         productNames: new Set(),
       };
       grouped.set(row.id, post);
@@ -347,14 +365,39 @@ async function historicalCommentCandidates(
     ids.push(comment.id);
     commentsByPost.set(comment.conversationId, ids);
   }
-  return [...grouped.values()].map((post) => ({
-    id: post.id,
-    title: post.title,
-    products: [...post.productNames],
-    eligibleCommentCount:
-      commentsByPost.get(post.externalPostId)?.length ?? 0,
-    eligibleCommentIds: commentsByPost.get(post.externalPostId) ?? [],
+  const allMediaIds = [
+    ...new Set(
+      [...grouped.values()].flatMap((post) => post.mediaUrls.slice(0, 4)),
+    ),
+  ];
+  const previews = await productMediaPreviews(
+    workspaceId,
+    allMediaIds,
+    requestOrigin,
+  );
+  const previewById = new Map(
+    previews.map((preview) => [preview.id, preview]),
+  );
+  const candidates = [...grouped.values()].map((post) => ({
+      id: post.id,
+      title: post.title,
+      body: post.body,
+      createdAt: post.createdAt.toISOString(),
+      imageUrl:
+        post.mediaUrls
+          .slice(0, 4)
+          .map((id) => previewById.get(id))
+          .find((preview) => preview?.mediaType === "image")?.url ?? null,
+      products: [...post.productNames],
+      eligibleCommentCount:
+        commentsByPost.get(post.externalPostId)?.length ?? 0,
+      eligibleCommentIds: commentsByPost.get(post.externalPostId) ?? [],
   }));
+  return candidates.sort(
+    (left, right) =>
+      right.eligibleCommentCount - left.eligibleCommentCount ||
+      Date.parse(right.createdAt) - Date.parse(left.createdAt),
+  );
 }
 
 router.get(
@@ -383,6 +426,9 @@ router.get(
       { ready: boolean; reason: string | null; posts: Array<{
         id: string;
         title: string;
+        body: string;
+        createdAt: string;
+        imageUrl: string | null;
         products: string[];
         eligibleCommentCount: number;
       }> }
@@ -406,7 +452,12 @@ router.get(
           : connection?.instagramUserId;
       const candidates =
         ready && accountId
-          ? await historicalCommentCandidates(workspaceId, platform, accountId)
+          ? await historicalCommentCandidates(
+              workspaceId,
+              platform,
+              accountId,
+              mediaRequestOrigin(req),
+            )
           : [];
       platforms[platform] = {
         ready,
@@ -414,9 +465,20 @@ router.get(
           ? "فعّل الرد الآلي على تعليقات هذه المنصة أولًا."
           : readinessMessage(readiness, platform, "comment"),
         posts: candidates.map(
-          ({ id, title, products: productNames, eligibleCommentCount }) => ({
+          ({
             id,
             title,
+            body,
+            createdAt,
+            imageUrl,
+            products: productNames,
+            eligibleCommentCount,
+          }) => ({
+            id,
+            title,
+            body,
+            createdAt,
+            imageUrl,
             products: productNames,
             eligibleCommentCount,
           }),
@@ -496,6 +558,7 @@ router.post(
       workspaceId,
       platform,
       accountId,
+      mediaRequestOrigin(req),
     );
     const selected = candidates.filter((post) =>
       selectedPostIds.includes(post.id),
