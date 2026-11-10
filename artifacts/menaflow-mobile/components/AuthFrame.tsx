@@ -85,7 +85,6 @@ export function AuthFrame({
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const wide = width >= 760;
-  const showWideArtwork = wide && mode === 'sign-up';
   const compactSignIn = mode === 'sign-in' && !wide;
 
   return (
@@ -122,15 +121,9 @@ export function AuthFrame({
               borderColor: colors.border,
               shadowColor: colors.foreground,
             },
-            showWideArtwork && styles.wideSurface,
           ]}
         >
-          <View
-            style={[
-              styles.formColumn,
-              showWideArtwork && styles.wideFormColumn,
-            ]}
-          >
+          <View style={styles.formColumn}>
             <View style={styles.brand}>
               {mode === 'sign-up' ? (
                 <Link href="/(auth)/sign-in" asChild>
@@ -177,15 +170,6 @@ export function AuthFrame({
               دخول آمن إلى مساحة نشاطك الخاصة
             </Text>
           </View>
-
-          {showWideArtwork ? (
-            <LinearGradient
-              colors={[colors.background, colors.secondary, colors.accent]}
-              style={styles.wideArtworkPanel}
-            >
-              <AuthArtwork />
-            </LinearGradient>
-          ) : null}
         </View>
       </KeyboardAwareScrollViewCompat>
     </View>
@@ -306,14 +290,6 @@ const styles = StyleSheet.create({
     shadowRadius: 28,
     elevation: 7,
   },
-  wideSurface: {
-    maxWidth: 1040,
-    minHeight: 620,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    padding: 12,
-    borderRadius: 34,
-  },
   formColumn: {
     width: '100%',
     alignSelf: 'center',
@@ -321,13 +297,6 @@ const styles = StyleSheet.create({
     maxWidth: 430,
     paddingHorizontal: 2,
     paddingTop: 8,
-  },
-  wideFormColumn: {
-    flex: 1,
-    maxWidth: 500,
-    paddingHorizontal: 34,
-    paddingVertical: 30,
-    justifyContent: 'center',
   },
   brand: {
     flexDirection: 'row',
@@ -519,13 +488,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  wideArtworkPanel: {
-    flex: 1,
-    borderRadius: 27,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
   },
   footer: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 1 },
 });

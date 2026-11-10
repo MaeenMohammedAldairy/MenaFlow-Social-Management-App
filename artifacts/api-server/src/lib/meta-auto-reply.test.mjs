@@ -936,6 +936,10 @@ test("builds distinct public-comment and private-message policies", () => {
   assert.match(comment, /وصف ومواصفات verifiedProduct فقط/);
   assert.match(comment, /لا تعتذر أو تطلب اسم المنتج لمجرد أن التعليق قصير/);
   assert.match(comment, /وجّه العميل بلطف إلى الرسائل الخاصة/);
+  assert.match(comment, /إذا أظهر التعليق نية شراء أو طلب/);
+  assert.match(comment, /مثل «أريد الطلب» أو «اشتي أطلب»/);
+  assert.match(comment, /لا توحِ بأن الطلب أُنشئ أو تأكد/);
+  assert.match(comment, /لا تقل إنك بدأت محادثة خاصة/);
   assert.match(
     comment,
     /لا تعتبر تاريخ verifiedAt وحده دليلًا على أن البيانات قديمة/,

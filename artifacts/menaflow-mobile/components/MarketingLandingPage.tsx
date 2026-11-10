@@ -141,7 +141,10 @@ export function MarketingLandingPage() {
               <Link href="/(auth)/sign-in" asChild>
                 <Pressable
                   accessibilityRole="button"
-                  style={[styles.headerLink, { borderColor: colors.border }]}
+                  style={StyleSheet.flatten([
+                    styles.headerLink,
+                    { borderColor: colors.border },
+                  ])}
                 >
                   <Text
                     style={[
@@ -156,10 +159,10 @@ export function MarketingLandingPage() {
               <Link href="/(auth)/sign-up" asChild>
                 <Pressable
                   accessibilityRole="button"
-                  style={[
+                  style={StyleSheet.flatten([
                     styles.headerPrimary,
                     { backgroundColor: colors.primary },
-                  ]}
+                  ])}
                 >
                   <Text
                     style={[
@@ -210,10 +213,10 @@ export function MarketingLandingPage() {
                 <Link href="/(auth)/sign-up" asChild>
                   <Pressable
                     accessibilityRole="button"
-                    style={[
+                    style={StyleSheet.flatten([
                       styles.primaryCta,
                       { backgroundColor: colors.primary },
-                    ]}
+                    ])}
                   >
                     <Text
                       style={[
@@ -233,10 +236,10 @@ export function MarketingLandingPage() {
                 <Link href="/(auth)/sign-in" asChild>
                   <Pressable
                     accessibilityRole="button"
-                    style={[
+                    style={StyleSheet.flatten([
                       styles.secondaryCta,
                       { borderColor: colors.border },
-                    ]}
+                    ])}
                   >
                     <Text
                       style={[styles.ctaText, { color: colors.foreground }]}
@@ -460,12 +463,12 @@ export function MarketingLandingPage() {
                   <Link href="/(auth)/sign-up" asChild>
                     <Pressable
                       accessibilityRole="button"
-                      style={[
+                      style={StyleSheet.flatten([
                         styles.planButton,
                         index === 2
                           ? { backgroundColor: colors.primary }
                           : { borderColor: colors.border },
-                      ]}
+                      ])}
                     >
                       <Text
                         style={[
