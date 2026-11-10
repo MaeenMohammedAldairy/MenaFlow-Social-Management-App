@@ -1,12 +1,27 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  gte,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { Router } from "express";
 import {
   db,
   menaMetaAutoReplyJobs,
   menaMetaAutoReplySettings,
   menaMetaConnections,
+  menaMetaInboxItems,
   menaMetaWebhookSubscriptions,
+  posts,
+  productPosts,
+  products,
 } from "@workspace/db";
 import { requestOwnerId } from "../lib/owner-access";
 import {
@@ -148,6 +163,341 @@ async function integrationReadiness(
     missingPermissions: permissions,
   };
 }
+
+function readinessMessage(
+  readiness: Awaited<ReturnType<typeof integrationReadiness>>,
+  platform: MetaIntegration,
+  kind: "message" | "comment",
+): string | null {
+  if (!readiness.connected) return "اربط حساب المنصة أولًا.";
+  if (!readiness.tokenReady) {
+    return "تحقق من صلاحيات الحساب أو أعد ربطه من صفحة المصادر.";
+  }
+  if (
+    kind === "message"
+      ? !readiness.messagesSubscriptionReady
+      : !readiness.commentsSubscriptionReady
+  ) {
+    return "فعّل اشتراك استقبال التفاعلات لهذا الحساب من صندوق الوارد.";
+  }
+  if (!readiness.aiConfigured) {
+    return "خدمة الذكاء الاصطناعي غير مهيأة على الخادم.";
+  }
+  const permission = metaAutoReplyPermission(platform, kind);
+  if (readiness.missingPermissions.includes(permission)) {
+    return `الصلاحية ${permission} غير ممنوحة للحساب.`;
+  }
+  return null;
+}
+
+const historicalCommentWindowMs = 24 * 60 * 60 * 1000;
+const historicalCommentBatchLimit = 20;
+
+async function historicalCommentCandidates(
+  workspaceId: string,
+  platform: MetaIntegration,
+  accountId: string,
+) {
+  const platformPostId = sql<string>`${posts.publishResults}->${platform}->>'postId'`;
+  const platformPublished =
+    platform === "facebook"
+      ? sql`${posts.publishResults}->'facebook'->>'status' = 'published'`
+      : sql`${posts.publishResults}->'instagram'->>'status' = 'published'`;
+  const published = or(eq(posts.status, "published"), platformPublished);
+  const rows = await db
+    .select({
+      id: posts.id,
+      externalPostId: platformPostId,
+      title: posts.title,
+      productName: products.name,
+    })
+    .from(posts)
+    .innerJoin(
+      productPosts,
+      and(
+        eq(productPosts.workspaceId, posts.workspaceId),
+        eq(productPosts.postId, posts.id),
+      ),
+    )
+    .innerJoin(
+      products,
+      and(
+        eq(products.workspaceId, productPosts.workspaceId),
+        eq(products.id, productPosts.productId),
+      ),
+    )
+    .where(
+      and(
+        eq(posts.workspaceId, workspaceId),
+        published,
+        isNotNull(platformPostId),
+        ne(platformPostId, ""),
+        eq(products.status, "active"),
+        isNotNull(products.verifiedAt),
+      ),
+    )
+    .orderBy(desc(posts.updatedAt))
+    .limit(200);
+  const grouped = new Map<
+    string,
+    {
+      id: string;
+      externalPostId: string;
+      title: string;
+      productNames: Set<string>;
+    }
+  >();
+  for (const row of rows) {
+    let post = grouped.get(row.id);
+    if (!post) {
+      post = {
+        id: row.id,
+        externalPostId: row.externalPostId,
+        title: row.title,
+        productNames: new Set(),
+      };
+      grouped.set(row.id, post);
+    }
+    post.productNames.add(row.productName);
+  }
+  if (!grouped.size) return [];
+
+  const inboxItems = menaMetaInboxItems;
+  const jobs = menaMetaAutoReplyJobs;
+  const comments = await db
+    .select({
+      id: inboxItems.id,
+      conversationId: inboxItems.conversationId,
+    })
+    .from(inboxItems)
+    .leftJoin(
+      jobs,
+      and(
+        eq(jobs.workspaceId, inboxItems.workspaceId),
+        eq(jobs.inboxItemId, inboxItems.id),
+      ),
+    )
+    .where(
+      and(
+        eq(inboxItems.workspaceId, workspaceId),
+        eq(inboxItems.platform, platform),
+        eq(inboxItems.kind, "comment"),
+        inArray(
+          inboxItems.conversationId,
+          [...grouped.values()].map((post) => post.externalPostId),
+        ),
+        inArray(
+          inboxItems.parentId,
+          [...grouped.values()].map((post) => post.externalPostId),
+        ),
+        gte(
+          inboxItems.occurredAt,
+          new Date(Date.now() - historicalCommentWindowMs),
+        ),
+        isNull(inboxItems.replyText),
+        isNull(inboxItems.replyStatus),
+        isNotNull(inboxItems.actorId),
+        ne(inboxItems.actorId, accountId),
+        isNull(jobs.id),
+      ),
+    );
+  const commentsByPost = new Map<string, string[]>();
+  for (const comment of comments) {
+    const ids = commentsByPost.get(comment.conversationId) ?? [];
+    ids.push(comment.id);
+    commentsByPost.set(comment.conversationId, ids);
+  }
+  return [...grouped.values()].map((post) => ({
+    id: post.id,
+    title: post.title,
+    products: [...post.productNames],
+    eligibleCommentCount:
+      commentsByPost.get(post.externalPostId)?.length ?? 0,
+    eligibleCommentIds: commentsByPost.get(post.externalPostId) ?? [],
+  }));
+}
+
+router.get(
+  "/social/meta-auto-replies/historical-comments",
+  requireWorkspace,
+  async (req, res) => {
+    if (!requestOwnerId(req)) {
+      res.status(401).json({ error: "سجّل الدخول أولاً." });
+      return;
+    }
+    const workspaceId = requestWorkspaceId(req);
+    const [[settings], [connection]] = await Promise.all([
+      db
+        .select()
+        .from(menaMetaAutoReplySettings)
+        .where(eq(menaMetaAutoReplySettings.workspaceId, workspaceId))
+        .limit(1),
+      db
+        .select()
+        .from(menaMetaConnections)
+        .where(eq(menaMetaConnections.workspaceId, workspaceId))
+        .limit(1),
+    ]);
+    const platforms = {} as Record<
+      MetaIntegration,
+      { ready: boolean; reason: string | null; posts: Array<{
+        id: string;
+        title: string;
+        products: string[];
+        eligibleCommentCount: number;
+      }> }
+    >;
+    for (const platform of ["facebook", "instagram"] as const) {
+      const commentReplyEnabled = Boolean(
+        settings?.enabled &&
+          (platform === "facebook"
+            ? settings.facebookCommentsEnabled
+            : settings.instagramCommentsEnabled),
+      );
+      const readiness = await integrationReadiness(
+        workspaceId,
+        platform,
+        connection,
+      );
+      const ready = commentReplyEnabled && readiness.commentsReady;
+      const accountId =
+        platform === "facebook"
+          ? connection?.pageId
+          : connection?.instagramUserId;
+      const candidates =
+        ready && accountId
+          ? await historicalCommentCandidates(workspaceId, platform, accountId)
+          : [];
+      platforms[platform] = {
+        ready,
+        reason: !commentReplyEnabled
+          ? "فعّل الرد الآلي على تعليقات هذه المنصة أولًا."
+          : readinessMessage(readiness, platform, "comment"),
+        posts: candidates.map(
+          ({ id, title, products: productNames, eligibleCommentCount }) => ({
+            id,
+            title,
+            products: productNames,
+            eligibleCommentCount,
+          }),
+        ),
+      };
+    }
+    res.json({ platforms });
+  },
+);
+
+router.post(
+  "/social/meta-auto-replies/historical-comments",
+  requireWorkspace,
+  async (req, res) => {
+    const ownerId = requestOwnerId(req);
+    if (!ownerId) {
+      res.status(401).json({ error: "سجّل الدخول أولاً." });
+      return;
+    }
+    const platform = req.body?.platform;
+    const postIds = req.body?.postIds;
+    if (
+      (platform !== "facebook" && platform !== "instagram") ||
+      !Array.isArray(postIds) ||
+      postIds.length < 1 ||
+      postIds.length > 100 ||
+      postIds.some((id) => typeof id !== "string" || !id.trim())
+    ) {
+      res.status(400).json({ error: "حدد منصة ومنشورات صالحة للمعالجة." });
+      return;
+    }
+    const selectedPostIds = [
+      ...new Set(
+        postIds.filter((id: unknown): id is string => typeof id === "string"),
+      ),
+    ];
+    if (selectedPostIds.length !== postIds.length) {
+      res.status(400).json({ error: "تحتوي القائمة على منشورات مكررة." });
+      return;
+    }
+    const workspaceId = requestWorkspaceId(req);
+    const [[settings], [connection]] = await Promise.all([
+      db
+        .select()
+        .from(menaMetaAutoReplySettings)
+        .where(eq(menaMetaAutoReplySettings.workspaceId, workspaceId))
+        .limit(1),
+      db
+        .select()
+        .from(menaMetaConnections)
+        .where(eq(menaMetaConnections.workspaceId, workspaceId))
+        .limit(1),
+    ]);
+    const enabled = Boolean(
+      settings?.enabled &&
+        (platform === "facebook"
+          ? settings.facebookCommentsEnabled
+          : settings.instagramCommentsEnabled),
+    );
+    const readiness = await integrationReadiness(
+      workspaceId,
+      platform,
+      connection,
+    );
+    const accountId =
+      platform === "facebook"
+        ? connection?.pageId
+        : connection?.instagramUserId;
+    if (!enabled || !readiness.commentsReady || !accountId) {
+      res.status(409).json({
+        error:
+          "تعذر بدء المعالجة. تحقق من تفعيل الرد على تعليقات المنصة وصلاحية الحساب واشتراك Webhook.",
+      });
+      return;
+    }
+    const candidates = await historicalCommentCandidates(
+      workspaceId,
+      platform,
+      accountId,
+    );
+    const selected = candidates.filter((post) =>
+      selectedPostIds.includes(post.id),
+    );
+    if (
+      selected.length !== selectedPostIds.length ||
+      selected.some((post) => post.eligibleCommentCount === 0)
+    ) {
+      res.status(409).json({
+        error:
+          "تغيرت أهلية بعض المنشورات أو لم تعد تحتوي على تعليقات مؤهلة. حدّث القائمة وحاول مجددًا.",
+      });
+      return;
+    }
+    const totalEligibleComments = selected.reduce(
+      (total, post) => total + post.eligibleCommentCount,
+      0,
+    );
+    if (totalEligibleComments > historicalCommentBatchLimit) {
+      res.status(400).json({
+        error: `الحد الأقصى للدفعة ${historicalCommentBatchLimit} تعليقًا. قلل عدد المنشورات المحددة ثم أعد المحاولة.`,
+      });
+      return;
+    }
+    const inboxItemIds = selected.flatMap((post) => post.eligibleCommentIds);
+    const queued = inboxItemIds.length
+      ? await db
+          .insert(menaMetaAutoReplyJobs)
+          .values(
+            inboxItemIds.map((inboxItemId) => ({
+              id: randomUUID(),
+              ownerId,
+              workspaceId,
+              inboxItemId,
+            })),
+          )
+          .onConflictDoNothing()
+          .returning({ id: menaMetaAutoReplyJobs.id })
+      : [];
+    res.status(202).json({ queuedCount: queued.length });
+  },
+);
 
 router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
   const ownerId = requestOwnerId(req);

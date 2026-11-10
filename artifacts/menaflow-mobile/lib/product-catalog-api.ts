@@ -92,6 +92,19 @@ export type ProductExtractionSuggestion = {
   }>;
 };
 
+export type ScannedPostProductExtraction = {
+  classification: "product" | "not_product";
+  extractedData: {
+    name: string | null;
+    sku: string | null;
+    aliases: string[];
+    description: string | null;
+    price: string | null;
+    currency: string | null;
+    availability: "in_stock" | "out_of_stock" | "preorder" | null;
+  } | null;
+};
+
 export type ProductInput = Omit<
   CatalogProduct,
   | "id"
@@ -355,6 +368,20 @@ export async function importProductCandidate(
   );
   const result = await responseJson<{ product: CatalogProduct }>(response);
   return result.product;
+}
+
+export async function extractScannedPostProduct(
+  text: string,
+): Promise<ScannedPostProductExtraction> {
+  const response = await fetchApiResponse(
+    "/api/social/products/extract-scanned-post",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    },
+  );
+  return responseJson(response);
 }
 
 export async function uploadProductMedia(asset: {

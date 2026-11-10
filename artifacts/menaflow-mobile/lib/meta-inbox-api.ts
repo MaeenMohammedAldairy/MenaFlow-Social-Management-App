@@ -96,6 +96,22 @@ export type MetaAutoReplySettingsResponse = {
   readiness: Record<MetaInboxPlatform, MetaAutoReplyReadiness>;
 };
 
+export type MetaAutoReplyHistoricalPostsResponse = {
+  platforms: Record<
+    MetaInboxPlatform,
+    {
+      ready: boolean;
+      reason: string | null;
+      posts: Array<{
+        id: string;
+        title: string;
+        products: string[];
+        eligibleCommentCount: number;
+      }>;
+    }
+  >;
+};
+
 async function responseJson<T>(response: Response): Promise<T> {
   const body = await response.text();
   let payload: unknown;
@@ -152,6 +168,28 @@ export async function saveMetaAutoReplySettings(
     body: JSON.stringify(settings),
   });
   return responseJson<MetaAutoReplySettings>(response);
+}
+
+export async function getMetaAutoReplyHistoricalPosts(): Promise<MetaAutoReplyHistoricalPostsResponse> {
+  const response = await fetchApiResponse(
+    "/api/social/meta-auto-replies/historical-comments",
+  );
+  return responseJson<MetaAutoReplyHistoricalPostsResponse>(response);
+}
+
+export async function queueMetaAutoReplyHistoricalComments(input: {
+  platform: MetaInboxPlatform;
+  postIds: string[];
+}): Promise<{ queuedCount: number }> {
+  const response = await fetchApiResponse(
+    "/api/social/meta-auto-replies/historical-comments",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  return responseJson<{ queuedCount: number }>(response);
 }
 
 export async function activateMetaWebhookSubscriptions(): Promise<{

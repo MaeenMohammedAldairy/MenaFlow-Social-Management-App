@@ -30,6 +30,72 @@ import {
   catalogProductResponse,
 } from "./product-route-helpers";
 
+router.post(
+  "/social/products/extract-scanned-post",
+  requireWorkspace,
+  async (req, res) => {
+    if (!requestOwnerId(req)) {
+      res.status(401).json({ error: "سجّل الدخول أولاً." });
+      return;
+    }
+    const text = metaString(req.body?.text)?.trim() ?? "";
+    if (!text || text.length > 6000) {
+      res.status(400).json({
+        error: text
+          ? "نص المنشور أطول من الحد المسموح للاستخراج."
+          : "المنشور لا يحتوي على نص قابل للاستخراج.",
+      });
+      return;
+    }
+    const workspaceId = requestWorkspaceId(req);
+    try {
+      const extraction = await extractWhatsAppProductCandidates(workspaceId, [
+        {
+          id: "scanned-post",
+          groupId: "scanned-post",
+          messageTimestamp: null,
+          replyToMessageId: null,
+          text,
+        },
+      ]);
+      const candidate = extraction.candidates.find(
+        (item) => item.classification === "product",
+      );
+      res.json({
+        classification: candidate ? "product" : "not_product",
+        extractedData: candidate?.data ?? null,
+      });
+    } catch (error) {
+      const reason =
+        error instanceof Error ? error.message : "AI_EXTRACTION_FAILED";
+      console.error("Scanned post product extraction failed", {
+        workspaceId,
+        reason,
+      });
+      const configurationMissing = reason.startsWith("MISSING_");
+      const reasonCode = /^[A-Z][A-Z0-9_.:-]{0,99}$/.test(reason)
+        ? reason
+        : "AI_EXTRACTION_FAILED";
+      const message = configurationMissing
+        ? "خدمة الذكاء الاصطناعي غير مهيأة. أضف مفتاح OpenAI أو Gemini إلى إعدادات الخادم."
+        : /HTTP_(401|403)/.test(reason)
+          ? "رفض مزود الذكاء الاصطناعي المفتاح أو صلاحية النموذج."
+          : /HTTP_429/.test(reason)
+            ? "تجاوز مزود الذكاء الاصطناعي حد الاستخدام أو الطلبات."
+            : /HTTP_5\d\d/.test(reason)
+              ? "مزود الذكاء الاصطناعي غير متاح مؤقتًا. أعد المحاولة بعد قليل."
+              : /fetch failed|NETWORK|TIMEOUT|TimeoutError/i.test(reason)
+                ? "تعذر اتصال الخادم بمزود الذكاء الاصطناعي."
+                : reason.startsWith("PRODUCT_EXTRACTION_")
+                  ? "تعذر التحقق من بيانات الاستخراج التي أعادها مزود الذكاء الاصطناعي."
+                  : "تعذر استخراج بيانات المنتج. أعد المحاولة.";
+      res.status(configurationMissing ? 503 : 502).json({
+        error: `${message} (رمز الخطأ: ${reasonCode})`,
+      });
+    }
+  },
+);
+
 router.get(
   "/social/products/:id/inventory-movements",
   requireWorkspace,

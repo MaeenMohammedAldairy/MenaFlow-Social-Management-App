@@ -51,6 +51,7 @@ import {
   createCatalogProduct,
   dismissProductExtraction,
   analyzeWhatsAppProductMessages,
+  extractScannedPostProduct,
   getProductCandidates,
   getProductCatalog,
   getInventoryMovements,
@@ -709,6 +710,45 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         cause instanceof Error ? cause.message : "تعذر استيراد المنشور كمسودة.",
       ),
   });
+  const extractScannedPost = useMutation({
+    mutationFn: (post: SocialAccountPost) =>
+      extractScannedPostProduct(post.text),
+    onSuccess: (result, post) => {
+      if (result.classification !== "product" || !result.extractedData) {
+        setError("لم يظهر في نص المنشور منتج واضح. راجع المنشور أو أدخل البيانات يدويًا.");
+        return;
+      }
+      const { extractedData } = result;
+      openEditor({
+        id: null,
+        value: {
+          ...emptyDraft,
+          sku: extractedData.sku,
+          name: extractedData.name ?? "",
+          aliases: extractedData.aliases,
+          description: extractedData.description ?? "",
+          price:
+            extractedData.price && extractedData.currency
+              ? extractedData.price
+              : null,
+          currency:
+            extractedData.price && extractedData.currency
+              ? extractedData.currency
+              : null,
+          availability: extractedData.availability ?? "unknown",
+        },
+        mediaPreviews: [],
+        sourceContext: [post.text],
+      });
+      setError("");
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "تعذر استخراج بيانات المنتج من المنشور.",
+      ),
+  });
 
   const openExtractionEditor = (
     suggestion: ProductExtractionSuggestion,
@@ -1104,6 +1144,36 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   الإعجابات: {formatArabicNumber(post.likes ?? 0)} · التعليقات:{" "}
                   {formatArabicNumber(post.comments ?? 0)}
                 </Text>
+                <ActionButton
+                  label={
+                    extractScannedPost.isPending &&
+                    extractScannedPost.variables.id === post.id
+                      ? "جارٍ استخراج البيانات..."
+                      : "استخراج كمسودة"
+                  }
+                  icon="file-plus"
+                  disabled={
+                    !post.text.trim() || extractScannedPost.isPending
+                  }
+                  onPress={() => {
+                    setError("");
+                    extractScannedPost.mutate(post);
+                  }}
+                />
+                {post.text.trim() ? (
+                  <Text
+                    style={[styles.helper, { color: colors.mutedForeground }]}
+                  >
+                    يعتمد الاستخراج على نص المنشور فقط؛ راجع الصورة يدويًا.
+                  </Text>
+                ) : null}
+                {!post.text.trim() ? (
+                  <Text
+                    style={[styles.helper, { color: colors.mutedForeground }]}
+                  >
+                    لا يمكن استخراج بيانات المنتج تلقائيًا من منشور بلا نص.
+                  </Text>
+                ) : null}
               </Panel>
             ))}
             {extractions.isError ? (
