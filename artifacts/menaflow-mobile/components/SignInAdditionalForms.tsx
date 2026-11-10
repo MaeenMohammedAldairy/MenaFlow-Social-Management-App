@@ -1,6 +1,6 @@
 import React from 'react';
-import { Pressable, type StyleProp, type TextInputProps, type ViewStyle, View } from 'react-native';
-import { Eye, EyeOff, LockKeyhole, Mail } from 'lucide-react-native';
+import { Pressable, StyleSheet, type StyleProp, type TextInputProps, type ViewStyle, View } from 'react-native';
+import { Eye, EyeOff, KeyRound, LockKeyhole, Mail, RefreshCw } from 'lucide-react-native';
 import { CairoText as Text, CairoTextInput as TextInput } from '@/components/CairoTypography';
 import { authStyles } from '@/components/AuthFrame';
 import { useColors } from '@/hooks/useColors';
@@ -182,6 +182,24 @@ export function PasswordResetForm({
     <>
       {resetStep === 'code' ? (
         <>
+          <View
+            style={[
+              styles.resetInfo,
+              { backgroundColor: colors.accent, borderColor: colors.border },
+            ]}
+          >
+            <View style={[styles.resetIcon, { backgroundColor: colors.card }]}>
+              <Mail size={20} color={colors.primary} />
+            </View>
+            <View style={styles.resetCopy}>
+              <Text style={[styles.resetTitle, { color: colors.foreground }]}>
+                تحقق من بريدك الإلكتروني
+              </Text>
+              <Text style={[styles.resetDescription, { color: colors.mutedForeground }]}>
+                إذا كان البريد مسجلاً، فسيصلك رمز لإكمال الاستعادة.
+              </Text>
+            </View>
+          </View>
           <Text style={[authStyles.label, { color: colors.foreground }]}>رمز الاستعادة</Text>
           <View style={inputRowStyle('reset-code')}>
             <Mail size={17} color={colors.mutedForeground} />
@@ -189,6 +207,7 @@ export function PasswordResetForm({
               value={verificationCode}
               onChangeText={setVerificationCode}
               autoCapitalize="none"
+              autoComplete="one-time-code"
               keyboardType="number-pad"
               textContentType="oneTimeCode"
               placeholder="أدخل الرمز المرسل لبريدك"
@@ -196,11 +215,13 @@ export function PasswordResetForm({
               style={[
                 authStyles.input,
                 authStyles.ltrInput,
-                !verificationCode && { textAlign: 'right' },
+                styles.resetCodeInput,
                 { color: colors.foreground },
               ]}
               accessibilityLabel="رمز استعادة كلمة المرور"
               {...inputFocusProps('reset-code')}
+              onSubmitEditing={() => void verifyPasswordResetCode()}
+              returnKeyType="go"
             />
           </View>
           <Pressable
@@ -221,11 +242,21 @@ export function PasswordResetForm({
           </Pressable>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="إعادة إرسال رمز الاستعادة إلى البريد الإلكتروني"
             accessibilityState={{ disabled: loading, busy: loading }}
             onPress={() => void resendPasswordResetCode()}
             disabled={loading}
+            style={({ pressed }) => [
+              styles.resendButton,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                opacity: loading ? 0.55 : pressed ? 0.75 : 1,
+              },
+            ]}
           >
-            <Text style={[authStyles.linkText, { color: colors.primary, textAlign: 'center' }]}>
+            <RefreshCw size={15} color={colors.primary} />
+            <Text style={[authStyles.secondaryText, { color: colors.primary }]}>
               {loading ? 'جارٍ إرسال الرمز…' : 'إعادة إرسال رمز الاستعادة'}
             </Text>
           </Pressable>
@@ -285,6 +316,24 @@ export function PasswordResetForm({
         </>
       ) : (
         <>
+          <View
+            style={[
+              styles.resetInfo,
+              { backgroundColor: colors.accent, borderColor: colors.border },
+            ]}
+          >
+            <View style={[styles.resetIcon, { backgroundColor: colors.card }]}>
+              <KeyRound size={20} color={colors.primary} />
+            </View>
+            <View style={styles.resetCopy}>
+              <Text style={[styles.resetTitle, { color: colors.foreground }]}>
+                استعادة آمنة
+              </Text>
+              <Text style={[styles.resetDescription, { color: colors.mutedForeground }]}>
+                أرسل رمز تحقق لإعادة تعيين كلمة المرور.
+              </Text>
+            </View>
+          </View>
           <Text style={[authStyles.label, { color: colors.foreground }]}>البريد الإلكتروني</Text>
           <View style={inputRowStyle('reset-email')}>
             <Mail size={17} color={colors.mutedForeground} />
@@ -341,3 +390,41 @@ export function PasswordResetForm({
     </>
   );
 }
+
+const styles = StyleSheet.create({
+  resetInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  resetIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetCopy: { flex: 1, gap: 2 },
+  resetTitle: { fontSize: 14, fontWeight: '800', textAlign: 'right' },
+  resetDescription: { fontSize: 12, lineHeight: 18, textAlign: 'right' },
+  resetCodeInput: {
+    fontSize: 20,
+    fontWeight: '700',
+    letterSpacing: 5,
+    textAlign: 'center',
+  },
+  resendButton: {
+    minHeight: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+  },
+});

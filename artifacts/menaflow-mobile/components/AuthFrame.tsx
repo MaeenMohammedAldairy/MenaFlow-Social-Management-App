@@ -88,22 +88,21 @@ export function AuthFrame({
                 >
                   {title}
                 </Text>
-                <Text
-                  style={[
-                    styles.subtitle,
-                    mode === 'sign-in' && styles.signInSubtitle,
-                    { color: colors.mutedForeground },
-                  ]}
-                >
-                  {subtitle}
-                </Text>
+                {subtitle ? (
+                  <Text
+                    style={[
+                      styles.subtitle,
+                      mode === 'sign-in' && styles.signInSubtitle,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {subtitle}
+                  </Text>
+                ) : null}
               </View>
             </View>
 
             {children}
-            <Text style={[styles.footer, { color: colors.mutedForeground }]}>
-              دخول آمن إلى مساحة نشاطك الخاصة
-            </Text>
           </View>
         </View>
       </KeyboardAwareScrollViewCompat>
@@ -264,5 +263,4 @@ const styles = StyleSheet.create({
   },
   signInTitle: { alignSelf: 'stretch', textAlign: 'right' },
   signInSubtitle: { alignSelf: 'stretch', textAlign: 'left' },
-  footer: { fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 1 },
 });

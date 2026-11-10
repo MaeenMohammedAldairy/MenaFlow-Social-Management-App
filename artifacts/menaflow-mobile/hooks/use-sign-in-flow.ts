@@ -449,9 +449,7 @@ export function useSignInFlow() {
   const subtitle = requiresSecondFactor
     ? "أكمل خطوة التحقق الإضافية للمتابعة."
     : resetStep
-      ? resetStep === "new-password"
-        ? "اختر كلمة مرور جديدة لحسابك."
-        : `سنساعدك على استعادة الوصول${emailAddress ? ` إلى ${emailAddress}` : ""}.`
+      ? ""
       : "سجّل الدخول للوصول إلى مساحة عملك.";
 
   return {

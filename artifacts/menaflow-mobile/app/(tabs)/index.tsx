@@ -555,7 +555,12 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
           isWideScreen && styles.contentGridWide,
         ]}
       >
-        <View style={styles.contentColumn}>
+        <View
+          style={[
+            styles.contentColumn,
+            isWideScreen && styles.contentColumnWide,
+          ]}
+        >
           <Panel>
             <View style={styles.channelHeading}>
               <SectionTitle
@@ -822,7 +827,12 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
           </Panel>
         </View>
 
-        <View style={styles.contentColumn}>
+        <View
+          style={[
+            styles.contentColumn,
+            isWideScreen && styles.contentColumnWide,
+          ]}
+        >
           <Panel>
             <SectionTitle
               title="أحدث الأنشطة"
@@ -1123,7 +1133,8 @@ const styles = StyleSheet.create({
   contentGrid: { gap: 18 },
   contentGridPhone: { gap: 10 },
   contentGridWide: { flexDirection: "row", alignItems: "flex-start" },
-  contentColumn: { flex: 1, minWidth: 0 },
+  contentColumn: { minWidth: 0 },
+  contentColumnWide: { flex: 1 },
   metricPressable: { flexBasis: "48%", flexGrow: 0, minWidth: 0 },
   metricPressableWide: { flexBasis: "23%", flexGrow: 1 },
   metricCard: {

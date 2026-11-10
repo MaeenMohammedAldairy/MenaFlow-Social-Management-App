@@ -13,7 +13,14 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { useAuth } from "@clerk/expo";
-import { useLocalSearchParams } from "expo-router";
+import {
+  getGetSocialConnectionsQueryKey,
+  getSocialAccountDetails,
+  getSocialConnections,
+  type AccountPlatform,
+  type SocialAccountPost,
+} from "@workspace/api-client-react";
+import { router, useLocalSearchParams } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import {
@@ -269,6 +276,12 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   );
   const [error, setError] = useState("");
   const [analysisSummary, setAnalysisSummary] = useState("");
+  const [selectedScanPlatform, setSelectedScanPlatform] =
+    useState<AccountPlatform | null>(null);
+  const [selectedScanOperation, setSelectedScanOperation] = useState<
+    "messages" | "posts" | null
+  >(null);
+  const [scannedPosts, setScannedPosts] = useState<SocialAccountPost[]>([]);
   const catalogKey = ["product-catalog", userId ?? "local", activeTab] as const;
   const candidatesKey = ["product-post-candidates", userId ?? "local"] as const;
   const extractionsKey = [
@@ -295,6 +308,15 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     enabled: isLocalAuthDisabled || Boolean(userId),
     retry: false,
     refetchInterval: 10_000,
+  });
+  const connections = useQuery({
+    queryKey: [
+      ...getGetSocialConnectionsQueryKey(),
+      userId ?? "local",
+    ] as const,
+    queryFn: getSocialConnections,
+    enabled: isLocalAuthDisabled || Boolean(userId),
+    retry: false,
   });
   const publishableAccounts = useQuery({
     queryKey: ["product-publish-accounts", userId ?? "local"],
@@ -376,11 +398,40 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           ? `تمت جدولة معالجة ${result.queuedMessages} رسالة. ستظهر المنتجات والاقتراحات تلقائيًا بعد اكتمالها.`
           : "لا توجد رسائل جديدة أو غير معالجة في المجموعات المحددة.",
       );
+      setScannedPosts([]);
     },
     onError: (cause) => {
       setAnalysisSummary("");
       setError(
         cause instanceof Error ? cause.message : "تعذر تحليل رسائل WhatsApp.",
+      );
+    },
+  });
+  const scanConnectedPosts = useMutation({
+    mutationFn: (platform: AccountPlatform) =>
+      getSocialAccountDetails(platform),
+    onSuccess: (details) => {
+      const posts = details.posts ?? [];
+      setScannedPosts(posts);
+      setAnalysisSummary(
+        posts.length
+          ? `تم جلب ${formatArabicNumber(posts.length)} من أحدث منشورات ${details.platform === "facebook" ? "فيسبوك" : "إنستغرام"} للمراجعة.`
+          : "لم يُعثر على منشورات متاحة لهذا الحساب.",
+      );
+      setError(
+        posts.length === 0 && details.issues.length > 0
+          ? details.issues[0]!
+          : "",
+      );
+    },
+    onError: (cause) => {
+      setScannedPosts([]);
+      setAnalysisSummary("");
+      const message = cause instanceof Error ? cause.message : "";
+      setError(
+        /[\u0600-\u06FF]/.test(message)
+          ? message
+          : "تعذر جلب منشورات الحساب. تحقق من اتصال الحساب وصلاحيات القراءة ثم أعد المحاولة.",
       );
     },
   });
@@ -497,6 +548,59 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
       selectedProductIds.has(product.id),
     );
   const connectedAccounts = publishableAccounts.data ?? [];
+  const scanAccounts = [
+    connections.data?.whatsapp
+      ? {
+          platform: "whatsapp" as const,
+          accountName: connections.data.whatsapp.accountName,
+          ready:
+            connections.data.whatsapp.connected === true &&
+            connections.data.whatsapp.connectionState === "connected",
+        }
+      : null,
+    connections.data?.facebook
+      ? {
+          platform: "facebook" as const,
+          accountName: connections.data.facebook.accountName,
+          ready:
+            connections.data.facebook.connectionState === "connected" &&
+            connections.data.facebook.authorizationStatus === "ready",
+        }
+      : null,
+    connections.data?.instagram
+      ? {
+          platform: "instagram" as const,
+          accountName: connections.data.instagram.accountName,
+          ready:
+            connections.data.instagram.connectionState === "connected" &&
+            connections.data.instagram.authorizationStatus === "ready",
+        }
+      : null,
+  ].filter(
+    (account): account is NonNullable<typeof account> => account !== null,
+  );
+  const activeScanPlatform =
+    selectedScanPlatform &&
+    scanAccounts.some(
+      (account) => account.platform === selectedScanPlatform,
+    )
+      ? selectedScanPlatform
+      : (scanAccounts.find((account) => account.ready)?.platform ??
+        scanAccounts[0]?.platform ??
+        null);
+  const activeScanAccount = scanAccounts.find(
+    (account) => account.platform === activeScanPlatform,
+  );
+  const defaultScanOperation =
+    activeScanPlatform === "whatsapp"
+      ? "messages"
+      : activeScanPlatform
+        ? "posts"
+        : null;
+  const activeScanOperation =
+    selectedScanOperation === defaultScanOperation
+      ? selectedScanOperation
+      : defaultScanOperation;
   const selectedTargets = connectedAccounts.filter(
     (account) =>
       account.authorizationStatus === "ready" &&
@@ -746,25 +850,266 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
 
         {activeTab === "extractions" ? (
           <View style={styles.section}>
-            <ActionButton
-              label={
-                analyzeWhatsAppMessages.isPending
-                  ? "جارٍ جدولة الرسائل القديمة..."
-                  : "إعادة فحص الرسائل السابقة"
-              }
-              icon="refresh-cw"
-              disabled={analyzeWhatsAppMessages.isPending}
-              onPress={() => {
-                setError("");
-                setAnalysisSummary("");
-                analyzeWhatsAppMessages.mutate();
-              }}
-            />
+            <Panel style={styles.scanPanel}>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                فحص محتوى الحسابات المتصلة
+              </Text>
+              <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                اختر الحساب ثم نوع المحتوى الذي تريد مراجعته.
+              </Text>
+              {connections.isPending ? (
+                <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                  جارٍ تحميل الحسابات المتصلة...
+                </Text>
+              ) : scanAccounts.length ? (
+                <View style={styles.scanOptions}>
+                  {scanAccounts.map((account) => {
+                    const selected = activeScanPlatform === account.platform;
+                    const platformName =
+                      account.platform === "whatsapp"
+                        ? "واتساب"
+                        : account.platform === "facebook"
+                          ? "فيسبوك"
+                          : "إنستغرام";
+                    return (
+                      <Pressable
+                        key={account.platform}
+                        accessibilityRole="radio"
+                        accessibilityState={{
+                          checked: selected,
+                          disabled: !account.ready,
+                        }}
+                        disabled={!account.ready || scanConnectedPosts.isPending || analyzeWhatsAppMessages.isPending}
+                        onPress={() => {
+                          setSelectedScanPlatform(account.platform);
+                          setSelectedScanOperation(
+                            account.platform === "whatsapp" ? "messages" : "posts",
+                          );
+                          setScannedPosts([]);
+                          setAnalysisSummary("");
+                          setError("");
+                        }}
+                        style={[
+                          styles.scanAccountOption,
+                          {
+                            borderColor: selected ? colors.primary : colors.border,
+                            backgroundColor: selected ? colors.accent : colors.card,
+                            opacity: account.ready ? 1 : 0.55,
+                          },
+                        ]}
+                      >
+                        <View style={styles.scanAccountCopy}>
+                          <Text style={[styles.accountName, { color: colors.foreground }]}>
+                            {platformName}
+                          </Text>
+                          <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                            {account.accountName}
+                          </Text>
+                          {!account.ready ? (
+                            <Text style={[styles.helper, { color: colors.warning }]}>
+                              تحقق من اتصال الحساب وصلاحياته
+                            </Text>
+                          ) : null}
+                        </View>
+                        <View
+                          style={[
+                            styles.scanRadio,
+                            {
+                              borderColor: selected ? colors.primary : colors.border,
+                              backgroundColor: selected ? colors.primary : "transparent",
+                            },
+                          ]}
+                        >
+                          {selected ? (
+                            <Icon name="check" size={12} color={colors.primaryForeground} />
+                          ) : null}
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : connections.isError ? (
+                <Text accessibilityRole="alert" style={[styles.helper, { color: colors.destructive }]}>
+                  تعذر تحميل الحسابات المتصلة. أعد المحاولة أو تحقق من صفحة المصادر.
+                </Text>
+              ) : (
+                <View style={styles.scanEmpty}>
+                  <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                    اربط حساب WhatsApp أو Facebook أو Instagram لبدء الفحص.
+                  </Text>
+                  <ActionButton
+                    label="إدارة الحسابات المتصلة"
+                    icon="link"
+                    secondary
+                    onPress={() => router.push("/(tabs)/sources")}
+                  />
+                </View>
+              )}
+              {activeScanAccount ? (
+                <>
+                  <Text style={[styles.scanLabel, { color: colors.foreground }]}>
+                    نوع الفحص
+                  </Text>
+                  <View style={styles.scanOperations}>
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{
+                        checked: activeScanOperation === "messages",
+                        disabled:
+                          activeScanPlatform !== "whatsapp" ||
+                          !activeScanAccount.ready,
+                      }}
+                      disabled={
+                        activeScanPlatform !== "whatsapp" ||
+                        !activeScanAccount.ready
+                      }
+                      onPress={() => setSelectedScanOperation("messages")}
+                      style={[
+                        styles.scanOperation,
+                        {
+                          borderColor:
+                            activeScanOperation === "messages"
+                              ? colors.primary
+                              : colors.border,
+                          backgroundColor:
+                            activeScanOperation === "messages"
+                              ? colors.accent
+                              : colors.card,
+                          opacity: activeScanPlatform === "whatsapp" ? 1 : 0.55,
+                        },
+                      ]}
+                    >
+                      <Icon name="message-circle" size={18} color={colors.primary} />
+                      <View style={styles.scanAccountCopy}>
+                        <Text style={[styles.accountName, { color: colors.foreground }]}>
+                          فحص رسائل WhatsApp
+                        </Text>
+                        <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                          استخراج المنتجات من الرسائل غير المفحوصة.
+                        </Text>
+                      </View>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{
+                        checked: activeScanOperation === "posts",
+                        disabled:
+                          activeScanPlatform === "whatsapp" ||
+                          !activeScanAccount.ready,
+                      }}
+                      disabled={
+                        activeScanPlatform === "whatsapp" ||
+                        !activeScanAccount.ready
+                      }
+                      onPress={() => setSelectedScanOperation("posts")}
+                      style={[
+                        styles.scanOperation,
+                        {
+                          borderColor:
+                            activeScanOperation === "posts"
+                              ? colors.primary
+                              : colors.border,
+                          backgroundColor:
+                            activeScanOperation === "posts"
+                              ? colors.accent
+                              : colors.card,
+                          opacity: activeScanPlatform === "whatsapp" ? 0.55 : 1,
+                        },
+                      ]}
+                    >
+                      <Icon name="file-text" size={18} color={colors.primary} />
+                      <View style={styles.scanAccountCopy}>
+                        <Text style={[styles.accountName, { color: colors.foreground }]}>
+                          فحص المنشورات
+                        </Text>
+                        <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                          جلب أحدث 25 منشورًا من حساب Meta للمراجعة.
+                        </Text>
+                      </View>
+                    </Pressable>
+                  </View>
+                  <ActionButton
+                    label={
+                      activeScanOperation === "messages"
+                        ? analyzeWhatsAppMessages.isPending
+                          ? "جارٍ جدولة رسائل WhatsApp..."
+                          : "بدء فحص الرسائل"
+                        : scanConnectedPosts.isPending
+                          ? "جارٍ جلب المنشورات..."
+                          : "بدء فحص المنشورات"
+                    }
+                    icon="refresh-cw"
+                    disabled={
+                      !activeScanAccount.ready ||
+                      analyzeWhatsAppMessages.isPending ||
+                      scanConnectedPosts.isPending
+                    }
+                    onPress={() => {
+                      setError("");
+                      setAnalysisSummary("");
+                      setScannedPosts([]);
+                      if (activeScanOperation === "messages") {
+                        analyzeWhatsAppMessages.mutate();
+                      } else if (
+                        activeScanPlatform &&
+                        activeScanPlatform !== "whatsapp"
+                      ) {
+                        scanConnectedPosts.mutate(activeScanPlatform);
+                      }
+                    }}
+                  />
+                </>
+              ) : null}
+            </Panel>
             {analysisSummary ? (
               <Text style={[styles.helper, { color: colors.primary }]}>
                 {analysisSummary}
               </Text>
             ) : null}
+            {scannedPosts.map((post) => (
+              <Panel key={post.id} style={styles.scannedPost}>
+                <View style={styles.scannedPostHeader}>
+                  <Text style={[styles.accountName, { color: colors.foreground }]}>
+                    {post.publishedAt
+                      ? formatArabicDateTime(post.publishedAt) ?? "منشور حديث"
+                      : "منشور حديث"}
+                  </Text>
+                  {post.url ? (
+                    <Pressable
+                      accessibilityRole="link"
+                      accessibilityLabel="فتح المنشور على المنصة"
+                      onPress={() => {
+                        void Linking.openURL(post.url!).catch(() =>
+                          setError("تعذر فتح رابط المنشور."),
+                        );
+                      }}
+                      style={styles.scanPostLink}
+                    >
+                      <Icon name="external-link" size={16} color={colors.primary} />
+                    </Pressable>
+                  ) : null}
+                </View>
+                {post.text ? (
+                  <Text
+                    numberOfLines={5}
+                    style={[styles.description, { color: colors.foreground }]}
+                  >
+                    {post.text}
+                  </Text>
+                ) : (
+                  <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                    لا يحتوي المنشور على نص.
+                  </Text>
+                )}
+                {post.imageUrl ? (
+                  <ProductMediaThumbnail uri={post.imageUrl} label="وسائط المنشور" />
+                ) : null}
+                <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                  الإعجابات: {formatArabicNumber(post.likes ?? 0)} · التعليقات:{" "}
+                  {formatArabicNumber(post.comments ?? 0)}
+                </Text>
+              </Panel>
+            ))}
             {extractions.isError ? (
               <Text
                 accessibilityRole="alert"
@@ -2851,6 +3196,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   section: { gap: 10 },
+  scanPanel: { gap: 10 },
+  scanOptions: { gap: 8 },
+  scanAccountOption: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+  },
+  scanAccountCopy: { flex: 1, gap: 3 },
+  scanRadio: {
+    width: 20,
+    height: 20,
+    borderWidth: 1.5,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scanEmpty: { gap: 10 },
+  scanLabel: { fontSize: 13, fontWeight: "800", textAlign: "right" },
+  scanOperations: { gap: 8 },
+  scanOperation: {
+    minHeight: 62,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+  },
+  scannedPost: { gap: 9 },
+  scannedPostHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  scanPostLink: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
+  },
   catalogTabsFrame: { borderRadius: 16, padding: 4 },
   catalogTabsScroll: { flexGrow: 0 },
   catalogTabsContent: {

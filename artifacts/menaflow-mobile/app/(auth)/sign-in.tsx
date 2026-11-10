@@ -152,10 +152,6 @@ export default function SignInScreen() {
               <Pressable accessibilityRole="button" onPress={() => { setResetStep('email'); setErrorMessage(''); }}>
                 <Text style={[authStyles.linkText, { color: colors.primary }]}>نسيت كلمة المرور؟</Text>
               </Pressable>
-              <View style={[styles.secureBadge, { backgroundColor: colors.accent }]}>
-                <LockKeyhole size={12} color={colors.primary} />
-                <Text style={[authStyles.hint, { color: colors.primary }]}>دخول آمن</Text>
-              </View>
             </View>
             <Pressable
               accessibilityRole="button"
@@ -207,7 +203,7 @@ export default function SignInScreen() {
             {errorMessage}
           </Text>
         ) : null}
-        {successMessage ? (
+        {successMessage && !resetStep && requiresSecondFactor ? (
           <Text accessibilityRole="alert" style={[authStyles.hint, { color: colors.primary, textAlign: 'center' }]}>
             {successMessage}
           </Text>
@@ -247,14 +243,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: -2,
-  },
-  secureBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
   },
   divider: { flexDirection: 'row', alignItems: 'center', gap: 9, marginVertical: 1 },
   dividerLine: { flex: 1, height: 1 },
