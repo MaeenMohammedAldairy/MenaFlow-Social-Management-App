@@ -728,14 +728,6 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
 
         </>
       )}
-      <Panel>
-        <ActionButton
-          label="اختبار WhatsApp Cloud API"
-          icon="shield"
-          secondary
-          onPress={() => router.push("/whatsapp-cloud-setup" as Href)}
-        />
-      </Panel>
     </Page>
   );
 }

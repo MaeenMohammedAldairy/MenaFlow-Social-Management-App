@@ -45,6 +45,7 @@ import {
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
+  ActionButton,
   BrandHeader,
   Page,
   PageTitle,
@@ -1696,6 +1697,17 @@ function SourcesContent({
         onDisconnectWhatsApp={disconnectWhatsApp}
         onRefresh={() => void connectionsQuery.refetch()}
       />
+
+      {isPublishingAccounts ? (
+        <Panel>
+          <ActionButton
+            label="اختبار WhatsApp Cloud API"
+            icon="shield"
+            secondary
+            onPress={() => router.push("/whatsapp-cloud-setup" as Href)}
+          />
+        </Panel>
+      ) : null}
 
       {!isPublishingAccounts ? <CsvProductImportCard userId={userId} /> : null}
 
