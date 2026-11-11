@@ -913,100 +913,241 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                 }
               />
             ) : (
-              recentActivities.map((activity) => {
-                if (activity.type === "inbox") {
-                  const label =
-                    activity.item.kind === "comment"
-                      ? "تعليق جديد"
-                      : "رسالة جديدة";
-                  const platformLabel =
-                    activity.item.platform === "facebook"
-                      ? "فيسبوك"
-                      : "إنستغرام";
-                  const actorName = activity.item.actorName || "اسم غير متاح";
-                  const itemDate = formatArabicDateTime(
-                    activity.item.occurredAt,
-                  );
+              <View style={styles.activityList}>
+                {recentActivities.map((activity) => {
+                  if (activity.type === "inbox") {
+                    const label =
+                      activity.item.kind === "comment"
+                        ? "تعليق جديد"
+                        : "رسالة جديدة";
+                    const platformLabel =
+                      activity.item.platform === "facebook"
+                        ? "فيسبوك"
+                        : "إنستغرام";
+                    const actorName = activity.item.actorName || "اسم غير متاح";
+                    const itemDate = formatArabicDateTime(
+                      activity.item.occurredAt,
+                    );
+                    return (
+                      <Pressable
+                        key={`inbox-${activity.id}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${label} من ${actorName} على ${platformLabel}`}
+                        accessibilityHint="فتح المحادثة المرتبطة بهذا النشاط"
+                        onPress={() =>
+                          router.push({
+                            pathname: "/inbox/[conversationId]",
+                            params: {
+                              conversationId: metaInboxPersonId(activity.item),
+                              platform: activity.item.platform,
+                            },
+                          })
+                        }
+                        style={({ pressed }) => [
+                          styles.activityRow,
+                          {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                            opacity: pressed ? 0.72 : 1,
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.activityIcon,
+                            { backgroundColor: colors.blueSoft },
+                          ]}
+                        >
+                          <Icon
+                            name={
+                              activity.item.kind === "comment"
+                                ? "message-circle"
+                                : "message-square"
+                            }
+                            size={19}
+                            color={colors.blue}
+                          />
+                        </View>
+                        <View style={styles.activityCopy}>
+                          <View style={styles.activityTopline}>
+                            <StatusPill
+                              style={styles.activityStatus}
+                              label={label}
+                              tone="blue"
+                            />
+                            {itemDate ? (
+                              <Text
+                                numberOfLines={1}
+                                style={[
+                                  styles.activityDate,
+                                  { color: colors.mutedForeground },
+                                ]}
+                              >
+                                {itemDate}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.activityTitle,
+                              { color: colors.foreground },
+                            ]}
+                          >
+                            {actorName}
+                          </Text>
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.activityDescription,
+                              { color: colors.mutedForeground },
+                            ]}
+                          >
+                            {activity.item.text || "عنصر بدون نص"}
+                          </Text>
+                          <View style={styles.activityPlatform}>
+                            <SocialPlatformIcon
+                              platform={activity.item.platform}
+                              size={14}
+                            />
+                            <Text
+                              style={[
+                                styles.activityDate,
+                                { color: colors.mutedForeground },
+                              ]}
+                            >
+                              {platformLabel}
+                            </Text>
+                          </View>
+                        </View>
+                      </Pressable>
+                    );
+                  }
+
+                  if (activity.type === "product") {
+                    const productDate = formatArabicDateTime(
+                      activity.product.createdAt,
+                    );
+                    return (
+                      <Pressable
+                        key={`product-${activity.id}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`تمت إضافة المنتج: ${activity.product.name}`}
+                        accessibilityHint="عرض كتالوج المنتجات"
+                        onPress={() => router.push("/(tabs)/products")}
+                        style={({ pressed }) => [
+                          styles.activityRow,
+                          {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                            opacity: pressed ? 0.72 : 1,
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.activityIcon,
+                            { backgroundColor: colors.greenSoft },
+                          ]}
+                        >
+                          <Icon name="package" size={19} color={colors.green} />
+                        </View>
+                        <View style={styles.activityCopy}>
+                          <View style={styles.activityTopline}>
+                            <StatusPill
+                              style={styles.activityStatus}
+                              label="منتج جديد"
+                              tone="green"
+                            />
+                            {productDate ? (
+                              <Text
+                                numberOfLines={1}
+                                style={[
+                                  styles.activityDate,
+                                  { color: colors.mutedForeground },
+                                ]}
+                              >
+                                {productDate}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Text
+                            numberOfLines={2}
+                            style={[
+                              styles.activityTitle,
+                              { color: colors.foreground },
+                            ]}
+                          >
+                            {activity.product.name}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.activityDescription,
+                              { color: colors.mutedForeground },
+                            ]}
+                          >
+                            أُضيف إلى كتالوج المنتجات
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  }
+
+                  const { post } = activity;
+                  const displayTitle = getActivityPostTitle(post);
+                  const statusLabel = getActivityPostStatusLabel(post);
+                  const statusTone = getActivityPostStatusTone(post);
+                  const statusColor =
+                    statusTone === "green"
+                      ? colors.green
+                      : statusTone === "amber"
+                        ? colors.warning
+                        : statusTone === "blue"
+                          ? colors.blue
+                          : colors.mutedForeground;
+                  const statusBackground =
+                    statusTone === "green"
+                      ? colors.greenSoft
+                      : statusTone === "blue"
+                        ? colors.blueSoft
+                        : colors.secondary;
                   return (
                     <Pressable
-                      key={`inbox-${activity.id}`}
+                      key={post.id}
                       accessibilityRole="button"
-                      accessibilityLabel={`${label} من ${actorName} على ${platformLabel}`}
-                      accessibilityHint="فتح المحادثة المرتبطة بهذا النشاط"
+                      accessibilityLabel={`${statusLabel}: ${displayTitle}`}
+                      accessibilityHint="عرض المحتوى المرتبط بهذا النشاط"
                       onPress={() =>
                         router.push({
-                          pathname: "/inbox/[conversationId]",
-                          params: {
-                            conversationId: metaInboxPersonId(activity.item),
-                            platform: activity.item.platform,
-                          },
+                          pathname: "/(tabs)/content",
+                          params: { status: post.status },
                         })
                       }
                       style={({ pressed }) => [
                         styles.activityRow,
                         {
-                          borderBottomColor: colors.border,
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
                           opacity: pressed ? 0.72 : 1,
                         },
                       ]}
                     >
-                      <StatusPill
-                        style={styles.activityStatus}
-                        label={label}
-                        tone="blue"
-                      />
-                      <View style={styles.activityCopy}>
-                        <Text
-                          numberOfLines={1}
-                          style={[
-                            styles.activityTitle,
-                            { color: colors.foreground },
-                          ]}
-                        >
-                          {actorName}
-                        </Text>
-                        <Text
-                          numberOfLines={2}
-                          style={[
-                            styles.activityMeta,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          {activity.item.text || "عنصر بدون نص"}
-                          {itemDate
-                            ? ` · ${platformLabel} · استلام ${itemDate}`
-                            : ` · ${platformLabel}`}
-                        </Text>
+                      <View
+                        style={[
+                          styles.activityIcon,
+                          { backgroundColor: statusBackground },
+                        ]}
+                      >
+                        <Icon name="file-text" size={19} color={statusColor} />
                       </View>
-                    </Pressable>
-                  );
-                }
-
-                if (activity.type === "product") {
-                  const productDate = formatArabicDateTime(
-                    activity.product.createdAt,
-                  );
-                  return (
-                    <Pressable
-                      key={`product-${activity.id}`}
-                      accessibilityRole="button"
-                      accessibilityLabel={`تمت إضافة المنتج: ${activity.product.name}`}
-                      accessibilityHint="عرض كتالوج المنتجات"
-                      onPress={() => router.push("/(tabs)/products")}
-                      style={({ pressed }) => [
-                        styles.activityRow,
-                        {
-                          borderBottomColor: colors.border,
-                          opacity: pressed ? 0.72 : 1,
-                        },
-                      ]}
-                    >
-                      <StatusPill
-                        style={styles.activityStatus}
-                        label="منتج جديد"
-                        tone="green"
-                      />
                       <View style={styles.activityCopy}>
+                        <View style={styles.activityTopline}>
+                          <StatusPill
+                            style={styles.activityStatus}
+                            label={statusLabel}
+                            tone={statusTone}
+                          />
+                        </View>
                         <Text
                           numberOfLines={2}
                           style={[
@@ -1014,74 +1155,21 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                             { color: colors.foreground },
                           ]}
                         >
-                          {activity.product.name}
+                          {displayTitle}
                         </Text>
                         <Text
-                          numberOfLines={2}
                           style={[
-                            styles.activityMeta,
+                            styles.activityDescription,
                             { color: colors.mutedForeground },
                           ]}
                         >
-                          تاريخ الإضافة للكتالوج
-                          {productDate ? ` · ${productDate}` : ""}
+                          {getActivityPostMeta(post)}
                         </Text>
                       </View>
                     </Pressable>
                   );
-                }
-
-                const { post } = activity;
-                const displayTitle = getActivityPostTitle(post);
-                const statusLabel = getActivityPostStatusLabel(post);
-                return (
-                  <Pressable
-                    key={post.id}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${statusLabel}: ${displayTitle}`}
-                    accessibilityHint="عرض المحتوى المرتبط بهذا النشاط"
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(tabs)/content",
-                        params: { status: post.status },
-                      })
-                    }
-                    style={({ pressed }) => [
-                      styles.activityRow,
-                      {
-                        borderBottomColor: colors.border,
-                        opacity: pressed ? 0.72 : 1,
-                      },
-                    ]}
-                  >
-                    <StatusPill
-                      style={styles.activityStatus}
-                      label={statusLabel}
-                      tone={getActivityPostStatusTone(post)}
-                    />
-                    <View style={styles.activityCopy}>
-                      <Text
-                        numberOfLines={2}
-                        style={[
-                          styles.activityTitle,
-                          { color: colors.foreground },
-                        ]}
-                      >
-                        {displayTitle}
-                      </Text>
-                      <Text
-                        numberOfLines={2}
-                        style={[
-                          styles.activityMeta,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        {getActivityPostMeta(post)}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })
+                })}
+              </View>
             )}
             {!ready && storageError ? (
               <ActionButton
@@ -1160,13 +1248,20 @@ const styles = StyleSheet.create({
   link: { fontSize: 12, fontWeight: "700" },
   channelHeading: { gap: 3 },
   channelSectionSubtitle: { fontSize: 11, lineHeight: 16, textAlign: "right" },
-  channelRow: { flexDirection: "row", gap: 10, alignItems: "stretch" },
+  channelRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    alignItems: "stretch",
+  },
   channelRowPhone: {
     flexDirection: "column",
     rowGap: 6,
   },
   channelTile: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 0,
+    flexBasis: 180,
     minHeight: 76,
     borderRadius: 15,
     borderWidth: 1,
@@ -1242,17 +1337,37 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   activityRow: {
-    flexDirection: "row",
+    flexDirection: "row-reverse",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 16,
+  },
+  activityList: { gap: 10 },
+  activityIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activityCopy: { flex: 1, minWidth: 0, alignItems: "stretch", gap: 5 },
+  activityTopline: {
+    flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 8,
   },
-  activityCopy: { flex: 1, alignItems: "flex-start", gap: 4 },
-  activityStatus: { alignSelf: "center" },
-  activityTitle: { fontSize: 13, fontWeight: "700" },
-  activityMeta: { fontSize: 11, textAlign: "left" },
+  activityStatus: { alignSelf: "flex-start" },
+  activityTitle: { fontSize: 13, fontWeight: "700", textAlign: "right" },
+  activityDescription: { fontSize: 11, lineHeight: 16, textAlign: "right" },
+  activityPlatform: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 5,
+  },
+  activityDate: { fontSize: 10, lineHeight: 15, textAlign: "right" },
   activityError: { gap: 8, paddingVertical: 10 },
   activityErrorText: { fontSize: 12, lineHeight: 18, textAlign: "center" },
   reviewButton: {
