@@ -8,11 +8,7 @@ import { useStudio } from '@/context/StudioContext';
 import { router, type Href } from 'expo-router';
 
 export function navigateBack(fallbackHref: Href) {
-  if (router.canGoBack()) {
-    router.back();
-  } else {
-    router.replace(fallbackHref);
-  }
+  router.replace(fallbackHref);
 }
 
 export function confirmDiscardChanges(
