@@ -53,6 +53,8 @@ router.get("/social/products/public-media/:mediaId", async (req, res) => {
     return;
   }
 
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+
   const relativePath = productMediaStoragePath(mediaId);
   if (!relativePath) {
     res.status(404).json({ error: "ملف الوسائط غير متاح." });

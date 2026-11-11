@@ -915,6 +915,8 @@ router.get("/social/whatsapp/public-media/:mediaId", async (req, res) => {
     return;
   }
 
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+
   try {
     const media = await getWhatsAppMediaRecord(mediaId);
     if (!media) {
