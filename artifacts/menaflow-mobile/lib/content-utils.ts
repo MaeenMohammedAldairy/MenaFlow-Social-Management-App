@@ -180,6 +180,25 @@ export function mediaUrlForApp(mediaUrl: string): string {
   }
 }
 
+export function signedMediaResourceKey(mediaUrl: string): string | null {
+  try {
+    const url = new URL(mediaUrl);
+    if (
+      (url.protocol !== "http:" && url.protocol !== "https:") ||
+      !/^\/api\/social\/(?:whatsapp|products)\/public-media\/[^/]+$/.test(
+        url.pathname,
+      ) ||
+      !url.searchParams.has("expires") ||
+      !url.searchParams.has("signature")
+    ) {
+      return null;
+    }
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
 export function mediaPreviewUrl(
   mediaUrl: string,
   thumbnailUrl: string | undefined,

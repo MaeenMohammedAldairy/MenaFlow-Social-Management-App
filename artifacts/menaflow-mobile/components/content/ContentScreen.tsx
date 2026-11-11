@@ -1079,6 +1079,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           onClearFilters={clearContentFilters}
           loadingMorePosts={loadingMorePosts}
           mediaPreviewUrls={mediaPreviewUrls}
+          onMediaError={() => void refreshPosts()}
           verifyingPostId={verifyingPostId}
           verificationFeedback={verificationFeedback}
           onVerifyFacebookStatus={onVerifyFacebookStatus}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Alert,
   Linking,
@@ -20,6 +20,7 @@ import {
   platformLabel,
   postMediaType,
   publishReasonLabel,
+  signedMediaResourceKey,
   statusInfo,
 } from "@/lib/content-utils";
 import { styles } from "./content-styles";
@@ -32,6 +33,7 @@ type ContentPostListProps = {
   onClearFilters: () => void;
   loadingMorePosts: boolean;
   mediaPreviewUrls: Record<string, string>;
+  onMediaError: () => void;
   verifyingPostId: string | null;
   verificationFeedback: Record<string, string>;
   onVerifyFacebookStatus: (postId: string) => void;
@@ -136,6 +138,7 @@ export function ContentPostList({
   onClearFilters,
   loadingMorePosts,
   mediaPreviewUrls,
+  onMediaError,
   verifyingPostId,
   verificationFeedback,
   onVerifyFacebookStatus,
@@ -155,6 +158,7 @@ export function ContentPostList({
   const [failedMediaUrls, setFailedMediaUrls] = useState<Set<string>>(
     () => new Set(),
   );
+  const mediaRefreshAttempts = useRef(new Map<string, number>());
   const [approvingPostId, setApprovingPostId] = useState<string | null>(null);
   const [previewPost, setPreviewPost] = useState<Post | null>(null);
   const [previewChannel, setPreviewChannel] = useState<MetaChannel>("facebook");
@@ -162,6 +166,12 @@ export function ContentPostList({
 
   const markMediaFailed = (mediaUrl: string) => {
     setFailedMediaUrls((current) => new Set(current).add(mediaUrl));
+    const resourceKey = signedMediaResourceKey(mediaUrl);
+    if (!resourceKey) return;
+    const lastAttempt = mediaRefreshAttempts.current.get(resourceKey) ?? 0;
+    if (Date.now() - lastAttempt < 60_000) return;
+    mediaRefreshAttempts.current.set(resourceKey, Date.now());
+    onMediaError();
   };
 
   const renderPreviewMedia = () => {

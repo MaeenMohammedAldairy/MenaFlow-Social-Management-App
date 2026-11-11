@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import {
   Alert,
@@ -21,7 +21,11 @@ import {
   type SocialAccountPost,
 } from "@workspace/api-client-react";
 import { router, useLocalSearchParams } from "expo-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import {
   CairoText as Text,
@@ -44,7 +48,10 @@ import {
   formatArabicNumber,
   normalizeArabicDigits,
 } from "@/lib/formatting";
-import { mediaUrlForApp } from "@/lib/content-utils";
+import {
+  mediaUrlForApp,
+  signedMediaResourceKey,
+} from "@/lib/content-utils";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   createExtractionProductDraft,
@@ -132,8 +139,26 @@ function catalogLoadErrorMessage(error: unknown): string {
 
 function ProductMediaThumbnail({ uri, label }: { uri: string; label: string }) {
   const colors = useColors();
+  const queryClient = useQueryClient();
   const resolvedUri = mediaUrlForApp(uri);
   const [failedUri, setFailedUri] = useState<string | null>(null);
+  const refreshAttempts = useRef(new Map<string, number>());
+
+  const handleError = () => {
+    setFailedUri(resolvedUri);
+    const resourceKey = signedMediaResourceKey(resolvedUri);
+    if (!resourceKey) return;
+    const lastAttempt = refreshAttempts.current.get(resourceKey) ?? 0;
+    if (Date.now() - lastAttempt < 60_000) return;
+    refreshAttempts.current.set(resourceKey, Date.now());
+    void queryClient.invalidateQueries({ queryKey: ["product-catalog"] });
+    void queryClient.invalidateQueries({
+      queryKey: ["product-post-candidates"],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["whatsapp-product-extractions"],
+    });
+  };
 
   if (failedUri === resolvedUri) {
     return (
@@ -165,7 +190,7 @@ function ProductMediaThumbnail({ uri, label }: { uri: string; label: string }) {
       contentFit="cover"
       cachePolicy="disk"
       accessibilityLabel={label}
-      onError={() => setFailedUri(resolvedUri)}
+      onError={handleError}
     />
   );
 }

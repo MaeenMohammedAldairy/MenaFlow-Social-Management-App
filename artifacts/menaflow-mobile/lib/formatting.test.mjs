@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mediaPreviewUrl, mediaUrlForApp } from "./content-utils.ts";
+import {
+  mediaPreviewUrl,
+  mediaUrlForApp,
+  signedMediaResourceKey,
+} from "./content-utils.ts";
 import {
   formatArabicCurrency,
   formatArabicDate,
@@ -57,4 +61,29 @@ test("routes signed WhatsApp previews through the configured API origin", () => 
     if (previousDomain === undefined) delete process.env.EXPO_PUBLIC_DOMAIN;
     else process.env.EXPO_PUBLIC_DOMAIN = previousDomain;
   }
+});
+
+test("identifies signed product and WhatsApp media independently of signature expiry", () => {
+  assert.equal(
+    signedMediaResourceKey(
+      "https://api.example.com/api/social/products/public-media/product-1?expires=123&signature=abc",
+    ),
+    "https://api.example.com/api/social/products/public-media/product-1",
+  );
+  assert.equal(
+    signedMediaResourceKey(
+      "https://api.example.com/api/social/whatsapp/public-media/media-1?expires=456&signature=def",
+    ),
+    "https://api.example.com/api/social/whatsapp/public-media/media-1",
+  );
+  assert.equal(
+    signedMediaResourceKey("https://cdn.example.com/product.jpg"),
+    null,
+  );
+  assert.equal(
+    signedMediaResourceKey(
+      "https://api.example.com/api/social/products/public-media/product-1",
+    ),
+    null,
+  );
 });
