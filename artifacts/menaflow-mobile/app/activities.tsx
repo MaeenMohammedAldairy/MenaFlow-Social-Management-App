@@ -11,6 +11,10 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { CairoText as Text } from "@/components/CairoTypography";
+import {
+  LucideIcon as Icon,
+  type LucideIconName,
+} from "@/components/LucideIcon";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import {
   ActionButton,
@@ -164,6 +168,8 @@ function ActivitiesContent({ userId }: { userId: string | null }) {
     );
   });
   const visibleActivities = filteredActivities.slice(0, visibleCount);
+  const hasActiveFilters =
+    typeFilter !== "all" || platformFilter !== "all" || statusFilter !== "all";
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -275,6 +281,46 @@ function ActivitiesContent({ userId }: { userId: string | null }) {
       ) : ready ? (
         <>
           <Panel style={styles.filtersPanel}>
+            <View style={styles.filtersHeading}>
+              <View style={styles.filtersTitleGroup}>
+                <View
+                  style={[
+                    styles.filtersIcon,
+                    { backgroundColor: colors.accent },
+                  ]}
+                >
+                  <Icon name="filter" size={16} color={colors.primary} />
+                </View>
+                <Text
+                  style={[styles.filtersTitle, { color: colors.foreground }]}
+                >
+                  تصفية الأنشطة
+                </Text>
+              </View>
+              {hasActiveFilters ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="مسح كل عوامل التصفية"
+                  onPress={() => {
+                    setTypeFilter("all");
+                    setPlatformFilter("all");
+                    setStatusFilter("all");
+                    setVisibleCount(20);
+                  }}
+                  style={({ pressed }) => [
+                    styles.clearFiltersButton,
+                    { opacity: pressed ? 0.72 : 1 },
+                  ]}
+                >
+                  <Icon name="x" size={14} color={colors.primary} />
+                  <Text
+                    style={[styles.clearFiltersText, { color: colors.primary }]}
+                  >
+                    مسح التصفية
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
             <ActivityFilterRow
               label="نوع النشاط"
               options={activityTypeOptions}
@@ -309,10 +355,6 @@ function ActivitiesContent({ userId }: { userId: string | null }) {
               />
             ) : null}
           </Panel>
-          <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>
-            عرض {formatArabicNumber(visibleActivities.length)} من{" "}
-            {formatArabicNumber(filteredActivities.length)}
-          </Text>
           {filteredActivities.length === 0 ? (
             <EmptyState
               icon="filter"
@@ -320,50 +362,263 @@ function ActivitiesContent({ userId }: { userId: string | null }) {
               body="جرّب تغيير نوع النشاط أو المنصة أو حالة المنشور."
             />
           ) : (
-            <Panel style={styles.activityList}>
-              {visibleActivities.map((activity) => {
-                if (activity.type === "inbox") {
-                  const label =
-                    activity.item.kind === "comment"
-                      ? "تعليق جديد"
-                      : "رسالة جديدة";
-                  const platformLabel =
-                    activity.item.platform === "facebook"
-                      ? "فيسبوك"
-                      : "إنستغرام";
-                  const title = activity.item.actorName || "اسم غير متاح";
-                  const date = formatArabicDateTime(activity.timestamp);
+            <View style={styles.activitySection}>
+              <View style={styles.activitySectionHeading}>
+                <View style={styles.activitySectionTitleGroup}>
+                  <Text
+                    style={[
+                      styles.activitySectionTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    سجل الأنشطة
+                  </Text>
+                  <Text
+                    style={[
+                      styles.activitySectionSubtitle,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    الأحدث أولاً
+                  </Text>
+                </View>
+                <View
+                  style={[
+                    styles.activityCountBadge,
+                    { backgroundColor: colors.accent },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.activityCountText,
+                      { color: colors.accentForeground },
+                    ]}
+                  >
+                    عرض {formatArabicNumber(visibleActivities.length)} من{" "}
+                    {formatArabicNumber(filteredActivities.length)}
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.activityList}>
+                {visibleActivities.map((activity) => {
+                  if (activity.type === "inbox") {
+                    const label =
+                      activity.item.kind === "comment"
+                        ? "تعليق جديد"
+                        : "رسالة جديدة";
+                    const platformLabel =
+                      activity.item.platform === "facebook"
+                        ? "فيسبوك"
+                        : "إنستغرام";
+                    const title = activity.item.actorName || "اسم غير متاح";
+                    const date = formatArabicDateTime(activity.timestamp);
+                    return (
+                      <Pressable
+                        key={`inbox-${activity.id}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${label} من ${title} على ${platformLabel}`}
+                        accessibilityHint="فتح المحادثة المرتبطة بهذا النشاط"
+                        onPress={() =>
+                          router.push({
+                            pathname: "/inbox/[conversationId]",
+                            params: {
+                              conversationId: metaInboxPersonId(activity.item),
+                              platform: activity.item.platform,
+                            },
+                          })
+                        }
+                        style={({ pressed }) => [
+                          styles.activityRow,
+                          {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                            opacity: pressed ? 0.72 : 1,
+                          },
+                        ]}
+                      >
+                        <ActivityIcon
+                          icon={
+                            activity.item.kind === "comment"
+                              ? "message-circle"
+                              : "message-square"
+                          }
+                          color={colors.blue}
+                          backgroundColor={colors.blueSoft}
+                        />
+                        <View style={styles.activityCopy}>
+                          <View style={styles.activityTopline}>
+                            <StatusPill
+                              label={label}
+                              tone="blue"
+                              style={styles.activityStatus}
+                            />
+                            {date ? (
+                              <Text
+                                numberOfLines={1}
+                                style={[
+                                  styles.activityDate,
+                                  { color: colors.mutedForeground },
+                                ]}
+                              >
+                                {date}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.activityTitle,
+                              { color: colors.foreground },
+                            ]}
+                          >
+                            {title}
+                          </Text>
+                          <Text
+                            numberOfLines={1}
+                            style={[
+                              styles.activityDescription,
+                              { color: colors.mutedForeground },
+                            ]}
+                          >
+                            {activity.item.text || "عنصر بدون نص"}
+                          </Text>
+                          <View style={styles.activityMeta}>
+                            <SocialPlatformIcon
+                              platform={activity.item.platform}
+                              size={14}
+                            />
+                            <Text
+                              style={[
+                                styles.activityDate,
+                                { color: colors.mutedForeground },
+                              ]}
+                            >
+                              {platformLabel}
+                            </Text>
+                          </View>
+                        </View>
+                      </Pressable>
+                    );
+                  }
+
+                  if (activity.type === "product") {
+                    const date = formatArabicDateTime(activity.timestamp);
+                    return (
+                      <Pressable
+                        key={`product-${activity.id}`}
+                        accessibilityRole="button"
+                        accessibilityLabel={`منتج جديد: ${activity.product.name}`}
+                        accessibilityHint="عرض كتالوج المنتجات"
+                        onPress={() => router.push("/(tabs)/products")}
+                        style={({ pressed }) => [
+                          styles.activityRow,
+                          {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                            opacity: pressed ? 0.72 : 1,
+                          },
+                        ]}
+                      >
+                        <ActivityIcon
+                          icon="package"
+                          color={colors.green}
+                          backgroundColor={colors.greenSoft}
+                        />
+                        <View style={styles.activityCopy}>
+                          <View style={styles.activityTopline}>
+                            <StatusPill
+                              label="منتج جديد"
+                              tone="green"
+                              style={styles.activityStatus}
+                            />
+                            {date ? (
+                              <Text
+                                numberOfLines={1}
+                                style={[
+                                  styles.activityDate,
+                                  { color: colors.mutedForeground },
+                                ]}
+                              >
+                                {date}
+                              </Text>
+                            ) : null}
+                          </View>
+                          <Text
+                            numberOfLines={2}
+                            style={[
+                              styles.activityTitle,
+                              { color: colors.foreground },
+                            ]}
+                          >
+                            {activity.product.name}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.activityDescription,
+                              { color: colors.mutedForeground },
+                            ]}
+                          >
+                            أُضيف إلى كتالوج المنتجات
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  }
+
+                  const post = activity.post;
+                  const title = getActivityPostTitle(post);
+                  const statusLabel = getActivityPostStatusLabel(post);
+                  const statusTone = getActivityPostStatusTone(post);
+                  const statusColor =
+                    statusTone === "green"
+                      ? colors.green
+                      : statusTone === "amber"
+                        ? colors.warning
+                        : statusTone === "blue"
+                          ? colors.blue
+                          : colors.mutedForeground;
+                  const statusBackground =
+                    statusTone === "green"
+                      ? colors.greenSoft
+                      : statusTone === "blue"
+                        ? colors.blueSoft
+                        : colors.secondary;
                   return (
                     <Pressable
-                      key={`inbox-${activity.id}`}
+                      key={`post-${activity.id}`}
                       accessibilityRole="button"
-                      accessibilityLabel={`${label} من ${title} على ${platformLabel}`}
-                      accessibilityHint="فتح المحادثة المرتبطة بهذا النشاط"
+                      accessibilityLabel={`${statusLabel}: ${title}`}
+                      accessibilityHint="عرض المحتوى المرتبط بهذا النشاط"
                       onPress={() =>
                         router.push({
-                          pathname: "/inbox/[conversationId]",
-                          params: {
-                            conversationId: metaInboxPersonId(activity.item),
-                            platform: activity.item.platform,
-                          },
+                          pathname: "/(tabs)/content",
+                          params: { status: post.status },
                         })
                       }
                       style={({ pressed }) => [
                         styles.activityRow,
                         {
-                          borderBottomColor: colors.border,
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
                           opacity: pressed ? 0.72 : 1,
                         },
                       ]}
                     >
-                      <StatusPill
-                        label={label}
-                        tone="blue"
-                        style={styles.activityStatus}
+                      <ActivityIcon
+                        icon="file-text"
+                        color={statusColor}
+                        backgroundColor={statusBackground}
                       />
                       <View style={styles.activityCopy}>
+                        <View style={styles.activityTopline}>
+                          <StatusPill
+                            label={statusLabel}
+                            tone={statusTone}
+                            style={styles.activityStatus}
+                          />
+                        </View>
                         <Text
-                          numberOfLines={1}
+                          numberOfLines={2}
                           style={[
                             styles.activityTitle,
                             { color: colors.foreground },
@@ -372,130 +627,19 @@ function ActivitiesContent({ userId }: { userId: string | null }) {
                           {title}
                         </Text>
                         <Text
-                          numberOfLines={1}
-                          style={[
-                            styles.activityDescription,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          {activity.item.text || "عنصر بدون نص"}
-                        </Text>
-                        <View style={styles.activityMeta}>
-                          <SocialPlatformIcon
-                            platform={activity.item.platform}
-                            size={14}
-                          />
-                          <Text
-                            style={[
-                              styles.activityDate,
-                              { color: colors.mutedForeground },
-                            ]}
-                          >
-                            {platformLabel}
-                            {date ? ` · تاريخ الاستلام: ${date}` : ""}
-                          </Text>
-                        </View>
-                      </View>
-                    </Pressable>
-                  );
-                }
-
-                if (activity.type === "product") {
-                  const date = formatArabicDateTime(activity.timestamp);
-                  return (
-                    <Pressable
-                      key={`product-${activity.id}`}
-                      accessibilityRole="button"
-                      accessibilityLabel={`منتج جديد: ${activity.product.name}`}
-                      accessibilityHint="عرض كتالوج المنتجات"
-                      onPress={() => router.push("/(tabs)/products")}
-                      style={({ pressed }) => [
-                        styles.activityRow,
-                        {
-                          borderBottomColor: colors.border,
-                          opacity: pressed ? 0.72 : 1,
-                        },
-                      ]}
-                    >
-                      <StatusPill
-                        label="منتج جديد"
-                        tone="green"
-                        style={styles.activityStatus}
-                      />
-                      <View style={styles.activityCopy}>
-                        <Text
-                          numberOfLines={2}
-                          style={[
-                            styles.activityTitle,
-                            { color: colors.foreground },
-                          ]}
-                        >
-                          {activity.product.name}
-                        </Text>
-                        <Text
                           style={[
                             styles.activityDate,
                             { color: colors.mutedForeground },
                           ]}
                         >
-                          تاريخ الإضافة إلى الكتالوج{date ? `: ${date}` : ""}
+                          {getActivityPostMeta(post)}
                         </Text>
                       </View>
                     </Pressable>
                   );
-                }
-
-                const post = activity.post;
-                const title = getActivityPostTitle(post);
-                const statusLabel = getActivityPostStatusLabel(post);
-                return (
-                  <Pressable
-                    key={`post-${activity.id}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${statusLabel}: ${title}`}
-                    accessibilityHint="عرض المحتوى المرتبط بهذا النشاط"
-                    onPress={() =>
-                      router.push({
-                        pathname: "/(tabs)/content",
-                        params: { status: post.status },
-                      })
-                    }
-                    style={({ pressed }) => [
-                      styles.activityRow,
-                      {
-                        borderBottomColor: colors.border,
-                        opacity: pressed ? 0.72 : 1,
-                      },
-                    ]}
-                  >
-                    <StatusPill
-                      label={statusLabel}
-                      tone={getActivityPostStatusTone(post)}
-                      style={styles.activityStatus}
-                    />
-                    <View style={styles.activityCopy}>
-                      <Text
-                        numberOfLines={2}
-                        style={[
-                          styles.activityTitle,
-                          { color: colors.foreground },
-                        ]}
-                      >
-                        {title}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.activityDate,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        {getActivityPostMeta(post)}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </Panel>
+                })}
+              </View>
+            </View>
           )}
           {visibleActivities.length < filteredActivities.length ? (
             <ActionButton
@@ -508,6 +652,22 @@ function ActivitiesContent({ userId }: { userId: string | null }) {
         </>
       ) : null}
     </Page>
+  );
+}
+
+function ActivityIcon({
+  icon,
+  color,
+  backgroundColor,
+}: {
+  icon: LucideIconName;
+  color: string;
+  backgroundColor: string;
+}) {
+  return (
+    <View style={[styles.activityIcon, { backgroundColor }]}>
+      <Icon name={icon} size={19} color={color} />
+    </View>
   );
 }
 
@@ -577,7 +737,35 @@ const styles = StyleSheet.create({
   errorPanel: { gap: 10 },
   errorText: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   retryButtons: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
-  filtersPanel: { gap: 14 },
+  filtersPanel: { gap: 16 },
+  filtersHeading: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  filtersTitleGroup: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 9,
+  },
+  filtersIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filtersTitle: { fontSize: 14, fontWeight: "800", textAlign: "right" },
+  clearFiltersButton: {
+    minHeight: 36,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    paddingHorizontal: 6,
+  },
+  clearFiltersText: { fontSize: 11, fontWeight: "700" },
   filterGroup: { gap: 8 },
   filterHeading: { fontSize: 12, fontWeight: "700", textAlign: "right" },
   filterOptions: { flexDirection: "row-reverse", gap: 8, paddingVertical: 2 },
@@ -589,25 +777,60 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   filterOptionText: { fontSize: 12, fontWeight: "600" },
-  resultCount: { fontSize: 12, textAlign: "right" },
-  activityList: { gap: 0 },
-  activityRow: {
-    flexDirection: "row",
+  activitySection: { gap: 12 },
+  activitySectionHeading: {
+    flexDirection: "row-reverse",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 10,
-    paddingVertical: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 8,
   },
-  activityStatus: { minWidth: 90 },
-  activityCopy: { flex: 1, minWidth: 0, gap: 4, alignItems: "flex-start" },
+  activitySectionTitleGroup: { gap: 2, alignItems: "flex-start" },
+  activitySectionTitle: { fontSize: 17, fontWeight: "800", textAlign: "right" },
+  activitySectionSubtitle: { fontSize: 11, textAlign: "right" },
+  activityCountBadge: {
+    minHeight: 30,
+    justifyContent: "center",
+    borderRadius: 15,
+    paddingHorizontal: 10,
+  },
+  activityCountText: { fontSize: 10, fontWeight: "700" },
+  activityList: { gap: 10 },
+  activityRow: {
+    flexDirection: "row-reverse",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: 13,
+    borderWidth: 1,
+    borderRadius: 17,
+  },
+  activityIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activityCopy: { flex: 1, minWidth: 0, gap: 6, alignItems: "flex-start" },
+  activityTopline: {
+    width: "100%",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  activityStatus: { maxWidth: "60%" },
   activityTitle: {
     width: "100%",
     fontSize: 13,
     fontWeight: "700",
     textAlign: "right",
   },
-  activityDescription: { width: "100%", fontSize: 11, textAlign: "right" },
+  activityDescription: {
+    width: "100%",
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: "right",
+  },
   activityMeta: { flexDirection: "row", alignItems: "center", gap: 5 },
   activityDate: { fontSize: 11, lineHeight: 17, textAlign: "right" },
 });
