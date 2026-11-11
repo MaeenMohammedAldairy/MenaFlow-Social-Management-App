@@ -1,1 +1,1 @@
-export { SettingsScreen as default } from "../settings";
+export { SettingsScreen as default } from "@/components/settings/SettingsScreen";
