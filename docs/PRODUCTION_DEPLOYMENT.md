@@ -19,7 +19,8 @@ service with `pnpm --filter @workspace/api-server run start:worker`. By
 default it runs all enabled workers; set `MENA_WORKER_NAME` to one of
 `auto-reply-recovery`, `meta-webhook-subscriptions`, `product-extraction`,
 `product-publication`, `media-download`, `meta-auto-replies`,
-`media-thumbnails`, or `whatsapp-marketing` to run a single worker family.
+`media-thumbnails`, `whatsapp-marketing`, or `whatsapp-cloud-webhooks` to run
+a single worker family.
 Keep one replica for `meta-webhook-subscriptions` until its reconciliation
 work is protected by a cross-process claim.
 
@@ -33,12 +34,66 @@ Configure these API variables in the hosting provider's secret/configuration man
 - `MENA_CORS_ORIGINS`: comma-separated exact HTTPS origins for browser clients. Native mobile requests without an `Origin` header remain supported.
 - `FACEBOOK_APP_ID`, `FACEBOOK_APP_SECRET`, and `MENA_FACEBOOK_REDIRECT_URI` (public HTTPS callback) when enabling Meta
 - `MENA_META_WEBHOOK_VERIFY_TOKEN` (a private random string shared only with the Meta App Dashboard) when enabling Meta messages and comments
+- `MENA_WHATSAPP_CLOUD_TEST_ENABLED=true` only when intentionally enabling the developer Test WABA setup endpoint in a production deployment; leave unset otherwise
+- `MENA_WHATSAPP_CLOUD_TEST_MESSAGING_ACCOUNT_IDS` as a comma-separated allowlist of developer Test WABA messaging-account IDs; the test setup endpoint rejects IDs not in this server-side list
+- `WHATSAPP_CLOUD_WEBHOOK_WORKER_ENABLED=false` only to pause WhatsApp Cloud event processing while retaining incoming signed events in the database
 - `MENA_FACEBOOK_WEB_ORIGINS` for explicitly allowed browser return origins where applicable
 - `MENA_PUBLIC_MEDIA_BASE_URL` (public HTTPS API origin) when publishing media that Meta must fetch
 - `WHATSAPP_EVOLUTION_BASE_URL`, `WHATSAPP_EVOLUTION_API_KEY`, `WHATSAPP_EVOLUTION_WEBHOOK_SECRET`, and `WHATSAPP_EVOLUTION_WEBHOOK_URL` (public HTTPS callback) when enabling Evolution
 - `GEMINI_API_KEY` and/or `OPENAI_API_KEY` when enabling AI generation
 
 Production startup rejects disabled Clerk auth, missing Clerk keys, short encryption keys, short supplied previous keys, and malformed/non-HTTPS CORS origins. Meta media and Evolution callbacks do not use app-domain, localhost, or Docker-host fallbacks in production. Keep database and provider credentials server-side; only `EXPO_PUBLIC_*` values are embedded into the app.
+
+### WhatsApp Cloud API foundation
+
+The Cloud API test-connection flow is separate from the existing Evolution API
+pairing flow. Before enabling it, apply
+`supabase/migrations/20261111002000_whatsapp_cloud_foundation.sql` to the
+target database and verify the resulting tables, foreign keys, and RLS settings.
+The test setup accepts a developer Test WABA access token only in an
+authenticated, workspace-owner HTTPS request; the API encrypts the token before
+storage and never returns it. The mobile form keeps the value only in memory and
+clears it after a successful save. Do not copy production/customer access
+tokens into this test flow. In production, the route remains disabled unless
+`MENA_WHATSAPP_CLOUD_TEST_ENABLED=true` is explicitly configured.
+The configured IDs must be obtained from the Meta developer app's Test WABA
+setup; do not add customer production account IDs to this allowlist.
+
+This foundation verifies a saved messaging account, required permissions, and
+its phone-number IDs through Graph API. It does not implement Embedded Signup,
+register or deregister numbers, send messages, process WhatsApp webhook events,
+or revoke authorization at Meta. Removing a test connection deletes its local
+credential and records only. Configure `META_GRAPH_VERSION` to a Graph API
+version enabled for the Meta app; availability of environment variables or
+Meta permissions must be verified in the deployment and Meta dashboards.
+
+### WhatsApp Cloud webhook intake
+
+The callback is `https://<public-api-origin>/api/social/whatsapp-cloud/webhook`.
+It uses `MENA_META_WEBHOOK_VERIFY_TOKEN` for Meta's GET challenge and
+`FACEBOOK_APP_SECRET` to verify the POST `X-Hub-Signature-256` against the
+unmodified JSON request body. The API stores each signed WABA change in
+`mena_whatsapp_cloud_webhook_events` before returning success; duplicate
+changes are ignored by a stable event fingerprint. Events are linked to a
+workspace only when their Messaging Account ID resolves to exactly one saved
+connection. Unmatched or ambiguous events are retained without workspace
+association and are not processed.
+
+Apply `supabase/migrations/20261111003000_whatsapp_cloud_webhook_events.sql`
+and `supabase/migrations/20261111004000_whatsapp_cloud_conversations.sql`
+after the WhatsApp Cloud foundation migration. Configure the public HTTPS
+callback in the Meta App Dashboard, subscribe the WABA to `messages` first,
+and verify delivery with a developer Test WABA. Run the
+`whatsapp-cloud-webhooks` worker. It converts supported inbound messages and
+message status changes into workspace-scoped conversation and message records;
+the event row is marked processed and its raw payload cleared in the same
+transaction. Duplicate messages are ignored and status progression does not
+regress on out-of-order notifications. Events with an unknown or ambiguous
+account remain unprocessed for review. Failed events are retried up to five
+times with backoff and retained with their raw payload for diagnosis; define
+and apply a reviewed retention policy before production use. Raw event payloads
+may include customer message content; access is server-only, tables deny direct
+`anon` and `authenticated` access, and payloads must not be logged or exported.
 
 ### Subscription plans
 

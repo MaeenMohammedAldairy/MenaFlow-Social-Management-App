@@ -55,6 +55,7 @@ const apiRateLimit = rateLimit({
       "/readyz",
       "/social/meta/webhook",
       "/social/whatsapp/webhook",
+      "/social/whatsapp-cloud/webhook",
     ].includes(req.path),
   handler: (_req, res) => {
     res.status(429).json({
@@ -137,6 +138,10 @@ app.use("/api", apiRateLimit);
 app.use("/api/ai/content", aiContentRateLimit);
 app.use(
   "/api/social/meta/webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+);
+app.use(
+  "/api/social/whatsapp-cloud/webhook",
   express.raw({ type: "application/json", limit: "1mb" }),
 );
 app.use("/api/social/whatsapp/webhook", express.json({ limit: "1mb" }));

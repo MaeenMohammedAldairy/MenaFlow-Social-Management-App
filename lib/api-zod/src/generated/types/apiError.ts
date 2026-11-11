@@ -8,4 +8,6 @@
 
 export interface ApiError {
   error: string;
+  code?: string;
+  requestId?: string;
 }

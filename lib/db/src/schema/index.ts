@@ -18,6 +18,7 @@
 //   export type Post = typeof postsTable.$inferSelect;
 
 export * from "./social";
+export * from "./whatsapp-cloud";
 export * from "./whatsapp-content";
 export * from "./posts";
 export * from "./meta-inbox";

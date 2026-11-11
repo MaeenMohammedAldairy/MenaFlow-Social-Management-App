@@ -10,6 +10,7 @@ import { processWhatsAppProductExtractionQueue } from "./lib/whatsapp-product-ex
 import { processProductPublicationQueue } from "./lib/product-publishing";
 import { processMetaWebhookSubscriptionQueue } from "./lib/meta-webhook-subscriptions";
 import { markStaleWhatsAppAutoRepliesUnknown } from "./lib/whatsapp-auto-reply-recovery";
+import { processWhatsAppCloudWebhookQueue } from "./lib/whatsapp-cloud-webhook-worker";
 
 type WorkerName =
   | "auto-reply-recovery"
@@ -19,7 +20,8 @@ type WorkerName =
   | "media-download"
   | "meta-auto-replies"
   | "media-thumbnails"
-  | "whatsapp-marketing";
+  | "whatsapp-marketing"
+  | "whatsapp-cloud-webhooks";
 
 type Worker = {
   name: WorkerName;
@@ -47,6 +49,15 @@ const workers: Worker[] = [
     disabledMessage:
       "Meta webhook subscription reconciliation disabled because the verification token is not configured",
     errorMessage: "Meta webhook subscription reconciliation failed",
+  },
+  {
+    name: "whatsapp-cloud-webhooks",
+    intervalMs: 3_000,
+    enabled: () =>
+      process.env.WHATSAPP_CLOUD_WEBHOOK_WORKER_ENABLED !== "false",
+    run: processWhatsAppCloudWebhookQueue,
+    disabledMessage: "WhatsApp Cloud webhook event worker disabled",
+    errorMessage: "WhatsApp Cloud webhook event queue poll failed",
   },
   {
     name: "product-extraction",

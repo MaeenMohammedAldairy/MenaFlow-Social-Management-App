@@ -192,6 +192,10 @@ function AppNavigator({ isSignedIn }: { isSignedIn: boolean }) {
         <Stack.Screen name="connect-accounts" options={{ headerShown: false }} />
         <Stack.Screen name="whatsapp-setup" options={{ headerShown: false }} />
         <Stack.Screen
+          name="whatsapp-cloud-setup"
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
           name="inbox/[conversationId]"
           options={{ headerShown: false }}
         />

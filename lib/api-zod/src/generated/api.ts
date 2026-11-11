@@ -225,6 +225,162 @@ export const GetSocialConnectionsResponse = zod.object({
 
 
 /**
+ * Accepts a developer Test WABA access token over HTTPS only when its messaging account ID is configured in the server-side MENA_WHATSAPP_CLOUD_TEST_MESSAGING_ACCOUNT_IDS allowlist. It verifies permissions and phone numbers server-to-server, then stores only an encrypted token. Production connections must use a separate Embedded Signup flow.
+ * @summary Verify and save a developer Test WABA connection
+ */
+export const createWhatsAppCloudTestConnectionBodyAccessTokenMin = 20;
+export const createWhatsAppCloudTestConnectionBodyAccessTokenMax = 8192;
+
+export const createWhatsAppCloudTestConnectionBodyMessagingAccountIdMax = 128;
+
+export const createWhatsAppCloudTestConnectionBodyPhoneNumberIdMax = 128;
+
+
+
+export const CreateWhatsAppCloudTestConnectionBody = zod.object({
+  "accessToken": zod.string().min(createWhatsAppCloudTestConnectionBodyAccessTokenMin).max(createWhatsAppCloudTestConnectionBodyAccessTokenMax).describe('Developer Test WABA access token. Sent only to the API over HTTPS and encrypted before storage.'),
+  "messagingAccountId": zod.string().min(1).max(createWhatsAppCloudTestConnectionBodyMessagingAccountIdMax).describe('Messaging Account ID returned by Meta as waba_id; it is not assumed to be a WAAC ID.'),
+  "phoneNumberId": zod.string().min(1).max(createWhatsAppCloudTestConnectionBodyPhoneNumberIdMax).describe('Phone Number ID returned by Meta and verified as belonging to messagingAccountId.')
+})
+
+export const CreateWhatsAppCloudTestConnectionResponse = zod.object({
+  "id": zod.string(),
+  "environment": zod.enum(['test', 'production']),
+  "status": zod.enum(['connected', 'reauthorization_required', 'disconnected', 'failed']),
+  "checkedAt": zod.coerce.date(),
+  "messagingAccount": zod.object({
+  "id": zod.string(),
+  "metaMessagingAccountId": zod.string(),
+  "displayName": zod.union([zod.string(),zod.null()]),
+  "phoneNumbers": zod.array(zod.object({
+  "id": zod.string().optional().describe('Internal MenaFlow phone-number record ID, present in cached-list responses.'),
+  "metaPhoneNumberId": zod.string(),
+  "phoneNumber": zod.string(),
+  "verifiedName": zod.union([zod.string(),zod.null()]),
+  "codeVerificationStatus": zod.union([zod.string(),zod.null()]),
+  "registrationStatus": zod.union([zod.string(),zod.null()]).optional(),
+  "qualityRating": zod.union([zod.string(),zod.null()]),
+  "platformType": zod.union([zod.string(),zod.null()])
+}))
+})
+})
+
+
+/**
+ * @summary List WhatsApp Cloud connections in the selected workspace
+ */
+export const GetWhatsAppCloudConnectionsResponse = zod.object({
+  "connections": zod.array(zod.object({
+  "id": zod.string(),
+  "environment": zod.enum(['test', 'production']),
+  "onboardingMethod": zod.enum(['developer_test', 'embedded_signup_v4']),
+  "status": zod.enum(['connected', 'reauthorization_required', 'disconnected', 'failed']),
+  "lastCheckedAt": zod.union([zod.coerce.date(),zod.null()]),
+  "lastCheckStatus": zod.union([zod.enum(['passed', 'failed']),zod.null()]),
+  "lastErrorCode": zod.union([zod.string(),zod.null()]),
+  "createdAt": zod.coerce.date(),
+  "messagingAccounts": zod.array(zod.object({
+  "id": zod.string(),
+  "metaMessagingAccountId": zod.string(),
+  "displayName": zod.union([zod.string(),zod.null()]),
+  "phoneNumbers": zod.array(zod.object({
+  "id": zod.string().optional().describe('Internal MenaFlow phone-number record ID, present in cached-list responses.'),
+  "metaPhoneNumberId": zod.string(),
+  "phoneNumber": zod.string(),
+  "verifiedName": zod.union([zod.string(),zod.null()]),
+  "codeVerificationStatus": zod.union([zod.string(),zod.null()]),
+  "registrationStatus": zod.union([zod.string(),zod.null()]).optional(),
+  "qualityRating": zod.union([zod.string(),zod.null()]),
+  "platformType": zod.union([zod.string(),zod.null()])
+}))
+}))
+}))
+})
+
+
+/**
+ * @summary Get the status of one workspace-scoped WhatsApp Cloud connection
+ */
+export const GetWhatsAppCloudConnectionParams = zod.object({
+  "connectionId": zod.coerce.string()
+})
+
+export const GetWhatsAppCloudConnectionResponse = zod.object({
+  "id": zod.string(),
+  "environment": zod.enum(['test', 'production']),
+  "onboardingMethod": zod.enum(['developer_test', 'embedded_signup_v4']),
+  "status": zod.enum(['connected', 'reauthorization_required', 'disconnected', 'failed']),
+  "lastCheckedAt": zod.union([zod.coerce.date(),zod.null()]),
+  "lastCheckStatus": zod.union([zod.enum(['passed', 'failed']),zod.null()]),
+  "lastErrorCode": zod.union([zod.string(),zod.null()]),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * Deletes the locally stored credential and account records. This does not revoke Meta access or deregister the phone number.
+ * @summary Remove a WhatsApp Cloud connection from MenaFlow
+ */
+export const DeleteWhatsAppCloudConnectionParams = zod.object({
+  "connectionId": zod.coerce.string()
+})
+
+export const DeleteWhatsAppCloudConnectionResponse = zod.object({
+  "disconnected": zod.boolean(),
+  "externalRevocation": zod.enum(['not_requested'])
+})
+
+
+/**
+ * @summary List cached phone numbers for one workspace-scoped connection
+ */
+export const GetWhatsAppCloudConnectionPhoneNumbersParams = zod.object({
+  "connectionId": zod.coerce.string()
+})
+
+export const GetWhatsAppCloudConnectionPhoneNumbersResponse = zod.object({
+  "phoneNumbers": zod.array(zod.object({
+  "id": zod.string().optional().describe('Internal MenaFlow phone-number record ID, present in cached-list responses.'),
+  "metaPhoneNumberId": zod.string(),
+  "phoneNumber": zod.string(),
+  "verifiedName": zod.union([zod.string(),zod.null()]),
+  "codeVerificationStatus": zod.union([zod.string(),zod.null()]),
+  "registrationStatus": zod.union([zod.string(),zod.null()]).optional(),
+  "qualityRating": zod.union([zod.string(),zod.null()]),
+  "platformType": zod.union([zod.string(),zod.null()])
+}))
+})
+
+
+/**
+ * @summary Test a saved WhatsApp Cloud connection against Meta Graph API
+ */
+export const TestWhatsAppCloudConnectionParams = zod.object({
+  "connectionId": zod.coerce.string()
+})
+
+export const TestWhatsAppCloudConnectionResponse = zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['connected', 'reauthorization_required', 'disconnected', 'failed']),
+  "checkedAt": zod.coerce.date(),
+  "messagingAccounts": zod.array(zod.object({
+  "metaMessagingAccountId": zod.string(),
+  "phoneNumbers": zod.array(zod.object({
+  "id": zod.string().optional().describe('Internal MenaFlow phone-number record ID, present in cached-list responses.'),
+  "metaPhoneNumberId": zod.string(),
+  "phoneNumber": zod.string(),
+  "verifiedName": zod.union([zod.string(),zod.null()]),
+  "codeVerificationStatus": zod.union([zod.string(),zod.null()]),
+  "registrationStatus": zod.union([zod.string(),zod.null()]).optional(),
+  "qualityRating": zod.union([zod.string(),zod.null()]),
+  "platformType": zod.union([zod.string(),zod.null()])
+})),
+  "grantedPermissions": zod.array(zod.string())
+}))
+})
+
+
+/**
  * @summary Start Facebook or Instagram account authorization
  */
 export const postMetaConnectBodyIntegrationDefault = `facebook`;

@@ -12,7 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, type Href, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -290,6 +290,12 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
               ? "العودة إلى الإعداد الأولي"
               : "العودة إلى المصادر",
         }}
+      />
+      <ActionButton
+        label="اختبار WhatsApp Cloud API"
+        icon="shield"
+        secondary
+        onPress={() => router.push("/whatsapp-cloud-setup" as Href)}
       />
 
       {settingsQuery.isLoading ? (
