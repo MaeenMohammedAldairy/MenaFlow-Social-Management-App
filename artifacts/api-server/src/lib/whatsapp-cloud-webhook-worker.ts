@@ -18,7 +18,7 @@ import {
   type WhatsAppCloudMessageStatus,
 } from "./whatsapp-cloud-message-parser";
 
-const batchSize = 10;
+const batchSize = 1;
 const leaseMs = 60_000;
 const maxAttempts = 5;
 let workerRunning = false;

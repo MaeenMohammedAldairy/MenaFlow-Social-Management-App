@@ -24,6 +24,19 @@ a single worker family.
 Keep one replica for `meta-webhook-subscriptions` until its reconciliation
 work is protected by a cross-process claim.
 
+When there is no separate worker service, the WhatsApp Cloud event processor
+can run inside the API process by setting
+`WHATSAPP_CLOUD_INLINE_WORKER_ENABLED=true` on the API Web Service. It starts
+after the HTTP server is listening, polls the durable database queue without
+depending on incoming requests, and is limited to one claimed event at a time
+so later events do not consume their lease while waiting in a batch. On
+`SIGTERM` or `SIGINT`, it stops scheduling polls and waits for the current
+event while the API stops accepting new connections. If the process is
+forcibly terminated, the event remains durable and can be reclaimed after its
+lease expires. Do not run both the inline loop and a separate Cloud worker
+unless intentionally increasing worker capacity; database claims remain
+atomic, but both processes will compete for the same queue.
+
 The API build script replaces only `artifacts/api-server/dist`. The mobile package's `build` script removes `artifacts/menaflow-mobile/static-build` and clears Metro caches; inspect or back up those outputs before running it.
 
 Configure these API variables in the hosting provider's secret/configuration manager:
@@ -37,6 +50,7 @@ Configure these API variables in the hosting provider's secret/configuration man
 - `MENA_WHATSAPP_CLOUD_TEST_ENABLED=true` only when intentionally enabling the developer Test WABA setup endpoint in a production deployment; leave unset otherwise
 - `MENA_WHATSAPP_CLOUD_TEST_MESSAGING_ACCOUNT_IDS` as a comma-separated allowlist of developer Test WABA messaging-account IDs; the test setup endpoint rejects IDs not in this server-side list
 - `WHATSAPP_CLOUD_WEBHOOK_WORKER_ENABLED=false` only to pause WhatsApp Cloud event processing while retaining incoming signed events in the database
+- `WHATSAPP_CLOUD_INLINE_WORKER_ENABLED=true` to run the WhatsApp Cloud webhook event loop inside the API Web Service; leave unset or set to `false` to disable it
 - `MENA_FACEBOOK_WEB_ORIGINS` for explicitly allowed browser return origins where applicable
 - `MENA_PUBLIC_MEDIA_BASE_URL` (public HTTPS API origin) when publishing media that Meta must fetch
 - `WHATSAPP_EVOLUTION_BASE_URL`, `WHATSAPP_EVOLUTION_API_KEY`, `WHATSAPP_EVOLUTION_WEBHOOK_SECRET`, and `WHATSAPP_EVOLUTION_WEBHOOK_URL` (public HTTPS callback) when enabling Evolution
