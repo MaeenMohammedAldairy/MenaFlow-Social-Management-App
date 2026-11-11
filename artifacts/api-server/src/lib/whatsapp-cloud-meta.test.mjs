@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   inspectWhatsAppCloudAssets,
   parseWhatsAppCloudTestMessagingAccountIds,
+  subscribeWhatsAppCloudApp,
   WhatsAppCloudMetaError,
 } from "./whatsapp-cloud-meta.ts";
 
@@ -75,6 +76,48 @@ test("validates the messaging account, selected phone number, and required grant
     "whatsapp_business_management",
     "whatsapp_business_messaging",
   ]);
+});
+
+test("subscribes the app to the WABA without putting the token in the URL", async () => {
+  let requestUrl;
+  let requestOptions;
+  await subscribeWhatsAppCloudApp(
+    "test-token",
+    accountId,
+    async (url, options) => {
+      requestUrl = url;
+      requestOptions = options;
+      return fetchResponse({ success: true });
+    },
+  );
+
+  assert.equal(
+    String(requestUrl),
+    `https://graph.facebook.com/v26.0/${accountId}/subscribed_apps`,
+  );
+  assert.equal(requestOptions.method, "POST");
+  assert.equal(requestOptions.headers.authorization, "Bearer test-token");
+  assert.equal(new URL(requestUrl).searchParams.has("access_token"), false);
+});
+
+test("rejects unsuccessful WABA webhook subscriptions without exposing Meta details", async () => {
+  await assert.rejects(
+    subscribeWhatsAppCloudApp("test-token", accountId, async () =>
+      fetchResponse(
+        {
+          error: {
+            code: 10,
+            message: "provider detail must not be exposed",
+          },
+        },
+        400,
+      ),
+    ),
+    (error) =>
+      error instanceof WhatsAppCloudMetaError &&
+      error.code === "META_WEBHOOK_SUBSCRIPTION_FAILED" &&
+      !error.message.includes("provider detail"),
+  );
 });
 
 test("rejects a phone number that is not attached to the supplied messaging account", async () => {

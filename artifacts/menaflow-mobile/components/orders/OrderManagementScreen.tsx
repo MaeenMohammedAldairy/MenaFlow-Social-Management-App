@@ -1409,7 +1409,7 @@ const styles = StyleSheet.create({
   modalScrollContent: { flexGrow: 1, justifyContent: "center" },
   deliveryModal: { gap: 10, padding: 16 },
   deliveryChoices: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     flexWrap: "wrap",
     gap: 7,
   },
@@ -1429,14 +1429,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
   },
   noticePanel: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 9,
     paddingVertical: 11,
   },
   sourceNotice: {
     minHeight: 38,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 8,
     borderRadius: 11,
@@ -1447,7 +1447,7 @@ const styles = StyleSheet.create({
   formPanel: { gap: 11 },
   listPanel: { gap: 12 },
   sectionHeading: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 9,
   },
@@ -1483,7 +1483,7 @@ const styles = StyleSheet.create({
   multiline: { minHeight: 78, textAlignVertical: "top" },
   searchBox: {
     minHeight: 44,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 8,
     borderWidth: 1,
@@ -1494,7 +1494,7 @@ const styles = StyleSheet.create({
   productList: { gap: 7 },
   productRow: {
     minHeight: 58,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 6,
@@ -1506,7 +1506,7 @@ const styles = StyleSheet.create({
   productSelect: {
     flex: 1,
     minWidth: 0,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 9,
   },
@@ -1529,7 +1529,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   totalRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -1538,7 +1538,7 @@ const styles = StyleSheet.create({
   },
   totalLabel: { fontSize: 13, fontWeight: "800" },
   totalValue: { fontSize: 15, fontWeight: "900" },
-  statusFilters: { flexDirection: "row-reverse", gap: 7, paddingVertical: 2 },
+  statusFilters: { flexDirection: "row", gap: 7, paddingVertical: 2 },
   statusFilter: {
     minHeight: 34,
     justifyContent: "center",
@@ -1558,7 +1558,7 @@ const styles = StyleSheet.create({
   orderList: { gap: 10 },
   orderCard: { gap: 10, padding: 13 },
   orderTop: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     gap: 10,
@@ -1570,14 +1570,14 @@ const styles = StyleSheet.create({
   orderDate: { fontSize: 10, textAlign: "right" },
   lineItems: { gap: 7 },
   lineItem: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
   },
   lineName: { flex: 1, fontSize: 12, textAlign: "right" },
   linePrice: { fontSize: 11, fontWeight: "700" },
-  detailRow: { flexDirection: "row-reverse", alignItems: "center", gap: 6 },
+  detailRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   detailText: { flex: 1, fontSize: 11, textAlign: "right" },
   orderNotes: { fontSize: 11, lineHeight: 18, textAlign: "right" },
   history: { gap: 5, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 9 },

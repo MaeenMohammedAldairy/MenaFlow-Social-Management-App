@@ -186,7 +186,7 @@ export default function MoreScreen() {
 const styles = StyleSheet.create({
   managementPanel: { gap: 14 },
   sectionHeading: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 9,
   },
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   destinationLast: { marginBottom: 1 },
   destinationContent: {
     flex: 1,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 11,
   },

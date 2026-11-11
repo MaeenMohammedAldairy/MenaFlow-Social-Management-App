@@ -27,6 +27,7 @@ export class WhatsAppCloudMetaError extends Error {
   readonly code:
     | "META_CONFIGURATION_MISSING"
     | "META_REQUEST_FAILED"
+    | "META_WEBHOOK_SUBSCRIPTION_FAILED"
     | "META_PERMISSION_MISSING"
     | "META_ASSET_MISMATCH";
   readonly httpStatus: number;
@@ -126,6 +127,64 @@ async function graphGet(
   }
 
   return payload;
+}
+
+export async function subscribeWhatsAppCloudApp(
+  accessToken: string,
+  messagingAccountId: string,
+  fetcher: typeof fetch = fetch,
+): Promise<void> {
+  const version = getMetaGraphVersion();
+  if (!/^v\d+\.\d+$/.test(version)) {
+    throw new WhatsAppCloudMetaError("META_CONFIGURATION_MISSING", 503);
+  }
+
+  const url = new URL(
+    `https://graph.facebook.com/${version}/${encodeURIComponent(messagingAccountId)}/subscribed_apps`,
+  );
+  let response: Response;
+  try {
+    response = await fetcher(url, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        accept: "application/json",
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    throw new WhatsAppCloudMetaError(
+      "META_WEBHOOK_SUBSCRIPTION_FAILED",
+      502,
+    );
+  }
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new WhatsAppCloudMetaError(
+      "META_WEBHOOK_SUBSCRIPTION_FAILED",
+      502,
+    );
+  }
+
+  if (
+    !response.ok ||
+    !isRecord(payload) ||
+    payload.success !== true
+  ) {
+    const metaError = isRecord(payload) && isRecord(payload.error)
+      ? payload.error
+      : null;
+    const metaCode =
+      typeof metaError?.code === "number" ? metaError.code : null;
+    throw new WhatsAppCloudMetaError(
+      "META_WEBHOOK_SUBSCRIPTION_FAILED",
+      response.status === 401 || metaCode === 190 ? 401 : 502,
+      metaCode,
+    );
+  }
 }
 
 export async function inspectWhatsAppCloudAssets(

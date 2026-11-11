@@ -736,16 +736,16 @@ function ActivityFilterRow<T extends string>({
 const styles = StyleSheet.create({
   errorPanel: { gap: 10 },
   errorText: { fontSize: 12, lineHeight: 18, textAlign: "right" },
-  retryButtons: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8 },
+  retryButtons: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   filtersPanel: { gap: 16 },
   filtersHeading: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
   },
   filtersTitleGroup: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 9,
   },
@@ -759,7 +759,7 @@ const styles = StyleSheet.create({
   filtersTitle: { fontSize: 14, fontWeight: "800", textAlign: "right" },
   clearFiltersButton: {
     minHeight: 36,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 3,
@@ -768,7 +768,7 @@ const styles = StyleSheet.create({
   clearFiltersText: { fontSize: 11, fontWeight: "700" },
   filterGroup: { gap: 8 },
   filterHeading: { fontSize: 12, fontWeight: "700", textAlign: "right" },
-  filterOptions: { flexDirection: "row-reverse", gap: 8, paddingVertical: 2 },
+  filterOptions: { flexDirection: "row", gap: 8, paddingVertical: 2 },
   filterOption: {
     minHeight: 36,
     justifyContent: "center",
@@ -779,7 +779,7 @@ const styles = StyleSheet.create({
   filterOptionText: { fontSize: 12, fontWeight: "600" },
   activitySection: { gap: 12 },
   activitySectionHeading: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
@@ -796,7 +796,7 @@ const styles = StyleSheet.create({
   activityCountText: { fontSize: 10, fontWeight: "700" },
   activityList: { gap: 10 },
   activityRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
     padding: 13,
@@ -813,7 +813,7 @@ const styles = StyleSheet.create({
   activityCopy: { flex: 1, minWidth: 0, gap: 6, alignItems: "flex-start" },
   activityTopline: {
     width: "100%",
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,

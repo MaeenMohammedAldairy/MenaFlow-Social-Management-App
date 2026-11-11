@@ -74,12 +74,16 @@ The configured IDs must be obtained from the Meta developer app's Test WABA
 setup; do not add customer production account IDs to this allowlist.
 
 This foundation verifies a saved messaging account, required permissions, and
-its phone-number IDs through Graph API. It does not implement Embedded Signup,
-register or deregister numbers, send messages, process WhatsApp webhook events,
-or revoke authorization at Meta. Removing a test connection deletes its local
-credential and records only. Configure `META_GRAPH_VERSION` to a Graph API
-version enabled for the Meta app; availability of environment variables or
-Meta permissions must be verified in the deployment and Meta dashboards.
+its phone-number IDs through Graph API. After verification, the API subscribes
+the Meta app to the WABA so account webhook events can be delivered; checking
+the Meta app's `messages` field alone does not subscribe an individual WABA.
+Rechecking a saved connection also retries this WABA subscription. The flow
+does not implement Embedded Signup, register or deregister numbers, send
+messages, or revoke authorization at Meta. Removing a test connection deletes
+its local credential and records only. Configure `META_GRAPH_VERSION` to a
+Graph API version enabled for the Meta app; availability of environment
+variables or Meta permissions must be verified in the deployment and Meta
+dashboards.
 
 ### WhatsApp Cloud webhook intake
 
@@ -96,8 +100,11 @@ association and are not processed.
 Apply `supabase/migrations/20261111003000_whatsapp_cloud_webhook_events.sql`
 and `supabase/migrations/20261111004000_whatsapp_cloud_conversations.sql`
 after the WhatsApp Cloud foundation migration. Configure the public HTTPS
-callback in the Meta App Dashboard, subscribe the WABA to `messages` first,
-and verify delivery with a developer Test WABA. Run the
+callback in the Meta App Dashboard and enable the `messages` field for the
+WhatsApp product. The API subscribes a verified WABA to the Meta app when its
+connection is created or rechecked. For an existing Test WABA connection,
+recheck the connection after deploying a version with WABA subscription
+support. Verify delivery with a developer Test WABA. Run the
 `whatsapp-cloud-webhooks` worker. It converts supported inbound messages and
 message status changes into workspace-scoped conversation and message records;
 the event row is marked processed and its raw payload cleared in the same

@@ -565,7 +565,7 @@ const styles = StyleSheet.create({
   inboxEyebrow: {
     alignSelf: "flex-start",
     minHeight: 28,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderRadius: 10,
@@ -595,7 +595,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   toolbarTitleGroup: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 9,
   },
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
   resultCount: { fontSize: 11, fontWeight: "700" },
   loadingPanel: {
     minHeight: 58,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 9,
@@ -662,7 +662,7 @@ const styles = StyleSheet.create({
   items: { gap: 12 },
   groups: { gap: 14 },
   conversationCard: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 12,
     borderWidth: 1,

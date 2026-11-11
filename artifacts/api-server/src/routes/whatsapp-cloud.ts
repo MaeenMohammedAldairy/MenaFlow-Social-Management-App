@@ -22,6 +22,7 @@ import {
 import {
   inspectWhatsAppCloudAssets,
   parseWhatsAppCloudTestMessagingAccountIds,
+  subscribeWhatsAppCloudApp,
   WhatsAppCloudMetaError,
   type WhatsAppCloudPhoneNumber,
 } from "../lib/whatsapp-cloud-meta";
@@ -108,6 +109,15 @@ function metaErrorResponse(res: Response, error: unknown): void {
   if (error.code === "META_ASSET_MISMATCH") {
     res.status(422).json({
       error: "رقم الهاتف المحدد غير مرتبط بحساب المراسلة.",
+      code: error.code,
+    });
+    return;
+  }
+  if (error.code === "META_WEBHOOK_SUBSCRIPTION_FAILED") {
+    res.status(error.httpStatus === 401 ? 422 : 502).json({
+      error: error.httpStatus === 401
+        ? "تعذر تفعيل Webhook لهذا الحساب. رمز الوصول غير صالح أو لا يملك الصلاحية المطلوبة."
+        : "تم التحقق من الحساب، لكن تعذر تفعيل اشتراك Webhook لدى Meta.",
       code: error.code,
     });
     return;
@@ -306,6 +316,7 @@ router.post(
         messagingAccountId,
         phoneNumberId,
       );
+      await subscribeWhatsAppCloudApp(accessToken, messagingAccountId);
       const now = new Date();
       const connectionId = randomUUID();
       const internalMessagingAccountId = randomUUID();
@@ -787,6 +798,10 @@ router.post(
           token.accessToken,
           account.metaMessagingAccountId,
           linkedPhone.metaPhoneNumberId,
+        );
+        await subscribeWhatsAppCloudApp(
+          token.accessToken,
+          account.metaMessagingAccountId,
         );
         results.push({
           metaMessagingAccountId: inspection.messagingAccountId,

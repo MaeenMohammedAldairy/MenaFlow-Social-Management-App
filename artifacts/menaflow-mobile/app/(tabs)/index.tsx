@@ -1337,7 +1337,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   activityRow: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "flex-start",
     gap: 12,
     padding: 12,
@@ -1354,7 +1354,7 @@ const styles = StyleSheet.create({
   },
   activityCopy: { flex: 1, minWidth: 0, alignItems: "stretch", gap: 5 },
   activityTopline: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
@@ -1363,7 +1363,7 @@ const styles = StyleSheet.create({
   activityTitle: { fontSize: 13, fontWeight: "700", textAlign: "right" },
   activityDescription: { fontSize: 11, lineHeight: 16, textAlign: "right" },
   activityPlatform: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 5,
   },

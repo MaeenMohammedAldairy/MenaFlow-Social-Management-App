@@ -923,7 +923,7 @@ const styles = StyleSheet.create({
   deletionRequestAction: { fontSize: 13, fontWeight: "700" },
   sectionHeading: {
     minHeight: 38,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 10,
     marginBottom: 2,
@@ -938,7 +938,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 15, fontWeight: "800", textAlign: "right" },
   settingRow: {
     minHeight: 64,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -974,7 +974,7 @@ const styles = StyleSheet.create({
   subscriptionMessage: { gap: 10, paddingVertical: 8 },
   subscriptionSummary: {
     minHeight: 72,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
@@ -989,7 +989,7 @@ const styles = StyleSheet.create({
   subscriptionUsage: { gap: 0, paddingVertical: 8 },
   subscriptionUsageRow: {
     minHeight: 40,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,

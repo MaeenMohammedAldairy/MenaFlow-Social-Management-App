@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
   },
   sectionTitleGroup: {
     flex: 1,
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 9,
   },
@@ -405,7 +405,7 @@ const styles = StyleSheet.create({
   },
   sourceCountText: { fontSize: 12, fontWeight: "800" },
   errorPanel: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "flex-start",
     gap: 10,
     borderWidth: 1,
