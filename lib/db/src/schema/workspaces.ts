@@ -81,6 +81,32 @@ export const workspaceMembers = pgTable(
   ],
 );
 
+export const workspaceDeletionRequests = pgTable(
+  "mena_workspace_deletion_requests",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict" }),
+    requestedBy: text("requested_by").notNull(),
+    status: text("status").notNull().default("pending"),
+    requestedAt: timestamp("requested_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mena_workspace_deletion_requests_workspace_key").on(
+      table.workspaceId,
+    ),
+    check(
+      "mena_workspace_deletion_requests_status_check",
+      sql`${table.status} = 'pending'`,
+    ),
+  ],
+);
+
 export type Workspace = typeof workspaces.$inferSelect;
 export type WorkspaceOnboarding = typeof workspaceOnboarding.$inferSelect;
 export type WorkspaceMember = typeof workspaceMembers.$inferSelect;
+export type WorkspaceDeletionRequest =
+  typeof workspaceDeletionRequests.$inferSelect;

@@ -83,6 +83,37 @@ export interface AuthAccessResponse {
   onboarding: OnboardingStatus;
 }
 
+export interface WorkspaceSummary {
+  id: string;
+  name: string;
+  role: string;
+}
+
+export interface WorkspaceListResponse {
+  workspaces: WorkspaceSummary[];
+}
+
+export type WorkspaceDeletionRequestStatus = typeof WorkspaceDeletionRequestStatus[keyof typeof WorkspaceDeletionRequestStatus];
+
+
+export const WorkspaceDeletionRequestStatus = {
+  pending: 'pending',
+} as const;
+
+export interface WorkspaceDeletionRequest {
+  id: string;
+  status: WorkspaceDeletionRequestStatus;
+  requestedAt: string;
+}
+
+export interface WorkspaceDeletionRequestResponse {
+  request: WorkspaceDeletionRequest | null;
+}
+
+export interface WorkspaceDeletionRequestCreatedResponse {
+  request: WorkspaceDeletionRequest;
+}
+
 export interface KnownPostIdsInput {
   /**
      * @maxItems 1000

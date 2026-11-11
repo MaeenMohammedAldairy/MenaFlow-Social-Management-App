@@ -10,9 +10,11 @@ for (const f of [
   } catch (_) {}
 }
 
-const connectionString =
-  process.env.DATABASE_URL ||
-  "postgresql://postgres:Maeen123@localhost:5432/facebook_connector";
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL is required.");
+}
 
 async function main() {
   const client = new Client({ connectionString });

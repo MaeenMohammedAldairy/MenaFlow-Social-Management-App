@@ -109,6 +109,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /workspaces:
+    get:
+      operationId: listWorkspaces
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: List workspaces the signed-in user belongs to
+      responses:
+        "200":
+          description: Workspace memberships
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceListResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /workspaces/current/deletion-request:
+    get:
+      operationId: getWorkspaceDeletionRequest
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: Get the current workspace deletion request, if any
+      responses:
+        "200":
+          description: The pending request, or null when none exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceDeletionRequestResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Owner role required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      operationId: createWorkspaceDeletionRequest
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: Record an owner deletion request without deleting workspace data
+      responses:
+        "201":
+          description: Request recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceDeletionRequestCreatedResponse"
+        "200":
+          description: An existing pending request was returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceDeletionRequestCreatedResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Owner role required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /subscription:
     get:
       operationId: getSubscription
@@ -972,6 +1049,50 @@ components:
         onboarding:
           $ref: "#/components/schemas/OnboardingStatus"
       required: [authorized, onboarding]
+    WorkspaceListResponse:
+      type: object
+      properties:
+        workspaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceSummary"
+      required: [workspaces]
+    WorkspaceSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+      required: [id, name, role]
+    WorkspaceDeletionRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum: [pending]
+        requestedAt:
+          type: string
+          format: date-time
+      required: [id, status, requestedAt]
+    WorkspaceDeletionRequestResponse:
+      type: object
+      properties:
+        request:
+          oneOf:
+            - $ref: "#/components/schemas/WorkspaceDeletionRequest"
+            - type: "null"
+      required: [request]
+    WorkspaceDeletionRequestCreatedResponse:
+      type: object
+      properties:
+        request:
+          $ref: "#/components/schemas/WorkspaceDeletionRequest"
+      required: [request]
     KnownPostIdsInput:
       type: object
       properties:
@@ -1083,7 +1204,8 @@ components:
           type: boolean
         connectionState:
           type: string
-          enum: [connected, connecting, disconnected, failed, missing, unavailable]
+          enum:
+            [connected, connecting, disconnected, failed, missing, unavailable]
         instanceName:
           type: string
         phoneNumber:
@@ -1094,7 +1216,13 @@ components:
         authorizationReason:
           oneOf:
             - type: string
-              enum: [token_expired, token_invalid, permissions_unverified, permissions_missing]
+              enum:
+                [
+                  token_expired,
+                  token_invalid,
+                  permissions_unverified,
+                  permissions_missing,
+                ]
             - type: "null"
         missingPermissions:
           type: array
@@ -1240,7 +1368,20 @@ components:
           type: integer
         whatsapp:
           type: integer
-      required: [total, draft, review, scheduled, approved, publishing, published, failed, instagram, facebook, whatsapp]
+      required:
+        [
+          total,
+          draft,
+          review,
+          scheduled,
+          approved,
+          publishing,
+          published,
+          failed,
+          instagram,
+          facebook,
+          whatsapp,
+        ]
     UpdatePostInput:
       type: object
       properties:
@@ -1359,14 +1500,7 @@ components:
         verifiedAt:
           type: string
           format: date-time
-      required:
-        [
-          groupJid,
-          groupId,
-          kind,
-          name,
-          selected,
-        ]
+      required: [groupJid, groupId, kind, name, selected]
     WhatsAppGroupOption:
       type: object
       properties:
@@ -1387,13 +1521,7 @@ components:
         verifiedAt:
           type: string
           format: date-time
-      required:
-        [
-          groupJid,
-          kind,
-          name,
-          selected,
-        ]
+      required: [groupJid, kind, name, selected]
     WhatsAppGroupsResponse:
       type: object
       properties:

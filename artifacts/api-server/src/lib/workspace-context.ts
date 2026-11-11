@@ -1,5 +1,4 @@
 import { eq, sql } from "drizzle-orm";
-import type { Request, RequestHandler } from "express";
 import {
   db,
   workspaceMembers,
@@ -7,12 +6,11 @@ import {
   workspaceSubscriptions,
   workspaces,
 } from "@workspace/db";
-import { requestOwnerId } from "./owner-access";
 import {
-  resolveWorkspaceContext,
-  WorkspaceContextError,
-  type WorkspaceContext,
-  type WorkspaceMembership,
+  createRequireWorkspace,
+  requestWorkspaceContext,
+} from "./workspace-middleware";
+import {
   type WorkspaceRepository,
 } from "./workspace-resolution";
 
@@ -20,6 +18,10 @@ export {
   resolveWorkspaceContext,
   WorkspaceContextError,
 } from "./workspace-resolution";
+export {
+  createRequireWorkspace,
+  requestWorkspaceContext,
+} from "./workspace-middleware";
 export type {
   WorkspaceContext,
   WorkspaceMembership,
@@ -73,52 +75,16 @@ const databaseRepository: WorkspaceRepository = {
     ),
 };
 
-const workspaceContexts = new WeakMap<Request, WorkspaceContext>();
-
-export function requestWorkspaceContext(req: Request): WorkspaceContext | null {
-  return workspaceContexts.get(req) ?? null;
-}
-
-export function requestWorkspaceId(req: Request): string {
+export function requestWorkspaceId(req: import("express").Request): string {
   const workspaceId = requestWorkspaceContext(req)?.workspaceId;
   if (!workspaceId) throw new Error("WORKSPACE_CONTEXT_MISSING");
   return workspaceId;
 }
 
-export function requestWorkspaceUserId(req: Request): string {
+export function requestWorkspaceUserId(req: import("express").Request): string {
   const userId = requestWorkspaceContext(req)?.userId;
   if (!userId) throw new Error("WORKSPACE_CONTEXT_MISSING");
   return userId;
 }
 
-export const requireWorkspace: RequestHandler = (req, res, next) => {
-  const userId = requestOwnerId(req);
-  if (!userId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
-
-  const requestedWorkspaceId = req.get("x-workspace-id")?.trim();
-  void resolveWorkspaceContext(
-    databaseRepository,
-    userId,
-    requestedWorkspaceId || undefined,
-  )
-    .then((context) => {
-      workspaceContexts.set(req, context);
-      next();
-    })
-    .catch((error: unknown) => {
-      if (error instanceof WorkspaceContextError) {
-        res.status(error.statusCode).json({
-          error:
-            error.code === "WORKSPACE_ACCESS_DENIED"
-              ? "لا تملك صلاحية الوصول إلى مساحة العمل المطلوبة."
-              : "اختر مساحة العمل قبل متابعة الطلب.",
-          code: error.code,
-        });
-        return;
-      }
-      next(error);
-    });
-};
+export const requireWorkspace = createRequireWorkspace(databaseRepository);

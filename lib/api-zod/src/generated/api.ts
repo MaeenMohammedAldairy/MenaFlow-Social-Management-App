@@ -63,6 +63,42 @@ export const GetOwnerAccessResponse = zod.object({
 
 
 /**
+ * @summary List workspaces the signed-in user belongs to
+ */
+export const ListWorkspacesResponse = zod.object({
+  "workspaces": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "role": zod.string()
+}))
+})
+
+
+/**
+ * @summary Get the current workspace deletion request, if any
+ */
+export const GetWorkspaceDeletionRequestResponse = zod.object({
+  "request": zod.union([zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['pending']),
+  "requestedAt": zod.coerce.date()
+}),zod.null()])
+})
+
+
+/**
+ * @summary Record an owner deletion request without deleting workspace data
+ */
+export const CreateWorkspaceDeletionRequestResponse = zod.object({
+  "request": zod.object({
+  "id": zod.string(),
+  "status": zod.enum(['pending']),
+  "requestedAt": zod.coerce.date()
+})
+})
+
+
+/**
  * @summary Get the current workspace plan and monthly usage
  */
 export const GetSubscriptionResponse = zod.object({

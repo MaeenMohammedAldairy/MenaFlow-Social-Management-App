@@ -11,30 +11,6 @@ import {
 } from "../lib/metered-ai-provider.ts";
 
 const router: IRouter = Router();
-const requestTimes = new Map<string, number[]>();
-const WINDOW_MS = 60_000;
-const REQUESTS_PER_WINDOW = 8;
-
-function allowRequest(userId: string): boolean {
-  const now = Date.now();
-  const recent = (requestTimes.get(userId) ?? []).filter(
-    (time) => now - time < WINDOW_MS,
-  );
-  if (recent.length >= REQUESTS_PER_WINDOW) {
-    requestTimes.set(userId, recent);
-    return false;
-  }
-  recent.push(now);
-  requestTimes.set(userId, recent);
-  if (requestTimes.size > 2_000) {
-    for (const [id, times] of requestTimes) {
-      if (times.every((time) => now - time >= WINDOW_MS)) {
-        requestTimes.delete(id);
-      }
-    }
-  }
-  return true;
-}
 
 function modelName(raw: string | undefined, defaultModel: string): string {
   const model = raw ?? defaultModel;
@@ -100,11 +76,6 @@ router.post("/ai/content", requireWorkspace, async (req, res): Promise<void> => 
   const parsed = GenerateAiContentBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: "تحقق من الفكرة والقناة والنبرة المختارة." });
-    return;
-  }
-
-  if (!allowRequest(userId)) {
-    res.status(429).json({ error: "وصلت إلى حد التوليد المؤقت. حاول بعد دقيقة." });
     return;
   }
 

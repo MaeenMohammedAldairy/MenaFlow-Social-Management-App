@@ -13,13 +13,9 @@ import {
   LucideIcon as Icon,
   type LucideIconName,
 } from "@/components/LucideIcon";
-import {
-  BrandHeader,
-  Page,
-  PageTitle,
-  Panel,
-} from "@/components/Ui";
+import { BrandHeader, Page, PageTitle, Panel } from "@/components/Ui";
 import { useStudio } from "@/context/StudioContext";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { useColors } from "@/hooks/useColors";
 import { Redirect, router } from "expo-router";
 import { useClerk, useUser } from "@clerk/expo";
@@ -28,6 +24,7 @@ import { isLocalAuthDisabled } from "@/constants/auth";
 import { signOutAndClearQueryCache } from "@/lib/sign-out";
 import {
   getGetSubscriptionQueryKey,
+  fetchApiResponse,
   useGetSubscription,
 } from "@workspace/api-client-react";
 import {
@@ -35,6 +32,31 @@ import {
   saveAppearanceMode,
   type AppearanceMode,
 } from "@/lib/appearance";
+
+async function hasWorkspaceDeletionRequest(
+  response: Response,
+): Promise<boolean> {
+  if (!response.ok) throw new Error("WORKSPACE_DELETION_REQUEST_FAILED");
+  const payload: unknown = await response.json();
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("request" in payload)
+  ) {
+    throw new Error("INVALID_WORKSPACE_DELETION_REQUEST_RESPONSE");
+  }
+  const request = payload.request;
+  if (request === null) return false;
+  if (
+    typeof request !== "object" ||
+    request === null ||
+    !("status" in request) ||
+    request.status !== "pending"
+  ) {
+    throw new Error("INVALID_WORKSPACE_DELETION_REQUEST_RESPONSE");
+  }
+  return true;
+}
 
 function SettingRow({
   icon,
@@ -183,7 +205,20 @@ function SettingsContent({
 }) {
   const colors = useColors();
   const { preferences, updatePreference } = useStudio();
+  const { workspaces, activeWorkspaceId, isLoading, isError, selectWorkspace } =
+    useWorkspace();
+  const activeWorkspace = workspaces.find(
+    (workspace) => workspace.id === activeWorkspaceId,
+  );
+  const canRequestWorkspaceDeletion =
+    Boolean(onSignOut) && activeWorkspace?.role === "owner";
+  const queryClient = useQueryClient();
   const [signingOut, setSigningOut] = useState(false);
+  const [deletionRequestStatus, setDeletionRequestStatus] = useState<
+    "loading" | "none" | "pending" | "error"
+  >("loading");
+  const [submittingDeletionRequest, setSubmittingDeletionRequest] =
+    useState(false);
   const [appearanceMode, setAppearanceMode] =
     useState<AppearanceMode>("system");
   const [appearancePickerVisible, setAppearancePickerVisible] = useState(false);
@@ -221,6 +256,27 @@ function SettingsContent({
       active = false;
     };
   }, []);
+  useEffect(() => {
+    if (!canRequestWorkspaceDeletion || !activeWorkspaceId) {
+      setDeletionRequestStatus("none");
+      return;
+    }
+
+    let active = true;
+    setDeletionRequestStatus("loading");
+    void fetchApiResponse("/api/workspaces/current/deletion-request")
+      .then(hasWorkspaceDeletionRequest)
+      .then((exists) => {
+        if (active) setDeletionRequestStatus(exists ? "pending" : "none");
+      })
+      .catch((error: unknown) => {
+        console.error("Unable to load workspace deletion request:", error);
+        if (active) setDeletionRequestStatus("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeWorkspaceId, canRequestWorkspaceDeletion]);
   const selectAppearanceMode = async (mode: AppearanceMode) => {
     try {
       await saveAppearanceMode(mode);
@@ -243,7 +299,8 @@ function SettingsContent({
       try {
         await onSignOut();
       } catch {
-        const message = "لم يكتمل إنهاء الجلسة. تحقق من الاتصال وحاول مرة أخرى.";
+        const message =
+          "لم يكتمل إنهاء الجلسة. تحقق من الاتصال وحاول مرة أخرى.";
         if (Platform.OS === "web" && typeof window !== "undefined") {
           window.alert(`تعذر تسجيل الخروج\n\n${message}`);
         } else {
@@ -263,7 +320,52 @@ function SettingsContent({
     }
     Alert.alert("تسجيل الخروج", "هل تريد إنهاء جلستك على هذا الجهاز؟", [
       { text: "البقاء في الحساب", style: "cancel" },
-      { text: "تسجيل الخروج", style: "destructive", onPress: () => void performSignOut() },
+      {
+        text: "تسجيل الخروج",
+        style: "destructive",
+        onPress: () => void performSignOut(),
+      },
+    ]);
+  };
+  const submitWorkspaceDeletionRequest = async () => {
+    if (!canRequestWorkspaceDeletion || submittingDeletionRequest) return;
+    setSubmittingDeletionRequest(true);
+    try {
+      const exists = await hasWorkspaceDeletionRequest(
+        await fetchApiResponse("/api/workspaces/current/deletion-request", {
+          method: "POST",
+        }),
+      );
+      if (!exists) throw new Error("WORKSPACE_DELETION_REQUEST_NOT_RECORDED");
+      setDeletionRequestStatus("pending");
+      Alert.alert(
+        "تم تسجيل الطلب",
+        "سُجل طلب حذف مساحة العمل. لم يبدأ حذف البيانات أو الوسائط.",
+      );
+    } catch (error) {
+      console.error("Unable to submit workspace deletion request:", error);
+      Alert.alert("تعذر تسجيل الطلب", "تحقق من اتصالك ثم حاول مرة أخرى.");
+    } finally {
+      setSubmittingDeletionRequest(false);
+    }
+  };
+  const confirmWorkspaceDeletionRequest = () => {
+    if (!canRequestWorkspaceDeletion || submittingDeletionRequest) return;
+    const message =
+      "سيُسجل طلب للمراجعة فقط. لن تُحذف البيانات أو الوسائط تلقائيًا.";
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      if (window.confirm(`طلب حذف مساحة العمل\n\n${message}`)) {
+        void submitWorkspaceDeletionRequest();
+      }
+      return;
+    }
+    Alert.alert("طلب حذف مساحة العمل", message, [
+      { text: "إلغاء", style: "cancel" },
+      {
+        text: "تسجيل الطلب",
+        style: "destructive",
+        onPress: () => void submitWorkspaceDeletionRequest(),
+      },
     ]);
   };
   return (
@@ -274,6 +376,174 @@ function SettingsContent({
         subtitle="تحكم في تفضيلات مساحة عملك."
         back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
       />
+      {onSignOut ? (
+        <Panel style={styles.settingsPanel}>
+          <SettingsSectionTitle icon="user" title="مساحات العمل" />
+          {isLoading ? (
+            <ActivityIndicator
+              accessibilityLabel="جارٍ تحميل مساحات العمل"
+              color={colors.primary}
+              style={styles.workspaceLoading}
+            />
+          ) : isError ? (
+            <View style={styles.workspaceMessage}>
+              <Text
+                accessibilityRole="alert"
+                style={[styles.settingSubtitle, { color: colors.destructive }]}
+              >
+                تعذر تحميل مساحات العمل.
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  void queryClient.invalidateQueries({
+                    queryKey: ["workspace-list", userId ?? null],
+                  })
+                }
+              >
+                <Text
+                  style={[styles.subscriptionLink, { color: colors.primary }]}
+                >
+                  إعادة المحاولة
+                </Text>
+              </Pressable>
+            </View>
+          ) : workspaces.length === 0 ? (
+            <Text
+              style={[
+                styles.settingSubtitle,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              لا توجد مساحات مرتبطة بهذا الحساب.
+            </Text>
+          ) : (
+            <View style={styles.workspaceOptions}>
+              {workspaces.map((workspace, index) => {
+                const selected = workspace.id === activeWorkspaceId;
+                const roleLabel =
+                  workspace.role === "owner"
+                    ? "مالك"
+                    : workspace.role === "admin"
+                      ? "مسؤول"
+                      : "عضو";
+                return (
+                  <Pressable
+                    key={workspace.id}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`التبديل إلى ${workspace.name}، ${roleLabel}`}
+                    accessibilityState={{ checked: selected }}
+                    onPress={() => {
+                      void selectWorkspace(workspace.id).catch(() => {
+                        Alert.alert(
+                          "تعذر تبديل مساحة العمل",
+                          "تحقق من اتصالك ثم حاول مرة أخرى.",
+                        );
+                      });
+                    }}
+                    style={({ pressed }) => [
+                      styles.workspaceOption,
+                      {
+                        borderBottomColor: colors.border,
+                        backgroundColor: selected
+                          ? colors.accent
+                          : "transparent",
+                        opacity: pressed ? 0.72 : 1,
+                      },
+                      index === workspaces.length - 1 &&
+                        styles.workspaceOptionLast,
+                    ]}
+                  >
+                    <View style={styles.workspaceCopy}>
+                      <Text
+                        style={[
+                          styles.settingTitle,
+                          { color: colors.foreground },
+                        ]}
+                      >
+                        {workspace.name}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.settingSubtitle,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        {roleLabel}
+                      </Text>
+                    </View>
+                    {selected ? (
+                      <Icon name="check" size={18} color={colors.primary} />
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          {canRequestWorkspaceDeletion ? (
+            <View style={styles.deletionRequest}>
+              <Text
+                accessibilityRole={
+                  deletionRequestStatus === "error" ? "alert" : undefined
+                }
+                style={[
+                  styles.settingSubtitle,
+                  {
+                    color:
+                      deletionRequestStatus === "error"
+                        ? colors.destructive
+                        : colors.mutedForeground,
+                  },
+                ]}
+              >
+                {deletionRequestStatus === "pending"
+                  ? "تم تسجيل طلب الحذف. لا تُحذف البيانات أو الوسائط تلقائيًا."
+                  : deletionRequestStatus === "loading"
+                    ? "جارٍ التحقق من طلب الحذف السابق..."
+                    : deletionRequestStatus === "error"
+                      ? "تعذر التحقق من طلب سابق؛ يمكنك إعادة تسجيل الطلب بأمان."
+                      : "تسجيل الطلب لا يحذف البيانات أو الوسائط تلقائيًا."}
+              </Text>
+              {deletionRequestStatus !== "pending" ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{
+                    disabled:
+                      submittingDeletionRequest ||
+                      deletionRequestStatus === "loading",
+                    busy: submittingDeletionRequest,
+                  }}
+                  disabled={
+                    submittingDeletionRequest ||
+                    deletionRequestStatus === "loading"
+                  }
+                  onPress={confirmWorkspaceDeletionRequest}
+                  style={({ pressed }) => ({
+                    opacity:
+                      submittingDeletionRequest ||
+                      deletionRequestStatus === "loading"
+                        ? 0.55
+                        : pressed
+                          ? 0.72
+                          : 1,
+                  })}
+                >
+                  <Text
+                    style={[
+                      styles.deletionRequestAction,
+                      { color: colors.destructive },
+                    ]}
+                  >
+                    {submittingDeletionRequest
+                      ? "جارٍ تسجيل الطلب..."
+                      : "تسجيل طلب حذف مساحة العمل"}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : null}
+        </Panel>
+      ) : null}
       <Panel style={styles.settingsPanel}>
         <SettingsSectionTitle icon="user" title="الحساب" />
         <Pressable
@@ -343,7 +613,9 @@ function SettingsContent({
                 accessibilityRole="button"
                 onPress={() => void subscriptionQuery.refetch()}
               >
-                <Text style={[styles.subscriptionLink, { color: colors.primary }]}>
+                <Text
+                  style={[styles.subscriptionLink, { color: colors.primary }]}
+                >
                   إعادة المحاولة
                 </Text>
               </Pressable>
@@ -360,21 +632,36 @@ function SettingsContent({
                 ]}
               >
                 <View style={styles.subscriptionCopy}>
-                  <Text style={[styles.subscriptionPlan, { color: colors.foreground }]}>
+                  <Text
+                    style={[
+                      styles.subscriptionPlan,
+                      { color: colors.foreground },
+                    ]}
+                  >
                     {subscription.planName}
                   </Text>
-                  <Text style={[styles.settingSubtitle, { color: colors.mutedForeground }]}>
+                  <Text
+                    style={[
+                      styles.settingSubtitle,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
                     {subscription.status === "trialing"
                       ? `فترة تجريبية · ${trialDaysLeft} يوم متبقٍ`
                       : subscription.planId === "free"
                         ? "الخطة المجانية"
-                      : subscription.status === "active"
-                        ? "الخطة نشطة"
-                        : "الخطة المجانية"}
+                        : subscription.status === "active"
+                          ? "الخطة نشطة"
+                          : "الخطة المجانية"}
                   </Text>
                 </View>
                 {currentPlan ? (
-                  <Text style={[styles.subscriptionPrice, { color: colors.primary }]}>
+                  <Text
+                    style={[
+                      styles.subscriptionPrice,
+                      { color: colors.primary },
+                    ]}
+                  >
                     {currentPlan.monthlyPriceUsd === 0
                       ? "مجانًا"
                       : `$${currentPlan.monthlyPriceUsd} / شهر`}
@@ -407,17 +694,29 @@ function SettingsContent({
                         { borderBottomColor: colors.border },
                       ]}
                     >
-                      <Text style={[styles.settingSubtitle, { color: colors.mutedForeground }]}>
+                      <Text
+                        style={[
+                          styles.settingSubtitle,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
                         {item.label}
                       </Text>
-                      <Text style={[styles.settingSubtitle, { color: colors.foreground }]}>
+                      <Text
+                        style={[
+                          styles.settingSubtitle,
+                          { color: colors.foreground },
+                        ]}
+                      >
                         {item.used} / {item.limit}
                       </Text>
                     </View>
                   ))}
                 </View>
               ) : null}
-              <Text style={[styles.plansHeading, { color: colors.mutedForeground }]}>
+              <Text
+                style={[styles.plansHeading, { color: colors.mutedForeground }]}
+              >
                 الخطط المتاحة
               </Text>
               {subscription.plans.map((plan) => (
@@ -431,11 +730,20 @@ function SettingsContent({
                     },
                   ]}
                 >
-                  <Text style={[styles.settingTitle, { color: colors.foreground }]}>
+                  <Text
+                    style={[styles.settingTitle, { color: colors.foreground }]}
+                  >
                     {plan.name}
                   </Text>
-                  <Text style={[styles.settingSubtitle, { color: colors.mutedForeground }]}>
-                    {plan.monthlyPriceUsd === 0 ? "مجانًا" : `$${plan.monthlyPriceUsd} شهريًا`}
+                  <Text
+                    style={[
+                      styles.settingSubtitle,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {plan.monthlyPriceUsd === 0
+                      ? "مجانًا"
+                      : `$${plan.monthlyPriceUsd} شهريًا`}
                     {" · "}
                     {plan.limits.postsCreated} منشور
                     {" · "}
@@ -443,8 +751,14 @@ function SettingsContent({
                   </Text>
                 </View>
               ))}
-              <Text style={[styles.subscriptionNotice, { color: colors.mutedForeground }]}>
-                الترقية والتحصيل غير متاحين حاليًا؛ سيتم تفعيلهما بعد ربط بوابة الدفع.
+              <Text
+                style={[
+                  styles.subscriptionNotice,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                الترقية والتحصيل غير متاحين حاليًا؛ سيتم تفعيلهما بعد ربط بوابة
+                الدفع.
               </Text>
             </>
           ) : null}
@@ -494,7 +808,9 @@ function SettingsContent({
           />
         </Pressable>
         {appearancePickerVisible ? (
-          <View style={[styles.appearanceOptions, { borderColor: colors.border }]}>
+          <View
+            style={[styles.appearanceOptions, { borderColor: colors.border }]}
+          >
             {(
               [
                 ["system", "يتبع إعداد الجهاز"],
@@ -587,6 +903,24 @@ function SettingsContent({
 
 const styles = StyleSheet.create({
   settingsPanel: { gap: 8 },
+  workspaceLoading: { paddingVertical: 16 },
+  workspaceMessage: { gap: 10, paddingVertical: 8 },
+  workspaceOptions: { gap: 2, borderTopWidth: StyleSheet.hairlineWidth },
+  workspaceOption: {
+    minHeight: 52,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  workspaceOptionLast: { borderBottomWidth: 0 },
+  workspaceCopy: { flex: 1, minWidth: 0, gap: 3 },
+  deletionRequest: { gap: 10, paddingTop: 16 },
+  deletionRequestAction: { fontSize: 13, fontWeight: "700" },
   sectionHeading: {
     minHeight: 38,
     flexDirection: "row-reverse",
@@ -661,7 +995,12 @@ const styles = StyleSheet.create({
     gap: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  plansHeading: { fontSize: 11, fontWeight: "700", textAlign: "right", paddingTop: 4 },
+  plansHeading: {
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "right",
+    paddingTop: 4,
+  },
   planOption: {
     minHeight: 60,
     gap: 5,

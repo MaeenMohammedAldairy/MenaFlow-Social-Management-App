@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   MutationCache,
   QueryClient,
@@ -38,10 +39,16 @@ import {
   getGetOnboardingStatusQueryKey,
   getOnboardingStatus,
   getOnboardingStatusQueryKey,
+  fetchApiResponse,
   setAuthTokenGetter,
   setBaseUrl,
+  setWorkspaceIdGetter,
 } from "@workspace/api-client-react";
 import { StudioProvider } from "@/context/StudioContext";
+import {
+  WorkspaceContext,
+  type WorkspaceSummary,
+} from "@/context/WorkspaceContext";
 import { Platform, I18nManager } from "react-native";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { applyAppearanceMode, readAppearanceMode } from "@/lib/appearance";
@@ -92,6 +99,16 @@ function reportApiError(
   } else if (error instanceof TypeError) {
     apiErrorListener?.({ kind: "network", retry });
   }
+}
+
+function isWorkspaceSummary(value: unknown): value is WorkspaceSummary {
+  if (!value || typeof value !== "object") return false;
+  const workspace = value as Record<string, unknown>;
+  return (
+    typeof workspace.id === "string" &&
+    typeof workspace.name === "string" &&
+    typeof workspace.role === "string"
+  );
 }
 
 queryClient = new QueryClient({
@@ -202,7 +219,31 @@ function AuthenticatedAppNavigator() {
   const [authTokenGetterReady, setAuthTokenGetterReady] = useState(false);
   const [apiErrorNotice, setApiErrorNotice] =
     useState<ApiErrorNotice | null>(null);
+  const [workspaceSelection, setWorkspaceSelection] = useState<{
+    userId: string;
+    workspaceId: string | null;
+  } | null>(null);
   getTokenRef.current = getToken;
+  const activeWorkspaceId =
+    workspaceSelection && workspaceSelection.userId === userId
+      ? workspaceSelection.workspaceId
+      : null;
+  const activeWorkspaceIdRef = React.useRef<string | null>(null);
+  activeWorkspaceIdRef.current = activeWorkspaceId;
+
+  const workspaceListQuery = useQuery({
+    queryKey: ["workspace-list", userId ?? null],
+    queryFn: async (): Promise<WorkspaceSummary[]> => {
+      const response = await fetchApiResponse("/api/workspaces");
+      if (!response.ok) throw new Error("WORKSPACE_LIST_LOAD_FAILED");
+      const payload = (await response.json()) as { workspaces?: unknown };
+      return Array.isArray(payload.workspaces)
+        ? payload.workspaces.filter(isWorkspaceSummary)
+        : [];
+    },
+    enabled: Boolean(isSignedIn && userId && authTokenGetterReady),
+    retry: false,
+  });
 
   const onboarding = useQuery({
     queryKey: getOnboardingStatusQueryKey(userId ?? null),
@@ -210,6 +251,100 @@ function AuthenticatedAppNavigator() {
     enabled: Boolean(isSignedIn && userId && authTokenGetterReady),
     retry: false,
   });
+
+  useEffect(() => {
+    if (!userId || !onboarding.data) return;
+    void queryClient.invalidateQueries({
+      queryKey: ["workspace-list", userId],
+    });
+  }, [onboarding.data, queryClient, userId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!userId) {
+      setWorkspaceSelection(null);
+      return () => {
+        active = false;
+      };
+    }
+
+    setWorkspaceSelection(null);
+    void AsyncStorage.getItem(`menaflow.active-workspace:${userId}`)
+      .then((workspaceId) => {
+        if (active) setWorkspaceSelection({ userId, workspaceId });
+      })
+      .catch((error) => {
+        console.error("Unable to load active workspace:", error);
+        if (active) setWorkspaceSelection({ userId, workspaceId: null });
+      });
+    return () => {
+      active = false;
+    };
+  }, [userId]);
+
+  useEffect(() => {
+    if (
+      !userId ||
+      workspaceSelection?.userId !== userId ||
+      !workspaceListQuery.data
+    ) {
+      return;
+    }
+    if (workspaceListQuery.data.length === 0) {
+      if (workspaceSelection.workspaceId !== null) {
+        setWorkspaceSelection({ userId, workspaceId: null });
+        void AsyncStorage.removeItem(`menaflow.active-workspace:${userId}`).catch(
+          (error) => {
+            console.error("Unable to clear active workspace:", error);
+          },
+        );
+      }
+      return;
+    }
+    const savedWorkspaceExists = workspaceListQuery.data.some(
+      (workspace) => workspace.id === workspaceSelection.workspaceId,
+    );
+    if (savedWorkspaceExists) return;
+
+    const firstWorkspaceId = workspaceListQuery.data[0]?.id ?? null;
+    if (workspaceSelection.workspaceId === firstWorkspaceId) return;
+    setWorkspaceSelection({ userId, workspaceId: firstWorkspaceId });
+    if (firstWorkspaceId) {
+      void AsyncStorage.setItem(
+        `menaflow.active-workspace:${userId}`,
+        firstWorkspaceId,
+      ).catch((error) => {
+        console.error("Unable to save active workspace:", error);
+      });
+    }
+  }, [userId, workspaceSelection, workspaceListQuery.data]);
+
+  const previousWorkspaceIdRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    const previousWorkspaceId = previousWorkspaceIdRef.current;
+    if (previousWorkspaceId === activeWorkspaceId) return;
+    previousWorkspaceIdRef.current = activeWorkspaceId;
+    if (previousWorkspaceId) {
+      queryClient.clear();
+    } else if (activeWorkspaceId) {
+      void queryClient.invalidateQueries();
+    }
+  }, [activeWorkspaceId, queryClient]);
+
+  const selectWorkspace = async (workspaceId: string): Promise<void> => {
+    if (
+      !userId ||
+      !workspaceListQuery.data?.some((workspace) => workspace.id === workspaceId)
+    ) {
+      return;
+    }
+    await AsyncStorage.setItem(
+      `menaflow.active-workspace:${userId}`,
+      workspaceId,
+    );
+    queryClient.clear();
+    setWorkspaceSelection({ userId, workspaceId });
+  };
 
   useEffect(() => {
     if (!isSignedIn || !onboarding.data) return;
@@ -239,6 +374,11 @@ function AuthenticatedAppNavigator() {
   }, []);
 
   useEffect(() => {
+    setWorkspaceIdGetter(() => activeWorkspaceIdRef.current);
+    return () => setWorkspaceIdGetter(null);
+  }, []);
+
+  useEffect(() => {
     apiErrorListener = setApiErrorNotice;
     return () => {
       apiErrorListener = null;
@@ -262,13 +402,22 @@ function AuthenticatedAppNavigator() {
   if (!authTokenGetterReady) return null;
 
   return (
-    <StudioProvider
-      key={userId ?? "signed-out"}
-      storageNamespace={userId ? `user:${userId}` : null}
+    <WorkspaceContext.Provider
+      value={{
+        workspaces: workspaceListQuery.data ?? [],
+        activeWorkspaceId,
+        isLoading: workspaceListQuery.isLoading,
+        isError: workspaceListQuery.isError,
+        selectWorkspace,
+      }}
     >
-      <View style={styles.navigator}>
-        <AppNavigator isSignedIn={Boolean(isSignedIn)} />
-        {apiErrorNotice ? (
+      <StudioProvider
+        key={userId ?? "signed-out"}
+        storageNamespace={userId ? `user:${userId}` : null}
+      >
+        <View style={styles.navigator}>
+          <AppNavigator isSignedIn={Boolean(isSignedIn)} />
+          {apiErrorNotice ? (
           <View
             accessibilityRole="alert"
             accessibilityLiveRegion="assertive"
@@ -345,9 +494,10 @@ function AuthenticatedAppNavigator() {
               </Pressable>
             </View>
           </View>
-        ) : null}
-      </View>
-    </StudioProvider>
+          ) : null}
+        </View>
+      </StudioProvider>
+    </WorkspaceContext.Provider>
   );
 }
 

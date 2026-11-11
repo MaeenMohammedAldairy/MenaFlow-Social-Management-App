@@ -14,6 +14,15 @@ pnpm --filter @workspace/api-server run build
 pnpm --filter @workspace/api-server run start
 ```
 
+Run the API and background workers as separate processes. Start the worker
+service with `pnpm --filter @workspace/api-server run start:worker`. By
+default it runs all enabled workers; set `MENA_WORKER_NAME` to one of
+`auto-reply-recovery`, `meta-webhook-subscriptions`, `product-extraction`,
+`product-publication`, `media-download`, `meta-auto-replies`,
+`media-thumbnails`, or `whatsapp-marketing` to run a single worker family.
+Keep one replica for `meta-webhook-subscriptions` until its reconciliation
+work is protected by a cross-process claim.
+
 The API build script replaces only `artifacts/api-server/dist`. The mobile package's `build` script removes `artifacts/menaflow-mobile/static-build` and clears Metro caches; inspect or back up those outputs before running it.
 
 Configure these API variables in the hosting provider's secret/configuration manager:
@@ -37,6 +46,15 @@ Apply `supabase/migrations/20261104001000_workspace_subscriptions.sql` before de
 
 Payment collection and plan changes are intentionally disabled until a payment provider is selected and configured. Do not present paid plans as purchasable until checkout, payment webhooks, cancellation, and renewal handling have been integrated and verified.
 
+### Workspace deletion requests
+
+Apply `supabase/migrations/20261111001000_workspace_deletion_requests.sql`
+before deploying the workspace settings update. Owners can record one
+workspace deletion request; this stores an auditable pending request only. It
+does not export data, notify staff, schedule deletion, or remove database or
+media objects. Handle requests manually only after a complete export and
+verified cleanup plan for all workspace data and storage providers.
+
 ### Internal order management
 
 Apply `supabase/migrations/20261109001000_order_management.sql` before
@@ -58,7 +76,7 @@ The authenticated inbox is available in the app's **الوارد** tab. Before r
 
 1. Configure `MENA_META_WEBHOOK_VERIFY_TOKEN` in the API secret manager. Use a long random value and enter the same value in the Meta App Dashboard; never commit it.
 2. Configure the public HTTPS callback shown in the inbox as the Meta Webhooks callback URL. The callback uses `MENA_PUBLIC_MEDIA_BASE_URL` when set, otherwise the host from `MENA_FACEBOOK_REDIRECT_URI`. For local testing, run `pnpm dev:instagram`, keep its terminal open, and update the Meta callback whenever the temporary Cloudflare Tunnel URL changes. Subscribe the app to the **Page** fields `feed`, `messages`, and `messaging_postbacks`, and the **Instagram** fields `comments` and `messages`.
-3. After a Page or Instagram account is connected, the API automatically subscribes it to the required webhook fields. A background reconciliation retries failed subscriptions for existing connections. Confirm the app has the required access/review in Meta; permission or token failures are recorded in the subscription status.
+3. After a Page or Instagram account is connected, the API automatically subscribes it to the required webhook fields. A background reconciliation in the worker service retries failed subscriptions for existing connections. Keep one replica for this worker until reconciliation has a cross-process claim. Confirm the app has the required access/review in Meta; permission or token failures are recorded in the subscription status.
 4. Send a test message and comment. Incoming events are signature-verified using `FACEBOOK_APP_SECRET`; duplicate webhook deliveries are ignored.
 
 Apply `20261025002000_meta_inbox.sql` before deploying inbox routes. The webhook callback is unauthenticated by design for Meta delivery; its GET verification token and POST HMAC signature are validated. Inbox reads and replies remain authenticated and workspace-scoped. Replies are subject to Meta messaging windows, account eligibility, app review, and each platform's policies. A Meta permission grant alone does not prove app review or webhook delivery is active.
@@ -73,7 +91,7 @@ The durable queue prevents duplicate webhook events from creating duplicate jobs
 
 The inbox settings also provide a manual action to queue replies for previously received comments. It only lists published posts linked to active, verified products on platforms where comment automation is already ready and enabled. The action uses comments already stored in the workspace inbox (it does not backfill comment history from Meta), excludes replied or already-queued comments and comments outside the current 24-hour worker window, and limits each batch to 20 comments. The user must select posts and confirm before jobs are queued.
 
-Apply `20261026001000_meta_auto_replies.sql` before enabling this feature. Automatic replies remain disabled by default. The API process runs the queue worker unless `META_AUTO_REPLY_WORKER_ENABLED=false`; production should run the worker alongside the API and monitor failed/unknown jobs. No separate AI key is introduced: the existing `OPENAI_API_KEY` and/or `GEMINI_API_KEY` configuration is reused.
+Apply `20261026001000_meta_auto_replies.sql` before enabling this feature. Automatic replies remain disabled by default. The worker service runs the queue worker unless `META_AUTO_REPLY_WORKER_ENABLED=false`; production should monitor failed/unknown jobs. No separate AI key is introduced: the existing `OPENAI_API_KEY` and/or `GEMINI_API_KEY` configuration is reused.
 
 The API exposes unauthenticated `GET /api/healthz` for liveness and `GET /api/readyz` for PostgreSQL readiness. Configure the platform health checks accordingly. The API does not apply database schema changes on startup; review and apply any required schema migration separately against the intended database.
 

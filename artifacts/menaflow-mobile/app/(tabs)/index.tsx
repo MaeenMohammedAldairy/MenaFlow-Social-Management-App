@@ -1172,7 +1172,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "space-between",
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     gap: 8,
     paddingHorizontal: 11,
     paddingVertical: 10,
@@ -1254,7 +1254,7 @@ const styles = StyleSheet.create({
   activityTitle: { fontSize: 13, fontWeight: "700" },
   activityMeta: { fontSize: 11, textAlign: "left" },
   activityError: { gap: 8, paddingVertical: 10 },
-  activityErrorText: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  activityErrorText: { fontSize: 12, lineHeight: 18, textAlign: "center" },
   reviewButton: {
     minHeight: 34,
     justifyContent: "center",

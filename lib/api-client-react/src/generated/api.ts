@@ -55,7 +55,10 @@ import type {
   WhatsAppGroupSelectionsResponse,
   WhatsAppGroupsResponse,
   WhatsAppPairingCodeInput,
-  WhatsAppPairingCodeResponse
+  WhatsAppPairingCodeResponse,
+  WorkspaceDeletionRequestCreatedResponse,
+  WorkspaceDeletionRequestResponse,
+  WorkspaceListResponse
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -328,6 +331,234 @@ export function useGetOwnerAccess<TData = Awaited<ReturnType<typeof getOwnerAcce
 
 
 
+
+export const getListWorkspacesUrl = () => {
+
+
+
+
+  return `/api/workspaces`
+}
+
+/**
+ * @summary List workspaces the signed-in user belongs to
+ */
+export const listWorkspaces = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceListResponse> => {
+
+  return customFetch<WorkspaceListResponse>(getListWorkspacesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWorkspacesQueryKey = () => {
+    return [
+    `/api/workspaces`
+    ] as const;
+    }
+
+
+export const getListWorkspacesQueryOptions = <TData = Awaited<ReturnType<typeof listWorkspaces>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWorkspaces>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWorkspacesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWorkspaces>>> = ({ signal }) => listWorkspaces({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWorkspaces>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListWorkspacesQueryResult = NonNullable<Awaited<ReturnType<typeof listWorkspaces>>>
+export type ListWorkspacesQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary List workspaces the signed-in user belongs to
+ */
+
+export function useListWorkspaces<TData = Awaited<ReturnType<typeof listWorkspaces>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWorkspaces>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListWorkspacesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWorkspaceDeletionRequestUrl = () => {
+
+
+
+
+  return `/api/workspaces/current/deletion-request`
+}
+
+/**
+ * @summary Get the current workspace deletion request, if any
+ */
+export const getWorkspaceDeletionRequest = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceDeletionRequestResponse> => {
+
+  return customFetch<WorkspaceDeletionRequestResponse>(getGetWorkspaceDeletionRequestUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWorkspaceDeletionRequestQueryKey = () => {
+    return [
+    `/api/workspaces/current/deletion-request`
+    ] as const;
+    }
+
+
+export const getGetWorkspaceDeletionRequestQueryOptions = <TData = Awaited<ReturnType<typeof getWorkspaceDeletionRequest>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceDeletionRequest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWorkspaceDeletionRequestQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWorkspaceDeletionRequest>>> = ({ signal }) => getWorkspaceDeletionRequest({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceDeletionRequest>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWorkspaceDeletionRequestQueryResult = NonNullable<Awaited<ReturnType<typeof getWorkspaceDeletionRequest>>>
+export type GetWorkspaceDeletionRequestQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get the current workspace deletion request, if any
+ */
+
+export function useGetWorkspaceDeletionRequest<TData = Awaited<ReturnType<typeof getWorkspaceDeletionRequest>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceDeletionRequest>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWorkspaceDeletionRequestQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateWorkspaceDeletionRequestUrl = () => {
+
+
+
+
+  return `/api/workspaces/current/deletion-request`
+}
+
+/**
+ * @summary Record an owner deletion request without deleting workspace data
+ */
+export const createWorkspaceDeletionRequest = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceDeletionRequestCreatedResponse> => {
+
+  return customFetch<WorkspaceDeletionRequestCreatedResponse>(getCreateWorkspaceDeletionRequestUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateWorkspaceDeletionRequestMutationKey = () => ['createWorkspaceDeletionRequest'] as const;
+
+export const getCreateWorkspaceDeletionRequestMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWorkspaceDeletionRequest>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createWorkspaceDeletionRequest>>, TError,void, TContext> => {
+
+const mutationKey = getCreateWorkspaceDeletionRequestMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createWorkspaceDeletionRequest>>, void> = () => {
+
+
+          return  createWorkspaceDeletionRequest(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateWorkspaceDeletionRequestMutationResult = NonNullable<Awaited<ReturnType<typeof createWorkspaceDeletionRequest>>>
+
+    export type CreateWorkspaceDeletionRequestMutationError = ErrorType<ApiError>
+
+
+    /**
+ * @summary Record an owner deletion request without deleting workspace data
+ */
+export const useCreateWorkspaceDeletionRequest = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWorkspaceDeletionRequest>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createWorkspaceDeletionRequest>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getCreateWorkspaceDeletionRequestMutationOptions(options));
+    }
 
 export const getGetSubscriptionUrl = () => {
 

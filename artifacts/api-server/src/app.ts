@@ -1,5 +1,7 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import pinoHttp from "pino-http";
 import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
@@ -9,6 +11,7 @@ import { logger } from "./lib/logger";
 import {
   assertProductionConfiguration,
   isLocalAuthDisabled,
+  requestOwnerId,
 } from "./lib/owner-access";
 import {
   CLERK_PROXY_PATH,
@@ -19,6 +22,57 @@ import {
 assertProductionConfiguration();
 
 const app: Express = express();
+const requestIpKey = (req: express.Request): string => {
+  const ip = req.ip ?? req.socket.remoteAddress;
+  return ip ? ipKeyGenerator(ip) : "unknown";
+};
+const rateLimitKey = (req: express.Request): string => {
+  const userId = requestOwnerId(req);
+  return userId ? `user:${userId}` : requestIpKey(req);
+};
+const clerkAuthRateLimit = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: requestIpKey,
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: "محاولات المصادقة كثيرة جدًا. انتظر قليلًا ثم حاول مجددًا.",
+      code: "AUTH_RATE_LIMITED",
+    });
+  },
+});
+const apiRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: rateLimitKey,
+  skip: (req) =>
+    [
+      "/healthz",
+      "/readyz",
+      "/social/meta/webhook",
+      "/social/whatsapp/webhook",
+    ].includes(req.path),
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: "أرسلت طلبات كثيرة خلال وقت قصير. حاول لاحقًا.",
+      code: "RATE_LIMITED",
+    });
+  },
+});
+const aiContentRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 8,
+  standardHeaders: false,
+  legacyHeaders: false,
+  keyGenerator: rateLimitKey,
+  handler: (_req, res) => {
+    res.status(429).json({ error: "وصلت إلى حد التوليد المؤقت. حاول بعد دقيقة." });
+  },
+});
 const configuredCorsOrigins = new Set(
   (process.env.MENA_CORS_ORIGINS ?? "")
     .split(",")
@@ -26,6 +80,7 @@ const configuredCorsOrigins = new Set(
     .filter(Boolean),
 );
 
+app.use(helmet());
 app.use(
   pinoHttp({
     logger,
@@ -46,6 +101,7 @@ app.use(
   }),
 );
 if (!isLocalAuthDisabled()) {
+  app.use(CLERK_PROXY_PATH, clerkAuthRateLimit);
   app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 }
 app.use(
@@ -64,14 +120,6 @@ app.use(
     },
   }),
 );
-app.use(
-  "/api/social/meta/webhook",
-  express.raw({ type: "application/json", limit: "1mb" }),
-);
-app.use("/api/social/whatsapp/webhook", express.json({ limit: "1mb" }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
 app.use("/api", healthRouter);
 
 if (!isLocalAuthDisabled()) {
@@ -85,7 +133,15 @@ if (!isLocalAuthDisabled()) {
     })),
   );
 }
-
+app.use("/api", apiRateLimit);
+app.use("/api/ai/content", aiContentRateLimit);
+app.use(
+  "/api/social/meta/webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+);
+app.use("/api/social/whatsapp/webhook", express.json({ limit: "1mb" }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use("/api", router);
 
 app.use(

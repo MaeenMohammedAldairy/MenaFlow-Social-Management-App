@@ -11,7 +11,6 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
-    "@react-native-async-storage/async-storage": "2.2.0",
     "@stardazed/streams-text-encoding": "^1.0.2",
     "@tanstack/react-query": "catalog:",
     "@types/react": "~19.3.0",
@@ -52,6 +51,7 @@
   },
   "dependencies": {
     "@clerk/expo": "4.8.0",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@expo-google-fonts/cairo": "^0.4.2",
     "expo-auth-session": "~58.0.16",
     "expo-crypto": "~58.0.7",
