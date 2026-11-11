@@ -16,6 +16,7 @@ import {
   extractWhatsAppProductCandidates,
   type ProductExtractionCandidate,
 } from "../lib/product-extraction";
+import { storeMetaPostImage } from "../lib/meta-post-media";
 
 import {
   parseProductInput,
@@ -251,6 +252,16 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
     return;
   }
   const { inventoryReason, ...productInput } = input;
+  if (
+    importedMetaPost?.imageUrl &&
+    !productInput.mediaUrls.includes(importedMetaPost.imageUrl) &&
+    productInput.mediaUrls.length >= 20
+  ) {
+    res.status(400).json({
+      error: "يمكن إرفاق 20 وسيطًا كحد أقصى للمنتج.",
+    });
+    return;
+  }
   if (input.sku) {
     const [existing] = await db
       .select({ id: products.id })
@@ -266,6 +277,36 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
       return;
     }
   }
+  let importedMediaId: string | null = null;
+  if (importedMetaPost?.imageUrl) {
+    try {
+      importedMediaId = await storeMetaPostImage(
+        workspaceId,
+        importedMetaPost.imageUrl,
+      );
+    } catch (error) {
+      console.error("Unable to store imported Meta post media", {
+        workspaceId,
+        platform: importedMetaPost.platform,
+        postId: importedMetaPost.id,
+        reason: error instanceof Error ? error.message : "UNKNOWN_ERROR",
+      });
+      res.status(502).json({
+        error:
+          "تعذّر حفظ صورة المنشور في مساحة العمل. حدّث بيانات المنشور ثم أعد المحاولة.",
+      });
+      return;
+    }
+  }
+  const productMediaUrls = new Set(productInput.mediaUrls);
+  if (importedMetaPost?.imageUrl && importedMediaId) {
+    productMediaUrls.delete(importedMetaPost.imageUrl);
+    productMediaUrls.add(importedMediaId);
+  }
+  const normalizedProductInput = {
+    ...productInput,
+    mediaUrls: [...productMediaUrls],
+  };
   const created = await db.transaction(async (transaction) => {
     const now = new Date();
     const [product] = await transaction
@@ -274,7 +315,7 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
         id: randomUUID(),
         ownerId,
         workspaceId,
-        ...productInput,
+        ...normalizedProductInput,
         availability:
           input.inventoryTracked && (input.stockOnHand ?? 0) <= 0
             ? "out_of_stock"
@@ -320,6 +361,17 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
         )
         .limit(1);
       importedPostId = existingPublishedPost?.id ?? null;
+      if (importedPostId && importedMediaId) {
+        await transaction
+          .update(posts)
+          .set({ mediaUrls: [importedMediaId], updatedAt: now })
+          .where(
+            and(
+              eq(posts.id, importedPostId),
+              eq(posts.workspaceId, workspaceId),
+            ),
+          );
+      }
       if (!importedPostId) {
         importedPostId = `meta-import-${createHash("sha256")
           .update(
@@ -343,9 +395,7 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
             status: "published",
             sourceType: "meta_import",
             sourceMessageDate: importedMetaPost.publishedAt,
-            mediaUrls: importedMetaPost.imageUrl
-              ? [importedMetaPost.imageUrl]
-              : [],
+            mediaUrls: importedMediaId ? [importedMediaId] : [],
             metadata: {
               importedFromMeta: true,
               externalPlatform: importedMetaPost.platform,
@@ -562,6 +612,31 @@ router.post(
       return;
     }
 
+    const sourceMediaUrls = mediaUrls(sourcePost.mediaUrls);
+    let importedMediaUrls = sourceMediaUrls;
+    if (sourcePost.sourceType === "meta_import") {
+      try {
+        importedMediaUrls = await Promise.all(
+          sourceMediaUrls.map((url) =>
+            /^https?:\/\//i.test(url)
+              ? storeMetaPostImage(workspaceId, url)
+              : url,
+          ),
+        );
+      } catch (error) {
+        console.error("Unable to store published Meta post media", {
+          workspaceId,
+          postId,
+          reason: error instanceof Error ? error.message : "UNKNOWN_ERROR",
+        });
+        res.status(502).json({
+          error:
+            "تعذّر حفظ وسائط المنشور في مساحة العمل. حدّث بيانات المنشور ثم أعد المحاولة.",
+        });
+        return;
+      }
+    }
+
     let extractedProduct: ProductExtractionCandidate | undefined;
     const sourceText = [sourcePost.title, sourcePost.body]
       .map((part) => part.trim())
@@ -630,7 +705,12 @@ router.post(
         .for("update")
         .limit(1);
       if (!post) return { status: "missing" as const };
-      if (post.title !== sourcePost.title || post.body !== sourcePost.body) {
+      if (
+        post.title !== sourcePost.title ||
+        post.body !== sourcePost.body ||
+        JSON.stringify(mediaUrls(post.mediaUrls)) !==
+          JSON.stringify(sourceMediaUrls)
+      ) {
         return { status: "changed" as const };
       }
       const [existing] = await transaction
@@ -649,11 +729,21 @@ router.post(
         {
           title: post.title,
           body: post.body,
-          mediaUrls: mediaUrls(post.mediaUrls),
+          mediaUrls: importedMediaUrls,
         },
         extractedProduct,
       );
       if (!draft) return { status: "missing" as const };
+      if (
+        JSON.stringify(sourceMediaUrls) !== JSON.stringify(importedMediaUrls)
+      ) {
+        await transaction
+          .update(posts)
+          .set({ mediaUrls: importedMediaUrls, updatedAt: new Date() })
+          .where(
+            and(eq(posts.id, post.id), eq(posts.workspaceId, workspaceId)),
+          );
+      }
       const id = randomUUID();
       const [product] = await transaction
         .insert(products)
@@ -691,6 +781,7 @@ router.post(
         .json({ error: "تمت إضافة هذا المنشور إلى كتالوج المنتجات مسبقًا." });
       return;
     }
+    notifyPostsChanged(ownerId);
     res.status(201).json({
       product: await catalogProductResponse(
         imported.product,

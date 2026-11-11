@@ -30,16 +30,6 @@ export type ProductMediaPreview = {
   mediaType: string;
 };
 
-export const PRODUCT_MEDIA_TYPES = {
-  "image/jpeg": { mediaType: "image", extension: "jpg" },
-  "image/png": { mediaType: "image", extension: "png" },
-  "image/webp": { mediaType: "image", extension: "webp" },
-  "image/heic": { mediaType: "image", extension: "heic" },
-  "image/heif": { mediaType: "image", extension: "heif" },
-  "video/mp4": { mediaType: "video", extension: "mp4" },
-  "video/quicktime": { mediaType: "video", extension: "mov" },
-} as const;
-
 export function productMediaUrl(
   mediaId: string,
   mediaType: string,
