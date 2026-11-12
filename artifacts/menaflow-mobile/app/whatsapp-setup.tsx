@@ -899,4 +899,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   groupCopy: { flex: 1, alignItems: "flex-start", gap: 2 },
+  presetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  presetChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
 });
