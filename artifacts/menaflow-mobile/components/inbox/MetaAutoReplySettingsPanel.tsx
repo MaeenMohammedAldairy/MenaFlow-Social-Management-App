@@ -51,28 +51,28 @@ const platforms: Array<{
   messagesKey: "facebookMessagesEnabled" | "instagramMessagesEnabled";
   commentsKey: "facebookCommentsEnabled" | "instagramCommentsEnabled";
 }> = [
-  {
-    key: "facebook",
-    label: "فيسبوك",
-    messagesKey: "facebookMessagesEnabled",
-    commentsKey: "facebookCommentsEnabled",
-  },
-  {
-    key: "instagram",
-    label: "إنستغرام",
-    messagesKey: "instagramMessagesEnabled",
-    commentsKey: "instagramCommentsEnabled",
-  },
-];
+    {
+      key: "facebook",
+      label: "فيسبوك",
+      messagesKey: "facebookMessagesEnabled",
+      commentsKey: "facebookCommentsEnabled",
+    },
+    {
+      key: "instagram",
+      label: "إنستغرام",
+      messagesKey: "instagramMessagesEnabled",
+      commentsKey: "instagramCommentsEnabled",
+    },
+  ];
 
 const tones: Array<{
   value: MetaAutoReplySettings["tone"];
   label: string;
 }> = [
-  { value: "friendly_professional", label: "ودود ومهني" },
-  { value: "concise", label: "مختصر" },
-  { value: "formal", label: "رسمي" },
-];
+    { value: "friendly_professional", label: "ودود ومهني" },
+    { value: "concise", label: "مختصر" },
+    { value: "formal", label: "رسمي" },
+  ];
 
 function readinessMessage(
   readiness: {
@@ -102,13 +102,13 @@ function readinessMessage(
   const required =
     kind === "message"
       ? readiness.missingPermissions.find((permission) =>
-          ["pages_messaging", "instagram_manage_messages"].includes(permission),
-        )
+        ["pages_messaging", "instagram_manage_messages"].includes(permission),
+      )
       : readiness.missingPermissions.find((permission) =>
-          ["pages_manage_engagement", "instagram_manage_comments"].includes(
-            permission,
-          ),
-        );
+        ["pages_manage_engagement", "instagram_manage_comments"].includes(
+          permission,
+        ),
+      );
   if (required) return `الصلاحية ${required} غير ممنوحة للحساب.`;
   return null;
 }
@@ -171,7 +171,7 @@ export function MetaAutoReplySettingsPanel({
     queryFn: getSocialConnections,
     enabled: isHistoricalModalOpen,
     retry: false,
-  }); 
+  });
   const hasSelectedChannel = platforms.some(
     ({ messagesKey, commentsKey }) =>
       settings[messagesKey] || settings[commentsKey],
@@ -282,8 +282,8 @@ export function MetaAutoReplySettingsPanel({
     historicalSelectionMode === "all"
       ? allEligibleHistoricalPosts
       : (historicalPlatformData?.posts.filter((post) =>
-          selectedHistoricalPostIds.has(post.id),
-        ) ?? []);
+        selectedHistoricalPostIds.has(post.id),
+      ) ?? []);
   const selectedHistoricalCommentCount = selectedHistoricalPosts.reduce(
     (total, post) => total + post.eligibleCommentCount,
     0,
@@ -609,7 +609,7 @@ export function MetaAutoReplySettingsPanel({
                 </Text>
               ) : null}
               {historicalSelectionMode === "selected" &&
-              selectedHistoricalCommentCount > 20 ? (
+                selectedHistoricalCommentCount > 20 ? (
                 <Text style={[styles.bodySmall, { color: colors.warning }]}>
                   الحد الأقصى للدفعة 20 تعليقًا. أزل بعض المنشورات للمتابعة أو
                   اختر جميع التعليقات المؤهلة.
@@ -641,7 +641,7 @@ export function MetaAutoReplySettingsPanel({
                       </Pressable>
                     ) : null}
                     {historicalSelectionMode === "selected" &&
-                    selectedHistoricalPostIds.size ? (
+                      selectedHistoricalPostIds.size ? (
                       <Pressable
                         accessibilityRole="button"
                         disabled={queueHistoricalComments.isPending}
@@ -665,7 +665,7 @@ export function MetaAutoReplySettingsPanel({
                   historicalSelectionMode === "all" ||
                   (!checked &&
                     selectedHistoricalCommentCount + post.eligibleCommentCount >
-                      20) ||
+                    20) ||
                   queueHistoricalComments.isPending;
                 return (
                   <Pressable
@@ -791,7 +791,7 @@ export function MetaAutoReplySettingsPanel({
                 );
               })}
               {historicalPlatformData?.ready &&
-              historicalPlatformData.posts.length === 0 ? (
+                historicalPlatformData.posts.length === 0 ? (
                 <Text style={[styles.body, { color: colors.mutedForeground }]}>
                   لا توجد منشورات مؤهلة مرتبطة بمنتجات فعالة وموثقة.
                 </Text>
@@ -967,10 +967,10 @@ export function MetaAutoReplySettingsPanel({
                     ...(historicalSelectionMode === "all"
                       ? { allEligible: true }
                       : {
-                          postIds: selectedHistoricalPosts.map(
-                            (post) => post.id,
-                          ),
-                        }),
+                        postIds: selectedHistoricalPosts.map(
+                          (post) => post.id,
+                        ),
+                      }),
                   })
                 }
               />
@@ -1078,14 +1078,14 @@ export function MetaAutoReplySettingsPanel({
                               {
                                 color:
                                   settings[platform.messagesKey] ||
-                                  settings[platform.commentsKey]
+                                    settings[platform.commentsKey]
                                     ? colors.primary
                                     : colors.mutedForeground,
                               },
                             ]}
                           >
                             {settings[platform.messagesKey] ||
-                            settings[platform.commentsKey]
+                              settings[platform.commentsKey]
                               ? "مفعّل"
                               : "متوقف"}
                           </Text>
@@ -1153,7 +1153,7 @@ export function MetaAutoReplySettingsPanel({
                             color: whatsappSettingsQuery.isError
                               ? colors.destructive
                               : whatsappSettingsQuery.data?.connected &&
-                                  whatsappSettingsQuery.data.settings.enabled
+                                whatsappSettingsQuery.data.settings.enabled
                                 ? colors.primary
                                 : colors.mutedForeground,
                           },
@@ -1283,7 +1283,7 @@ export function MetaAutoReplySettingsPanel({
                     ]}
                   >
                     <View style={styles.testSimulatorHeader}>
-                      <Icon name="sparkles" size={18} color={colors.primary} />
+                      <Icon name="zap" size={18} color={colors.primary} />
                       <Text
                         style={[
                           styles.testSimulatorTitle,
@@ -1375,7 +1375,7 @@ export function MetaAutoReplySettingsPanel({
                         ]}
                       >
                         <View style={styles.testReplyHeader}>
-                          <Icon name="bot" size={16} color={colors.primary} />
+                          <Icon name="zap" size={16} color={colors.primary} />
                           <Text
                             style={[
                               styles.testReplyLabel,
