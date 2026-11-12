@@ -19,8 +19,6 @@ import accountDetailsRouter from "./account-details";
 import workspacesRouter from "./workspaces";
 import onboardingRouter from "./onboarding";
 import whatsappAutoRepliesRouter from "./whatsapp-auto-replies";
-import whatsappCloudRouter from "./whatsapp-cloud";
-import whatsappCloudWebhookRouter from "./whatsapp-cloud-webhook";
 import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
 
@@ -32,8 +30,6 @@ router.use(whatsappMessagesRouter);
 router.use(whatsappContentAssociationsRouter);
 router.use(whatsappSyncRouter);
 router.use(whatsappAutoRepliesRouter);
-router.use(whatsappCloudRouter);
-router.use(whatsappCloudWebhookRouter);
 router.use(whatsappGroupsRouter);
 router.use(metaRouter);
 router.use(metaInboxRouter);

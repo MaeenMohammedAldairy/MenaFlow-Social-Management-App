@@ -38,6 +38,7 @@ import {
   matchMetaAutoReplyProductFromPublishedPost,
   type MetaAutoReplyConversationEvent,
 } from "./meta-auto-reply";
+import { processMetaOrderIntake } from "./meta-order-intake";
 import { signedWhatsAppMediaUrl } from "./meta-publishing";
 import { workspaceMediaKey } from "./product-utils.ts";
 import {
@@ -825,36 +826,48 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
   let externalSendStarted = false;
   let externalSendSucceeded = false;
   try {
-    const reply = await generateMetaAutoReply({
-      workspaceId: job.workspaceId,
-      context,
-      post,
-      contactInfo: metaBusinessInfoRequested(item.text)
-        ? accountContactInfo(item.platform, connection)
-        : "",
-      pageBusinessInfo,
-      productImagesWillBeSent: productImageUrls.length > 0,
-      isFirstCustomerMessage,
-      platform: item.platform,
-      kind: item.kind,
-      settings: {
-        language: settings.language,
-        tone: settings.tone,
-        instructions: settings.instructions,
-      },
-      matchingProduct: matchingProduct
-        ? {
-            sku: matchingProduct.sku,
-            name: matchingProduct.name,
-            aliases: matchingProduct.aliases,
-            description: matchingProduct.description,
-            price: formatMetaAutoReplyPrice(matchingProduct.price),
-            currency: matchingProduct.currency,
-            availability: matchingProduct.availability,
-            verifiedAt: matchingProduct.verifiedAt?.toISOString() ?? "",
-          }
-        : null,
-    });
+    const orderIntake =
+      item.kind === "message"
+        ? await processMetaOrderIntake({
+            item,
+            workspaceId: job.workspaceId,
+          })
+        : { kind: "ignored" as const };
+    const reply =
+      orderIntake.kind === "reply"
+        ? orderIntake.text
+        : orderIntake.kind === "draft"
+          ? `استلمنا طلبك لـ ${orderIntake.productName}، الكمية ${orderIntake.quantity}، ورقم المتابعة ${orderIntake.orderNumber}. سُجل الطلب كمسودة لمراجعة المتجر، ولم يتم تأكيده بعد.`
+          : await generateMetaAutoReply({
+              workspaceId: job.workspaceId,
+              context,
+              post,
+              contactInfo: metaBusinessInfoRequested(item.text)
+                ? accountContactInfo(item.platform, connection)
+                : "",
+              pageBusinessInfo,
+              productImagesWillBeSent: productImageUrls.length > 0,
+              isFirstCustomerMessage,
+              platform: item.platform,
+              kind: item.kind,
+              settings: {
+                language: settings.language,
+                tone: settings.tone,
+                instructions: settings.instructions,
+              },
+              matchingProduct: matchingProduct
+                ? {
+                    sku: matchingProduct.sku,
+                    name: matchingProduct.name,
+                    aliases: matchingProduct.aliases,
+                    description: matchingProduct.description,
+                    price: formatMetaAutoReplyPrice(matchingProduct.price),
+                    currency: matchingProduct.currency,
+                    availability: matchingProduct.availability,
+                    verifiedAt: matchingProduct.verifiedAt?.toISOString() ?? "",
+                  }
+                : null,
+            });
     const [latestSettings] = await db
       .select()
       .from(menaMetaAutoReplySettings)

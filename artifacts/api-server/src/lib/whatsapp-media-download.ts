@@ -42,6 +42,8 @@ const MEDIA_ROOT = resolveWhatsAppMediaStorageRoot();
 const MAX_DOWNLOAD_ATTEMPTS = 5;
 const RETRY_BASE_MS = 30_000;
 const RETRY_MAX_MS = 15 * 60_000;
+const MAX_WHATSAPP_MEDIA_BYTES = 20 * 1024 * 1024;
+const MAX_EVOLUTION_MEDIA_RESPONSE_BYTES = 32 * 1024 * 1024;
 
 type WhatsAppMessage = typeof WhatsAppMessageTable.$inferSelect;
 type MediaEntry = Record<string, unknown>;
@@ -164,6 +166,7 @@ async function fetchMedia(
       }),
     },
     30_000,
+    MAX_EVOLUTION_MEDIA_RESPONSE_BYTES,
   ));
   const buffer = payload ? mediaBuffer(payload) : null;
   if (!buffer) throw new Error("MEDIA_DOWNLOAD_FAILED");
@@ -288,6 +291,12 @@ async function storeMedia(
   let downloadedBytes = 0;
   let storageProvider: "supabase" | "local" | null = null;
   try {
+    if (
+      details.sizeBytes !== null &&
+      details.sizeBytes > MAX_WHATSAPP_MEDIA_BYTES
+    ) {
+      throw new Error("WHATSAPP_MEDIA_SIZE_LIMIT_EXCEEDED");
+    }
     const advertisedHash = sourceMediaHash(details.sourceSha256);
     if (advertisedHash) {
       const [reusable] = await db
@@ -337,6 +346,9 @@ async function storeMedia(
       : await fetchMedia(message.instanceName, sourceMessage, key);
     downloadMs = Math.round(performance.now() - downloadStartedAt);
     downloadedBytes = downloaded.buffer.length;
+    if (downloadedBytes > MAX_WHATSAPP_MEDIA_BYTES) {
+      throw new Error("WHATSAPP_MEDIA_SIZE_LIMIT_EXCEEDED");
+    }
     const mimeType = normalizeMimeType(downloaded.mimeType ?? details.mimeType);
     const mimeExtension = mimeType?.split("/")[1];
     const fileExtension = details.fileName?.slice(details.fileName.lastIndexOf("."));

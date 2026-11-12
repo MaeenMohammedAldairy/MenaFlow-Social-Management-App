@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { asRecord as record } from "./value-utils.ts";
 
+const DEFAULT_MAX_RESPONSE_BYTES = 16 * 1024 * 1024;
+
 export class EvolutionApiError extends Error {
   readonly statusCode: number;
 
@@ -51,6 +53,12 @@ function evolutionApiConfig(): { baseUrl: URL; apiKey: string } {
   if (baseUrl.protocol !== "http:" && baseUrl.protocol !== "https:") {
     throw new EvolutionApiError(503, "EVOLUTION_API_URL_INVALID");
   }
+  if (
+    process.env.NODE_ENV === "production" &&
+    baseUrl.protocol !== "https:"
+  ) {
+    throw new EvolutionApiError(503, "EVOLUTION_API_URL_INVALID");
+  }
 
   return { baseUrl, apiKey };
 }
@@ -59,7 +67,11 @@ export async function evolutionRequest(
   path: string,
   options: RequestInit = {},
   timeoutMs = 15_000,
+  maxResponseBytes = DEFAULT_MAX_RESPONSE_BYTES,
 ): Promise<unknown> {
+  if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1) {
+    throw new RangeError("EVOLUTION_API_RESPONSE_LIMIT_INVALID");
+  }
   const { baseUrl, apiKey } = evolutionApiConfig();
   const controller = new AbortController();
   const requestSignal = options.signal;
@@ -93,7 +105,39 @@ export async function evolutionRequest(
       }
       throw new EvolutionApiError(502, "EVOLUTION_API_REQUEST_FAILED");
     }
-    const responseText = await response.text();
+    const contentLength = Number(response.headers.get("content-length"));
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > maxResponseBytes
+    ) {
+      controller.abort();
+      throw new EvolutionApiError(502, "EVOLUTION_API_RESPONSE_TOO_LARGE");
+    }
+    if (!response.body) return null;
+    const reader = response.body.getReader();
+    const chunks: Buffer[] = [];
+    let responseBytes = 0;
+    let done = false;
+    try {
+      while (!done) {
+        const result = await reader.read();
+        done = result.done;
+        if (result.value) {
+          responseBytes += result.value.byteLength;
+          if (responseBytes > maxResponseBytes) {
+            controller.abort();
+            throw new EvolutionApiError(
+              502,
+              "EVOLUTION_API_RESPONSE_TOO_LARGE",
+            );
+          }
+          chunks.push(Buffer.from(result.value));
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const responseText = Buffer.concat(chunks, responseBytes).toString("utf8");
     if (responseText.trim() === "") return null;
     if (!response.headers.get("content-type")?.includes("application/json")) {
       throw new EvolutionApiError(502, "EVOLUTION_API_INVALID_RESPONSE");

@@ -14,7 +14,10 @@ export type DeliveryStatus =
 
 export type CollectionStatus = "not_collected" | "collected" | "remitted";
 
-export type OrderSummary = Record<OrderStatus, number> & { total: number };
+export type OrderSummary = Record<OrderStatus, number> & {
+  total: number;
+  metaDrafts: number;
+};
 
 export type OrderItem = {
   id: string;

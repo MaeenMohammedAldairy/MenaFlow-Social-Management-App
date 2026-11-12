@@ -1,8 +1,11 @@
 import { pool } from "@workspace/db";
 import app from "./app";
 import { logger } from "./lib/logger";
-import { processWhatsAppCloudWebhookQueue } from "./lib/whatsapp-cloud-webhook-worker";
-import { startWhatsAppCloudWorkerLoop } from "./lib/whatsapp-cloud-worker-loop";
+import {
+  startBackgroundWorkerLoop,
+  type BackgroundWorkerLoopHandle,
+} from "./lib/background-worker-loop";
+import { processWhatsAppMediaDownloadQueue } from "./lib/whatsapp-media-download";
 
 const rawPort = process.env["PORT"];
 
@@ -18,8 +21,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-let startWorkerHandle: ReturnType<typeof startWhatsAppCloudWorkerLoop> | null =
-  null;
+let mediaWorkerHandle: BackgroundWorkerLoopHandle | null = null;
 let shutdownPromise: Promise<void> | null = null;
 
 const server = app.listen(port, "0.0.0.0", (err) => {
@@ -30,21 +32,24 @@ const server = app.listen(port, "0.0.0.0", (err) => {
 
   logger.info({ host: "0.0.0.0", port }, "Server listening");
   if (
-    process.env.WHATSAPP_CLOUD_INLINE_WORKER_ENABLED === "true" &&
-    process.env.WHATSAPP_CLOUD_WEBHOOK_WORKER_ENABLED !== "false"
+    process.env.WHATSAPP_MEDIA_DOWNLOAD_INLINE_WORKER_ENABLED === "true" &&
+    process.env.WHATSAPP_MEDIA_DOWNLOAD_WORKER_ENABLED !== "false"
   ) {
-    startWorkerHandle = startWhatsAppCloudWorkerLoop(
-      processWhatsAppCloudWebhookQueue,
+    mediaWorkerHandle = startBackgroundWorkerLoop(
+      "evolution-media-download",
+      processWhatsAppMediaDownloadQueue,
       (error) => {
         logger.error(
           { err: error },
-          "WhatsApp Cloud inline webhook worker poll failed",
+          "Evolution media inline worker poll failed",
         );
       },
+      3_000,
+      false,
     );
-    logger.info("WhatsApp Cloud inline webhook worker started");
+    logger.info("Evolution media inline worker started");
   } else {
-    logger.info("WhatsApp Cloud inline webhook worker disabled");
+    logger.info("Evolution media inline worker disabled");
   }
 });
 
@@ -53,14 +58,14 @@ function shutdown(signal: NodeJS.Signals): Promise<void> {
 
   logger.info({ signal }, "API server graceful shutdown started");
   shutdownPromise = (async () => {
-    const workerStopped = startWorkerHandle?.stop() ?? Promise.resolve();
+    const workersStopped = mediaWorkerHandle?.stop() ?? Promise.resolve();
     const serverClosed = new Promise<void>((resolve, reject) => {
       server.close((error) => {
         if (error) reject(error);
         else resolve();
       });
     });
-    await Promise.all([workerStopped, serverClosed]);
+    await Promise.all([workersStopped, serverClosed]);
     await pool.end();
     logger.info({ signal }, "API server graceful shutdown completed");
   })();

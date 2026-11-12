@@ -94,6 +94,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
     queryFn: getOrderSummary,
     enabled: isLocalAuthDisabled || Boolean(userId),
     staleTime: 30_000,
+    refetchInterval: 15_000,
     refetchOnWindowFocus: true,
   });
   const conversationCount = inboxQuery.data
@@ -389,6 +390,50 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       contentMaxWidth={1280}
     >
       <BrandHeader showBell />
+      {orderSummaryQuery.data?.metaDrafts ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${orderSummaryQuery.data.metaDrafts} مسودة طلب من محادثات Meta بانتظار المراجعة. افتح الطلبات.`}
+          onPress={() => router.push("/(tabs)/more/orders")}
+          style={({ pressed }) => [
+            styles.orderNotification,
+            {
+              backgroundColor: colors.accent,
+              borderColor: colors.primary,
+              opacity: pressed ? 0.78 : 1,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.orderNotificationIcon,
+              { backgroundColor: colors.card },
+            ]}
+          >
+            <Icon name="shopping-bag" size={18} color={colors.primary} />
+          </View>
+          <View style={styles.orderNotificationCopy}>
+            <Text
+              style={[
+                styles.orderNotificationTitle,
+                { color: colors.foreground },
+              ]}
+            >
+              طلبات جديدة بانتظار المراجعة
+            </Text>
+            <Text
+              style={[
+                styles.orderNotificationText,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              {orderSummaryQuery.data.metaDrafts} مسودة من محادثات Meta. راجع
+              التفاصيل وأكّد الطلبات من صفحة الطلبات.
+            </Text>
+          </View>
+          <Icon name="chevron-left" size={18} color={colors.primary} />
+        </Pressable>
+      ) : null}
       <View
         style={[
           styles.hero,
@@ -1187,6 +1232,29 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
 }
 
 const styles = StyleSheet.create({
+  orderNotification: {
+    minHeight: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+  },
+  orderNotificationIcon: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 13,
+  },
+  orderNotificationCopy: { flex: 1, minWidth: 0, gap: 4 },
+  orderNotificationTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+  orderNotificationText: { fontSize: 11, lineHeight: 17, textAlign: "right" },
   hero: {
     borderRadius: 20,
     borderWidth: 1,

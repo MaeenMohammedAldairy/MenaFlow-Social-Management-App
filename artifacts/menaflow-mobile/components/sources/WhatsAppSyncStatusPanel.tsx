@@ -230,10 +230,10 @@ export function WhatsAppSyncStatusPanel({
           </Text>
           <TextInput
             accessibilityLabel="عدد الرسائل السابقة لكل مجموعة"
-            accessibilityHint="أدخل عدداً من 1 إلى 100000"
+            accessibilityHint="أدخل عدداً من 1 إلى 10000"
             editable={!syncing}
             keyboardType="number-pad"
-            maxLength={6}
+            maxLength={5}
             onChangeText={(value) =>
               onHistoryMessageLimitChange(
                 normalizeArabicDigits(value).replace(/\D/g, ""),
@@ -251,7 +251,7 @@ export function WhatsAppSyncStatusPanel({
             value={historyMessageLimit}
           />
           <Text style={[styles.syncStatusText, { color: colors.mutedForeground }]}>
-            العدد حد أقصى لكل مجموعة. القيمة الافتراضية 500، ويمكن إدخال 1 إلى 100000.
+            العدد حد أقصى لكل مجموعة. القيمة الافتراضية 500، ويمكن إدخال 1 إلى 10000.
           </Text>
         </View>
       ) : null}

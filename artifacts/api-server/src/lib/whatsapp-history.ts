@@ -22,6 +22,9 @@ export function buildWhatsAppHistoryQuery(
 }
 
 export function parseWhatsAppHistoryTimestamp(value: unknown): Date | null {
+  if (value instanceof Date) {
+    return Number.isFinite(value.getTime()) ? new Date(value.getTime()) : null;
+  }
   const timestamp =
     typeof value === "number"
       ? value

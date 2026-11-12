@@ -1,15 +1,18 @@
-export type WhatsAppCloudWorkerLoopHandle = {
+export type BackgroundWorkerLoopHandle = {
   stop: () => Promise<void>;
 };
 
-let activeLoop: WhatsAppCloudWorkerLoopHandle | null = null;
+const activeLoops = new Map<string, BackgroundWorkerLoopHandle>();
 
-export function startWhatsAppCloudWorkerLoop(
+export function startBackgroundWorkerLoop(
+  name: string,
   runOnce: () => Promise<number>,
   onError: (error: unknown) => void,
   idleIntervalMs = 3_000,
-): WhatsAppCloudWorkerLoopHandle {
-  if (activeLoop) return activeLoop;
+  drainImmediately = true,
+): BackgroundWorkerLoopHandle {
+  const existing = activeLoops.get(name);
+  if (existing) return existing;
 
   let stopping = false;
   let timer: NodeJS.Timeout | null = null;
@@ -29,7 +32,7 @@ export function startWhatsAppCloudWorkerLoop(
     activeRun = Promise.resolve()
       .then(runOnce)
       .then((processed) => {
-        schedule(processed > 0 ? 0 : idleIntervalMs);
+        schedule(drainImmediately && processed > 0 ? 0 : idleIntervalMs);
       })
       .catch((error: unknown) => {
         onError(error);
@@ -40,7 +43,7 @@ export function startWhatsAppCloudWorkerLoop(
       });
   };
 
-  const handle: WhatsAppCloudWorkerLoopHandle = {
+  const handle: BackgroundWorkerLoopHandle = {
     async stop() {
       if (stopping) {
         await activeRun;
@@ -50,11 +53,11 @@ export function startWhatsAppCloudWorkerLoop(
       if (timer) clearTimeout(timer);
       timer = null;
       await activeRun;
-      if (activeLoop === handle) activeLoop = null;
+      if (activeLoops.get(name) === handle) activeLoops.delete(name);
     },
   };
 
-  activeLoop = handle;
+  activeLoops.set(name, handle);
   run();
   return handle;
 }

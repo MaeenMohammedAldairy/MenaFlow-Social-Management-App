@@ -17,7 +17,7 @@ timestamp are checked too, so messages sharing a timestamp are not lost.
 Already saved messages are not written again; messages with pending or failed
 media can be retried when encountered. For explicit previous-history sync,
 users can set a maximum number of unpersisted messages to import per selected
-group (default 500; allowed range 1–100,000). The importer continues through
+group (default 500; allowed range 1–10,000). The importer continues through
 older pages until it reaches that number or the provider runs out of history;
 fully saved messages do not consume the limit. The regular sync of new messages
 is not affected by this limit.

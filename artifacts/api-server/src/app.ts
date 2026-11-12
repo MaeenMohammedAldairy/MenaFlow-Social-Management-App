@@ -43,6 +43,19 @@ const clerkAuthRateLimit = rateLimit({
     });
   },
 });
+const evolutionWebhookRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 1_200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: requestIpKey,
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: "تجاوز ويبهوك واتساب الحد المؤقت للطلبات. أعد المحاولة لاحقًا.",
+      code: "EVOLUTION_WEBHOOK_RATE_LIMITED",
+    });
+  },
+});
 const apiRateLimit = rateLimit({
   windowMs: 60_000,
   limit: 300,
@@ -55,7 +68,6 @@ const apiRateLimit = rateLimit({
       "/readyz",
       "/social/meta/webhook",
       "/social/whatsapp/webhook",
-      "/social/whatsapp-cloud/webhook",
     ].includes(req.path),
   handler: (_req, res) => {
     res.status(429).json({
@@ -71,7 +83,9 @@ const aiContentRateLimit = rateLimit({
   legacyHeaders: false,
   keyGenerator: rateLimitKey,
   handler: (_req, res) => {
-    res.status(429).json({ error: "وصلت إلى حد التوليد المؤقت. حاول بعد دقيقة." });
+    res
+      .status(429)
+      .json({ error: "وصلت إلى حد التوليد المؤقت. حاول بعد دقيقة." });
   },
 });
 const configuredCorsOrigins = new Set(
@@ -134,14 +148,11 @@ if (!isLocalAuthDisabled()) {
     })),
   );
 }
+app.use("/api/social/whatsapp/webhook", evolutionWebhookRateLimit);
 app.use("/api", apiRateLimit);
 app.use("/api/ai/content", aiContentRateLimit);
 app.use(
   "/api/social/meta/webhook",
-  express.raw({ type: "application/json", limit: "1mb" }),
-);
-app.use(
-  "/api/social/whatsapp-cloud/webhook",
   express.raw({ type: "application/json", limit: "1mb" }),
 );
 app.use("/api/social/whatsapp/webhook", express.json({ limit: "1mb" }));

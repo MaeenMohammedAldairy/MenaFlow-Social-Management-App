@@ -74,9 +74,16 @@ import { resolveMessageSenderId } from "../lib/whatsapp-marketing-safety";
 
 export const WHATSAPP_SYNC_STALE_THRESHOLD_MS = 10 * 60 * 1000;
 export const DEFAULT_WHATSAPP_HISTORY_IMPORT_LIMIT = 500;
-export const MAX_WHATSAPP_HISTORY_IMPORT_LIMIT = 100_000;
+export const MAX_WHATSAPP_HISTORY_IMPORT_LIMIT = 10_000;
 
 const activeWhatsAppSyncCounts = new Map<string, number>();
+
+function persistedWhatsAppCursor(value: unknown): Date | null {
+  if (value === null || value === undefined) return null;
+  const cursor = parseWhatsAppHistoryTimestamp(value);
+  if (!cursor) throw new Error("WHATSAPP_SYNC_CURSOR_INVALID");
+  return cursor;
+}
 
 function stripInlineMediaData(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(stripInlineMediaData);
@@ -924,7 +931,6 @@ export async function syncGroupHistory(
     groupJid,
     groupId,
   );
-  let syncStartedAt = new Date();
   const [latestMessage] = await db
     .select({
       messageTimestamp: sql<Date | null>`max(${menaWhatsAppMessages.messageTimestamp})`,
@@ -937,12 +943,12 @@ export async function syncGroupHistory(
         eq(menaWhatsAppMessages.groupId, groupId),
       ),
     );
+  const latestMessageCursor = persistedWhatsAppCursor(
+    latestMessage?.messageTimestamp,
+  );
   const persistedCursor =
-    latestMessage?.messageTimestamp ??
-    (syncState.lastCursor ? new Date(syncState.lastCursor) : null);
-  if (persistedCursor && Number.isFinite(persistedCursor.getTime())) {
-    syncStartedAt = persistedCursor;
-  }
+    latestMessageCursor ?? persistedWhatsAppCursor(syncState.lastCursor);
+  const syncStartedAt = persistedCursor ?? new Date();
   const historyCursor = includeHistory ? undefined : syncStartedAt;
   const existingMessages = await db
     .select({

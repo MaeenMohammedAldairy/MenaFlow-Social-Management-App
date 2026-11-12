@@ -181,6 +181,46 @@ test("sends Evolution requests with the configured base URL and API key", async 
   }
 });
 
+test("requires HTTPS for Evolution in production but allows HTTP in development", async () => {
+  const keys = [
+    "NODE_ENV",
+    "WHATSAPP_EVOLUTION_BASE_URL",
+    "WHATSAPP_EVOLUTION_API_KEY",
+  ];
+  const previous = new Map(keys.map((key) => [key, process.env[key]]));
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.WHATSAPP_EVOLUTION_BASE_URL = "http://evolution.example";
+    process.env.WHATSAPP_EVOLUTION_API_KEY = "test-api-key";
+    await assert.rejects(
+      evolutionRequest("instance/state"),
+      (error) => error instanceof EvolutionApiError &&
+        error.statusCode === 503 &&
+        error.message === "EVOLUTION_API_URL_INVALID",
+    );
+
+    process.env.NODE_ENV = "development";
+    let requestedUrl;
+    globalThis.fetch = async (url) => {
+      requestedUrl = url;
+      return new Response(JSON.stringify({ connected: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    assert.deepEqual(await evolutionRequest("instance/state"), {
+      connected: true,
+    });
+    assert.equal(requestedUrl.toString(), "http://evolution.example/instance/state");
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+});
+
 test("maps missing Evolution configuration and failed responses to typed errors", async () => {
   const configuredUrl = process.env.WHATSAPP_EVOLUTION_BASE_URL;
   const configuredKey = process.env.WHATSAPP_EVOLUTION_API_KEY;
@@ -203,6 +243,50 @@ test("maps missing Evolution configuration and failed responses to typed errors"
         error.statusCode === 404 &&
         error.message === "EVOLUTION_INSTANCE_NOT_FOUND",
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (configuredUrl === undefined) {
+      delete process.env.WHATSAPP_EVOLUTION_BASE_URL;
+    } else {
+      process.env.WHATSAPP_EVOLUTION_BASE_URL = configuredUrl;
+    }
+    if (configuredKey === undefined) {
+      delete process.env.WHATSAPP_EVOLUTION_API_KEY;
+    } else {
+      process.env.WHATSAPP_EVOLUTION_API_KEY = configuredKey;
+    }
+  }
+});
+
+test("rejects Evolution response bodies above their byte limit", async () => {
+  const configuredUrl = process.env.WHATSAPP_EVOLUTION_BASE_URL;
+  const configuredKey = process.env.WHATSAPP_EVOLUTION_API_KEY;
+  try {
+    process.env.WHATSAPP_EVOLUTION_BASE_URL = "https://evolution.example";
+    process.env.WHATSAPP_EVOLUTION_API_KEY = "test-api-key";
+    const responses = [
+      new Response('{"payload":"too large"}', {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+      new Response('{"ok":true}', {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "content-length": "100",
+        },
+      }),
+    ];
+    globalThis.fetch = async () => responses.shift();
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await assert.rejects(
+        evolutionRequest("instance/state", {}, 15_000, 8),
+        (error) => error instanceof EvolutionApiError &&
+          error.statusCode === 502 &&
+          error.message === "EVOLUTION_API_RESPONSE_TOO_LARGE",
+      );
+    }
   } finally {
     globalThis.fetch = originalFetch;
     if (configuredUrl === undefined) {

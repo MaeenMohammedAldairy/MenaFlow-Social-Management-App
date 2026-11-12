@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS public.mena_whatsapp_cloud_messages;
+DROP TABLE IF EXISTS public.mena_whatsapp_cloud_conversations;
+DROP TABLE IF EXISTS public.mena_whatsapp_cloud_webhook_events;
+DROP TABLE IF EXISTS public.mena_whatsapp_cloud_messaging_account_phone_numbers;
+DROP TABLE IF EXISTS public.mena_whatsapp_cloud_phone_numbers;
+DROP TABLE IF EXISTS public.mena_whatsapp_cloud_messaging_accounts;
+DROP TABLE IF EXISTS public.mena_whatsapp_cloud_accounts;
+DROP TABLE IF EXISTS public.mena_whatsapp_cloud_credentials;
+DROP TABLE IF EXISTS public.mena_whatsapp_cloud_connections;

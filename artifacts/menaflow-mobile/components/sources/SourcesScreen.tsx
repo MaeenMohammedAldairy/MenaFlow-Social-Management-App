@@ -975,9 +975,9 @@ function SourcesContent({
       syncPreviousMessages &&
       (!Number.isInteger(parsedHistoryLimit) ||
         parsedHistoryLimit < 1 ||
-        parsedHistoryLimit > 100_000)
+        parsedHistoryLimit > 10_000)
     ) {
-      setSyncNotice("أدخل عدداً صحيحاً من 1 إلى 100000 لكل مجموعة.");
+      setSyncNotice("أدخل عدداً صحيحاً من 1 إلى 10000 لكل مجموعة.");
       return;
     }
     setSyncNotice(null);
@@ -1697,17 +1697,6 @@ function SourcesContent({
         onDisconnectWhatsApp={disconnectWhatsApp}
         onRefresh={() => void connectionsQuery.refetch()}
       />
-
-      {isPublishingAccounts ? (
-        <Panel>
-          <ActionButton
-            label="اختبار WhatsApp Cloud API"
-            icon="shield"
-            secondary
-            onPress={() => router.push("/whatsapp-cloud-setup" as Href)}
-          />
-        </Panel>
-      ) : null}
 
       {!isPublishingAccounts ? <CsvProductImportCard userId={userId} /> : null}
 

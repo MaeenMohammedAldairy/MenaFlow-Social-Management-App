@@ -160,10 +160,12 @@ test("filters group history records that store the group JID as the alternate JI
 test("parses WhatsApp timestamps in seconds, milliseconds, and ISO format", () => {
   const seconds = 1_800_000_000;
   const milliseconds = 1_800_000_000_000;
+  const date = new Date(milliseconds);
   assert.equal(
     parseWhatsAppHistoryTimestamp(seconds)?.getTime(),
     milliseconds,
   );
+  assert.equal(parseWhatsAppHistoryTimestamp(date)?.getTime(), milliseconds);
   assert.equal(
     parseWhatsAppHistoryTimestamp(String(milliseconds))?.getTime(),
     milliseconds,
@@ -175,4 +177,5 @@ test("parses WhatsApp timestamps in seconds, milliseconds, and ISO format", () =
     milliseconds,
   );
   assert.equal(parseWhatsAppHistoryTimestamp("invalid"), null);
+  assert.equal(parseWhatsAppHistoryTimestamp(new Date(Number.NaN)), null);
 });
