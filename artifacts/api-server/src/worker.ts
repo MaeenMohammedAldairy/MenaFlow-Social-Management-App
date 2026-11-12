@@ -5,7 +5,6 @@ import {
   processWhatsAppMediaDownloadQueue,
   processWhatsAppMediaThumbnailQueue,
 } from "./lib/whatsapp-media-download";
-import { processMetaAutoReplyQueue } from "./lib/meta-auto-reply-worker";
 import { processWhatsAppProductExtractionQueue } from "./lib/whatsapp-product-extraction";
 import { processProductPublicationQueue } from "./lib/product-publishing";
 import { processMetaWebhookSubscriptionQueue } from "./lib/meta-webhook-subscriptions";
@@ -17,7 +16,6 @@ type WorkerName =
   | "product-extraction"
   | "product-publication"
   | "media-download"
-  | "meta-auto-replies"
   | "media-thumbnails"
   | "whatsapp-marketing";
 
@@ -73,14 +71,6 @@ const workers: Worker[] = [
     run: processWhatsAppMediaDownloadQueue,
     disabledMessage: "WhatsApp media download worker disabled",
     errorMessage: "WhatsApp media download queue poll failed",
-  },
-  {
-    name: "meta-auto-replies",
-    intervalMs: 3_000,
-    enabled: () => process.env.META_AUTO_REPLY_WORKER_ENABLED !== "false",
-    run: processMetaAutoReplyQueue,
-    disabledMessage: "Meta auto-reply worker disabled",
-    errorMessage: "Meta auto-reply worker poll failed",
   },
   {
     name: "media-thumbnails",

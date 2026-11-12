@@ -14,12 +14,14 @@ pnpm --filter @workspace/api-server run build
 pnpm --filter @workspace/api-server run start
 ```
 
-Run the API and background workers as separate processes. Start the worker
-service with `pnpm --filter @workspace/api-server run start:worker`. By
-default it runs all enabled workers; set `MENA_WORKER_NAME` to one of
+Meta automatic replies run inside the API process by default. Set
+`META_AUTO_REPLY_WORKER_ENABLED=false` only to disable that inline queue.
+Other background queues run in the separate worker service:
+`pnpm --filter @workspace/api-server run start:worker`. By default it runs all
+enabled workers; set `MENA_WORKER_NAME` to one of
 `auto-reply-recovery`, `meta-webhook-subscriptions`, `product-extraction`,
-`product-publication`, `media-download`, `meta-auto-replies`,
-`media-thumbnails`, or `whatsapp-marketing` to run a single worker family.
+`product-publication`, `media-download`, `media-thumbnails`, or
+`whatsapp-marketing` to run a single worker family.
 Keep one replica for `meta-webhook-subscriptions` until its reconciliation
 work is protected by a cross-process claim.
 
@@ -97,7 +99,7 @@ The durable queue prevents duplicate webhook events from creating duplicate jobs
 
 The inbox settings also provide a manual action to queue replies for previously received comments. It only lists published posts linked to active, verified products on platforms where comment automation is already ready and enabled. The action uses comments already stored in the workspace inbox (it does not backfill comment history from Meta), excludes replied or already-queued comments and comments outside the current 24-hour worker window, and limits each batch to 20 comments. The user must select posts and confirm before jobs are queued.
 
-Apply `20261026001000_meta_auto_replies.sql` before enabling this feature. Automatic replies remain disabled by default. The worker service runs the queue worker unless `META_AUTO_REPLY_WORKER_ENABLED=false`; production should monitor failed/unknown jobs. No separate AI key is introduced: the existing `OPENAI_API_KEY` and/or `GEMINI_API_KEY` configuration is reused.
+Apply `20261026001000_meta_auto_replies.sql` before enabling this feature. Automatic replies remain disabled by default in workspace settings. The API process runs the inline queue worker unless `META_AUTO_REPLY_WORKER_ENABLED=false`; production should monitor failed/unknown jobs. No separate AI key is introduced: the existing `OPENAI_API_KEY` and/or `GEMINI_API_KEY` configuration is reused.
 
 The API exposes unauthenticated `GET /api/healthz` for liveness and `GET /api/readyz` for PostgreSQL readiness. Configure the platform health checks accordingly. The API does not apply database schema changes on startup; review and apply any required schema migration separately against the intended database.
 

@@ -5,6 +5,7 @@ import {
   startBackgroundWorkerLoop,
   type BackgroundWorkerLoopHandle,
 } from "./lib/background-worker-loop";
+import { processMetaAutoReplyQueue } from "./lib/meta-auto-reply-worker";
 import { processWhatsAppMediaDownloadQueue } from "./lib/whatsapp-media-download";
 
 const rawPort = process.env["PORT"];
@@ -22,6 +23,7 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 let mediaWorkerHandle: BackgroundWorkerLoopHandle | null = null;
+let metaAutoReplyWorkerHandle: BackgroundWorkerLoopHandle | null = null;
 let shutdownPromise: Promise<void> | null = null;
 
 const server = app.listen(port, "0.0.0.0", (err) => {
@@ -31,6 +33,27 @@ const server = app.listen(port, "0.0.0.0", (err) => {
   }
 
   logger.info({ host: "0.0.0.0", port }, "Server listening");
+  if (process.env.META_AUTO_REPLY_WORKER_ENABLED !== "false") {
+    metaAutoReplyWorkerHandle = startBackgroundWorkerLoop(
+      "meta-auto-replies",
+      async () => {
+        await processMetaAutoReplyQueue();
+        return 0;
+      },
+      (error) => {
+        logger.error(
+          { err: error },
+          "Meta auto-reply inline worker poll failed",
+        );
+      },
+      3_000,
+      false,
+    );
+    logger.info("Meta auto-reply inline worker started");
+  } else {
+    logger.info("Meta auto-reply inline worker disabled");
+  }
+
   if (
     process.env.WHATSAPP_MEDIA_DOWNLOAD_INLINE_WORKER_ENABLED === "true" &&
     process.env.WHATSAPP_MEDIA_DOWNLOAD_WORKER_ENABLED !== "false"
@@ -58,7 +81,10 @@ function shutdown(signal: NodeJS.Signals): Promise<void> {
 
   logger.info({ signal }, "API server graceful shutdown started");
   shutdownPromise = (async () => {
-    const workersStopped = mediaWorkerHandle?.stop() ?? Promise.resolve();
+    const workersStopped = Promise.all([
+      mediaWorkerHandle?.stop() ?? Promise.resolve(),
+      metaAutoReplyWorkerHandle?.stop() ?? Promise.resolve(),
+    ]);
     const serverClosed = new Promise<void>((resolve, reject) => {
       server.close((error) => {
         if (error) reject(error);
