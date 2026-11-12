@@ -29,6 +29,7 @@ import {
   getMetaAutoReplyHistoricalPosts,
   queueMetaAutoReplyHistoricalComments,
   saveMetaAutoReplySettings,
+  testMetaAutoReply,
   type MetaAutoReplySettings,
   type MetaInboxPlatform,
 } from "@/lib/meta-inbox-api";
@@ -146,6 +147,11 @@ export function MetaAutoReplySettingsPanel({
     Set<string>
   >(new Set());
   const [error, setError] = useState("");
+  const [testMessage, setTestMessage] = useState("");
+  const [testReply, setTestReply] = useState("");
+  const [testMatchedProduct, setTestMatchedProduct] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testError, setTestError] = useState("");
   const [historicalQueueMessage, setHistoricalQueueMessage] = useState("");
   const historicalQueryKey = [
     "meta-auto-reply-historical-comments",
@@ -165,7 +171,7 @@ export function MetaAutoReplySettingsPanel({
     queryFn: getSocialConnections,
     enabled: isHistoricalModalOpen,
     retry: false,
-  });
+  }); 
   const hasSelectedChannel = platforms.some(
     ({ messagesKey, commentsKey }) =>
       settings[messagesKey] || settings[commentsKey],
@@ -232,9 +238,38 @@ export function MetaAutoReplySettingsPanel({
     setError("");
   };
 
+  const runTest = async () => {
+    const message = testMessage.trim();
+    if (!message) return;
+    setTesting(true);
+    setTestError("");
+    setTestReply("");
+    setTestMatchedProduct(null);
+    try {
+      const res = await testMetaAutoReply({
+        message,
+        settings,
+        platform: "instagram",
+        kind: "message",
+      });
+      setTestReply(res.reply);
+      setTestMatchedProduct(res.matchedProduct ?? null);
+    } catch (err) {
+      setTestError(
+        err instanceof Error ? err.message : "تعذر إجراء اختبار الرد الآلي.",
+      );
+    } finally {
+      setTesting(false);
+    }
+  };
+
   const closeModal = () => {
     if (query.data) setSettings(query.data.settings);
     setError("");
+    setTestMessage("");
+    setTestReply("");
+    setTestMatchedProduct(null);
+    setTestError("");
     setIsModalOpen(false);
   };
   const historicalPlatformData =
@@ -1238,35 +1273,141 @@ export function MetaAutoReplySettingsPanel({
                     </View>
                   </View>
 
-                  <View style={styles.field}>
-                    <Text style={[styles.label, { color: colors.foreground }]}>
-                      أسلوب الرد
+                  <View
+                    style={[
+                      styles.testSimulatorBlock,
+                      {
+                        backgroundColor: colors.muted,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <View style={styles.testSimulatorHeader}>
+                      <Icon name="sparkles" size={18} color={colors.primary} />
+                      <Text
+                        style={[
+                          styles.testSimulatorTitle,
+                          { color: colors.foreground },
+                        ]}
+                      >
+                        تجربة الرد الذكي المباشر (Simulator)
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.bodySmall,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      أدخل رسالة أو استفسار عميل لاختبار أسلوب الرد والتعليمات
+                      المعينة قبل الحفظ.
                     </Text>
-                    <View style={styles.choiceRow}>
-                      {tones.map((option) => (
+
+                    <View style={styles.presetChipsRow}>
+                      {[
+                        { label: "سعر وتوفر", text: "كم سعر هذا المنتج وهل متوفر الآن؟" },
+                        { label: "مواصفات وألوان", text: "هل يتوفر منه ألوان أو مقاسات ثانية؟" },
+                        { label: "طلب وشراء", text: "أريد طلب حبة، كيف طريقة الدفع والتوصيل؟" },
+                        { label: "أوقات وعنوان", text: "أين موقعكم ومتى أوقات دوامكم؟" },
+                      ].map((preset) => (
                         <Text
-                          key={option.value}
+                          key={preset.label}
                           accessibilityRole="button"
-                          onPress={() => update({ tone: option.value })}
+                          onPress={() => setTestMessage(preset.text)}
                           style={[
-                            styles.choice,
+                            styles.presetChip,
                             {
-                              color:
-                                settings.tone === option.value
-                                  ? colors.primaryForeground
-                                  : colors.foreground,
-                              backgroundColor:
-                                settings.tone === option.value
-                                  ? colors.primary
-                                  : colors.background,
+                              backgroundColor: colors.card,
                               borderColor: colors.border,
+                              color: colors.foreground,
                             },
                           ]}
                         >
-                          {option.label}
+                          {preset.label}
                         </Text>
                       ))}
                     </View>
+
+                    <CairoTextInput
+                      value={testMessage}
+                      onChangeText={setTestMessage}
+                      placeholder="مثال: مرحباً، كم سعر هذا المنتج وهل متوفر لديكم؟"
+                      placeholderTextColor={colors.mutedForeground}
+                      style={[
+                        styles.testInput,
+                        {
+                          backgroundColor: colors.background,
+                          color: colors.foreground,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                      maxLength={1000}
+                    />
+
+                    <View style={{ alignItems: "flex-start" }}>
+                      <ActionButton
+                        label={
+                          testing ? "جارٍ توليد الرد التجريبي..." : "اختبار الرد"
+                        }
+                        icon={testing ? "refresh-cw" : "send"}
+                        disabled={testing || !testMessage.trim()}
+                        onPress={runTest}
+                      />
+                    </View>
+
+                    {testError ? (
+                      <Text
+                        accessibilityRole="alert"
+                        style={[styles.bodySmall, { color: colors.destructive }]}
+                      >
+                        {testError}
+                      </Text>
+                    ) : null}
+
+                    {testReply ? (
+                      <View
+                        style={[
+                          styles.testReplyPreview,
+                          {
+                            backgroundColor: colors.card,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                      >
+                        <View style={styles.testReplyHeader}>
+                          <Icon name="bot" size={16} color={colors.primary} />
+                          <Text
+                            style={[
+                              styles.testReplyLabel,
+                              { color: colors.primary },
+                            ]}
+                          >
+                            الرد المقترح من المساعد الذكي:
+                          </Text>
+                          {testMatchedProduct ? (
+                            <Text
+                              style={[
+                                styles.bodySmall,
+                                {
+                                  color: colors.mutedForeground,
+                                  fontSize: 11,
+                                },
+                              ]}
+                            >
+                              (تمت مطابقة منتج: {testMatchedProduct})
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text
+                          style={[
+                            styles.body,
+                            { color: colors.foreground, lineHeight: 22 },
+                          ]}
+                        >
+                          {testReply}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
 
                   {error ? (
@@ -1332,6 +1473,8 @@ function SettingSwitch({
         <View style={styles.switchControl}>
           <Switch
             accessibilityLabel={label}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: enabled, disabled: disabled || busy }}
             value={enabled}
             disabled={disabled || busy}
             onValueChange={onChange}
@@ -1523,5 +1666,61 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     fontSize: 13,
+  },
+  testSimulatorBlock: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    gap: 10,
+    marginTop: 6,
+  },
+  testSimulatorHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  testSimulatorTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  testInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    minHeight: 44,
+    textAlign: "right",
+  },
+  testReplyPreview: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    gap: 6,
+    marginTop: 4,
+  },
+  testReplyHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  testReplyLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  presetChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 2,
+  },
+  presetChip: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    fontSize: 11,
+    overflow: "hidden",
   },
 });

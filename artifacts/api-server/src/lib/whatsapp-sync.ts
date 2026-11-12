@@ -1,6 +1,7 @@
 import {
   and,
   asc,
+  desc,
   eq,
   gte,
   inArray,
@@ -19,6 +20,7 @@ import {
   menaWhatsAppGroupSelections,
   menaWhatsAppMessages,
   menaWhatsAppSyncStates,
+  products,
   whatsappProductExtractionJobs,
 } from "@workspace/db";
 import { createHash, randomUUID } from "node:crypto";
@@ -68,6 +70,10 @@ import {
   generateWhatsAppAutoReply,
   sendWhatsAppAutoReply,
 } from "../lib/whatsapp-auto-reply";
+import {
+  matchMetaAutoReplyProduct,
+  formatMetaAutoReplyPrice,
+} from "../lib/meta-auto-reply";
 import { isDirectIncomingWhatsAppMessage } from "../lib/whatsapp-auto-reply-policy";
 import { asRecord, queryString } from "./value-utils.ts";
 import { resolveMessageSenderId } from "../lib/whatsapp-marketing-safety";
@@ -1209,6 +1215,192 @@ export async function syncGroupHistory(
   }
 }
 
+async function processWhatsAppAutoReplyAsync(input: {
+  claimId: string;
+  connection: typeof menaWhatsAppConnections.$inferSelect;
+  instanceName: string;
+  remoteJid: string;
+  customerMessage: string;
+}): Promise<void> {
+  let sendStarted = false;
+  try {
+    // Re-check the toggle before generating/sending so a merchant who disabled
+    // auto replies while the job was pending never gets a reply sent.
+    const [latestConnection] = await db
+      .select({
+        autoReplyEnabled: menaWhatsAppConnections.autoReplyEnabled,
+        autoReplyLanguage: menaWhatsAppConnections.autoReplyLanguage,
+        autoReplyTone: menaWhatsAppConnections.autoReplyTone,
+        autoReplyInstructions: menaWhatsAppConnections.autoReplyInstructions,
+      })
+      .from(menaWhatsAppConnections)
+      .where(eq(menaWhatsAppConnections.workspaceId, input.connection.workspaceId))
+      .limit(1);
+
+    if (!latestConnection?.autoReplyEnabled) {
+      await db
+        .update(menaWhatsAppAutoReplyEvents)
+        .set({
+          status: "failed",
+          errorCode: "AUTO_REPLY_DISABLED",
+          completedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+            eq(
+              menaWhatsAppAutoReplyEvents.workspaceId,
+              input.connection.workspaceId,
+            ),
+          ),
+        );
+      return;
+    }
+
+    let contextTurns: Array<{ role: "customer" | "business"; text: string }> = [];
+    try {
+      const recentMessages = await db
+        .select({
+          textBody: menaWhatsAppMessages.textBody,
+          caption: menaWhatsAppMessages.caption,
+          source: menaWhatsAppMessages.source,
+          messageTimestamp: menaWhatsAppMessages.messageTimestamp,
+          createdAt: menaWhatsAppMessages.createdAt,
+        })
+        .from(menaWhatsAppMessages)
+        .where(
+          and(
+            eq(menaWhatsAppMessages.workspaceId, input.connection.workspaceId),
+            eq(menaWhatsAppMessages.instanceName, input.instanceName),
+            eq(menaWhatsAppMessages.groupJid, input.remoteJid),
+          ),
+        )
+        .orderBy(desc(sql`coalesce(${menaWhatsAppMessages.messageTimestamp}, ${menaWhatsAppMessages.createdAt})`))
+        .limit(10);
+
+      contextTurns = recentMessages
+        .reverse()
+        .map((msg) => {
+          const text = (msg.textBody || msg.caption || "").trim();
+          return {
+            role: (msg.source === "reply" || msg.source === "campaign" ? "business" : "customer") as "customer" | "business",
+            text,
+          };
+        })
+        .filter((turn) => turn.text.length > 0);
+    } catch (contextError) {
+      console.warn("Failed to fetch previous WhatsApp conversation history for auto reply", contextError);
+    }
+
+    let matchingProduct = null;
+    try {
+      const activeProducts = await db
+        .select()
+        .from(products)
+        .where(
+          and(
+            eq(products.workspaceId, input.connection.workspaceId),
+            eq(products.status, "active"),
+            isNotNull(products.verifiedAt),
+          ),
+        )
+        .orderBy(desc(products.updatedAt))
+        .limit(100);
+
+      const matched = matchMetaAutoReplyProduct(
+        activeProducts,
+        input.customerMessage,
+      );
+      if (matched) {
+        matchingProduct = {
+          name: matched.name,
+          sku: matched.sku,
+          price: formatMetaAutoReplyPrice(matched.price),
+          currency: matched.currency,
+          availability: matched.availability,
+          description: matched.description,
+        };
+      }
+    } catch (productError) {
+      console.warn(
+        "Failed to query catalog products for WhatsApp auto reply",
+        productError,
+      );
+    }
+
+    const reply = await generateWhatsAppAutoReply(
+      input.connection.workspaceId,
+      input.customerMessage,
+      {
+        language:
+          latestConnection.autoReplyLanguage === "match_customer"
+            ? "match_customer"
+            : "ar",
+        tone:
+          latestConnection.autoReplyTone === "concise" ||
+          latestConnection.autoReplyTone === "formal"
+            ? latestConnection.autoReplyTone
+            : "friendly_professional",
+        instructions: latestConnection.autoReplyInstructions ?? "",
+      },
+      contextTurns,
+      matchingProduct,
+    );
+
+    sendStarted = true;
+    const replyMessageId = await sendWhatsAppAutoReply(
+      input.instanceName,
+      input.remoteJid,
+      reply,
+    );
+
+    await db
+      .update(menaWhatsAppAutoReplyEvents)
+      .set({
+        status: "sent",
+        replyMessageId,
+        completedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+          eq(
+            menaWhatsAppAutoReplyEvents.workspaceId,
+            input.connection.workspaceId,
+          ),
+        ),
+      );
+  } catch (error) {
+    const errorCode =
+      error instanceof EvolutionApiError
+        ? error.message.slice(0, 80)
+        : error instanceof Error
+          ? error.name.slice(0, 80)
+          : "AUTO_REPLY_FAILED";
+    console.error("WhatsApp automatic reply failed", {
+      workspaceId: input.connection.workspaceId,
+      instanceName: input.instanceName,
+      errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
+    });
+    await db
+      .update(menaWhatsAppAutoReplyEvents)
+      .set({
+        status: sendStarted ? "unknown" : "failed",
+        errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
+        completedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+          eq(
+            menaWhatsAppAutoReplyEvents.workspaceId,
+            input.connection.workspaceId,
+          ),
+        ),
+      );
+  }
+}
+
 export async function processWebhookEvent(
   body: unknown,
   req: { headers?: Record<string, string | string[] | undefined> },
@@ -1320,103 +1512,14 @@ export async function processWebhookEvent(
         .onConflictDoNothing()
         .returning({ id: menaWhatsAppAutoReplyEvents.id });
       if (claim) {
-        let sendStarted = false;
-        try {
-          // Re-check the toggle after generation so a merchant who disabled
-          // auto replies while the AI call was running never gets a reply sent.
-          const [latestConnection] = await db
-            .select({ autoReplyEnabled: menaWhatsAppConnections.autoReplyEnabled })
-            .from(menaWhatsAppConnections)
-            .where(eq(menaWhatsAppConnections.workspaceId, connection.workspaceId))
-            .limit(1);
-          if (latestConnection?.autoReplyEnabled) {
-            const reply = await generateWhatsAppAutoReply(
-              connection.workspaceId,
-              customerMessage,
-              {
-                language:
-                  connection.autoReplyLanguage === "match_customer"
-                    ? "match_customer"
-                    : "ar",
-                tone:
-                  connection.autoReplyTone === "concise" ||
-                  connection.autoReplyTone === "formal"
-                    ? connection.autoReplyTone
-                    : "friendly_professional",
-                instructions: connection.autoReplyInstructions ?? "",
-              },
-            );
-            sendStarted = true;
-            const replyMessageId = await sendWhatsAppAutoReply(
-              instanceName,
-              eventRemoteJid!,
-              reply,
-            );
-            await db
-              .update(menaWhatsAppAutoReplyEvents)
-              .set({
-                status: "sent",
-                replyMessageId,
-                completedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(menaWhatsAppAutoReplyEvents.id, claim.id),
-                  eq(
-                    menaWhatsAppAutoReplyEvents.workspaceId,
-                    connection.workspaceId,
-                  ),
-                ),
-              );
-          } else {
-            await db
-              .update(menaWhatsAppAutoReplyEvents)
-              .set({
-                status: "failed",
-                errorCode: "AUTO_REPLY_DISABLED",
-                completedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(menaWhatsAppAutoReplyEvents.id, claim.id),
-                  eq(
-                    menaWhatsAppAutoReplyEvents.workspaceId,
-                    connection.workspaceId,
-                  ),
-                ),
-              );
-          }
-        } catch (error) {
-          const errorCode =
-            error instanceof EvolutionApiError
-              ? error.message.slice(0, 80)
-              : error instanceof Error
-                ? error.name.slice(0, 80)
-                : "AUTO_REPLY_FAILED";
-          console.error("WhatsApp automatic reply failed", {
-            workspaceId: connection.workspaceId,
-            instanceName,
-            errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
-          });
-          await db
-            .update(menaWhatsAppAutoReplyEvents)
-            .set({
-              status: sendStarted ? "unknown" : "failed",
-              errorCode: sendStarted
-                ? "AUTO_REPLY_RESULT_UNKNOWN"
-                : errorCode,
-              completedAt: new Date(),
-            })
-            .where(
-              and(
-                eq(menaWhatsAppAutoReplyEvents.id, claim.id),
-                eq(
-                  menaWhatsAppAutoReplyEvents.workspaceId,
-                  connection.workspaceId,
-                ),
-              ),
-            );
-        }
+        // Run auto-reply asynchronously in background so webhook response is not blocked
+        void processWhatsAppAutoReplyAsync({
+          claimId: claim.id,
+          connection,
+          instanceName,
+          remoteJid: eventRemoteJid!,
+          customerMessage,
+        });
       }
     }
   }

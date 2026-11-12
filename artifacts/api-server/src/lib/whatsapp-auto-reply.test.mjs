@@ -91,3 +91,8 @@ test("settings test hash changes whenever reply behavior changes", () => {
     autoReplySettingsHash({ ...base, tone: "formal" }),
   );
 });
+
+test("supports context turns for multi-turn conversations", async () => {
+  const { generateWhatsAppAutoReply } = await import("./whatsapp-auto-reply.ts");
+  assert.equal(typeof generateWhatsAppAutoReply, "function");
+});

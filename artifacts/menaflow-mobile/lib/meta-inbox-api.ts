@@ -231,3 +231,17 @@ export async function confirmMetaInboxReplyNotSent(
   );
   return responseJson(response);
 }
+
+export async function testMetaAutoReply(input: {
+  message: string;
+  settings: MetaAutoReplySettings;
+  platform?: MetaInboxPlatform;
+  kind?: MetaInboxKind;
+}): Promise<{ reply: string; matchedProduct?: string | null }> {
+  const response = await fetchApiResponse("/api/social/meta-auto-replies/test", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  return responseJson<{ reply: string; matchedProduct?: string | null }>(response);
+}

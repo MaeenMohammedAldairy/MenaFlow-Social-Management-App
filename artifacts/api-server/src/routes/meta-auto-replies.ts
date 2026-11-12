@@ -33,6 +33,11 @@ import {
 import { isRecord } from "../lib/value-utils.ts";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
+  generateMetaAutoReply,
+  matchMetaAutoReplyProduct,
+  formatMetaAutoReplyPrice,
+} from "../lib/meta-auto-reply";
+import {
   mediaRequestOrigin,
   mediaUrls,
   productMediaPreviews,
@@ -783,5 +788,103 @@ router.put("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
     instructions: saved.instructions,
   });
 });
+
+router.post(
+  "/social/meta-auto-replies/test",
+  requireWorkspace,
+  async (req, res) => {
+    const ownerId = requestOwnerId(req);
+    const workspaceId = requestWorkspaceId(req);
+    if (!ownerId) {
+      res.status(401).json({ error: "سجّل الدخول أولاً." });
+      return;
+    }
+    const message =
+      typeof req.body?.message === "string" ? req.body.message.trim() : "";
+    const platform =
+      req.body?.platform === "facebook" ? "facebook" : "instagram";
+    const kind = req.body?.kind === "comment" ? "comment" : "message";
+    const settings = parseSettings(req.body?.settings ?? req.body);
+    if (!message || message.length > 1000) {
+      res
+        .status(400)
+        .json({ error: "أدخل رسالة اختبار صالحة (حتى 1000 حرف)." });
+      return;
+    }
+    if (!settings) {
+      res.status(400).json({ error: "إعدادات الرد غير صالحة." });
+      return;
+    }
+    const aiConfigured = Boolean(
+      process.env.OPENAI_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim(),
+    );
+    if (!aiConfigured) {
+      res.status(503).json({
+        error:
+          "خدمة الذكاء الاصطناعي غير مهيأة. أضف مفتاح Gemini أو OpenAI في إعدادات الخادم.",
+      });
+      return;
+    }
+    try {
+      let matchingProduct = null;
+      try {
+        const candidates = await db
+          .select()
+          .from(products)
+          .where(
+            and(
+              eq(products.workspaceId, workspaceId),
+              eq(products.status, "active"),
+              isNotNull(products.verifiedAt),
+            ),
+          )
+          .orderBy(desc(products.updatedAt))
+          .limit(100);
+
+        const matched = matchMetaAutoReplyProduct(candidates, message);
+        if (matched) {
+          matchingProduct = {
+            sku: matched.sku,
+            name: matched.name,
+            aliases: matched.aliases,
+            description: matched.description,
+            price: formatMetaAutoReplyPrice(matched.price),
+            currency: matched.currency,
+            availability: matched.availability,
+            verifiedAt: matched.verifiedAt?.toISOString() ?? "",
+          };
+        }
+      } catch {
+        // ignore product lookup error during test
+      }
+
+      const reply = await generateMetaAutoReply({
+        workspaceId,
+        context: [{ role: "customer", text: message.slice(0, 2000) }],
+        post: null,
+        contactInfo: "",
+        pageBusinessInfo: null,
+        productImagesWillBeSent: false,
+        isFirstCustomerMessage: true,
+        platform,
+        kind,
+        settings: {
+          language: settings.language,
+          tone: settings.tone,
+          instructions: settings.instructions,
+        },
+        matchingProduct,
+      });
+      res.json({ reply, matchedProduct: matchingProduct?.name ?? null });
+    } catch (error) {
+      const reason =
+        error instanceof Error ? error.message : "AI_REQUEST_FAILED";
+      res.status(502).json({
+        error: "تعذر توليد رد التجربة. تحقق من مزود الذكاء الاصطناعي والمفاتيح.",
+        details: reason.slice(0, 80),
+      });
+    }
+  },
+);
 
 export default router;

@@ -1,12 +1,17 @@
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { autoReplySettingsHash } from "../lib/whatsapp-auto-reply-policy";
 import {
   db,
   menaWhatsAppConnections,
+  products,
 } from "@workspace/db";
 import { Router, type IRouter, type Response } from "express";
 import { requestOwnerId } from "../lib/owner-access";
 import { generateWhatsAppAutoReply } from "../lib/whatsapp-auto-reply";
+import {
+  matchMetaAutoReplyProduct,
+  formatMetaAutoReplyPrice,
+} from "../lib/meta-auto-reply";
 import type {
   WhatsAppAutoReplyLanguage,
   WhatsAppAutoReplyTone,
@@ -347,10 +352,45 @@ router.post(
       return;
     }
     try {
+      let matchingProduct = null;
+      try {
+        const activeProducts = await db
+          .select()
+          .from(products)
+          .where(
+            and(
+              eq(products.workspaceId, workspaceId),
+              eq(products.status, "active"),
+              isNotNull(products.verifiedAt),
+            ),
+          )
+          .orderBy(desc(products.updatedAt))
+          .limit(100);
+
+        const matched = matchMetaAutoReplyProduct(
+          activeProducts,
+          customerMessage,
+        );
+        if (matched) {
+          matchingProduct = {
+            name: matched.name,
+            sku: matched.sku,
+            price: formatMetaAutoReplyPrice(matched.price),
+            currency: matched.currency,
+            availability: matched.availability,
+            description: matched.description,
+          };
+        }
+      } catch {
+        // ignore product lookup failure in test
+      }
+
       const reply = await generateWhatsAppAutoReply(
         workspaceId,
         customerMessage,
         settings,
+        [],
+        matchingProduct,
       );
       await db
         .update(menaWhatsAppConnections)

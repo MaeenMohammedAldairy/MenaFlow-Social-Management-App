@@ -379,6 +379,8 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
               </View>
               <Switch
                 accessibilityLabel="تفعيل الردود بالذكاء الاصطناعي"
+                accessibilityRole="switch"
+                accessibilityState={{ checked: settings.enabled, disabled: saving }}
                 value={settings.enabled}
                 onValueChange={(enabled) => updateSettings({ enabled })}
                 trackColor={{ false: colors.border, true: colors.primary }}
@@ -454,6 +456,35 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
               <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
                 اختبار الرد قبل التفعيل
               </Text>
+              <View style={styles.presetChipsRow}>
+                {[
+                  { label: "سعر وتوفر", text: "كم سعر المنتج وهل متوفر الآن؟" },
+                  { label: "مواصفات وألوان", text: "هل يتوفر منه ألوان أو مقاسات ثانية؟" },
+                  { label: "طلب وشراء", text: "أريد طلب حبة، كيف طريقة الدفع والتوصيل؟" },
+                  { label: "أوقات وعنوان", text: "أين موقعكم ومتى أوقات دوامكم؟" },
+                ].map((preset) => (
+                  <Text
+                    key={preset.label}
+                    accessibilityRole="button"
+                    onPress={() => {
+                      setTestMessage(preset.text);
+                      setTestReply("");
+                      setTestedSettings("");
+                      setSettingsNotice("");
+                    }}
+                    style={[
+                      styles.presetChip,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                  >
+                    {preset.label}
+                  </Text>
+                ))}
+              </View>
               <TextInput
                 accessibilityLabel="رسالة عميل للاختبار"
                 value={testMessage}
