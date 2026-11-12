@@ -7,13 +7,14 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { CairoText as Text } from "@/components/CairoTypography";
 import {
   LucideIcon as Icon,
   type LucideIconName,
 } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
-import { useStudio } from "@/context/StudioContext";
+import { useStudio, type Post } from "@/context/StudioContext";
 import {
   ActionButton,
   BrandHeader,
@@ -41,6 +42,7 @@ import {
 import { getMetaInbox, metaInboxPersonId } from "@/lib/meta-inbox-api";
 import { getOrderSummary } from "@/lib/orders-api";
 import { getProductCatalog } from "@/lib/product-catalog-api";
+import { mediaUrlForApp, postMediaType } from "@/lib/content-utils";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 
 export default function HomeScreen() {
@@ -51,6 +53,43 @@ export default function HomeScreen() {
 function AuthenticatedHomeScreen() {
   const { userId } = useAuth();
   return <HomeScreenContent userId={userId ?? null} />;
+}
+
+function postThumbnailUrl(post: Post): string | null {
+  const mediaIndex = (post.mediaUrls ?? []).findIndex(
+    (mediaUrl) => postMediaType(post, mediaUrl) === "image",
+  );
+  return mediaIndex < 0
+    ? null
+    : post.mediaPreviewUrls?.[mediaIndex] ?? post.mediaUrls?.[mediaIndex] ?? null;
+}
+
+function ActivityMediaThumbnail({ uri }: { uri: string }) {
+  const colors = useColors();
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const resolvedUri = mediaUrlForApp(uri);
+  if (failedUri === resolvedUri) {
+    return (
+      <View
+        style={[
+          styles.activityThumbnailFallback,
+          { backgroundColor: colors.secondary },
+        ]}
+      >
+        <Icon name="image" size={18} color={colors.mutedForeground} />
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri: resolvedUri }}
+      style={styles.activityThumbnail}
+      contentFit="cover"
+      cachePolicy="disk"
+      accessibilityLabel="صورة مصغرة لوسائط النشاط"
+      onError={() => setFailedUri(resolvedUri)}
+    />
+  );
 }
 
 function HomeScreenContent({ userId }: { userId: string | null }) {
@@ -961,6 +1000,12 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
               <View style={styles.activityList}>
                 {recentActivities.map((activity) => {
                   if (activity.type === "inbox") {
+                    const media = activity.item.media.find(
+                      (item) =>
+                        item.thumbnailUrl ||
+                        (item.type === "image" && item.url),
+                    );
+                    const thumbnailUrl = media?.thumbnailUrl ?? media?.url;
                     const label =
                       activity.item.kind === "comment"
                         ? "تعليق جديد"
@@ -997,22 +1042,26 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                           },
                         ]}
                       >
-                        <View
-                          style={[
-                            styles.activityIcon,
-                            { backgroundColor: colors.blueSoft },
-                          ]}
-                        >
-                          <Icon
-                            name={
-                              activity.item.kind === "comment"
-                                ? "message-circle"
-                                : "message-square"
-                            }
-                            size={19}
-                            color={colors.blue}
-                          />
-                        </View>
+                        {thumbnailUrl ? (
+                          <ActivityMediaThumbnail uri={thumbnailUrl} />
+                        ) : (
+                          <View
+                            style={[
+                              styles.activityIcon,
+                              { backgroundColor: colors.blueSoft },
+                            ]}
+                          >
+                            <Icon
+                              name={
+                                activity.item.kind === "comment"
+                                  ? "message-circle"
+                                  : "message-square"
+                              }
+                              size={19}
+                              color={colors.blue}
+                            />
+                          </View>
+                        )}
                         <View style={styles.activityCopy}>
                           <View style={styles.activityTopline}>
                             <StatusPill
@@ -1070,6 +1119,9 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                   }
 
                   if (activity.type === "product") {
+                    const thumbnailUrl = activity.product.mediaPreviews.find(
+                      (media) => media.mediaType === "image",
+                    )?.url;
                     const productDate = formatArabicDateTime(
                       activity.product.createdAt,
                     );
@@ -1089,14 +1141,18 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                           },
                         ]}
                       >
-                        <View
-                          style={[
-                            styles.activityIcon,
-                            { backgroundColor: colors.greenSoft },
-                          ]}
-                        >
-                          <Icon name="package" size={19} color={colors.green} />
-                        </View>
+                        {thumbnailUrl ? (
+                          <ActivityMediaThumbnail uri={thumbnailUrl} />
+                        ) : (
+                          <View
+                            style={[
+                              styles.activityIcon,
+                              { backgroundColor: colors.greenSoft },
+                            ]}
+                          >
+                            <Icon name="package" size={19} color={colors.green} />
+                          </View>
+                        )}
                         <View style={styles.activityCopy}>
                           <View style={styles.activityTopline}>
                             <StatusPill
@@ -1156,6 +1212,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                       : statusTone === "blue"
                         ? colors.blueSoft
                         : colors.secondary;
+                  const thumbnailUrl = postThumbnailUrl(post);
                   return (
                     <Pressable
                       key={post.id}
@@ -1177,14 +1234,18 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                         },
                       ]}
                     >
-                      <View
-                        style={[
-                          styles.activityIcon,
-                          { backgroundColor: statusBackground },
-                        ]}
-                      >
-                        <Icon name="file-text" size={19} color={statusColor} />
-                      </View>
+                      {thumbnailUrl ? (
+                        <ActivityMediaThumbnail uri={thumbnailUrl} />
+                      ) : (
+                        <View
+                          style={[
+                            styles.activityIcon,
+                            { backgroundColor: statusBackground },
+                          ]}
+                        >
+                          <Icon name="file-text" size={19} color={statusColor} />
+                        </View>
+                      )}
                       <View style={styles.activityCopy}>
                         <View style={styles.activityTopline}>
                           <StatusPill
@@ -1358,7 +1419,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   channelIdentityTitle: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
     gap: 8,
   },
@@ -1416,6 +1477,19 @@ const styles = StyleSheet.create({
   activityIcon: {
     width: 38,
     height: 38,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activityThumbnail: {
+    width: 54,
+    height: 54,
+    borderRadius: 13,
+    overflow: "hidden",
+  },
+  activityThumbnailFallback: {
+    width: 54,
+    height: 54,
     borderRadius: 13,
     alignItems: "center",
     justifyContent: "center",

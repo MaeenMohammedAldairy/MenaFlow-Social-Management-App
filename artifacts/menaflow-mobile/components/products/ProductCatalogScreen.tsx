@@ -2909,10 +2909,11 @@ function ProductCard({
               checked: selected,
               disabled: Boolean(selectionDisabledReason),
             }}
-            disabled={Boolean(selectionDisabledReason)}
+            focusable={!selectionDisabledReason}
             onPress={(event) => {
+              // Keep disabled selectors from bubbling clicks to the edit-card action.
               event.stopPropagation();
-              onToggleSelection();
+              if (!selectionDisabledReason) onToggleSelection();
             }}
             style={[
               styles.checkbox,

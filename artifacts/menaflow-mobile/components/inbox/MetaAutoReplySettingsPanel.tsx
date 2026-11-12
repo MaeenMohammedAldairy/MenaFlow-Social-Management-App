@@ -11,8 +11,10 @@ import {
   Switch,
   View,
 } from "react-native";
+import { router } from "expo-router";
 import { Image } from "expo-image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { getWhatsAppAutoReplySettings } from "@workspace/api-client-react";
 import {
   CairoText as Text,
   CairoTextInput,
@@ -126,6 +128,12 @@ export function MetaAutoReplySettingsPanel({
   const [settings, setSettings] =
     useState<MetaAutoReplySettings>(initialSettings);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const whatsappSettingsQuery = useQuery({
+    queryKey: ["whatsappAutoReplySettings", userId ?? "local"],
+    queryFn: getWhatsAppAutoReplySettings,
+    enabled: isModalOpen,
+    retry: false,
+  });
   const [isHistoricalModalOpen, setIsHistoricalModalOpen] = useState(false);
   const [isHistoricalConfirmationOpen, setIsHistoricalConfirmationOpen] =
     useState(false);
@@ -295,6 +303,18 @@ export function MetaAutoReplySettingsPanel({
     }
     setError("");
     setIsHistoricalConfirmationOpen(true);
+  };
+  const openWhatsAppSettings = () => {
+    if (
+      query.data &&
+      JSON.stringify(settings) !== JSON.stringify(query.data.settings)
+    ) {
+      setError("احفظ تغييرات فيسبوك وإنستغرام أولًا قبل فتح إعدادات واتساب.");
+      return;
+    }
+    setError("");
+    setIsModalOpen(false);
+    router.push({ pathname: "/whatsapp-setup", params: { returnTo: "inbox" } });
   };
 
   return (
@@ -1065,6 +1085,78 @@ export function MetaAutoReplySettingsPanel({
                     );
                   })}
 
+                  <View
+                    style={[
+                      styles.platform,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.platformHeader,
+                        { borderBottomColor: colors.border },
+                      ]}
+                    >
+                      <View style={styles.platformHeading}>
+                        <SocialPlatformIcon platform="whatsapp" size={28} />
+                        <Text
+                          style={[
+                            styles.platformTitle,
+                            { color: colors.foreground },
+                          ]}
+                        >
+                          واتساب
+                        </Text>
+                      </View>
+                      <Text
+                        style={[
+                          styles.platformState,
+                          {
+                            color: whatsappSettingsQuery.isError
+                              ? colors.destructive
+                              : whatsappSettingsQuery.data?.connected &&
+                                  whatsappSettingsQuery.data.settings.enabled
+                                ? colors.primary
+                                : colors.mutedForeground,
+                          },
+                        ]}
+                      >
+                        {whatsappSettingsQuery.isPending
+                          ? "جارٍ التحقق"
+                          : whatsappSettingsQuery.isError
+                            ? "تعذر التحقق"
+                            : !whatsappSettingsQuery.data.connected
+                              ? "غير متصل"
+                              : whatsappSettingsQuery.data.settings.enabled
+                                ? "مفعّل"
+                                : "متوقف"}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.bodySmall,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      {whatsappSettingsQuery.isError
+                        ? whatsappSettingsQuery.error instanceof Error
+                          ? whatsappSettingsQuery.error.message
+                          : "تعذر التحقق من إعدادات واتساب."
+                        : !whatsappSettingsQuery.data?.connected
+                          ? "اربط حساب واتساب من صفحة المصادر قبل إعداد الردود."
+                          : "اضبط أسلوب الرد واختبره قبل تفعيل الرد الآلي على الرسائل الفردية."}
+                    </Text>
+                    <ActionButton
+                      label="إعداد ردود واتساب"
+                      icon="settings"
+                      secondary
+                      onPress={openWhatsAppSettings}
+                    />
+                  </View>
+
                   <View style={styles.field}>
                     <Text style={[styles.label, { color: colors.foreground }]}>
                       معلومات النشاط والمنتجات
@@ -1237,14 +1329,16 @@ function SettingSwitch({
     <View style={styles.switchBlock}>
       <View style={styles.switchRow}>
         <Text style={[styles.body, { color: colors.foreground }]}>{label}</Text>
-        <Switch
-          accessibilityLabel={label}
-          value={enabled}
-          disabled={disabled || busy}
-          onValueChange={onChange}
-          trackColor={{ false: colors.border, true: colors.primary }}
-          thumbColor={colors.card}
-        />
+        <View style={styles.switchControl}>
+          <Switch
+            accessibilityLabel={label}
+            value={enabled}
+            disabled={disabled || busy}
+            onValueChange={onChange}
+            trackColor={{ false: colors.border, true: colors.primary }}
+            thumbColor={colors.card}
+          />
+        </View>
       </View>
       {!enabled && reason ? (
         <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
@@ -1348,6 +1442,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 8,
   },
+  switchControl: { direction: "ltr" },
   field: { gap: 8 },
   label: { fontSize: 14, fontWeight: "600", textAlign: "right" },
   instructionsInput: {

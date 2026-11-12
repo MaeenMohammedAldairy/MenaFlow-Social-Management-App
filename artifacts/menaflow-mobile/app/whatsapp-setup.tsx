@@ -267,12 +267,19 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
   };
 
   const retrySettings = () => void settingsQuery.refetch();
-  const returnToSources = () =>
-    navigateBack(
-      returnTo === "connect-accounts"
-        ? "/connect-accounts"
-        : "/(tabs)/more/sources",
-    );
+  const returnHref: Href =
+    returnTo === "connect-accounts"
+      ? "/connect-accounts"
+      : returnTo === "inbox"
+        ? "/(tabs)/inbox"
+        : "/(tabs)/more/sources";
+  const returnLabel =
+    returnTo === "connect-accounts"
+      ? "العودة إلى الإعداد الأولي"
+      : returnTo === "inbox"
+        ? "العودة إلى صندوق الوارد"
+        : "العودة إلى المصادر";
+  const returnToPreviousScreen = () => navigateBack(returnHref);
 
   return (
     <Page>
@@ -281,14 +288,8 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
         title="إعداد حساب واتساب"
         subtitle="أكمل إعدادات حسابك لتبدأ إدارة الرسائل عبر MenaFlow."
         back={{
-          href:
-            returnTo === "connect-accounts"
-              ? "/connect-accounts"
-              : "/(tabs)/more/sources",
-          label:
-            returnTo === "connect-accounts"
-              ? "العودة إلى الإعداد الأولي"
-              : "العودة إلى المصادر",
+          href: returnHref,
+          label: returnLabel,
         }}
       />
       {settingsQuery.isLoading ? (
@@ -320,9 +321,9 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
             body="تعذّر تأكيد الاتصال من الخادم. ارجع إلى صفحة المصادر وأعد ربط الحساب قبل إعداد الردود."
           />
           <ActionButton
-            label="العودة إلى ربط الحسابات"
+            label={returnLabel}
             icon="chevron-right"
-            onPress={returnToSources}
+            onPress={returnToPreviousScreen}
           />
         </Panel>
       ) : (
