@@ -38,6 +38,7 @@ import {
   matchMetaAutoReplyProductFromPublishedPost,
   type MetaAutoReplyConversationEvent,
 } from "./meta-auto-reply";
+import { formatMetaOrderDraftReply } from "./meta-order-messages";
 import { processMetaOrderIntake } from "./meta-order-intake";
 import { signedWhatsAppMediaUrl } from "./meta-publishing";
 import { workspaceMediaKey } from "./product-utils.ts";
@@ -833,11 +834,22 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
             workspaceId: job.workspaceId,
           })
         : { kind: "ignored" as const };
+    const orderProductImageUrls =
+      orderIntake.kind === "draft"
+        ? (
+            await publishedPostImageUrls(
+              job.workspaceId,
+              orderIntake.productMediaUrls,
+            )
+          ).slice(0, 1)
+        : [];
+    const replyImages =
+      orderIntake.kind === "draft" ? orderProductImageUrls : productImageUrls;
     const reply =
       orderIntake.kind === "reply"
         ? orderIntake.text
         : orderIntake.kind === "draft"
-          ? `استلمنا طلبك لـ ${orderIntake.productName}، الكمية ${orderIntake.quantity}، ورقم المتابعة ${orderIntake.orderNumber}. سُجل الطلب كمسودة لمراجعة المتجر، ولم يتم تأكيده بعد.`
+          ? formatMetaOrderDraftReply(orderIntake)
           : await generateMetaAutoReply({
               workspaceId: job.workspaceId,
               context,
@@ -942,7 +954,7 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
     const pageAccessToken = await getAccessToken();
     externalSendStarted = true;
     const replyExternalIds: string[] = [];
-    for (const imageUrl of productImageUrls) {
+    for (const imageUrl of replyImages) {
       externalSendStarted = true;
       const imageResult = await sendMetaInboxReply({
         platform: item.platform,
@@ -963,7 +975,7 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       externalSendSucceeded = true;
     }
     const replyText =
-      productImageUrls.length > 0
+      replyImages.length > 0
         ? appendMetaProductImagesSentConfirmation(reply)
         : reply;
     externalSendStarted = true;

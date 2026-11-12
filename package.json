@@ -8,7 +8,7 @@
     "test": "node --experimental-strip-types --test",
     "test:post-readiness": "node --experimental-strip-types --test artifacts/api-server/src/lib/post-readiness.test.mjs",
     "test:whatsapp-auto-reply": "node --experimental-strip-types --test artifacts/api-server/src/lib/whatsapp-auto-reply.test.mjs",
-    "test:meta-auto-reply": "node --experimental-strip-types --test artifacts/api-server/src/lib/meta-auto-reply.test.mjs artifacts/api-server/src/lib/meta-inbox-graph.test.mjs artifacts/api-server/src/lib/meta-inbox-utils.test.mjs",
+    "test:meta-auto-reply": "node --experimental-strip-types --test artifacts/api-server/src/lib/meta-auto-reply.test.mjs artifacts/api-server/src/lib/meta-inbox-graph.test.mjs artifacts/api-server/src/lib/meta-inbox-utils.test.mjs artifacts/api-server/src/lib/meta-order-intake.test.mjs",
     "db:migrate:whatsapp-albums": "node scripts/migrate-whatsapp-albums.js",
     "db:report:whatsapp-albums": "node scripts/report-whatsapp-album-post-candidates.js",
     "db:preview:whatsapp-media-recovery": "node scripts/preview-whatsapp-media-recovery.js",

@@ -73,6 +73,39 @@ const statusLabels: Record<OrderStatus, string> = {
   cancelled: "ملغي",
 };
 
+function metaConfirmationLabel(order: CustomerOrder): string | null {
+  switch (order.metaConfirmationStatus) {
+    case "queued":
+      return "بانتظار إرسال تأكيد الطلب للعميل";
+    case "processing":
+    case "sending":
+      return "جارٍ إرسال تأكيد الطلب للعميل";
+    case "sent":
+      return `أُرسل تأكيد الطلب للعميل${
+        order.metaConfirmationSentAt
+          ? ` · ${formatArabicDateTime(order.metaConfirmationSentAt) ?? ""}`
+          : ""
+      }`;
+    case "manual_followup":
+      if (order.metaConfirmationError === "META_MESSAGE_WINDOW_EXPIRED") {
+        return "انتهت نافذة الرسائل؛ أرسل التأكيد يدويًا عبر الوارد.";
+      }
+      if (
+        order.metaConfirmationError === "META_PERMISSION_REQUIRED" ||
+        order.metaConfirmationError === "META_TOKEN_EXPIRED"
+      ) {
+        return "تحقق من ربط Meta وصلاحية الرسائل، ثم أرسل التأكيد يدويًا عبر الوارد.";
+      }
+      return "تعذر الوصول للمحادثة الأصلية؛ ابحث عن العميل في الوارد وأرسل التأكيد يدويًا.";
+    case "unknown":
+      return "نتيجة الإرسال غير مؤكدة؛ راجع المحادثة قبل إعادة الإرسال.";
+    case "failed":
+      return "فشل إرسال تأكيد الطلب؛ راجع إعدادات Meta وأرسل يدويًا.";
+    default:
+      return null;
+  }
+}
+
 const nextStatus: Partial<Record<OrderStatus, OrderStatus>> = {
   draft: "confirmed",
   confirmed: "preparing",
@@ -194,6 +227,17 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) => getOrders(statusFilter, search, pageParam),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) =>
+        page.orders.some(
+          (order) =>
+            order.metaConfirmationStatus === "queued" ||
+            order.metaConfirmationStatus === "processing" ||
+            order.metaConfirmationStatus === "sending",
+        ),
+      )
+        ? 5_000
+        : false,
     enabled: isLocalAuthDisabled || Boolean(userId),
   });
   const products = useQuery({
@@ -1286,6 +1330,38 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
               {order.sourcePlatform === "facebook"
                 ? "مرتبط بمحادثة فيسبوك"
                 : "مرتبط بمحادثة إنستغرام"}
+            </Text>
+          </View>
+        ) : null}
+        {metaConfirmationLabel(order) ? (
+          <View style={styles.detailRow}>
+            <Icon
+              name="message-square"
+              size={14}
+              color={
+                order.metaConfirmationStatus === "queued" ||
+                order.metaConfirmationStatus === "processing" ||
+                order.metaConfirmationStatus === "sending" ||
+                order.metaConfirmationStatus === "sent"
+                  ? colors.primary
+                  : colors.destructive
+              }
+            />
+            <Text
+              style={[
+                styles.detailText,
+                {
+                  color:
+                    order.metaConfirmationStatus === "queued" ||
+                    order.metaConfirmationStatus === "processing" ||
+                    order.metaConfirmationStatus === "sending" ||
+                    order.metaConfirmationStatus === "sent"
+                      ? colors.primary
+                      : colors.destructive,
+                },
+              ]}
+            >
+              {metaConfirmationLabel(order)}
             </Text>
           </View>
         ) : null}

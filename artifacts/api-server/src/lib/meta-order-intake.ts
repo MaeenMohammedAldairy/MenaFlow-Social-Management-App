@@ -11,9 +11,13 @@ import {
 import { createWorkspaceOrder } from "./order-service";
 import { matchMetaAutoReplyProduct } from "./meta-auto-reply";
 import type { CreateOrderInput } from "./order-validation";
-
-type OrderIntakeField =
-  "product" | "quantity" | "name" | "phone" | "address" | "delivery_time";
+import {
+  buildMetaOrderDataPrompt,
+  formatMetaOrderDraftReply,
+  normalizeMetaOrderDeliveryPreference,
+  parseMetaOrderLabeledValue,
+  type OrderIntakeField,
+} from "./meta-order-messages";
 
 const orderIntentPattern =
   /(?:اريد|أريد|ابغى|أبغى|ابي|أبي|اشتي|أشتهي|بدي|حاب|ارغب|أرغب).{0,35}(?:اطلب|أطلب|طلب|اشتري|أشتري|شراء)|(?:اطلب|أطلب|اشتري|أشتري|شراء|order|buy)/iu;
@@ -42,29 +46,8 @@ const digitMap: Record<string, string> = {
   "۹": "9",
 };
 
-const fieldPrompts: Record<OrderIntakeField, string> = {
-  product: "ما المنتج الذي تريد طلبه؟ اكتب اسمه كما يظهر في المتجر.",
-  quantity: "كم الكمية المطلوبة؟ أرسل رقمًا فقط.",
-  name: "ما الاسم الذي نسجّل به الطلب؟",
-  phone: "ما رقم الهاتف الذي يمكن التواصل معك عليه؟",
-  address: "ما عنوان التوصيل بالتفصيل؟",
-  delivery_time: "ما اليوم والوقت المناسبان للتوصيل؟",
-};
-
 function normalizeDigits(value: string): string {
   return value.replace(/[٠-٩۰-۹]/gu, (digit) => digitMap[digit] ?? digit);
-}
-
-function labeledValue(
-  text: string,
-  labels: string,
-  maximum: number,
-): string | null {
-  const match = text.match(
-    new RegExp(`(?:${labels})\\s*[:：=-]\\s*([^\\n]+)`, "iu"),
-  );
-  const value = match?.[1]?.trim();
-  return value && value.length <= maximum ? value : null;
 }
 
 export function isMetaOrderIntent(text: string): boolean {
@@ -79,7 +62,7 @@ export function parseMetaOrderQuantity(
   const match = normalized.match(
     allowBareNumber
       ? /^\s*(\d{1,3})\s*$/
-      : /(?:الكمية|كمية|عدد|حبة|قطعة)\s*[:：]?\s*(\d{1,3})|(\d{1,3})\s*(?:حبة|قطعة|وحدات?)/iu,
+      : /(?:الكمية(?:\s+المطلوبة)?|كمية(?:\s+مطلوبة)?|عدد|حبة|قطعة)\s*[:：]?\s*(\d{1,3})|(\d{1,3})\s*(?:حبة|قطعة|وحدات?)/iu,
   );
   const quantity = Number(match?.[1] ?? match?.[2]);
   return Number.isInteger(quantity) && quantity >= 1 && quantity <= 999
@@ -155,7 +138,6 @@ function nextMissingField(input: {
   if (!input.customerName) return "name";
   if (!input.customerPhone) return "phone";
   if (!input.deliveryAddress) return "address";
-  if (!input.desiredDeliveryTime) return "delivery_time";
   return null;
 }
 
@@ -174,6 +156,13 @@ export type MetaOrderIntakeResult =
       orderNumber: string;
       productName: string;
       quantity: number;
+      unitPrice: string;
+      customerPhone: string;
+      deliveryAddress: string;
+      desiredDeliveryTime: string | null;
+      total: string;
+      currency: string;
+      productMediaUrls: string[];
     };
 
 export async function processMetaOrderIntake(input: {
@@ -230,6 +219,7 @@ export async function processMetaOrderIntake(input: {
           name: products.name,
           aliases: products.aliases,
           description: products.description,
+          mediaUrls: products.mediaUrls,
         })
         .from(products)
         .where(
@@ -285,6 +275,13 @@ export async function processMetaOrderIntake(input: {
           orderNumber: menaOrders.orderNumber,
           productName: menaOrderItems.productName,
           quantity: menaOrderItems.quantity,
+          unitPrice: menaOrderItems.unitPrice,
+          customerPhone: menaOrders.customerPhone,
+          deliveryAddress: menaOrders.deliveryAddress,
+          notes: menaOrders.notes,
+          total: menaOrders.total,
+          currency: menaOrders.currency,
+          productMediaUrls: products.mediaUrls,
         })
         .from(menaOrders)
         .innerJoin(
@@ -292,6 +289,13 @@ export async function processMetaOrderIntake(input: {
           and(
             eq(menaOrderItems.workspaceId, menaOrders.workspaceId),
             eq(menaOrderItems.orderId, menaOrders.id),
+          ),
+        )
+        .leftJoin(
+          products,
+          and(
+            eq(products.workspaceId, menaOrderItems.workspaceId),
+            eq(products.id, menaOrderItems.productId),
           ),
         )
         .where(
@@ -307,6 +311,16 @@ export async function processMetaOrderIntake(input: {
           orderNumber: order.orderNumber,
           productName: order.productName,
           quantity: order.quantity,
+          unitPrice: order.unitPrice,
+          customerPhone: order.customerPhone ?? "",
+          deliveryAddress: order.deliveryAddress ?? "",
+          desiredDeliveryTime:
+            order.notes.match(
+              /(?:يوم التوصيل المفضّل|وقت التوصيل المطلوب):\s*(.+)/iu,
+            )?.[1] ?? null,
+          total: order.total,
+          currency: order.currency,
+          productMediaUrls: order.productMediaUrls ?? [],
         };
       }
       return { kind: "ignored" as const };
@@ -408,7 +422,11 @@ export async function processMetaOrderIntake(input: {
       parseMetaOrderQuantity(currentText);
     const customerName =
       (typeof parsedAwaited.name === "string" ? parsedAwaited.name : null) ??
-      labeledValue(currentText, "الاسم|اسم العميل|name", 160) ??
+      parseMetaOrderLabeledValue(
+        currentText,
+        "الاسم|اسم العميل|اسم المستلم|name",
+        160,
+      ) ??
       base.customerName;
     const customerPhone =
       (typeof parsedAwaited.phone === "string" ? parsedAwaited.phone : null) ??
@@ -418,22 +436,23 @@ export async function processMetaOrderIntake(input: {
       (typeof parsedAwaited.address === "string"
         ? parsedAwaited.address
         : null) ??
-      labeledValue(
+      parseMetaOrderLabeledValue(
         currentText,
-        "عنوان التوصيل|العنوان|مكان التوصيل|address",
+        "عنوان التوصيل بالتفصيل|عنوان التوصيل|العنوان|مكان التوصيل|address",
         500,
       ) ??
       base.deliveryAddress;
-    const desiredDeliveryTime =
+    const desiredDeliveryTime = normalizeMetaOrderDeliveryPreference(
       (typeof parsedAwaited.delivery_time === "string"
         ? parsedAwaited.delivery_time
         : null) ??
-      labeledValue(
-        currentText,
-        "وقت التوصيل|موعد التوصيل|وقت الاستلام|delivery time",
-        120,
-      ) ??
-      base.desiredDeliveryTime;
+        parseMetaOrderLabeledValue(
+          currentText,
+          "يوم التوصيل المفضّل(?: والساعة إن رغبت)?|يوم التوصيل المفضل(?: والساعة إن رغبت)?|موعد التوصيل المفضّل|موعد التوصيل المفضل|وقت التوصيل|موعد التوصيل|وقت الاستلام|delivery time",
+          120,
+        ) ??
+        base.desiredDeliveryTime,
+    );
     const values = {
       productId,
       quantity,
@@ -476,6 +495,7 @@ export async function processMetaOrderIntake(input: {
         values,
         awaitingField,
         isNew,
+        includeDeliveryPreference: isNew || !existing.lastInboxItemId,
       };
     }
     return {
@@ -506,10 +526,33 @@ export async function processMetaOrderIntake(input: {
       orderNumber: result.orderNumber,
       productName: result.productName,
       quantity: result.quantity,
+      unitPrice: result.unitPrice,
+      customerPhone: result.customerPhone,
+      deliveryAddress: result.deliveryAddress,
+      desiredDeliveryTime: result.desiredDeliveryTime,
+      total: result.total,
+      currency: result.currency,
+      productMediaUrls: result.productMediaUrls,
     };
   }
   if (result.kind === "collecting") {
-    return { kind: "reply", text: fieldPrompts[result.awaitingField] };
+    const productName =
+      productsList.find((candidate) => candidate.id === result.values.productId)
+        ?.name ?? null;
+    return {
+      kind: "reply",
+      text: buildMetaOrderDataPrompt({
+        productName,
+        missingFields: [
+          ...(!result.values.productId ? (["product"] as const) : []),
+          ...(!result.values.quantity ? (["quantity"] as const) : []),
+          ...(!result.values.customerName ? (["name"] as const) : []),
+          ...(!result.values.customerPhone ? (["phone"] as const) : []),
+          ...(!result.values.deliveryAddress ? (["address"] as const) : []),
+        ],
+        includeDeliveryPreference: result.includeDeliveryPreference,
+      }),
+    };
   }
 
   const { values, intakeId } = result;
@@ -521,8 +564,7 @@ export async function processMetaOrderIntake(input: {
     !values.quantity ||
     !values.customerName ||
     !values.customerPhone ||
-    !values.deliveryAddress ||
-    !values.desiredDeliveryTime
+    !values.deliveryAddress
   ) {
     throw new Error("META_ORDER_INTAKE_INCOMPLETE");
   }
@@ -531,7 +573,9 @@ export async function processMetaOrderIntake(input: {
     customerName: values.customerName,
     customerPhone: values.customerPhone,
     deliveryAddress: values.deliveryAddress,
-    notes: `وقت التوصيل المطلوب: ${values.desiredDeliveryTime}`,
+    notes: values.desiredDeliveryTime
+      ? `يوم التوصيل المفضّل: ${values.desiredDeliveryTime}`
+      : "لم يحدد العميل يومًا مفضّلًا للتوصيل.",
     sourceMetaInboxItemId: item.id,
     items: [{ productId: product.id, quantity: values.quantity }],
   };
@@ -564,6 +608,10 @@ export async function processMetaOrderIntake(input: {
       }
       throw new Error(`META_ORDER_DRAFT_FAILED:${created.error}`);
     }
+    const [createdItem] = created.items;
+    if (!createdItem) {
+      throw new Error("META_ORDER_DRAFT_ITEM_MISSING");
+    }
     await db
       .update(menaMetaOrderIntakes)
       .set({
@@ -585,6 +633,13 @@ export async function processMetaOrderIntake(input: {
       orderNumber: created.order.orderNumber,
       productName: product.name,
       quantity: values.quantity,
+      unitPrice: createdItem.unitPrice,
+      customerPhone: values.customerPhone,
+      deliveryAddress: values.deliveryAddress,
+      desiredDeliveryTime: values.desiredDeliveryTime,
+      total: created.order.total,
+      currency: created.order.currency,
+      productMediaUrls: product.mediaUrls,
     };
   } catch (error) {
     await db

@@ -71,7 +71,11 @@ function orderResponse(
   order: MenaOrder,
   items: MenaOrderItem[] = [],
   events: MenaOrderEvent[] = [],
-  deliveryEvents: Array<{ id: string; toStatus: DeliveryStatus; createdAt: Date }> = [],
+  deliveryEvents: Array<{
+    id: string;
+    toStatus: DeliveryStatus;
+    createdAt: Date;
+  }> = [],
 ) {
   return {
     id: order.id,
@@ -83,6 +87,9 @@ function orderResponse(
     sourceMetaInboxItemId: order.sourceMetaInboxItemId,
     sourcePlatform: order.sourcePlatform,
     sourceConversationId: order.sourceConversationId,
+    metaConfirmationStatus: order.metaConfirmationStatus,
+    metaConfirmationError: order.metaConfirmationError,
+    metaConfirmationSentAt: order.metaConfirmationSentAt,
     status: order.status,
     deliveryStatus: order.deliveryStatus,
     deliveryProvider: order.deliveryProvider,
@@ -465,10 +472,60 @@ router.patch(
         }
       }
       const now = new Date();
+      let confirmationUpdate: Partial<
+        Pick<
+          MenaOrder,
+          | "metaConfirmationStatus"
+          | "metaConfirmationAttempts"
+          | "metaConfirmationNextRunAt"
+          | "metaConfirmationLeaseExpiresAt"
+          | "metaConfirmationSentAt"
+          | "metaConfirmationError"
+        >
+      > = {};
+      if (
+        status === "confirmed" &&
+        current.status === "draft" &&
+        current.sourcePlatform
+      ) {
+        const [source] = current.sourceMetaInboxItemId
+          ? await transaction
+              .select({
+                kind: menaMetaInboxItems.kind,
+                platform: menaMetaInboxItems.platform,
+                conversationId: menaMetaInboxItems.conversationId,
+              })
+              .from(menaMetaInboxItems)
+              .where(
+                and(
+                  eq(menaMetaInboxItems.id, current.sourceMetaInboxItemId),
+                  eq(menaMetaInboxItems.workspaceId, workspaceId),
+                ),
+              )
+              .limit(1)
+          : [];
+        const validMessageSource =
+          source?.kind === "message" &&
+          source.platform === current.sourcePlatform &&
+          source.conversationId === current.sourceConversationId;
+        confirmationUpdate = {
+          metaConfirmationStatus: validMessageSource
+            ? "queued"
+            : "manual_followup",
+          metaConfirmationAttempts: 0,
+          metaConfirmationNextRunAt: now,
+          metaConfirmationLeaseExpiresAt: null,
+          metaConfirmationSentAt: null,
+          metaConfirmationError: validMessageSource
+            ? null
+            : "META_SOURCE_UNAVAILABLE",
+        };
+      }
       const [updated] = await transaction
         .update(menaOrders)
         .set({
           status,
+          ...confirmationUpdate,
           ...(status === "confirmed"
             ? {
                 inventoryReserved: inventoryChanges.some(

@@ -14,6 +14,16 @@ export type DeliveryStatus =
 
 export type CollectionStatus = "not_collected" | "collected" | "remitted";
 
+export type MetaConfirmationStatus =
+  | "not_required"
+  | "queued"
+  | "processing"
+  | "sending"
+  | "sent"
+  | "manual_followup"
+  | "failed"
+  | "unknown";
+
 export type OrderSummary = Record<OrderStatus, number> & {
   total: number;
   metaDrafts: number;
@@ -46,6 +56,9 @@ export type CustomerOrder = {
   sourceMetaInboxItemId: string | null;
   sourcePlatform: "facebook" | "instagram" | null;
   sourceConversationId: string | null;
+  metaConfirmationStatus: MetaConfirmationStatus;
+  metaConfirmationError: string | null;
+  metaConfirmationSentAt: string | null;
   status: OrderStatus;
   deliveryStatus: DeliveryStatus;
   deliveryProvider: string | null;

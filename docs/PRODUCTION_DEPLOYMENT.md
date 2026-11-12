@@ -14,8 +14,9 @@ pnpm --filter @workspace/api-server run build
 pnpm --filter @workspace/api-server run start
 ```
 
-Meta automatic replies run inside the API process by default. Set
-`META_AUTO_REPLY_WORKER_ENABLED=false` only to disable that inline queue.
+Meta automatic replies and Meta order-confirmation messages run inside the API
+process. Set `META_AUTO_REPLY_WORKER_ENABLED=false` to disable automatic
+conversation replies; the order-confirmation queue remains active.
 Other background queues run in the separate worker service:
 `pnpm --filter @workspace/api-server run start:worker`. By default it runs all
 enabled workers; set `MENA_WORKER_NAME` to one of
@@ -65,12 +66,18 @@ verified cleanup plan for all workspace data and storage providers.
 
 ### Internal order management
 
-Apply `supabase/migrations/20261109001000_order_management.sql` before
-deploying the order API and mobile app. The initial workflow records orders
-internally and tracks fulfillment status; it does not collect payments,
-reserve inventory, calculate delivery fees or taxes, or notify customers.
-Validate the migration and order isolation on a staging database before
-production rollout.
+Apply `supabase/migrations/20261109001000_order_management.sql`,
+`supabase/migrations/20261110001000_inventory_delivery.sql`, and
+`supabase/migrations/20261112002000_meta_order_confirmation_notifications.sql`
+before deploying the order API and mobile app. Meta order intake asks for the
+remaining order details together, treats the preferred delivery day/time as
+optional, and sends a draft summary (with one product image when available).
+When a Meta-sourced order is confirmed, its customer confirmation is queued in
+the existing API process; no separate worker service is introduced. The queue
+tracks send outcomes, retries rate limits, and marks expired messaging windows
+or ambiguous send results for manual follow-up instead of risking duplicate
+messages. Validate the migrations and order isolation on a staging database
+before production rollout.
 
 ### Meta permissions for comments and messaging
 
@@ -99,7 +106,7 @@ The durable queue prevents duplicate webhook events from creating duplicate jobs
 
 The inbox settings also provide a manual action to queue replies for previously received comments. It only lists published posts linked to active, verified products on platforms where comment automation is already ready and enabled. The action uses comments already stored in the workspace inbox (it does not backfill comment history from Meta), excludes replied or already-queued comments and comments outside the current 24-hour worker window, and limits each batch to 20 comments. The user must select posts and confirm before jobs are queued.
 
-Apply `20261026001000_meta_auto_replies.sql` before enabling this feature. Automatic replies remain disabled by default in workspace settings. The API process runs the inline queue worker unless `META_AUTO_REPLY_WORKER_ENABLED=false`; production should monitor failed/unknown jobs. No separate AI key is introduced: the existing `OPENAI_API_KEY` and/or `GEMINI_API_KEY` configuration is reused.
+Apply `20261026001000_meta_auto_replies.sql` before enabling this feature. Automatic replies remain disabled by default in workspace settings. The API process runs their inline queue unless `META_AUTO_REPLY_WORKER_ENABLED=false`; that flag does not disable Meta order-confirmation messages. Production should monitor failed/unknown reply and confirmation outcomes. No separate AI key is introduced: the existing `OPENAI_API_KEY` and/or `GEMINI_API_KEY` configuration is reused.
 
 The API exposes unauthenticated `GET /api/healthz` for liveness and `GET /api/readyz` for PostgreSQL readiness. Configure the platform health checks accordingly. The API does not apply database schema changes on startup; review and apply any required schema migration separately against the intended database.
 

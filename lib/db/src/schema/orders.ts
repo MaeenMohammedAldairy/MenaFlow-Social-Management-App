@@ -45,6 +45,19 @@ export const collectionStatuses = [
 
 export type CollectionStatus = (typeof collectionStatuses)[number];
 
+export const metaConfirmationStatuses = [
+  "not_required",
+  "queued",
+  "processing",
+  "sending",
+  "sent",
+  "manual_followup",
+  "failed",
+  "unknown",
+] as const;
+
+export type MetaConfirmationStatus = (typeof metaConfirmationStatuses)[number];
+
 export const menaOrders = pgTable(
   "mena_orders",
   {
@@ -60,8 +73,28 @@ export const menaOrders = pgTable(
     deliveryAddress: text("delivery_address"),
     notes: text("notes").notNull().default(""),
     sourceMetaInboxItemId: text("source_meta_inbox_item_id"),
-    sourcePlatform: text("source_platform"),
+    sourcePlatform: text("source_platform").$type<"facebook" | "instagram">(),
     sourceConversationId: text("source_conversation_id"),
+    metaConfirmationStatus: text("meta_confirmation_status")
+      .$type<MetaConfirmationStatus>()
+      .notNull()
+      .default("not_required"),
+    metaConfirmationAttempts: integer("meta_confirmation_attempts")
+      .notNull()
+      .default(0),
+    metaConfirmationNextRunAt: timestamp("meta_confirmation_next_run_at", {
+      withTimezone: true,
+    })
+      .notNull()
+      .defaultNow(),
+    metaConfirmationLeaseExpiresAt: timestamp(
+      "meta_confirmation_lease_expires_at",
+      { withTimezone: true },
+    ),
+    metaConfirmationSentAt: timestamp("meta_confirmation_sent_at", {
+      withTimezone: true,
+    }),
+    metaConfirmationError: text("meta_confirmation_error"),
     status: text("status").$type<OrderStatus>().notNull().default("draft"),
     inventoryReserved: boolean("inventory_reserved").notNull().default(false),
     deliveryStatus: text("delivery_status")
@@ -107,6 +140,19 @@ export const menaOrders = pgTable(
       table.workspaceId,
       table.status,
       table.createdAt,
+    ),
+    index("mena_orders_meta_confirmation_queue_idx")
+      .on(table.metaConfirmationStatus, table.metaConfirmationNextRunAt)
+      .where(
+        sql`${table.metaConfirmationStatus} IN ('queued', 'processing', 'sending')`,
+      ),
+    check(
+      "mena_orders_meta_confirmation_status_check",
+      sql`${table.metaConfirmationStatus} IN ('not_required', 'queued', 'processing', 'sending', 'sent', 'manual_followup', 'failed', 'unknown')`,
+    ),
+    check(
+      "mena_orders_meta_confirmation_attempts_check",
+      sql`${table.metaConfirmationAttempts} >= 0`,
     ),
     check(
       "mena_orders_status_check",
