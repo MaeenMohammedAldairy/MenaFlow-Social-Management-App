@@ -9,6 +9,7 @@ import {
   menaOrderEvents,
   menaOrderItems,
   menaOrders,
+  menaWhatsAppConnections,
   products,
   type MenaOrder,
   type MenaOrderEvent,
@@ -87,9 +88,13 @@ function orderResponse(
     sourceMetaInboxItemId: order.sourceMetaInboxItemId,
     sourcePlatform: order.sourcePlatform,
     sourceConversationId: order.sourceConversationId,
+    sourceWhatsAppInstanceName: order.sourceWhatsAppInstanceName,
     metaConfirmationStatus: order.metaConfirmationStatus,
     metaConfirmationError: order.metaConfirmationError,
     metaConfirmationSentAt: order.metaConfirmationSentAt,
+    whatsappConfirmationStatus: order.whatsappConfirmationStatus,
+    whatsappConfirmationError: order.whatsappConfirmationError,
+    whatsappConfirmationSentAt: order.whatsappConfirmationSentAt,
     status: order.status,
     deliveryStatus: order.deliveryStatus,
     deliveryProvider: order.deliveryProvider,
@@ -141,7 +146,8 @@ router.get("/social/orders/summary", requireWorkspace, async (req, res) => {
       shipped: sql<number>`count(*) filter (where ${menaOrders.status} = 'shipped')::int`,
       completed: sql<number>`count(*) filter (where ${menaOrders.status} = 'completed')::int`,
       cancelled: sql<number>`count(*) filter (where ${menaOrders.status} = 'cancelled')::int`,
-      metaDrafts: sql<number>`count(*) filter (where ${menaOrders.status} = 'draft' and ${menaOrders.sourcePlatform} is not null)::int`,
+      metaDrafts: sql<number>`count(*) filter (where ${menaOrders.status} = 'draft' and ${menaOrders.sourcePlatform} IN ('facebook', 'instagram'))::int`,
+      whatsappDrafts: sql<number>`count(*) filter (where ${menaOrders.status} = 'draft' and ${menaOrders.sourcePlatform} = 'whatsapp')::int`,
     })
     .from(menaOrders)
     .where(eq(menaOrders.workspaceId, workspaceId));
@@ -369,6 +375,13 @@ router.patch(
       if (!canTransitionOrderStatus(current.status, status)) {
         return { error: "INVALID_TRANSITION" as const };
       }
+      if (
+        status === "cancelled" &&
+        current.sourcePlatform === "whatsapp" &&
+        current.whatsappConfirmationStatus === "sending"
+      ) {
+        return { error: "WHATSAPP_CONFIRMATION_IN_PROGRESS" as const };
+      }
       const items = await transaction
         .select()
         .from(menaOrderItems)
@@ -481,12 +494,19 @@ router.patch(
           | "metaConfirmationLeaseExpiresAt"
           | "metaConfirmationSentAt"
           | "metaConfirmationError"
+          | "whatsappConfirmationStatus"
+          | "whatsappConfirmationAttempts"
+          | "whatsappConfirmationNextRunAt"
+          | "whatsappConfirmationLeaseExpiresAt"
+          | "whatsappConfirmationSentAt"
+          | "whatsappConfirmationError"
         >
       > = {};
       if (
         status === "confirmed" &&
         current.status === "draft" &&
-        current.sourcePlatform
+        (current.sourcePlatform === "facebook" ||
+          current.sourcePlatform === "instagram")
       ) {
         const [source] = current.sourceMetaInboxItemId
           ? await transaction
@@ -519,6 +539,49 @@ router.patch(
           metaConfirmationError: validMessageSource
             ? null
             : "META_SOURCE_UNAVAILABLE",
+        };
+      }
+      if (
+        status === "confirmed" &&
+        current.status === "draft" &&
+        current.sourcePlatform === "whatsapp"
+      ) {
+        const [connection] = current.sourceWhatsAppInstanceName
+          ? await transaction
+              .select({ instanceName: menaWhatsAppConnections.instanceName })
+              .from(menaWhatsAppConnections)
+              .where(
+                and(
+                  eq(menaWhatsAppConnections.workspaceId, workspaceId),
+                  eq(
+                    menaWhatsAppConnections.instanceName,
+                    current.sourceWhatsAppInstanceName,
+                  ),
+                ),
+              )
+              .limit(1)
+          : [];
+        confirmationUpdate = {
+          ...confirmationUpdate,
+          whatsappConfirmationStatus: connection ? "queued" : "manual_followup",
+          whatsappConfirmationAttempts: 0,
+          whatsappConfirmationNextRunAt: now,
+          whatsappConfirmationLeaseExpiresAt: null,
+          whatsappConfirmationSentAt: null,
+          whatsappConfirmationError: connection
+            ? null
+            : "WHATSAPP_SOURCE_UNAVAILABLE",
+        };
+      } else if (
+        status === "cancelled" &&
+        (current.whatsappConfirmationStatus === "queued" ||
+          current.whatsappConfirmationStatus === "processing")
+      ) {
+        confirmationUpdate = {
+          ...confirmationUpdate,
+          whatsappConfirmationStatus: "not_required",
+          whatsappConfirmationLeaseExpiresAt: null,
+          whatsappConfirmationError: "ORDER_CANCELLED_BEFORE_CONFIRMATION",
         };
       }
       const [updated] = await transaction
@@ -665,7 +728,8 @@ router.patch(
         | "CONCURRENT_CHANGE"
         | "PRODUCT_NOT_FOUND"
         | "INSUFFICIENT_STOCK"
-        | "INVENTORY_RESERVATION_MISSING",
+        | "INVENTORY_RESERVATION_MISSING"
+        | "WHATSAPP_CONFIRMATION_IN_PROGRESS",
         readonly [number, string]
       > = {
         NOT_FOUND: [404, "لم يتم العثور على الطلب."],
@@ -682,6 +746,10 @@ router.patch(
         INVENTORY_RESERVATION_MISSING: [
           409,
           "تعذر التحقق من حجز المخزون. حدّث الطلب وتواصل مع الدعم إذا تكرر الخطأ.",
+        ],
+        WHATSAPP_CONFIRMATION_IN_PROGRESS: [
+          409,
+          "يجري إرسال تأكيد WhatsApp لهذا الطلب. انتظر حتى تظهر نتيجة الإرسال قبل الإلغاء.",
         ],
       } as const;
       const response = result.error ? errors[result.error] : undefined;

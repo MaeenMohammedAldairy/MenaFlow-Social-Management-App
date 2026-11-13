@@ -8,6 +8,7 @@ import {
 import { processMetaAutoReplyQueue } from "./lib/meta-auto-reply-worker";
 import { processMetaOrderConfirmationsQueue } from "./lib/meta-order-confirmation-queue";
 import { processWhatsAppMediaDownloadQueue } from "./lib/whatsapp-media-download";
+import { startAppWorkerLoops, type AppWorkerLoops } from "./lib/app-workers";
 
 const rawPort = process.env["PORT"];
 
@@ -25,6 +26,7 @@ if (Number.isNaN(port) || port <= 0) {
 
 let mediaWorkerHandle: BackgroundWorkerLoopHandle | null = null;
 let metaAutoReplyWorkerHandle: BackgroundWorkerLoopHandle | null = null;
+let appWorkerLoops: AppWorkerLoops | null = null;
 let shutdownPromise: Promise<void> | null = null;
 
 const server = app.listen(port, "0.0.0.0", (err) => {
@@ -34,6 +36,9 @@ const server = app.listen(port, "0.0.0.0", (err) => {
   }
 
   logger.info({ host: "0.0.0.0", port }, "Server listening");
+  appWorkerLoops = startAppWorkerLoops("all", {
+    excludeInlineMediaDownload: true,
+  });
   const metaAutoRepliesEnabled =
     process.env.META_AUTO_REPLY_WORKER_ENABLED !== "false";
   metaAutoReplyWorkerHandle = startBackgroundWorkerLoop(
@@ -83,6 +88,7 @@ function shutdown(signal: NodeJS.Signals): Promise<void> {
   logger.info({ signal }, "API server graceful shutdown started");
   shutdownPromise = (async () => {
     const workersStopped = Promise.all([
+      appWorkerLoops?.stop() ?? Promise.resolve(),
       mediaWorkerHandle?.stop() ?? Promise.resolve(),
       metaAutoReplyWorkerHandle?.stop() ?? Promise.resolve(),
     ]);

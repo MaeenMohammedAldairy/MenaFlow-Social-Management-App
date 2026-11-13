@@ -17,19 +17,33 @@ pnpm --filter @workspace/api-server run start
 Meta automatic replies and Meta order-confirmation messages run inside the API
 process. Set `META_AUTO_REPLY_WORKER_ENABLED=false` to disable automatic
 conversation replies; the order-confirmation queue remains active.
-Other background queues run in the separate worker service:
-`pnpm --filter @workspace/api-server run start:worker`. By default it runs all
-enabled workers; set `MENA_WORKER_NAME` to one of
-`auto-reply-recovery`, `meta-webhook-subscriptions`, `product-extraction`,
-`product-publication`, `media-download`, `media-thumbnails`, or
-`whatsapp-marketing` to run a single worker family.
+All enabled background queue workers also start inside the API process. No
+separate worker service or change to the API start command is required. The
+standalone command `pnpm --filter @workspace/api-server run start:worker`
+remains available for isolated use; do not run it alongside the API process,
+because both processes would consume the same queues. `MENA_WORKER_NAME` only
+selects a worker when using that standalone command; the API starts all enabled
+workers. Its supported values are
+`auto-reply-recovery`, `whatsapp-auto-replies`,
+`whatsapp-order-confirmations`,
+`whatsapp-direct-message-retention`, `meta-webhook-subscriptions`,
+`product-extraction`, `product-publication`, `media-download`,
+`media-thumbnails`, or `whatsapp-marketing` to run a single worker family.
 Keep one replica for `meta-webhook-subscriptions` until its reconciliation
 work is protected by a cross-process claim.
+The `whatsapp-auto-replies` worker claims WhatsApp reply events from a durable
+queue. Leases prevent concurrent sends for the same event. Recovery requeues
+expired pre-send work and marks expired in-flight sends unknown without
+resending them.
+The `whatsapp-order-confirmations` worker sends one transactional WhatsApp
+confirmation after an authorized merchant changes a WhatsApp-origin draft to
+confirmed. It never resends an ambiguous send result.
+The `whatsapp-direct-message-retention` worker removes expired private WhatsApp
+messages in bounded batches; keep it enabled wherever the direct inbox is used.
 
-Evolution media downloads can run inside the API process with
-`WHATSAPP_MEDIA_DOWNLOAD_INLINE_WORKER_ENABLED=true`; this starts only the
-Evolution media-download queue. Do not enable the same queue in both the API
-process and a separate worker unless intentionally increasing worker capacity.
+Evolution media downloads can run through the API's inline loop with
+`WHATSAPP_MEDIA_DOWNLOAD_INLINE_WORKER_ENABLED=true`; the regular API worker
+loop skips that same queue when the inline loop is enabled.
 
 The API build script replaces only `artifacts/api-server/dist`. The mobile package's `build` script removes `artifacts/menaflow-mobile/static-build` and clears Metro caches; inspect or back up those outputs before running it.
 
@@ -109,6 +123,23 @@ The inbox settings also provide a manual action to queue replies for previously 
 Apply `20261026001000_meta_auto_replies.sql` before enabling this feature. Automatic replies remain disabled by default in workspace settings. The API process runs their inline queue unless `META_AUTO_REPLY_WORKER_ENABLED=false`; that flag does not disable Meta order-confirmation messages. Production should monitor failed/unknown reply and confirmation outcomes. No separate AI key is introduced: the existing `OPENAI_API_KEY` and/or `GEMINI_API_KEY` configuration is reused.
 
 The API exposes unauthenticated `GET /api/healthz` for liveness and `GET /api/readyz` for PostgreSQL readiness. Configure the platform health checks accordingly. The API does not apply database schema changes on startup; review and apply any required schema migration separately against the intended database.
+
+### WhatsApp direct-message inbox and retention
+
+Apply `supabase/migrations/20261113001000_whatsapp_direct_messages.sql` before
+deploying the direct-message inbox, then apply
+`20261113002000_whatsapp_order_intake.sql` and
+`20261113003000_whatsapp_auto_reply_queue.sql` and
+`20261113004000_whatsapp_order_confirmations.sql` before enabling WhatsApp
+order intake, durable auto replies, or order confirmations. Private message text and WhatsApp JIDs are
+encrypted with the application `ENCRYPTION_KEY`; conversation lookup uses
+workspace-scoped HMAC keys. Messages expire 90 days after receipt, and the
+`whatsapp-direct-message-retention` worker purges expired rows in bounded
+batches. Keep `ENCRYPTION_KEY_PREVIOUS` configured for the full retention
+window when rotating keys so conversations indexed under the previous key
+remain discoverable until their messages expire. The inbox and reply routes
+require workspace authentication; uncertain sends are not retried until an
+operator confirms the message did not arrive.
 
 ## Expo application
 

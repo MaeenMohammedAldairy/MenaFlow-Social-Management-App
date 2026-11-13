@@ -24,9 +24,20 @@ export type MetaConfirmationStatus =
   | "failed"
   | "unknown";
 
+export type WhatsAppConfirmationStatus =
+  | "not_required"
+  | "queued"
+  | "processing"
+  | "sending"
+  | "sent"
+  | "failed"
+  | "unknown"
+  | "manual_followup";
+
 export type OrderSummary = Record<OrderStatus, number> & {
   total: number;
   metaDrafts: number;
+  whatsappDrafts: number;
 };
 
 export type OrderItem = {
@@ -54,11 +65,15 @@ export type CustomerOrder = {
   deliveryAddress: string | null;
   notes: string;
   sourceMetaInboxItemId: string | null;
-  sourcePlatform: "facebook" | "instagram" | null;
+  sourcePlatform: "facebook" | "instagram" | "whatsapp" | null;
   sourceConversationId: string | null;
+  sourceWhatsAppInstanceName: string | null;
   metaConfirmationStatus: MetaConfirmationStatus;
   metaConfirmationError: string | null;
   metaConfirmationSentAt: string | null;
+  whatsappConfirmationStatus: WhatsAppConfirmationStatus;
+  whatsappConfirmationError: string | null;
+  whatsappConfirmationSentAt: string | null;
   status: OrderStatus;
   deliveryStatus: DeliveryStatus;
   deliveryProvider: string | null;

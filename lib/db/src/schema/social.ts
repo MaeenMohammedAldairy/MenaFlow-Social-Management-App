@@ -223,7 +223,15 @@ export const menaWhatsAppAutoReplyEvents = pgTable(
       .references(() => workspaces.id, { onDelete: "restrict" }),
     instanceName: text("instance_name").notNull(),
     remoteMessageId: text("remote_message_id").notNull(),
-    status: text("status").notNull().default("processing"),
+    status: text("status")
+      .$type<"queued" | "processing" | "sending" | "sent" | "failed" | "unknown">()
+      .notNull()
+      .default("queued"),
+    attempts: integer("attempts").notNull().default(0),
+    nextRunAt: timestamp("next_run_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
     replyMessageId: text("reply_message_id"),
     errorCode: text("error_code"),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -236,6 +244,91 @@ export const menaWhatsAppAutoReplyEvents = pgTable(
       table.workspaceId,
       table.instanceName,
       table.remoteMessageId,
+    ),
+    index("mena_whatsapp_auto_reply_events_pending_idx").on(
+      table.status,
+      table.nextRunAt,
+    ),
+    index("mena_whatsapp_auto_reply_events_lease_idx").on(
+      table.status,
+      table.leaseExpiresAt,
+    ),
+    check(
+      "mena_whatsapp_auto_reply_events_status_check",
+      sql`${table.status} IN ('queued', 'processing', 'sending', 'sent', 'failed', 'unknown')`,
+    ),
+    check(
+      "mena_whatsapp_auto_reply_events_attempts_check",
+      sql`${table.attempts} >= 0 AND ${table.attempts} <= 3`,
+    ),
+  ],
+);
+
+export const menaWhatsAppDirectMessages = pgTable(
+  "mena_whatsapp_direct_messages",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict" }),
+    instanceName: text("instance_name").notNull(),
+    remoteJidHash: text("remote_jid_hash").notNull(),
+    encryptedRemoteJid: text("encrypted_remote_jid").notNull(),
+    providerMessageId: text("provider_message_id"),
+    clientRequestId: text("client_request_id"),
+    direction: text("direction").$type<"inbound" | "outbound">().notNull(),
+    status: text("status")
+      .$type<"received" | "sending" | "sent" | "failed" | "unknown">()
+      .notNull()
+      .default("received"),
+    errorCode: text("error_code"),
+    encryptedTextBody: text("encrypted_text_body").notNull(),
+    messageTimestamp: timestamp("message_timestamp", { withTimezone: true })
+      .notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mena_whatsapp_direct_messages_provider_id_key")
+      .on(
+        table.workspaceId,
+        table.instanceName,
+        table.remoteJidHash,
+        table.providerMessageId,
+      )
+      .where(sql`${table.providerMessageId} IS NOT NULL`),
+    uniqueIndex("mena_whatsapp_direct_messages_client_request_key")
+      .on(table.workspaceId, table.instanceName, table.clientRequestId)
+      .where(sql`${table.clientRequestId} IS NOT NULL`),
+    index("mena_whatsapp_direct_messages_conversation_idx").on(
+      table.workspaceId,
+      table.instanceName,
+      table.remoteJidHash,
+      table.messageTimestamp,
+    ),
+    index("mena_whatsapp_direct_messages_expiry_idx").on(table.expiresAt),
+    foreignKey({
+      columns: [table.workspaceId, table.instanceName],
+      foreignColumns: [
+        menaWhatsAppConnections.workspaceId,
+        menaWhatsAppConnections.instanceName,
+      ],
+      name: "mena_whatsapp_direct_messages_connection_fk",
+    }).onDelete("cascade"),
+    check(
+      "mena_whatsapp_direct_messages_direction_check",
+      sql`${table.direction} IN ('inbound', 'outbound')`,
+    ),
+    check(
+      "mena_whatsapp_direct_messages_status_check",
+      sql`${table.status} IN ('received', 'sending', 'sent', 'failed', 'unknown')`,
+    ),
+    check(
+      "mena_whatsapp_direct_messages_text_length_check",
+      sql`length(${table.encryptedTextBody}) <= 6000`,
     ),
   ],
 );

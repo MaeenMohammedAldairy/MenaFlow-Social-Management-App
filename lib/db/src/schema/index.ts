@@ -26,3 +26,4 @@ export * from "./workspaces";
 export * from "./products";
 export * from "./subscriptions";
 export * from "./orders";
+export * from "./whatsapp-orders";

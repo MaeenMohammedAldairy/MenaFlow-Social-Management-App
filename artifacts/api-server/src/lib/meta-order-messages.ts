@@ -3,6 +3,25 @@ export type OrderIntakeField =
 
 const noDeliveryPreferencePattern =
   /^(?:لا\s*(?:يوجد(?:\s*تفضيل)?|أفضل|افضل|تفضيل)|لا\s*فرق|أي\s*وقت|اي\s*وقت|في\s*أقرب\s*وقت(?:\s*ممكن)?|اقرب\s*وقت(?:\s*ممكن)?|أقرب\s*وقت(?:\s*ممكن)?|لا\s*يهم)$/iu;
+const metaOrderAffirmativePattern =
+  /^(?:نعم|أجل|اجل|ايوا|ايوه|أيوه|اي|إي|تمام|حسنًا|حسنا|أكيد|اكيد|yes|ok|okay)(?:\s*[,،]?\s*(?:أريد|اريد|أرغب|ارغب|أطلب|اطلب|أشتري|اشتري))?[.!؟?]*$/iu;
+const metaOrderOfferPattern =
+  /(?:هل\s*(?:تود|ترغب|تحب|تريد)[\s\S]{0,80}(?:إتمام|إكمال|تنفيذ|الطلب|الشراء)|(?:تود|ترغب|تحب)[\s\S]{0,50}(?:إتمام|إكمال|تنفيذ)\s*الطلب)/iu;
+
+export function isMetaOrderAffirmative(text: string): boolean {
+  return metaOrderAffirmativePattern.test(text.trim());
+}
+
+export function isMetaOrderConfirmation(
+  text: string,
+  previousBusinessReply: string | null,
+): boolean {
+  return Boolean(
+    previousBusinessReply &&
+      isMetaOrderAffirmative(text) &&
+      metaOrderOfferPattern.test(previousBusinessReply),
+  );
+}
 
 const fieldLabels: Record<OrderIntakeField, string> = {
   product: "اسم المنتج",

@@ -11,6 +11,10 @@ export type CreateOrderInput = {
   deliveryAddress: string | null;
   notes: string;
   sourceMetaInboxItemId: string | null;
+  sourceWhatsApp?: {
+    instanceName: string;
+    remoteJidHash: string;
+  };
   items: Array<{ productId: string; quantity: number }>;
 };
 

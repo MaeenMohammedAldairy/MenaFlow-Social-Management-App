@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, gt, inArray } from "drizzle-orm";
 import {
   db,
   menaMetaInboxItems,
   menaOrderEvents,
   menaOrderItems,
   menaOrders,
+  menaWhatsAppConnections,
+  menaWhatsAppDirectMessages,
   products,
 } from "@workspace/db";
 import { calculateOrder, type CreateOrderInput } from "./order-validation";
@@ -99,6 +101,9 @@ export async function createWorkspaceOrder(
       platform: "facebook" | "instagram";
       conversationId: string;
     } | null = null;
+    if (input.sourceMetaInboxItemId && input.sourceWhatsApp) {
+      return { error: "SOURCE_NOT_FOUND" as const };
+    }
     if (input.sourceMetaInboxItemId) {
       const [inboxItem] = await transaction
         .select({
@@ -118,6 +123,43 @@ export async function createWorkspaceOrder(
       source = inboxItem;
     }
 
+    if (input.sourceWhatsApp) {
+      const [connection] = await transaction
+        .select({ instanceName: menaWhatsAppConnections.instanceName })
+        .from(menaWhatsAppConnections)
+        .where(
+          and(
+            eq(menaWhatsAppConnections.workspaceId, workspaceId),
+            eq(
+              menaWhatsAppConnections.instanceName,
+              input.sourceWhatsApp.instanceName,
+            ),
+          ),
+        )
+        .limit(1);
+      const [conversationMessage] = await transaction
+        .select({ id: menaWhatsAppDirectMessages.id })
+        .from(menaWhatsAppDirectMessages)
+        .where(
+          and(
+            eq(menaWhatsAppDirectMessages.workspaceId, workspaceId),
+            eq(
+              menaWhatsAppDirectMessages.instanceName,
+              input.sourceWhatsApp.instanceName,
+            ),
+            eq(
+              menaWhatsAppDirectMessages.remoteJidHash,
+              input.sourceWhatsApp.remoteJidHash,
+            ),
+            gt(menaWhatsAppDirectMessages.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+      if (!connection || !conversationMessage) {
+        return { error: "SOURCE_NOT_FOUND" as const };
+      }
+    }
+
     const now = new Date();
     const id = randomUUID();
     const orderNumber = `MF-${now.toISOString().slice(0, 10).replace(/-/g, "")}-${id.slice(0, 10).toUpperCase()}`;
@@ -134,8 +176,12 @@ export async function createWorkspaceOrder(
         deliveryAddress: input.deliveryAddress,
         notes: input.notes,
         sourceMetaInboxItemId: source?.id ?? null,
-        sourcePlatform: source?.platform ?? null,
-        sourceConversationId: source?.conversationId ?? null,
+        sourcePlatform:
+          source?.platform ?? (input.sourceWhatsApp ? "whatsapp" : null),
+        sourceConversationId:
+          source?.conversationId ?? input.sourceWhatsApp?.remoteJidHash ?? null,
+        sourceWhatsAppInstanceName:
+          input.sourceWhatsApp?.instanceName ?? null,
         status: "draft",
         currency: calculation.order.currency,
         total: calculation.order.total,

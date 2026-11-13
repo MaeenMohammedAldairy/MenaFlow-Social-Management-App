@@ -1,30 +1,71 @@
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { db, menaWhatsAppAutoReplyEvents } from "@workspace/db";
 import { logger } from "./logger";
 
 const STALE_REPLY_AFTER_MS = 2 * 60_000;
 
 export async function markStaleWhatsAppAutoRepliesUnknown(): Promise<number> {
-  const cutoff = new Date(Date.now() - STALE_REPLY_AFTER_MS);
-  const rows = await db
-    .update(menaWhatsAppAutoReplyEvents)
-    .set({
-      status: "unknown",
-      errorCode: "AUTO_REPLY_RESULT_UNKNOWN",
-      completedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(menaWhatsAppAutoReplyEvents.status, "processing"),
-        lt(menaWhatsAppAutoReplyEvents.createdAt, cutoff),
-      ),
-    )
-    .returning({ id: menaWhatsAppAutoReplyEvents.id });
-  if (rows.length > 0) {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - STALE_REPLY_AFTER_MS);
+  const [requeued, failed, unknown] = await Promise.all([
+    db
+      .update(menaWhatsAppAutoReplyEvents)
+      .set({
+        status: "queued",
+        errorCode: "WORKER_INTERRUPTED_BEFORE_SEND",
+        nextRunAt: now,
+        leaseExpiresAt: null,
+      })
+      .where(
+        and(
+          eq(menaWhatsAppAutoReplyEvents.status, "processing"),
+          lt(menaWhatsAppAutoReplyEvents.leaseExpiresAt, cutoff),
+          sql`${menaWhatsAppAutoReplyEvents.attempts} < 3`,
+        ),
+      )
+      .returning({ id: menaWhatsAppAutoReplyEvents.id }),
+    db
+      .update(menaWhatsAppAutoReplyEvents)
+      .set({
+        status: "failed",
+        errorCode: "WORKER_RETRY_LIMIT_REACHED",
+        leaseExpiresAt: null,
+        completedAt: now,
+      })
+      .where(
+        and(
+          eq(menaWhatsAppAutoReplyEvents.status, "processing"),
+          lt(menaWhatsAppAutoReplyEvents.leaseExpiresAt, cutoff),
+          sql`${menaWhatsAppAutoReplyEvents.attempts} >= 3`,
+        ),
+      )
+      .returning({ id: menaWhatsAppAutoReplyEvents.id }),
+    db
+      .update(menaWhatsAppAutoReplyEvents)
+      .set({
+        status: "unknown",
+        errorCode: "AUTO_REPLY_RESULT_UNKNOWN",
+        leaseExpiresAt: null,
+        completedAt: now,
+      })
+      .where(
+        and(
+          eq(menaWhatsAppAutoReplyEvents.status, "sending"),
+          lt(menaWhatsAppAutoReplyEvents.leaseExpiresAt, cutoff),
+        ),
+      )
+      .returning({ id: menaWhatsAppAutoReplyEvents.id }),
+  ]);
+  const recoveredCount = requeued.length + failed.length + unknown.length;
+  if (recoveredCount > 0) {
     logger.warn(
-      { count: rows.length },
-      "Stale WhatsApp auto-reply results marked unknown; no automatic resend was attempted",
+      {
+        requeued: requeued.length,
+        failed: failed.length,
+        unknown: unknown.length,
+      },
+      "Stale WhatsApp auto-reply leases reconciled",
     );
   }
-  return rows.length;
+  return recoveredCount;
 }

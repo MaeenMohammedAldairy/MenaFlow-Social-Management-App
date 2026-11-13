@@ -19,6 +19,7 @@ import accountDetailsRouter from "./account-details";
 import workspacesRouter from "./workspaces";
 import onboardingRouter from "./onboarding";
 import whatsappAutoRepliesRouter from "./whatsapp-auto-replies";
+import whatsappDirectInboxRouter from "./whatsapp-direct-inbox";
 import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
 
@@ -30,6 +31,7 @@ router.use(whatsappMessagesRouter);
 router.use(whatsappContentAssociationsRouter);
 router.use(whatsappSyncRouter);
 router.use(whatsappAutoRepliesRouter);
+router.use(whatsappDirectInboxRouter);
 router.use(whatsappGroupsRouter);
 router.use(metaRouter);
 router.use(metaInboxRouter);

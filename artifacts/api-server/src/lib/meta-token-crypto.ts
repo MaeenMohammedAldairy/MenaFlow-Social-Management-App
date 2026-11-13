@@ -11,11 +11,11 @@ export function metaTokenEncryptionKey(): Buffer {
   return createHash("sha256").update(secret, "utf8").digest();
 }
 
-export function encryptMetaToken(token: string): string {
+export function encryptSensitiveValue(value: string): string {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", metaTokenEncryptionKey(), iv);
   const encrypted = Buffer.concat([
-    cipher.update(token, "utf8"),
+    cipher.update(value, "utf8"),
     cipher.final(),
   ]);
   return [
@@ -25,37 +25,62 @@ export function encryptMetaToken(token: string): string {
   ].join(":");
 }
 
-export interface DecryptedMetaToken {
-  accessToken: string;
+export function encryptMetaToken(token: string): string {
+  return encryptSensitiveValue(token);
+}
+
+export type DecryptedSensitiveValue = {
+  value: string;
   rotatedCiphertext?: string;
+};
+
+export function decryptSensitiveValue(payload: string): string {
+  return decryptSensitiveValueForRotation(payload).value;
 }
 
-export function decryptMetaToken(payload: string): string {
-  return decryptMetaTokenForRotation(payload).accessToken;
-}
-
-export function decryptMetaTokenForRotation(payload: string): DecryptedMetaToken {
+export function decryptSensitiveValueForRotation(
+  payload: string,
+): DecryptedSensitiveValue {
   const currentKey = process.env.ENCRYPTION_KEY;
   if (!currentKey) throw new Error("MISSING_ENCRYPTION_KEY");
 
   try {
-    return { accessToken: decryptWithKey(payload, currentKey) };
-  } catch (currentKeyError) {
+    return { value: decryptWithKey(payload, currentKey) };
+  } catch {
     const previousKey = process.env.ENCRYPTION_KEY_PREVIOUS;
     if (!previousKey || previousKey === currentKey) {
       throw new Error("INVALID_ENCRYPTED_TOKEN");
     }
 
     try {
-      const accessToken = decryptWithKey(payload, previousKey);
+      const value = decryptWithKey(payload, previousKey);
       return {
-        accessToken,
-        rotatedCiphertext: encryptMetaToken(accessToken),
+        value,
+        rotatedCiphertext: encryptSensitiveValue(value),
       };
     } catch {
       throw new Error("INVALID_ENCRYPTED_TOKEN");
     }
   }
+}
+
+export interface DecryptedMetaToken {
+  accessToken: string;
+  rotatedCiphertext?: string;
+}
+
+export function decryptMetaToken(payload: string): string {
+  return decryptSensitiveValue(payload);
+}
+
+export function decryptMetaTokenForRotation(payload: string): DecryptedMetaToken {
+  const decrypted = decryptSensitiveValueForRotation(payload);
+  return {
+    accessToken: decrypted.value,
+    ...(decrypted.rotatedCiphertext
+      ? { rotatedCiphertext: decrypted.rotatedCiphertext }
+      : {}),
+  };
 }
 
 function decryptWithKey(payload: string, secret: string): string {

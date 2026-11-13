@@ -58,7 +58,7 @@ export const menaMetaOrderIntakes = pgTable(
     ),
     check(
       "mena_meta_order_intakes_status_check",
-      sql`${table.status} IN ('collecting', 'created', 'cancelled')`,
+      sql`${table.status} IN ('collecting', 'creating', 'created', 'cancelled')`,
     ),
     check(
       "mena_meta_order_intakes_quantity_check",

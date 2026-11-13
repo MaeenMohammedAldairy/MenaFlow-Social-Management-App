@@ -73,8 +73,11 @@ export const menaOrders = pgTable(
     deliveryAddress: text("delivery_address"),
     notes: text("notes").notNull().default(""),
     sourceMetaInboxItemId: text("source_meta_inbox_item_id"),
-    sourcePlatform: text("source_platform").$type<"facebook" | "instagram">(),
+    sourcePlatform: text("source_platform").$type<
+      "facebook" | "instagram" | "whatsapp"
+    >(),
     sourceConversationId: text("source_conversation_id"),
+    sourceWhatsAppInstanceName: text("source_whatsapp_instance_name"),
     metaConfirmationStatus: text("meta_confirmation_status")
       .$type<MetaConfirmationStatus>()
       .notNull()
@@ -95,6 +98,37 @@ export const menaOrders = pgTable(
       withTimezone: true,
     }),
     metaConfirmationError: text("meta_confirmation_error"),
+    whatsappConfirmationStatus: text("whatsapp_confirmation_status")
+      .$type<
+        | "not_required"
+        | "queued"
+        | "processing"
+        | "sending"
+        | "sent"
+        | "failed"
+        | "unknown"
+        | "manual_followup"
+      >()
+      .notNull()
+      .default("not_required"),
+    whatsappConfirmationAttempts: integer("whatsapp_confirmation_attempts")
+      .notNull()
+      .default(0),
+    whatsappConfirmationNextRunAt: timestamp(
+      "whatsapp_confirmation_next_run_at",
+      { withTimezone: true },
+    )
+      .notNull()
+      .defaultNow(),
+    whatsappConfirmationLeaseExpiresAt: timestamp(
+      "whatsapp_confirmation_lease_expires_at",
+      { withTimezone: true },
+    ),
+    whatsappConfirmationSentAt: timestamp(
+      "whatsapp_confirmation_sent_at",
+      { withTimezone: true },
+    ),
+    whatsappConfirmationError: text("whatsapp_confirmation_error"),
     status: text("status").$type<OrderStatus>().notNull().default("draft"),
     inventoryReserved: boolean("inventory_reserved").notNull().default(false),
     deliveryStatus: text("delivery_status")
@@ -146,6 +180,11 @@ export const menaOrders = pgTable(
       .where(
         sql`${table.metaConfirmationStatus} IN ('queued', 'processing', 'sending')`,
       ),
+    index("mena_orders_whatsapp_confirmation_queue_idx")
+      .on(table.whatsappConfirmationStatus, table.whatsappConfirmationNextRunAt)
+      .where(
+        sql`${table.whatsappConfirmationStatus} IN ('queued', 'processing', 'sending')`,
+      ),
     check(
       "mena_orders_meta_confirmation_status_check",
       sql`${table.metaConfirmationStatus} IN ('not_required', 'queued', 'processing', 'sending', 'sent', 'manual_followup', 'failed', 'unknown')`,
@@ -153,6 +192,14 @@ export const menaOrders = pgTable(
     check(
       "mena_orders_meta_confirmation_attempts_check",
       sql`${table.metaConfirmationAttempts} >= 0`,
+    ),
+    check(
+      "mena_orders_whatsapp_confirmation_status_check",
+      sql`${table.whatsappConfirmationStatus} IN ('not_required', 'queued', 'processing', 'sending', 'sent', 'failed', 'unknown', 'manual_followup')`,
+    ),
+    check(
+      "mena_orders_whatsapp_confirmation_attempts_check",
+      sql`${table.whatsappConfirmationAttempts} BETWEEN 0 AND 3`,
     ),
     check(
       "mena_orders_status_check",
@@ -174,7 +221,11 @@ export const menaOrders = pgTable(
     check("mena_orders_currency_check", sql`${table.currency} ~ '^[A-Z]{3}$'`),
     check(
       "mena_orders_source_platform_check",
-      sql`${table.sourcePlatform} IS NULL OR ${table.sourcePlatform} IN ('facebook', 'instagram')`,
+      sql`${table.sourcePlatform} IS NULL OR ${table.sourcePlatform} IN ('facebook', 'instagram', 'whatsapp')`,
+    ),
+    check(
+      "mena_orders_whatsapp_source_check",
+      sql`${table.sourcePlatform} <> 'whatsapp' OR (${table.sourceConversationId} IS NOT NULL AND ${table.sourceWhatsAppInstanceName} IS NOT NULL AND ${table.sourceMetaInboxItemId} IS NULL)`,
     ),
   ],
 );

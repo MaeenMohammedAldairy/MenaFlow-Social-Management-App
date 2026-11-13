@@ -31,6 +31,7 @@ import {
   saveMetaAutoReplySettings,
   testMetaAutoReply,
   type MetaAutoReplySettings,
+  type MetaInboxKind,
   type MetaInboxPlatform,
 } from "@/lib/meta-inbox-api";
 
@@ -148,6 +149,8 @@ export function MetaAutoReplySettingsPanel({
   >(new Set());
   const [error, setError] = useState("");
   const [testMessage, setTestMessage] = useState("");
+  const [testPlatform, setTestPlatform] = useState<MetaInboxPlatform>("facebook");
+  const [testKind, setTestKind] = useState<MetaInboxKind>("message");
   const [testReply, setTestReply] = useState("");
   const [testMatchedProduct, setTestMatchedProduct] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -249,8 +252,8 @@ export function MetaAutoReplySettingsPanel({
       const res = await testMetaAutoReply({
         message,
         settings,
-        platform: "instagram",
-        kind: "message",
+        platform: testPlatform,
+        kind: testKind,
       });
       setTestReply(res.reply);
       setTestMatchedProduct(res.matchedProduct ?? null);
@@ -1303,6 +1306,101 @@ export function MetaAutoReplySettingsPanel({
                       المعينة قبل الحفظ.
                     </Text>
 
+                    <View style={styles.testTargetGroup}>
+                      <Text
+                        style={[styles.bodySmall, { color: colors.foreground }]}
+                      >
+                        القناة ونوع التفاعل للاختبار
+                      </Text>
+                      <View style={styles.choiceRow}>
+                        {platforms.map(({ key, label }) => {
+                          const selected = testPlatform === key;
+                          return (
+                            <Pressable
+                              key={key}
+                              accessibilityRole="radio"
+                              accessibilityLabel={`اختبار ${label}`}
+                              accessibilityState={{ checked: selected }}
+                              onPress={() => {
+                                setTestPlatform(key);
+                                setTestReply("");
+                                setTestError("");
+                              }}
+                              style={[
+                                styles.testTargetOption,
+                                {
+                                  backgroundColor: selected
+                                    ? colors.primary
+                                    : colors.card,
+                                  borderColor: selected
+                                    ? colors.primary
+                                    : colors.border,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={{
+                                  color: selected
+                                    ? colors.primaryForeground
+                                    : colors.foreground,
+                                  fontSize: 12,
+                                  fontWeight: "700",
+                                }}
+                              >
+                                {label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                      <View style={styles.choiceRow}>
+                        {(
+                          [
+                            ["message", "رسالة خاصة"],
+                            ["comment", "تعليق عام"],
+                          ] as const
+                        ).map(([kind, label]) => {
+                          const selected = testKind === kind;
+                          return (
+                            <Pressable
+                              key={kind}
+                              accessibilityRole="radio"
+                              accessibilityLabel={`اختبار ${label}`}
+                              accessibilityState={{ checked: selected }}
+                              onPress={() => {
+                                setTestKind(kind);
+                                setTestReply("");
+                                setTestError("");
+                              }}
+                              style={[
+                                styles.testTargetOption,
+                                {
+                                  backgroundColor: selected
+                                    ? colors.primary
+                                    : colors.card,
+                                  borderColor: selected
+                                    ? colors.primary
+                                    : colors.border,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={{
+                                  color: selected
+                                    ? colors.primaryForeground
+                                    : colors.foreground,
+                                  fontSize: 12,
+                                  fontWeight: "700",
+                                }}
+                              >
+                                {label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+
                     <View style={styles.presetChipsRow}>
                       {[
                         { label: "سعر وتوفر", text: "كم سعر هذا المنتج وهل متوفر الآن؟" },
@@ -1470,7 +1568,7 @@ function SettingSwitch({
     <View style={styles.switchBlock}>
       <View style={styles.switchRow}>
         <Text style={[styles.body, { color: colors.foreground }]}>{label}</Text>
-        <View style={styles.switchControl}>
+        <View>
           <Switch
             accessibilityLabel={label}
             accessibilityRole="switch"
@@ -1585,7 +1683,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 8,
   },
-  switchControl: { direction: "ltr" },
   field: { gap: 8 },
   label: { fontSize: 14, fontWeight: "600", textAlign: "right" },
   instructionsInput: {
@@ -1598,6 +1695,17 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  testTargetGroup: { gap: 8 },
+  testTargetOption: {
+    minHeight: 40,
+    flexGrow: 1,
+    flexBasis: "40%",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   historicalModeOption: {
     flex: 1,
     minWidth: 150,

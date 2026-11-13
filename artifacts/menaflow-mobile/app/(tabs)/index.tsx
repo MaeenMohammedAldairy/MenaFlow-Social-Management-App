@@ -473,6 +473,50 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
           <Icon name="chevron-left" size={18} color={colors.primary} />
         </Pressable>
       ) : null}
+      {orderSummaryQuery.data?.whatsappDrafts ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${orderSummaryQuery.data.whatsappDrafts} مسودة طلب من محادثات WhatsApp بانتظار المراجعة. افتح الطلبات.`}
+          onPress={() => router.push("/(tabs)/more/orders")}
+          style={({ pressed }) => [
+            styles.orderNotification,
+            {
+              backgroundColor: colors.greenSoft,
+              borderColor: colors.whatsapp,
+              opacity: pressed ? 0.78 : 1,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.orderNotificationIcon,
+              { backgroundColor: colors.card },
+            ]}
+          >
+            <Icon name="message-circle" size={18} color={colors.whatsapp} />
+          </View>
+          <View style={styles.orderNotificationCopy}>
+            <Text
+              style={[
+                styles.orderNotificationTitle,
+                { color: colors.foreground },
+              ]}
+            >
+              طلبات WhatsApp بانتظار المراجعة
+            </Text>
+            <Text
+              style={[
+                styles.orderNotificationText,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              {orderSummaryQuery.data.whatsappDrafts} مسودة. راجع البيانات وأكّد
+              الطلب قبل إرسال تأكيد WhatsApp.
+            </Text>
+          </View>
+          <Icon name="chevron-left" size={18} color={colors.whatsapp} />
+        </Pressable>
+      ) : null}
       <View
         style={[
           styles.hero,

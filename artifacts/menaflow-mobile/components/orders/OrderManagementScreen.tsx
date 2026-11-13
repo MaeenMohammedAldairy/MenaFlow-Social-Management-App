@@ -106,6 +106,28 @@ function metaConfirmationLabel(order: CustomerOrder): string | null {
   }
 }
 
+function whatsappConfirmationLabel(order: CustomerOrder): string | null {
+  switch (order.whatsappConfirmationStatus) {
+    case "queued":
+    case "processing":
+      return "بانتظار إرسال تأكيد WhatsApp";
+    case "sending":
+      return "جارٍ إرسال تأكيد WhatsApp";
+    case "sent":
+      return order.whatsappConfirmationSentAt
+        ? `أُرسل تأكيد WhatsApp · ${formatArabicDateTime(order.whatsappConfirmationSentAt) ?? ""}`
+        : "أُرسل تأكيد WhatsApp";
+    case "manual_followup":
+      return "تعذر تأكيد WhatsApp تلقائيًا؛ أرسل التأكيد يدويًا.";
+    case "unknown":
+      return "نتيجة تأكيد WhatsApp غير مؤكدة؛ تحقق من المحادثة قبل الإرسال.";
+    case "failed":
+      return "فشل إرسال تأكيد WhatsApp؛ راجع المحادثة وأرسل يدويًا.";
+    default:
+      return null;
+  }
+}
+
 const nextStatus: Partial<Record<OrderStatus, OrderStatus>> = {
   draft: "confirmed",
   confirmed: "preparing",
@@ -233,7 +255,10 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           (order) =>
             order.metaConfirmationStatus === "queued" ||
             order.metaConfirmationStatus === "processing" ||
-            order.metaConfirmationStatus === "sending",
+            order.metaConfirmationStatus === "sending" ||
+            order.whatsappConfirmationStatus === "queued" ||
+            order.whatsappConfirmationStatus === "processing" ||
+            order.whatsappConfirmationStatus === "sending",
         ),
       )
         ? 5_000
@@ -1333,6 +1358,14 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
             </Text>
           </View>
         ) : null}
+        {order.sourcePlatform === "whatsapp" && order.sourceConversationId ? (
+          <View style={styles.detailRow}>
+            <Icon name="message-circle" size={14} color={colors.whatsapp} />
+            <Text style={[styles.detailText, { color: colors.whatsapp }]}>
+              "مرتبط بمحادثة WhatsApp"
+            </Text>
+          </View>
+        ) : null}
         {metaConfirmationLabel(order) ? (
           <View style={styles.detailRow}>
             <Icon
@@ -1362,6 +1395,38 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
               ]}
             >
               {metaConfirmationLabel(order)}
+            </Text>
+          </View>
+        ) : null}
+        {whatsappConfirmationLabel(order) ? (
+          <View style={styles.detailRow}>
+            <Icon
+              name="message-circle"
+              size={14}
+              color={
+                order.whatsappConfirmationStatus === "queued" ||
+                order.whatsappConfirmationStatus === "processing" ||
+                order.whatsappConfirmationStatus === "sending" ||
+                order.whatsappConfirmationStatus === "sent"
+                  ? colors.whatsapp
+                  : colors.warning
+              }
+            />
+            <Text
+              style={[
+                styles.detailText,
+                {
+                  color:
+                    order.whatsappConfirmationStatus === "queued" ||
+                    order.whatsappConfirmationStatus === "processing" ||
+                    order.whatsappConfirmationStatus === "sending" ||
+                    order.whatsappConfirmationStatus === "sent"
+                      ? colors.whatsapp
+                      : colors.warning,
+                },
+              ]}
+            >
+              {whatsappConfirmationLabel(order)}
             </Text>
           </View>
         ) : null}

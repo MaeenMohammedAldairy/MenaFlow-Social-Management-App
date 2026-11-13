@@ -50,6 +50,7 @@ test("auto-reply prompt requires Arabic and forbids unsupported product claims",
   assert.match(prompt, /أجب باللغة العربية/);
   assert.match(prompt, /لا توجد تعليمات أو بيانات خاصة بالنشاط/);
   assert.match(prompt, /لا تخمّن الأسعار أو المنتجات أو السياسات/);
+  assert.match(prompt, /لا تدّع أن الطلب سُجل أو تأكد إلا إذا ظهر في سجل المحادثة/);
   assert.match(prompt, /كم سعر المنتج/);
 });
 

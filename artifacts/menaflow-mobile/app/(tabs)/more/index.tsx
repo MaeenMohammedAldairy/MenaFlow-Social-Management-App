@@ -19,6 +19,7 @@ const destinations: Array<{
   params?: { view: "publishing" };
   path:
     | "/(tabs)/more/orders"
+    | "/(tabs)/more/whatsapp-inbox"
     | "/(tabs)/more/sources"
     | "/(tabs)/more/reports"
     | "/(tabs)/more/settings";
@@ -29,6 +30,13 @@ const destinations: Array<{
     icon: "shopping-bag",
     accent: "primary",
     path: "/(tabs)/more/orders",
+  },
+  {
+    title: "محادثات WhatsApp",
+    description: "متابعة الرسائل الفردية والرد عليها يدويًا",
+    icon: "message-circle",
+    accent: "blue",
+    path: "/(tabs)/more/whatsapp-inbox",
   },
   {
     title: "حسابات النشر",

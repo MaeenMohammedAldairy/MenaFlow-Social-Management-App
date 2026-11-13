@@ -4,9 +4,22 @@ import {
   buildMetaOrderDataPrompt,
   formatMetaOrderDraftReply,
   formatMetaOrderConfirmationMessage,
+  isMetaOrderAffirmative,
+  isMetaOrderConfirmation,
   normalizeMetaOrderDeliveryPreference,
   parseMetaOrderLabeledValue,
 } from "./meta-order-messages.ts";
+
+test("starts order intake from an affirmative reply only after an order offer", () => {
+  const offer = "نعم، مصحف القلم متوفر. هل تود إتمام الطلب؟";
+
+  assert.equal(isMetaOrderAffirmative("نعم"), true);
+  assert.equal(isMetaOrderAffirmative("تمام"), true);
+  assert.equal(isMetaOrderConfirmation("نعم", offer), true);
+  assert.equal(isMetaOrderConfirmation("تمام، أريد", offer), true);
+  assert.equal(isMetaOrderConfirmation("نعم", "السعر 6500 ريال."), false);
+  assert.equal(isMetaOrderConfirmation("اشتي اطلب المصحف", null), false);
+});
 
 test("order data prompt requests one organized message and leaves delivery preference optional", () => {
   const prompt = buildMetaOrderDataPrompt({

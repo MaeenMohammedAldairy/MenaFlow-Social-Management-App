@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: 12 },
   labels: { flex: 1, gap: 3 },
   actor: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  meta: { fontSize: 10, textAlign: "right" },
+  meta: { fontSize: 12, textAlign: "right" },
   incomingBubble: {
     alignSelf: "flex-end",
     width: "100%",
@@ -291,7 +291,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
   },
-  replyDate: { marginLeft: "auto", fontSize: 10 },
+  replyDate: { marginLeft: "auto", fontSize: 12 },
   publicReplyHint: { fontSize: 12, textAlign: "left" },
   confirmRetryButton: {
     borderRadius: 10,

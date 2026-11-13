@@ -3,7 +3,10 @@ import test from "node:test";
 import {
   decryptMetaToken,
   decryptMetaTokenForRotation,
+  decryptSensitiveValue,
+  decryptSensitiveValueForRotation,
   encryptMetaToken,
+  encryptSensitiveValue,
 } from "./meta-token-crypto.ts";
 
 const originalEncryptionKey = process.env.ENCRYPTION_KEY;
@@ -20,6 +23,24 @@ test("encrypts and decrypts tokens in the existing IV/tag/ciphertext format", ()
     } else {
       process.env.ENCRYPTION_KEY = originalEncryptionKey;
     }
+  }
+});
+
+test("encrypts arbitrary private values with the shared authenticated format", () => {
+  const configuredKey = process.env.ENCRYPTION_KEY;
+  try {
+    process.env.ENCRYPTION_KEY = "test-encryption-key";
+    const encrypted = encryptSensitiveValue("private WhatsApp text");
+    assert.match(encrypted, /^[\w-]+:[\w-]+:[\w-]+$/);
+    assert.notEqual(encrypted, "private WhatsApp text");
+    assert.equal(decryptSensitiveValue(encrypted), "private WhatsApp text");
+    assert.equal(
+      decryptSensitiveValueForRotation(encrypted).value,
+      "private WhatsApp text",
+    );
+  } finally {
+    if (configuredKey === undefined) delete process.env.ENCRYPTION_KEY;
+    else process.env.ENCRYPTION_KEY = configuredKey;
   }
 });
 

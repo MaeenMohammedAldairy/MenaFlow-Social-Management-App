@@ -941,6 +941,7 @@ test("builds distinct public-comment and private-message policies", () => {
   assert.match(comment, /مثل «أريد الطلب» أو «اشتي أطلب»/);
   assert.match(comment, /لا توحِ بأن الطلب أُنشئ أو تأكد/);
   assert.match(comment, /لا تقل إنك بدأت محادثة خاصة/);
+  assert.match(message, /لا تدّع أن الطلب أو بيانات العميل سُجلت أو تأكدت/);
   assert.match(
     comment,
     /لا تعتبر تاريخ verifiedAt وحده دليلًا على أن البيانات قديمة/,

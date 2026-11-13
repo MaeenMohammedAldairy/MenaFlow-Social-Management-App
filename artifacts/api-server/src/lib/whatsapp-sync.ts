@@ -3,10 +3,13 @@ import {
   asc,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   isNull,
   isNotNull,
+  lte,
+  lt,
   or,
   sql,
 } from "drizzle-orm";
@@ -14,6 +17,7 @@ import {
   db,
   menaWhatsAppConnections,
   menaWhatsAppAutoReplyEvents,
+  menaWhatsAppDirectMessages,
   menaContentJobs,
   menaWhatsAppGroups,
   menaWhatsAppGroupJids,
@@ -42,6 +46,7 @@ import {
   normalizeRemoteJid,
 } from "../lib/whatsapp-message-scope";
 import { isWhatsAppOptOutMessage } from "../lib/whatsapp-opt-out";
+import { processWhatsAppOrderIntake } from "../lib/whatsapp-order-intake";
 import {
   resolveWhatsAppAlbumSource,
   whatsappAlbumId,
@@ -73,14 +78,25 @@ import {
 import {
   matchMetaAutoReplyProduct,
   formatMetaAutoReplyPrice,
+  retryMetaAutoReplyGeneration,
 } from "../lib/meta-auto-reply";
 import { isDirectIncomingWhatsAppMessage } from "../lib/whatsapp-auto-reply-policy";
+import {
+  buildWhatsAppDirectMessageContext,
+  decryptWhatsAppDirectMessageValue,
+  encryptWhatsAppDirectMessageValue,
+  normalizeWhatsAppDirectMessageText,
+  redactWhatsAppPrivateData,
+  whatsappDirectConversationKeys,
+  whatsappDirectMessageExpiry,
+} from "../lib/whatsapp-direct-messages";
 import { asRecord, queryString } from "./value-utils.ts";
 import { resolveMessageSenderId } from "../lib/whatsapp-marketing-safety";
 
 export const WHATSAPP_SYNC_STALE_THRESHOLD_MS = 10 * 60 * 1000;
 export const DEFAULT_WHATSAPP_HISTORY_IMPORT_LIMIT = 500;
 export const MAX_WHATSAPP_HISTORY_IMPORT_LIMIT = 10_000;
+const whatsappAutoReplyLeaseMs = 60_000;
 
 const activeWhatsAppSyncCounts = new Map<string, number>();
 
@@ -591,7 +607,7 @@ async function persistImportedMessage(
           mediaGroupId: menaWhatsAppMessages.mediaGroupId,
           mediaGroupExpectedCount: menaWhatsAppMessages.mediaGroupExpectedCount,
         })
-        .from(menaWhatsAppMessages)
+        .from(menaWhatsAppDirectMessages)
         .where(
           and(
             eq(menaWhatsAppMessages.workspaceId, workspaceId),
@@ -1217,9 +1233,12 @@ export async function syncGroupHistory(
 
 async function processWhatsAppAutoReplyAsync(input: {
   claimId: string;
+  attempts: number;
   connection: typeof menaWhatsAppConnections.$inferSelect;
   instanceName: string;
   remoteJid: string;
+  remoteJidHash: string;
+  remoteMessageId: string;
   customerMessage: string;
 }): Promise<void> {
   let sendStarted = false;
@@ -1243,6 +1262,76 @@ async function processWhatsAppAutoReplyAsync(input: {
         .set({
           status: "failed",
           errorCode: "AUTO_REPLY_DISABLED",
+          leaseExpiresAt: null,
+          completedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+            eq(
+              menaWhatsAppAutoReplyEvents.workspaceId,
+              input.connection.workspaceId,
+            ),
+          ),
+        );
+      return;
+    }
+
+    const orderIntake = await processWhatsAppOrderIntake({
+      ownerId: input.connection.ownerId,
+      workspaceId: input.connection.workspaceId,
+      instanceName: input.instanceName,
+      remoteJid: input.remoteJid,
+      remoteJidHash: input.remoteJidHash,
+      providerMessageId: input.remoteMessageId,
+      text: input.customerMessage,
+    });
+    if (orderIntake.kind !== "ignored") {
+      await db
+        .update(menaWhatsAppAutoReplyEvents)
+        .set({
+          status: "sending",
+          leaseExpiresAt: new Date(Date.now() + whatsappAutoReplyLeaseMs),
+        })
+        .where(
+          and(
+            eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+            eq(menaWhatsAppAutoReplyEvents.status, "processing"),
+          ),
+        );
+      sendStarted = true;
+      const sentAt = new Date();
+      const replyMessageId = await sendWhatsAppAutoReply(
+        input.instanceName,
+        input.remoteJid,
+        orderIntake.text,
+      );
+      await db.insert(menaWhatsAppDirectMessages).values({
+        id: randomUUID(),
+        ownerId: input.connection.ownerId,
+        workspaceId: input.connection.workspaceId,
+        instanceName: input.instanceName,
+        remoteJidHash: whatsappDirectConversationKeys(
+          input.connection.workspaceId,
+          input.instanceName,
+          input.remoteJid,
+        )[0]!,
+        encryptedRemoteJid: encryptWhatsAppDirectMessageValue(input.remoteJid),
+        providerMessageId: replyMessageId,
+        direction: "outbound",
+        status: "sent",
+        encryptedTextBody: encryptWhatsAppDirectMessageValue(
+          normalizeWhatsAppDirectMessageText(orderIntake.text),
+        ),
+        messageTimestamp: sentAt,
+        expiresAt: whatsappDirectMessageExpiry(sentAt),
+      }).onConflictDoNothing();
+      await db
+        .update(menaWhatsAppAutoReplyEvents)
+        .set({
+          status: "sent",
+          replyMessageId,
+          leaseExpiresAt: null,
           completedAt: new Date(),
         })
         .where(
@@ -1259,35 +1348,39 @@ async function processWhatsAppAutoReplyAsync(input: {
 
     let contextTurns: Array<{ role: "customer" | "business"; text: string }> = [];
     try {
+      const conversationKeys = whatsappDirectConversationKeys(
+        input.connection.workspaceId,
+        input.instanceName,
+        input.remoteJid,
+      );
       const recentMessages = await db
         .select({
-          textBody: menaWhatsAppMessages.textBody,
-          caption: menaWhatsAppMessages.caption,
-          source: menaWhatsAppMessages.source,
-          messageTimestamp: menaWhatsAppMessages.messageTimestamp,
-          createdAt: menaWhatsAppMessages.createdAt,
+          direction: menaWhatsAppDirectMessages.direction,
+          encryptedTextBody: menaWhatsAppDirectMessages.encryptedTextBody,
         })
-        .from(menaWhatsAppMessages)
+        .from(menaWhatsAppDirectMessages)
         .where(
           and(
-            eq(menaWhatsAppMessages.workspaceId, input.connection.workspaceId),
-            eq(menaWhatsAppMessages.instanceName, input.instanceName),
-            eq(menaWhatsAppMessages.groupJid, input.remoteJid),
+            eq(menaWhatsAppDirectMessages.workspaceId, input.connection.workspaceId),
+            eq(menaWhatsAppDirectMessages.instanceName, input.instanceName),
+            inArray(menaWhatsAppDirectMessages.remoteJidHash, conversationKeys),
+            gt(menaWhatsAppDirectMessages.expiresAt, new Date()),
           ),
         )
-        .orderBy(desc(sql`coalesce(${menaWhatsAppMessages.messageTimestamp}, ${menaWhatsAppMessages.createdAt})`))
+        .orderBy(
+          desc(menaWhatsAppDirectMessages.messageTimestamp),
+          desc(menaWhatsAppDirectMessages.createdAt),
+        )
         .limit(10);
 
-      contextTurns = recentMessages
-        .reverse()
-        .map((msg) => {
-          const text = (msg.textBody || msg.caption || "").trim();
-          return {
-            role: (msg.source === "reply" || msg.source === "campaign" ? "business" : "customer") as "customer" | "business",
-            text,
-          };
-        })
-        .filter((turn) => turn.text.length > 0);
+      contextTurns = buildWhatsAppDirectMessageContext(
+        recentMessages.reverse().map((message) => ({
+          direction: message.direction,
+          textBody: decryptWhatsAppDirectMessageValue(
+            message.encryptedTextBody,
+          ),
+        })),
+      );
     } catch (contextError) {
       console.warn("Failed to fetch previous WhatsApp conversation history for auto reply", contextError);
     }
@@ -1330,7 +1423,7 @@ async function processWhatsAppAutoReplyAsync(input: {
 
     const reply = await generateWhatsAppAutoReply(
       input.connection.workspaceId,
-      input.customerMessage,
+      redactWhatsAppPrivateData(input.customerMessage),
       {
         language:
           latestConnection.autoReplyLanguage === "match_customer"
@@ -1343,22 +1436,60 @@ async function processWhatsAppAutoReplyAsync(input: {
             : "friendly_professional",
         instructions: latestConnection.autoReplyInstructions ?? "",
       },
-      contextTurns,
+      contextTurns.map((turn) => ({
+        ...turn,
+        text: redactWhatsAppPrivateData(turn.text),
+      })),
       matchingProduct,
     );
 
+    await db
+      .update(menaWhatsAppAutoReplyEvents)
+      .set({
+        status: "sending",
+        leaseExpiresAt: new Date(Date.now() + whatsappAutoReplyLeaseMs),
+      })
+      .where(
+        and(
+          eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+          eq(menaWhatsAppAutoReplyEvents.status, "processing"),
+        ),
+      );
     sendStarted = true;
     const replyMessageId = await sendWhatsAppAutoReply(
       input.instanceName,
       input.remoteJid,
       reply,
     );
+    const sentAt = new Date();
+    const conversationKey = whatsappDirectConversationKeys(
+      input.connection.workspaceId,
+      input.instanceName,
+      input.remoteJid,
+    )[0]!;
+    await db.insert(menaWhatsAppDirectMessages).values({
+      id: randomUUID(),
+      ownerId: input.connection.ownerId,
+      workspaceId: input.connection.workspaceId,
+      instanceName: input.instanceName,
+      remoteJidHash: conversationKey,
+      encryptedRemoteJid: encryptWhatsAppDirectMessageValue(input.remoteJid),
+      providerMessageId: replyMessageId,
+      direction: "outbound",
+      status: "sent",
+      encryptedTextBody: encryptWhatsAppDirectMessageValue(
+        normalizeWhatsAppDirectMessageText(reply),
+      ),
+      messageTimestamp: sentAt,
+      expiresAt: whatsappDirectMessageExpiry(sentAt),
+    }).onConflictDoNothing();
 
     await db
       .update(menaWhatsAppAutoReplyEvents)
       .set({
         status: "sent",
         replyMessageId,
+        leaseExpiresAt: null,
         completedAt: new Date(),
       })
       .where(
@@ -1382,12 +1513,18 @@ async function processWhatsAppAutoReplyAsync(input: {
       instanceName: input.instanceName,
       errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
     });
+    const retry =
+      !sendStarted && retryMetaAutoReplyGeneration(error, input.attempts);
     await db
       .update(menaWhatsAppAutoReplyEvents)
       .set({
-        status: sendStarted ? "unknown" : "failed",
+        status: sendStarted ? "unknown" : retry ? "queued" : "failed",
         errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
-        completedAt: new Date(),
+        nextRunAt: retry
+          ? new Date(Date.now() + Math.min(input.attempts * 10_000, 30_000))
+          : new Date(),
+        leaseExpiresAt: null,
+        completedAt: sendStarted || !retry ? new Date() : null,
       })
       .where(
         and(
@@ -1399,6 +1536,106 @@ async function processWhatsAppAutoReplyAsync(input: {
         ),
       );
   }
+}
+
+async function claimNextWhatsAppAutoReplyEvent() {
+  const now = new Date();
+  return db.transaction(async (transaction) => {
+    const [candidate] = await transaction
+      .select()
+      .from(menaWhatsAppAutoReplyEvents)
+      .where(
+        or(
+          and(
+            eq(menaWhatsAppAutoReplyEvents.status, "queued"),
+            lte(menaWhatsAppAutoReplyEvents.nextRunAt, now),
+          ),
+          and(
+            eq(menaWhatsAppAutoReplyEvents.status, "processing"),
+            lt(menaWhatsAppAutoReplyEvents.leaseExpiresAt, now),
+          ),
+        ),
+      )
+      .orderBy(asc(menaWhatsAppAutoReplyEvents.nextRunAt))
+      .limit(1)
+      .for("update", { skipLocked: true });
+    if (!candidate || candidate.attempts >= 3) return null;
+    const [claimed] = await transaction
+      .update(menaWhatsAppAutoReplyEvents)
+      .set({
+        status: "processing",
+        attempts: sql`${menaWhatsAppAutoReplyEvents.attempts} + 1`,
+        leaseExpiresAt: new Date(now.getTime() + whatsappAutoReplyLeaseMs),
+      })
+      .where(eq(menaWhatsAppAutoReplyEvents.id, candidate.id))
+      .returning();
+    return claimed ?? null;
+  });
+}
+
+export async function processWhatsAppAutoReplyQueue(limit = 5): Promise<number> {
+  let processed = 0;
+  for (let count = 0; count < limit; count += 1) {
+    const event = await claimNextWhatsAppAutoReplyEvent();
+    if (!event) break;
+    const [[connection], [message]] = await Promise.all([
+      db
+        .select()
+        .from(menaWhatsAppConnections)
+        .where(
+          and(
+            eq(menaWhatsAppConnections.workspaceId, event.workspaceId),
+            eq(menaWhatsAppConnections.instanceName, event.instanceName),
+          ),
+        )
+        .limit(1),
+      db
+        .select()
+        .from(menaWhatsAppDirectMessages)
+        .where(
+          and(
+            eq(menaWhatsAppDirectMessages.workspaceId, event.workspaceId),
+            eq(menaWhatsAppDirectMessages.instanceName, event.instanceName),
+            eq(menaWhatsAppDirectMessages.providerMessageId, event.remoteMessageId),
+            eq(menaWhatsAppDirectMessages.direction, "inbound"),
+          ),
+        )
+        .limit(1),
+    ]);
+    if (!connection || !message) {
+      await db
+        .update(menaWhatsAppAutoReplyEvents)
+        .set({
+          status: "failed",
+          errorCode: !connection
+            ? "WHATSAPP_CONNECTION_NOT_FOUND"
+            : "WHATSAPP_DIRECT_MESSAGE_NOT_FOUND",
+          leaseExpiresAt: null,
+          completedAt: new Date(),
+        })
+        .where(eq(menaWhatsAppAutoReplyEvents.id, event.id));
+      processed += 1;
+      continue;
+    }
+    const remoteJid = decryptWhatsAppDirectMessageValue(
+      message.encryptedRemoteJid,
+    );
+    const customerMessage = decryptWhatsAppDirectMessageValue(
+      message.encryptedTextBody,
+    );
+    await processWhatsAppAutoReplyAsync({
+      claimId: event.id,
+      attempts: event.attempts,
+      connection,
+      instanceName: event.instanceName,
+      remoteJid,
+      remoteJidHash: message.remoteJidHash,
+      remoteMessageId: event.remoteMessageId,
+      customerMessage,
+    });
+    processed += 1;
+  }
+  return processed;
 }
 
 export async function processWebhookEvent(
@@ -1482,6 +1719,50 @@ export async function processWebhookEvent(
     isWhatsAppOptOutMessage(
       extractWhatsAppTextFromMessage(incomingMessageCandidate),
     );
+  const isDirectConversationMessage =
+    eventName === "MESSAGES_UPSERT" &&
+    (isDirectIncoming ||
+      (eventKey?.fromMe === true &&
+        Boolean(eventRemoteJid?.endsWith("@s.whatsapp.net"))));
+  const directMessageId =
+    typeof eventKey?.id === "string"
+      ? eventKey.id
+      : typeof eventPayload.id === "string"
+        ? eventPayload.id
+        : null;
+  let directConversationKey: string | null = null;
+  if (
+    isDirectConversationMessage &&
+    directMessageId &&
+    eventRemoteJid
+  ) {
+    const direction = eventKey?.fromMe === true ? "outbound" : "inbound";
+    const directMessage = asRecord(eventPayload.message) ?? eventPayload;
+    const messageText = extractWhatsAppTextFromMessage(directMessage);
+    const messageTimestamp = new Date();
+    const conversationKey = whatsappDirectConversationKeys(
+      connection.workspaceId,
+      instanceName,
+      eventRemoteJid,
+    )[0]!;
+    directConversationKey = conversationKey;
+    await db.insert(menaWhatsAppDirectMessages).values({
+      id: randomUUID(),
+      ownerId: connection.ownerId,
+      workspaceId: connection.workspaceId,
+      instanceName,
+      remoteJidHash: conversationKey,
+      encryptedRemoteJid: encryptWhatsAppDirectMessageValue(eventRemoteJid),
+      providerMessageId: directMessageId,
+      direction,
+      status: direction === "outbound" ? "sent" : "received",
+      encryptedTextBody: encryptWhatsAppDirectMessageValue(
+        normalizeWhatsAppDirectMessageText(messageText ?? ""),
+      ),
+      messageTimestamp,
+      expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
+    }).onConflictDoNothing();
+  }
   if (
     eventName === "MESSAGES_UPSERT" &&
     connection.autoReplyEnabled &&
@@ -1499,7 +1780,7 @@ export async function processWebhookEvent(
           ? eventPayload.id
           : "";
     if (customerMessage && remoteMessageId) {
-      const [claim] = await db
+      await db
         .insert(menaWhatsAppAutoReplyEvents)
         .values({
           id: randomUUID(),
@@ -1507,20 +1788,10 @@ export async function processWebhookEvent(
           workspaceId: connection.workspaceId,
           instanceName,
           remoteMessageId,
-          status: "processing",
+          status: "queued",
+          nextRunAt: new Date(),
         })
-        .onConflictDoNothing()
-        .returning({ id: menaWhatsAppAutoReplyEvents.id });
-      if (claim) {
-        // Run auto-reply asynchronously in background so webhook response is not blocked
-        void processWhatsAppAutoReplyAsync({
-          claimId: claim.id,
-          connection,
-          instanceName,
-          remoteJid: eventRemoteJid!,
-          customerMessage,
-        });
-      }
+        .onConflictDoNothing();
     }
   }
 

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node -e \"for (const f of ['../../.env', '../../.env2', './.env']) { try { process.loadEnvFile(f); } catch (_) {} }; process.env.NODE_ENV = 'development'; const { spawnSync } = require('node:child_process'); const result = spawnSync(process.execPath, ['./build.mjs'], { stdio: 'inherit', env: process.env }); if (result.error) throw result.error; if (result.status !== 0) process.exit(result.status ?? 1); import('./dist/index.mjs').catch((error) => { console.error(error); process.exit(1); }); import('./dist/worker.mjs').catch((error) => { console.error(error); process.exit(1); });\"",
+    "dev": "node -e \"for (const f of ['../../.env', '../../.env2', './.env']) { try { process.loadEnvFile(f); } catch (_) {} }; process.env.NODE_ENV = 'development'; const { spawnSync } = require('node:child_process'); const result = spawnSync(process.execPath, ['./build.mjs'], { stdio: 'inherit', env: process.env }); if (result.error) throw result.error; if (result.status !== 0) process.exit(result.status ?? 1); import('./dist/index.mjs').catch((error) => { console.error(error); process.exit(1); });\"",
     "migrate-whatsapp-media": "node ./scripts/migrate-whatsapp-media-to-supabase.mjs",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
