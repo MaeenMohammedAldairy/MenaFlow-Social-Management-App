@@ -11,7 +11,10 @@ import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon, type LucideIconName } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
 
-const destinations: Array<{
+const destinationGroups: Array<{
+  title: string;
+  icon: LucideIconName;
+  destinations: Array<{
   title: string;
   description: string;
   icon: LucideIconName;
@@ -19,53 +22,80 @@ const destinations: Array<{
   params?: { view: "publishing" };
   path:
     | "/(tabs)/more/orders"
-    | "/(tabs)/more/whatsapp-inbox"
     | "/(tabs)/more/sources"
     | "/(tabs)/more/reports"
-    | "/(tabs)/more/settings";
+    | "/(tabs)/more/settings"
+    | "/inbox/reply-settings"
+    | "/activities";
+  }>;
 }> = [
   {
-    title: "الطلبات",
-    description: "تسجيل طلبات العملاء ومتابعة تجهيزها",
+    title: "إدارة الأعمال",
     icon: "shopping-bag",
-    accent: "primary",
-    path: "/(tabs)/more/orders",
+    destinations: [
+      {
+        title: "الطلبات",
+        description: "تسجيل طلبات العملاء ومتابعة تجهيزها",
+        icon: "shopping-bag",
+        accent: "primary",
+        path: "/(tabs)/more/orders",
+      },
+      {
+        title: "التقارير",
+        description: "مراجعة حالات المحتوى وتوزيعه على القنوات",
+        icon: "bar-chart-2",
+        accent: "blue",
+        path: "/(tabs)/more/reports",
+      },
+      {
+        title: "سجل الأنشطة",
+        description: "عرض الرسائل والتعليقات والمنشورات والمنتجات الأخيرة",
+        icon: "clock",
+        accent: "blue",
+        path: "/activities",
+      },
+    ],
   },
   {
-    title: "محادثات WhatsApp",
-    description: "متابعة الرسائل الفردية والرد عليها يدويًا",
-    icon: "message-circle",
-    accent: "blue",
-    path: "/(tabs)/more/whatsapp-inbox",
-  },
-  {
-    title: "حسابات النشر",
-    description: "إدارة حسابات فيسبوك وإنستغرام وواتساب المرتبطة بالمساحة",
+    title: "الاتصالات والمصادر",
     icon: "share-2",
-    accent: "primary",
-    path: "/(tabs)/more/sources",
-    params: { view: "publishing" },
+    destinations: [
+      {
+        title: "حسابات النشر",
+        description: "ربط وإدارة حسابات النشر والقنوات المرتبطة بالمساحة",
+        icon: "share-2",
+        accent: "primary",
+        path: "/(tabs)/more/sources",
+        params: { view: "publishing" },
+      },
+      {
+        title: "مصادر البيانات",
+        description: "مزامنة رسائل واتساب واستيراد بيانات المنتجات من ملفات CSV",
+        icon: "share-2",
+        accent: "blue",
+        path: "/(tabs)/more/sources",
+      },
+      {
+        title: "إعدادات الرد الآلي",
+        description: "إدارة الردود على رسائل وتعليقات القنوات المرتبطة",
+        icon: "message-square",
+        accent: "primary",
+        path: "/inbox/reply-settings",
+      },
+    ],
   },
   {
-    title: "مصادر البيانات",
-    description: "مزامنة رسائل واتساب واستيراد بيانات المنتجات من ملفات CSV",
-    icon: "share-2",
-    accent: "blue",
-    path: "/(tabs)/more/sources",
-  },
-  {
-    title: "التقارير",
-    description: "مراجعة أداء المحتوى والمنشورات",
-    icon: "bar-chart-2",
-    accent: "blue",
-    path: "/(tabs)/more/reports",
-  },
-  {
-    title: "الإعدادات",
-    description: "تفضيلات التطبيق والخصوصية والحساب",
-    icon: "settings",
-    accent: "purple",
-    path: "/(tabs)/more/settings",
+    title: "الحساب والتفضيلات",
+    icon: "user",
+    destinations: [
+      {
+        title: "الإعدادات",
+        description: "إدارة الحساب ومساحة العمل والاشتراك والتفضيلات",
+        icon: "settings",
+        accent: "purple",
+        path: "/(tabs)/more/settings",
+      },
+    ],
   },
 ];
 
@@ -92,101 +122,108 @@ export default function MoreScreen() {
     <Page>
       <BrandHeader />
       <PageTitle title="المزيد" subtitle="إدارة التطبيق ومصادر بياناتك وحسابات النشر." />
-      <Panel style={styles.managementPanel}>
-        <View style={styles.sectionHeading}>
-          <View
-            style={[styles.sectionIcon, { backgroundColor: colors.accent }]}
-          >
-            <Icon name="more-horizontal" size={17} color={colors.primary} />
-          </View>
-          <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-            الإدارة
-          </Text>
-          <View style={[styles.countBadge, { backgroundColor: colors.secondary }]}>
-            <Text style={[styles.countText, { color: colors.foreground }]}>
-              {destinations.length}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.destinations}>
-          {destinations.map((destination, index) => (
-            <Link
-              key={`${destination.title}-${destination.path}`}
-              href={{
-                pathname: destination.path,
-                ...(destination.params ? { params: destination.params } : {}),
-              }}
-              asChild
+      {destinationGroups.map((group) => (
+        <Panel key={group.title} style={styles.managementPanel}>
+          <View style={styles.sectionHeading}>
+            <View
+              style={[styles.sectionIcon, { backgroundColor: colors.accent }]}
             >
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${destination.title}: ${destination.description}`}
-                style={({ pressed }) => StyleSheet.flatten([
-                  styles.destination,
-                  {
-                    backgroundColor: colors.background,
-                    borderColor: colors.border,
-                    opacity: pressed ? 0.78 : 1,
-                  },
-                  index === 0 && styles.destinationFirst,
-                  index === destinations.length - 1 && styles.destinationLast,
-                ])}
+              <Icon name={group.icon} size={17} color={colors.primary} />
+            </View>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+              {group.title}
+            </Text>
+            <View
+              style={[styles.countBadge, { backgroundColor: colors.secondary }]}
+            >
+              <Text style={[styles.countText, { color: colors.foreground }]}>
+                {group.destinations.length}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.destinations}>
+            {group.destinations.map((destination, index) => (
+              <Link
+                key={`${destination.title}-${destination.path}`}
+                href={{
+                  pathname: destination.path,
+                  ...(destination.params ? { params: destination.params } : {}),
+                }}
+                asChild
               >
-                <View pointerEvents="none" style={styles.destinationContent}>
-                  <View
-                    style={[
-                      styles.destinationIcon,
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${destination.title}: ${destination.description}`}
+                  style={({ pressed }) =>
+                    StyleSheet.flatten([
+                      styles.destination,
                       {
-                        backgroundColor:
-                          destination.accent === "blue"
-                            ? colors.blueSoft
-                            : destination.accent === "purple"
-                              ? colors.secondary
-                              : colors.accent,
+                        backgroundColor: colors.background,
+                        borderColor: colors.border,
+                        opacity: pressed ? 0.78 : 1,
                       },
-                    ]}
-                  >
+                      index === 0 && styles.destinationFirst,
+                      index === group.destinations.length - 1 &&
+                        styles.destinationLast,
+                    ])
+                  }
+                >
+                  <View pointerEvents="none" style={styles.destinationContent}>
+                    <View
+                      style={[
+                        styles.destinationIcon,
+                        {
+                          backgroundColor:
+                            destination.accent === "blue"
+                              ? colors.blueSoft
+                              : destination.accent === "purple"
+                                ? colors.secondary
+                                : colors.accent,
+                        },
+                      ]}
+                    >
+                      <Icon
+                        name={destination.icon}
+                        size={18}
+                        color={
+                          destination.accent === "blue"
+                            ? colors.blue
+                            : destination.accent === "purple"
+                              ? colors.foreground
+                              : colors.primary
+                        }
+                      />
+                    </View>
+                    <View style={styles.destinationCopy}>
+                      <Text
+                        style={[
+                          styles.destinationTitle,
+                          { color: colors.foreground },
+                        ]}
+                      >
+                        {destination.title}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.destinationDescription,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        {destination.description}
+                      </Text>
+                    </View>
                     <Icon
-                      name={destination.icon}
+                      name="chevron-left"
                       size={18}
-                      color={
-                        destination.accent === "blue"
-                          ? colors.blue
-                          : destination.accent === "purple"
-                            ? colors.foreground
-                            : colors.primary
-                      }
+                      color={colors.primary}
                     />
                   </View>
-                  <View style={styles.destinationCopy}>
-                    <Text
-                      style={[
-                        styles.destinationTitle,
-                        { color: colors.foreground },
-                      ]}
-                    >
-                      {destination.title}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.destinationDescription,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      {destination.description}
-                    </Text>
-                  </View>
-                  <Icon
-                    name="chevron-left"
-                    size={18}
-                    color={colors.primary}
-                  />
-                </View>
-              </Pressable>
-            </Link>
-          ))}
-        </View>
-      </Panel>
+                </Pressable>
+              </Link>
+            ))}
+          </View>
+        </Panel>
+      ))}
     </Page>
   );
 }

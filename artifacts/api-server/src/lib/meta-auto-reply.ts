@@ -1004,13 +1004,6 @@ export function finalizeMetaAutoReplyText(
   return normalized;
 }
 
-export function appendMetaProductImagesSentConfirmation(reply: string): string {
-  const normalized = reply.trim();
-  return normalized
-    ? `${normalized.replace(/[.!؟?]+$/u, "")}. أرفقت الصور.`
-    : "أرفقت الصور.";
-}
-
 export function formatMetaAutoReplyPrice(price: string | null): string | null {
   if (price === null) return null;
   const [integer, fraction] = price.split(".");

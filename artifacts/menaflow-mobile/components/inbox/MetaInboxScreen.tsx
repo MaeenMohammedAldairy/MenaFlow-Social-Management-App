@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Pressable,
   RefreshControl,
@@ -6,7 +6,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
@@ -22,6 +22,7 @@ import {
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
+import { InboxPlatformTabs, type InboxPlatform } from "@/components/inbox/InboxPlatformTabs";
 import { formatArabicDateTime } from "@/lib/formatting";
 import {
   getMetaInbox,
@@ -30,16 +31,17 @@ import {
   type MetaInboxKind,
   type MetaInboxPlatform,
 } from "@/lib/meta-inbox-api";
-import { MetaAutoReplySettingsPanel } from "./MetaAutoReplySettingsPanel";
+import {
+  getWhatsAppDirectConversations,
+  type WhatsAppDirectConversation,
+} from "@/lib/whatsapp-direct-inbox-api";
 
-type InboxFilter = "all" | MetaInboxPlatform | MetaInboxKind;
+type InboxFilter = "all" | MetaInboxKind;
 
 const filters: Array<{ key: InboxFilter; label: string }> = [
   { key: "all", label: "الكل" },
   { key: "message", label: "الرسائل" },
   { key: "comment", label: "التعليقات" },
-  { key: "facebook", label: "فيسبوك" },
-  { key: "instagram", label: "إنستغرام" },
 ];
 
 type InboxGroup = {
@@ -49,6 +51,15 @@ type InboxGroup = {
   items: MetaInboxItem[];
   latestAt: number;
 };
+
+type InboxListRow =
+  | { kind: "meta"; key: string; group: InboxGroup; latestAt: number }
+  | {
+      kind: "whatsapp";
+      key: string;
+      conversation: WhatsAppDirectConversation;
+      latestAt: number;
+    };
 
 function groupInboxItems(items: MetaInboxItem[]): InboxGroup[] {
   const groups = new Map<string, InboxGroup>();
@@ -112,7 +123,17 @@ function AuthenticatedMetaInbox() {
 
 function MetaInboxContent({ userId }: { userId: string | null }) {
   const colors = useColors();
+  const { platform: routePlatform } = useLocalSearchParams<{ platform?: string }>();
+  const initialPlatform: Exclude<InboxPlatform, "whatsapp"> =
+    routePlatform === "facebook" || routePlatform === "instagram"
+      ? routePlatform
+      : "all";
+  const [platform, setPlatform] = useState<Exclude<InboxPlatform, "whatsapp">>(initialPlatform);
   const [filter, setFilter] = useState<InboxFilter>("all");
+  useEffect(() => {
+    setPlatform(initialPlatform);
+    setFilter("all");
+  }, [initialPlatform]);
   const [search, setSearch] = useState("");
   const [olderPages, setOlderPages] = useState<
     Awaited<ReturnType<typeof getMetaInbox>>[]
@@ -126,6 +147,15 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
   });
+  const whatsappInbox = useQuery({
+    queryKey: ["whatsapp-direct-inbox", userId ?? "local"],
+    queryFn: getWhatsAppDirectConversations,
+    enabled:
+      platform === "all" && (isLocalAuthDisabled || Boolean(userId)),
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
+  const whatsappConversations = whatsappInbox.data?.conversations ?? [];
   const loadedItems = [
     ...(inbox.data?.items ?? []),
     ...olderPages.flatMap((page) => page.items),
@@ -155,11 +185,12 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
     setOlderPages([]);
     setOlderError(null);
     void inbox.refetch();
+    if (platform === "all") void whatsappInbox.refetch();
   };
   const filteredItems =
     loadedItems.filter((item) => {
-      if (filter === "all") return true;
-      return item.platform === filter || item.kind === filter;
+      if (platform !== "all" && item.platform !== platform) return false;
+      return filter === "all" || item.kind === filter;
     }) ?? [];
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const visibleItems = normalizedSearch
@@ -173,18 +204,52 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
       )
     : filteredItems;
   const groups = groupInboxItems(visibleItems);
+  const visibleWhatsAppConversations =
+    platform === "all" && filter !== "comment"
+      ? whatsappConversations.filter((conversation) =>
+          normalizedSearch
+            ? [conversation.customerNumber, conversation.preview].some((value) =>
+                value.toLocaleLowerCase().includes(normalizedSearch),
+              )
+            : true,
+        )
+      : [];
+  const rows: InboxListRow[] = [
+    ...groups.map((group) => ({
+      kind: "meta" as const,
+      key: group.key,
+      group,
+      latestAt: group.latestAt,
+    })),
+    ...visibleWhatsAppConversations.map((conversation) => ({
+      kind: "whatsapp" as const,
+      key: `whatsapp:${conversation.remoteJid}`,
+      conversation,
+      latestAt: Date.parse(conversation.lastMessageAt) || 0,
+    })),
+  ].sort((first, second) => second.latestAt - first.latestAt);
+  const selectPlatform = (nextPlatform: InboxPlatform) => {
+    if (nextPlatform === "whatsapp") {
+      router.push("/inbox/whatsapp");
+      return;
+    }
+    setPlatform(nextPlatform);
+    setFilter("all");
+    router.setParams({ platform: nextPlatform });
+  };
 
   return (
     <Page
       refreshControl={
         <RefreshControl
-          refreshing={inbox.isRefetching}
+          refreshing={inbox.isRefetching || whatsappInbox.isRefetching}
           onRefresh={refreshInbox}
           tintColor={colors.primary}
         />
       }
     >
       <BrandHeader />
+      <InboxPlatformTabs activePlatform={platform} onSelect={selectPlatform} />
       <Panel style={styles.inboxIntro}>
         <View
           style={[
@@ -194,16 +259,21 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
         >
           <Icon name="message-square" size={15} color={colors.primary} />
           <Text style={[styles.inboxEyebrowText, { color: colors.primary }]}>
-            صندوق Meta الموحد
+            المحادثات الواردة
           </Text>
         </View>
         <PageTitle
-          title="الرسائل والتعليقات"
-          subtitle="تابع الرسائل والتعليقات الواردة من حسابات Meta ورد عليها من مكان واحد."
+          title="المحادثات"
+          subtitle="تابع رسائل وتعليقات منصاتك من مكان واحد."
         />
       </Panel>
 
-      <MetaAutoReplySettingsPanel userId={userId} />
+      <ActionButton
+        label="إعدادات الرد الآلي"
+        icon="settings"
+        secondary
+        onPress={() => router.push("/inbox/reply-settings")}
+      />
 
       <Panel style={styles.inboxToolbar}>
         <View style={styles.toolbarHeading}>
@@ -220,7 +290,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
               المحادثات الواردة
             </Text>
           </View>
-          {inbox.data ? (
+          {inbox.data || whatsappInbox.data ? (
             <View
               style={[
                 styles.totalBadge,
@@ -233,7 +303,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                   { color: colors.foreground },
                 ]}
               >
-                {groups.length}
+                {rows.length}
               </Text>
             </View>
           ) : null}
@@ -243,11 +313,14 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
             const selected = filter === option.key;
             const count =
               loadedItems.filter((item) => {
-                if (option.key === "all") return true;
                 return (
-                  item.platform === option.key || item.kind === option.key
+                  (platform === "all" || item.platform === platform) &&
+                  (option.key === "all" || item.kind === option.key)
                 );
-              }).length ?? null;
+              }).length +
+              (platform === "all" && option.key !== "comment"
+                ? whatsappConversations.length
+                : 0);
             return (
               <Pressable
                 key={option.key}
@@ -349,49 +422,122 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
             />
           </Panel>
         ) : null}
+        {platform === "all" && whatsappInbox.isError ? (
+          <View style={{ gap: 8 }}>
+            <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
+              تعذر تحميل محادثات WhatsApp: {whatsappInbox.error instanceof Error
+                ? whatsappInbox.error.message
+                : "تحقق من اتصالك ثم أعد المحاولة."}
+            </Text>
+            <ActionButton
+              label={whatsappInbox.isFetching ? "جارٍ التحقق..." : "إعادة تحميل WhatsApp"}
+              icon={whatsappInbox.isFetching ? "clock" : "refresh-cw"}
+              disabled={whatsappInbox.isFetching}
+              onPress={() => void whatsappInbox.refetch()}
+            />
+          </View>
+        ) : null}
         <View style={styles.toolbarFooter}>
           {inbox.data?.webhook.lastEventAt ? (
             <Text style={[styles.lastEvent, { color: colors.mutedForeground }]}>
               {`آخر نشاط: ${formatArabicDateTime(inbox.data.webhook.lastEventAt) ?? "غير محدد"}`}
             </Text>
           ) : null}
-          {inbox.data ? (
+          {inbox.data || whatsappInbox.data ? (
             <Text
               style={[
                 styles.resultCount,
                 { color: colors.mutedForeground },
               ]}
             >
-              {visibleItems.length} عنصر محمّل
+              {rows.length} محادثة محمّلة
             </Text>
           ) : null}
         </View>
       </Panel>
 
-      {inbox.isPending ? (
+      {rows.length === 0 &&
+      (inbox.isPending || (platform === "all" && whatsappInbox.isPending)) ? (
         <Panel style={styles.loadingPanel}>
           <Icon name="clock" size={18} color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
             جارٍ تحميل الرسائل والتعليقات...
           </Text>
         </Panel>
-      ) : inbox.isError ? null : visibleItems.length === 0 ? (
+      ) : rows.length === 0 &&
+      (inbox.isError || (platform === "all" && whatsappInbox.isError)) ? null : rows.length === 0 ? (
         <EmptyState
           icon="message-square"
           title={
             search
               ? "لا توجد نتائج"
-              : "لا توجد رسائل أو تعليقات بعد"
+              : "لا توجد محادثات بعد"
           }
           body={
             search
               ? "جرّب البحث باسم مختلف أو جزء من نص الرسالة."
-              : "ستظهر هنا رسائل وتعليقات الحسابات المتصلة تلقائيًا عند وصولها."
+              : "ستظهر هنا الرسائل والتعليقات الواردة إلى حساباتك المتصلة."
           }
         />
-      ) : visibleItems.length > 0 ? (
+      ) : rows.length > 0 ? (
         <View style={styles.groups}>
-          {groups.map((group) => {
+          {rows.map((row) => {
+            if (row.kind === "whatsapp") {
+              const { conversation } = row;
+              return (
+                <Pressable
+                  key={row.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={`فتح محادثة WhatsApp مع ${conversation.customerNumber}`}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/inbox/whatsapp",
+                      params: { remoteJid: conversation.remoteJid },
+                    })
+                  }
+                  style={[
+                    styles.conversationCard,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  <View
+                    style={[styles.conversationAvatar, { backgroundColor: colors.accent }]}
+                  >
+                    <Icon name="message-circle" size={21} color={colors.primary} />
+                  </View>
+                  <View style={styles.conversationHeading}>
+                    <View style={styles.conversationTopLine}>
+                      <Text
+                        style={[styles.conversationTitle, { color: colors.foreground }]}
+                        numberOfLines={1}
+                      >
+                        {conversation.customerNumber}
+                      </Text>
+                      <Text style={[styles.conversationDate, { color: colors.mutedForeground }]}>
+                        {formatArabicDateTime(conversation.lastMessageAt) ?? "غير محدد"}
+                      </Text>
+                    </View>
+                    <View style={styles.conversationPreviewRow}>
+                      <Icon name="message-circle" size={15} color={colors.mutedForeground} />
+                      <Text
+                        style={[styles.conversationPreview, { color: colors.mutedForeground }]}
+                        numberOfLines={1}
+                      >
+                        {conversation.preview || "رسالة بدون نص"}
+                      </Text>
+                    </View>
+                    <View style={styles.conversationBottomLine}>
+                      <View style={[styles.platformBadge, { backgroundColor: colors.accent }]}>
+                        <Icon name="message-circle" size={14} color={colors.primary} />
+                        <Text style={[styles.platformLabel, { color: colors.primary }]}>WhatsApp</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <Icon name="chevron-left" size={19} color={colors.primary} />
+                </Pressable>
+              );
+            }
+            const { group } = row;
             const latestItem = latestInboxItem(group);
             const messageCount = group.items.filter(
               (item) => item.kind === "message",

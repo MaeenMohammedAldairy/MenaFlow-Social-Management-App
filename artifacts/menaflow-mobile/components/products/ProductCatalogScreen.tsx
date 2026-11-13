@@ -90,7 +90,7 @@ const catalogTabDefinitions: Array<{ id: CatalogTabId; label: string }> = [
   { id: "drafts", label: "المسودات" },
   { id: "active", label: "المفعّلة" },
   { id: "archived", label: "الأرشيف" },
-  { id: "extractions", label: "اقتراحات الاستخراج" },
+  { id: "extractions", label: "الاستخراج والمراجعة" },
 ];
 
 function productPublicationPreview(product: CatalogProduct): string {
@@ -873,7 +873,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           </View>
           <PageTitle
             title="كتالوج المنتجات"
-            subtitle="مصدر معلومات المنتجات المعتمدة للرد على العملاء."
+            subtitle="استخرج المنتجات من الرسائل والمنشورات، وراجع بياناتها ومخزونها قبل نشرها أو استخدامها في الردود."
             back={{
               href:
                 returnTo === "settings"

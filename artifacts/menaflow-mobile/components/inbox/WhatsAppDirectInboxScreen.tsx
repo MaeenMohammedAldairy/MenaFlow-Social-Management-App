@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Pressable,
   RefreshControl,
@@ -6,6 +6,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
@@ -14,6 +15,7 @@ import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, BrandHeader, EmptyState, Page, PageTitle, Panel } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { formatArabicDateTime } from "@/lib/formatting";
+import { InboxPlatformTabs } from "@/components/inbox/InboxPlatformTabs";
 import {
   confirmWhatsAppDirectReplyNotSent,
   getWhatsAppDirectConversations,
@@ -42,9 +44,24 @@ function makeRequestId(): string {
 function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const queryClient = useQueryClient();
-  const [selectedRemoteJid, setSelectedRemoteJid] = useState<string | null>(null);
+  const { remoteJid: routeRemoteJid } = useLocalSearchParams<{
+    remoteJid?: string | string[];
+  }>();
+  const initialRemoteJid = Array.isArray(routeRemoteJid)
+    ? routeRemoteJid[0]
+    : routeRemoteJid;
+  const [selectedRemoteJid, setSelectedRemoteJid] = useState<string | null>(
+    initialRemoteJid ?? null,
+  );
   const [draft, setDraft] = useState("");
   const [requestId, setRequestId] = useState<string | null>(null);
+  useEffect(() => {
+    if (initialRemoteJid) {
+      setSelectedRemoteJid(initialRemoteJid);
+      setDraft("");
+      setRequestId(null);
+    }
+  }, [initialRemoteJid]);
   const inboxKey = ["whatsapp-direct-inbox", userId ?? "local"] as const;
   const conversations = useQuery({
     queryKey: inboxKey,
@@ -139,10 +156,26 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
       }
     >
       <BrandHeader />
+      <InboxPlatformTabs
+        activePlatform="whatsapp"
+        onSelect={(platform) => {
+          if (platform === "whatsapp") return;
+          router.replace({
+            pathname: "/(tabs)/inbox",
+            params: { platform },
+          });
+        }}
+      />
       <PageTitle
         title="رسائل WhatsApp الخاصة"
         subtitle="تابع المحادثات الفردية ورد يدويًا عند الحاجة."
-        back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
+        back={{ href: "/(tabs)/inbox", label: "العودة إلى المحادثات" }}
+      />
+      <ActionButton
+        label="إعدادات الرد الآلي"
+        icon="settings"
+        secondary
+        onPress={() => router.push("/inbox/reply-settings")}
       />
 
       {selectedRemoteJid ? (
@@ -153,6 +186,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
             secondary
             onPress={() => {
               setSelectedRemoteJid(null);
+              router.setParams({ remoteJid: undefined });
               setDraft("");
               setRequestId(null);
             }}

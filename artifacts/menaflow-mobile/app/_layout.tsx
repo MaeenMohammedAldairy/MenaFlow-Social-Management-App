@@ -191,6 +191,8 @@ function AppNavigator({ isSignedIn }: { isSignedIn: boolean }) {
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
         <Stack.Screen name="connect-accounts" options={{ headerShown: false }} />
         <Stack.Screen name="whatsapp-setup" options={{ headerShown: false }} />
+        <Stack.Screen name="publishing-settings" options={{ headerShown: false }} />
+        <Stack.Screen name="inbox/reply-settings" options={{ headerShown: false }} />
         <Stack.Screen
           name="inbox/[conversationId]"
           options={{ headerShown: false }}

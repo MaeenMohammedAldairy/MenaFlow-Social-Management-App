@@ -1,12 +1,9 @@
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
-  Switch,
   TextInput,
   View,
 } from "react-native";
@@ -22,6 +19,7 @@ import {
   type PostStatus,
 } from "@/context/StudioContext";
 import {
+  ActionButton,
   BrandHeader,
   EmptyState,
   Page,
@@ -98,12 +96,9 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     refreshPosts,
     syncing,
     autoPublishSettings,
-    updateAutoPublishSettings,
   } = useStudio();
   const [filter, setFilter] = useState<PostStatus | "all">("all");
   const [autoPublish, setAutoPublish] = useState(autoPublishSettings.enabled);
-  const [autoPublishSettingsExpanded, setAutoPublishSettingsExpanded] =
-    useState(false);
   const [autoPublishChannels, setAutoPublishChannels] = useState<Channel[]>(
     autoPublishSettings.channels,
   );
@@ -126,13 +121,6 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
   const [connectionLoadError, setConnectionLoadError] = useState<string | null>(
     null,
   );
-  const [autoPublishError, setAutoPublishError] = useState<string | null>(null);
-  const [autoPublishNotice, setAutoPublishNotice] = useState<string | null>(
-    null,
-  );
-  const [autoPublishConfirmationVisible, setAutoPublishConfirmationVisible] =
-    useState(false);
-  const [autoPublishSaving, setAutoPublishSaving] = useState(false);
   const mediaPreviewUrls = useWhatsAppMediaPreviewRefresh(posts);
   const publishingWorkflow = useContentPublishingWorkflow({
     autoPublish,
@@ -306,50 +294,6 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     setRefreshing(false);
   };
 
-  const saveAutoPublish = async (enabled: boolean, channels: Channel[]) => {
-    try {
-      const linkedChannels = channels.filter(
-        (channel): channel is Extract<Channel, "facebook" | "instagram"> =>
-          channel !== "whatsapp" && connectedChannels.includes(channel),
-      );
-      if (enabled && linkedChannels.length === 0) {
-        setAutoPublishError(
-          "اربط فيسبوك أو إنستغرام أولاً ثم اختر منصة للنشر التلقائي.",
-        );
-        return null;
-      }
-      const saved = await updateAutoPublishSettings(enabled, linkedChannels);
-      setAutoPublishError(null);
-      return saved;
-    } catch (error) {
-      setAutoPublishError(
-        error instanceof Error
-          ? error.message
-          : "تعذّر حفظ إعدادات النشر التلقائي على الخادم.",
-      );
-      return null;
-    }
-  };
-
-  const toggleAutoChannel = (channel: "facebook" | "instagram") => {
-    if (!connectedChannels.includes(channel)) return;
-    const channels = autoPublishChannels.includes(channel)
-      ? autoPublishChannels.filter((item) => item !== channel)
-      : [...autoPublishChannels, channel];
-    if (autoPublish && channels.length === 0) {
-      Alert.alert(
-        "اختر منصة",
-        "يجب اختيار فيسبوك أو إنستغرام عند تفعيل النشر التلقائي.",
-      );
-      return;
-    }
-    const previous = autoPublishChannels;
-    setAutoPublishChannels(channels);
-    void saveAutoPublish(autoPublish, channels).then((saved) => {
-      if (!saved) setAutoPublishChannels(previous);
-    });
-  };
-
   const onEdit = (post: Post) => {
     setEditingPostId(post.id);
     setEditingBody(post.body);
@@ -367,44 +311,6 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
       setDateFilter(routeDate);
     }
   }, [routeDate]);
-
-  const onAutoPublishChange = async (enabled: boolean) => {
-    if (enabled && autoPublishChannels.length === 0) {
-      setAutoPublishError(
-        "اختر منصة مرتبطة واحدة على الأقل قبل تفعيل النشر التلقائي.",
-      );
-      return;
-    }
-    if (enabled) {
-      setAutoPublishError(null);
-      setAutoPublishNotice(null);
-      setAutoPublishConfirmationVisible(true);
-      return;
-    }
-    await persistAutoPublishChange(enabled);
-  };
-
-  const persistAutoPublishChange = async (enabled: boolean) => {
-    setAutoPublishSaving(true);
-    setAutoPublishError(null);
-    setAutoPublishNotice(null);
-    try {
-      const saved = await saveAutoPublish(enabled, autoPublishChannels);
-      if (saved) {
-        setAutoPublish(enabled);
-        const report = saved.initialPublish;
-        if (enabled && report) {
-          setAutoPublishNotice(
-            report.processed > 0
-              ? `تمت معالجة ${report.processed} منشورًا معتمدًا للنشر التلقائي. نُشر ${report.published} بنجاح، وفشل ${report.failed}.`
-              : "لا توجد منشورات معتمدة للنشر التلقائي الآن.",
-          );
-        }
-      }
-    } finally {
-      setAutoPublishSaving(false);
-    }
-  };
 
   return (
     <Page
@@ -469,198 +375,57 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
       </Panel>
 
       <Panel style={styles.autoPublishPanel}>
-        <View
-          style={[
-            styles.autoPublishHeader,
-            { backgroundColor: colors.background },
-          ]}
-        >
-          <View style={styles.autoPublishTitleGroup}>
-            <View
-              style={[
-                styles.autoPublishIcon,
-                { backgroundColor: colors.accent },
-              ]}
-            >
-              <Icon name="zap" size={17} color={colors.primary} />
-            </View>
-            <View style={styles.autoPublishTitleCopy}>
-              <Text style={[styles.autoLabel, { color: colors.foreground }]}>
-                النشر التلقائي
-              </Text>
-              <Text
-                style={[
-                  styles.autoPublishDescription,
-                  { color: colors.mutedForeground },
-                ]}
-              >
-                {autoPublish
-                  ? `المنشورات المعتمدة تُنشر على ${
-                      autoPublishChannels.map(platformLabel).join(" و") ||
-                      "المنصات المختارة"
-                    }`
-                  : "اختر منصاتك لنشر المحتوى المعتمد تلقائيًا"}
-              </Text>
-            </View>
-          </View>
-          <Switch
-            accessibilityLabel="تفعيل النشر التلقائي"
-            value={autoPublish}
-            disabled={
-              !connectionsLoaded ||
-              connectedChannels.length === 0 ||
-              autoPublishSaving
-            }
-            onValueChange={(value) => void onAutoPublishChange(value)}
-          />
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded: autoPublishSettingsExpanded }}
-          onPress={() =>
-            setAutoPublishSettingsExpanded((expanded) => !expanded)
-          }
-          style={({ pressed }) => [
-            styles.advancedFilterToggle,
-            {
-              borderColor: colors.border,
-              backgroundColor: autoPublishSettingsExpanded
-                ? colors.accent
-                : colors.card,
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Text style={[styles.filterLabel, { color: colors.foreground }]}>
-            {autoPublish
-              ? `مفعّل على ${
-                  autoPublishChannels.map(platformLabel).join(" و") ||
-                  "المنصات المختارة"
-                }`
-              : "إعدادات المنصات والنشر التلقائي"}
-          </Text>
-          <Icon
-            name={autoPublishSettingsExpanded ? "chevron-up" : "chevron-down"}
-            size={16}
-            color={colors.mutedForeground}
-          />
-        </Pressable>
-        {autoPublishSettingsExpanded ? (
-          <>
-            <Text style={[styles.autoLabel, { color: colors.mutedForeground }]}>
-              المنصات المستهدفة
-            </Text>
-            <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-              عند التفعيل، تُنشر المنشورات المعتمدة فقط إلى المنصات المختارة.
-            </Text>
-            <View style={styles.channelChips}>
-              {connectedChannels.map((channel) => {
-                const selected = autoPublishChannels.includes(channel);
-                return (
-                  <Pressable
-                    key={channel}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    onPress={() => toggleAutoChannel(channel)}
-                    style={({ pressed }) => [
-                      styles.filterChip,
-                      {
-                        backgroundColor: selected
-                          ? colors.primary
-                          : colors.secondary,
-                        opacity: pressed ? 0.78 : 1,
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterLabel,
-                        {
-                          color: selected
-                            ? colors.primaryForeground
-                            : colors.mutedForeground,
-                        },
-                      ]}
-                    >
-                      {platformLabel(channel)}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            {!connectionsLoaded ? (
-              <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-                جارٍ التحقق من المنصات المرتبطة…
-              </Text>
-            ) : connectionLoadError ? null : connectedChannels.length === 0 ? (
-              <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-                اربط صفحة فيسبوك أو إنستغرام من صفحة المصادر لتفعيل النشر.
-              </Text>
-            ) : null}
-          </>
-        ) : null}
-        {connectionLoadError ? (
+        <View style={styles.autoPublishTitleGroup}>
           <View
             style={[
-              styles.connectionLoadError,
-              { backgroundColor: colors.secondary },
+              styles.autoPublishIcon,
+              { backgroundColor: colors.accent },
             ]}
           >
+            <Icon name="zap" size={17} color={colors.primary} />
+          </View>
+          <View style={styles.autoPublishTitleCopy}>
+            <Text style={[styles.autoLabel, { color: colors.foreground }]}>
+              النشر التلقائي
+            </Text>
+            <Text
+              style={[
+                styles.autoPublishDescription,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              {autoPublish
+                ? `مفعّل على ${
+                    autoPublishChannels.map(platformLabel).join(" و") ||
+                    "المنصات المختارة"
+                  }`
+                : "متوقف"}
+            </Text>
+          </View>
+        </View>
+        {connectionLoadError ? (
+          <View style={styles.connectionLoadError}>
             <Text
               accessibilityRole="alert"
               style={[styles.intro, { color: colors.destructive }]}
             >
               {connectionLoadError}
             </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ busy: connectionsQuery.isFetching }}
+            <ActionButton
+              label={connectionsQuery.isFetching ? "جارٍ التحقق…" : "إعادة المحاولة"}
+              icon={connectionsQuery.isFetching ? "clock" : "refresh-cw"}
+              secondary
               disabled={connectionsQuery.isFetching}
               onPress={() => void connectionsQuery.refetch()}
-              style={({ pressed }) => [
-                styles.historyButton,
-                {
-                  backgroundColor: colors.secondary,
-                  opacity: connectionsQuery.isFetching
-                    ? 0.6
-                    : pressed
-                      ? 0.76
-                      : 1,
-                },
-              ]}
-            >
-              <Text style={[styles.filterLabel, { color: colors.foreground }]}>
-                {connectionsQuery.isFetching
-                  ? "جارٍ التحقق…"
-                  : "إعادة المحاولة"}
-              </Text>
-            </Pressable>
+            />
           </View>
         ) : null}
-        {autoPublishError ? (
-          <Text
-            accessibilityRole="alert"
-            style={[styles.intro, { color: colors.mutedForeground }]}
-          >
-            {autoPublishError}
-          </Text>
-        ) : null}
-        {autoPublishSaving ? (
-          <Text
-            accessibilityRole="alert"
-            style={[styles.intro, { color: colors.mutedForeground }]}
-          >
-            جارٍ حفظ إعدادات النشر التلقائي…
-          </Text>
-        ) : null}
-        {autoPublishNotice ? (
-          <Text
-            accessibilityRole="alert"
-            style={[styles.intro, { color: colors.primary }]}
-          >
-            {autoPublishNotice}
-          </Text>
-        ) : null}
+        <ActionButton
+          label="إدارة إعدادات النشر"
+          icon="settings"
+          secondary
+          onPress={() => router.push("/publishing-settings")}
+        />
       </Panel>
 
       <Panel style={styles.postWorkspace}>
@@ -1124,76 +889,6 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
         retryConfirmationVisible={retryConfirmationVisible}
         setRetryConfirmationVisible={setRetryConfirmationVisible}
       />
-      <Modal
-        visible={autoPublishConfirmationVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAutoPublishConfirmationVisible(false)}
-      >
-        <View style={styles.autoPublishModalOverlay}>
-          <View
-            accessibilityViewIsModal
-            style={[
-              styles.autoPublishModal,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <Text
-              style={[
-                styles.autoPublishModalTitle,
-                { color: colors.foreground },
-              ]}
-            >
-              تفعيل النشر التلقائي؟
-            </Text>
-            <Text
-              style={[
-                styles.intro,
-                { color: colors.mutedForeground, textAlign: "left" },
-              ]}
-            >
-              سيتم إرسال المنشورات المعتمدة إلى{" "}
-              {autoPublishChannels.map(platformLabel).join(" و")} الآن.
-            </Text>
-            <View style={styles.autoPublishModalActions}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setAutoPublishConfirmationVisible(false)}
-                style={[
-                  styles.autoPublishModalButton,
-                  { borderColor: colors.border },
-                ]}
-              >
-                <Text
-                  style={[styles.filterLabel, { color: colors.foreground }]}
-                >
-                  إلغاء
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => {
-                  setAutoPublishConfirmationVisible(false);
-                  void persistAutoPublishChange(true);
-                }}
-                style={[
-                  styles.autoPublishModalButton,
-                  { backgroundColor: colors.primary },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.filterLabel,
-                    { color: colors.primaryForeground },
-                  ]}
-                >
-                  تفعيل والنشر
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </Page>
   );
 }

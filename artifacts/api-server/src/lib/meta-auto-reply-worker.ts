@@ -31,7 +31,6 @@ import {
   metaPostSearchText,
   requestedMetaProductImages,
   formatMetaAutoReplyPrice,
-  appendMetaProductImagesSentConfirmation,
   retryMetaAutoReplyGeneration,
   buildMetaAutoReplyConversationContext,
   hasPreviousMetaAutoReplyInteraction,
@@ -974,26 +973,25 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       if (id) replyExternalIds.push(id);
       externalSendSucceeded = true;
     }
-    const replyText =
-      replyImages.length > 0
-        ? appendMetaProductImagesSentConfirmation(reply)
-        : reply;
-    externalSendStarted = true;
-    const result = await sendMetaInboxReply({
-      platform: item.platform,
-      kind: item.kind,
-      pageId: connection.pageId,
-      instagramUserId: connection.instagramUserId,
-      recipientId: item.conversationId,
-      externalId: item.externalId,
-      accessToken: pageAccessToken,
-      text: replyText,
-    });
-    const textReplyExternalId =
-      (typeof result.message_id === "string" && result.message_id) ||
-      (typeof result.id === "string" && result.id);
-    if (textReplyExternalId) replyExternalIds.push(textReplyExternalId);
-    externalSendSucceeded = true;
+    const replyText = reply;
+    if (replyText.trim() || replyImages.length === 0) {
+      externalSendStarted = true;
+      const result = await sendMetaInboxReply({
+        platform: item.platform,
+        kind: item.kind,
+        pageId: connection.pageId,
+        instagramUserId: connection.instagramUserId,
+        recipientId: item.conversationId,
+        externalId: item.externalId,
+        accessToken: pageAccessToken,
+        text: replyText,
+      });
+      const textReplyExternalId =
+        (typeof result.message_id === "string" && result.message_id) ||
+        (typeof result.id === "string" && result.id);
+      if (textReplyExternalId) replyExternalIds.push(textReplyExternalId);
+      externalSendSucceeded = true;
+    }
     const replyExternalId = replyExternalIds.join(",").slice(0, 1000) || null;
     const repliedAt = new Date();
     const saved = await completeMetaInboxReply(job.workspaceId, item.id, {

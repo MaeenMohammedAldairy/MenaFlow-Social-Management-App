@@ -8,7 +8,6 @@ import {
   buildMetaAutoReplyUnderstandingProviderOptions,
   buildMetaAutoReplyUnderstandingSystemInstruction,
   buildMetaAutoReplyPrompt,
-  appendMetaProductImagesSentConfirmation,
   finalizeMetaAutoReplyText,
   formatMetaAutoReplyPrice,
   hasPreviousMetaAutoReplyInteraction,
@@ -1141,7 +1140,7 @@ test("retries only transient AI generation failures and caps attempts", () => {
   );
 });
 
-test("keeps non-image answers separate from image delivery confirmation", () => {
+test("removes image-only text while preserving non-image answers", () => {
   assert.equal(
     finalizeMetaAutoReplyText("السعر 199 ريال", true),
     "السعر 199 ريال",
@@ -1178,14 +1177,6 @@ test("keeps non-image answers separate from image delivery confirmation", () => 
   assert.equal(
     finalizeMetaAutoReplyText("لا تتوفر صور إضافية لهذا المنتج", false),
     "لا تتوفر صور لهذا المنتج",
-  );
-  assert.equal(
-    appendMetaProductImagesSentConfirmation("السعر 199 ريال."),
-    "السعر 199 ريال. أرفقت الصور.",
-  );
-  assert.equal(
-    appendMetaProductImagesSentConfirmation(""),
-    "أرفقت الصور.",
   );
 });
 
