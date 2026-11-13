@@ -291,7 +291,7 @@ export function WhatsAppSyncStatusPanel({
       ) : groups.length === 0 ? (
         <View style={styles.emptySyncState}>
           <EmptyState
-            icon="message-circle"
+            icon="whatsapp"
             title="لم تبدأ المزامنة بعد"
             body="اختر مجموعات واتساب، ثم ابدأ المزامنة لعرض الرسائل وحالتها هنا."
           />

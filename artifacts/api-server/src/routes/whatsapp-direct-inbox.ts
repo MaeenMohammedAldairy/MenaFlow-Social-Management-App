@@ -63,6 +63,7 @@ async function connectionForRequest(ownerId: string, workspaceId: string) {
 function messageResponse(
   message: typeof menaWhatsAppDirectMessages.$inferSelect,
   autoReplyStatus: string | null = null,
+  autoReplyErrorCode: string | null = null,
 ) {
   const remoteJid = decryptWhatsAppDirectMessageValue(
     message.encryptedRemoteJid,
@@ -73,6 +74,7 @@ function messageResponse(
     direction: message.direction,
     status: message.status,
     autoReplyStatus,
+    autoReplyErrorCode,
     text: decryptWhatsAppDirectMessageValue(message.encryptedTextBody),
     occurredAt: message.messageTimestamp,
     createdAt: message.createdAt,
@@ -194,6 +196,7 @@ router.get(
           .select({
             remoteMessageId: menaWhatsAppAutoReplyEvents.remoteMessageId,
             status: menaWhatsAppAutoReplyEvents.status,
+            errorCode: menaWhatsAppAutoReplyEvents.errorCode,
           })
           .from(menaWhatsAppAutoReplyEvents)
           .where(
@@ -204,8 +207,11 @@ router.get(
             ),
           )
       : [];
-    const autoReplyStatusByMessage = new Map(
-      autoReplyEvents.map((event) => [event.remoteMessageId, event.status]),
+    const autoReplyByMessage = new Map(
+      autoReplyEvents.map((event) => [
+        event.remoteMessageId,
+        { status: event.status, errorCode: event.errorCode },
+      ]),
     );
     const uniqueMessages = new Map<string, typeof messages[number]>();
     for (const message of messages.reverse()) {
@@ -214,12 +220,17 @@ router.get(
     }
     res.json({
       messages: [...uniqueMessages.values()].map((message) =>
-        messageResponse(
-          message,
-          message.direction === "inbound" && message.providerMessageId
-            ? autoReplyStatusByMessage.get(message.providerMessageId) ?? null
-            : null,
-        ),
+        (() => {
+          const autoReply =
+            message.direction === "inbound" && message.providerMessageId
+              ? autoReplyByMessage.get(message.providerMessageId)
+              : undefined;
+          return messageResponse(
+            message,
+            autoReply?.status ?? null,
+            autoReply?.errorCode ?? null,
+          );
+        })(),
       ),
     });
   },

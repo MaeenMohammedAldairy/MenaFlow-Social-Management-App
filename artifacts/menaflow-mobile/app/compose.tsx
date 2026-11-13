@@ -2,7 +2,8 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, usePreventRemove } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, View } from 'react-native';
+import { showAppNotice } from '@/components/AppFeedback';
 import { Image } from 'expo-image';
 import { CairoText as Text, CairoTextInput as TextInput } from '@/components/CairoTypography';
 import { LucideIcon as Icon, type LucideIconName } from '@/components/LucideIcon';
@@ -70,11 +71,11 @@ export default function ComposeScreen() {
   const submit = async (status: 'draft' | 'review') => {
     if (saving || mediaUploading) return;
     if (!body.trim()) {
-      Alert.alert('أضف نص المنشور', 'اكتب محتوى قبل حفظ المسودة.');
+      showAppNotice({ title: 'أضف نص المنشور', message: 'اكتب محتوى قبل حفظ المسودة.', tone: 'error' });
       return;
     }
     if (selected.length === 0) {
-      Alert.alert('اختر قناة', 'حدد قناة واحدة على الأقل لتوضيح وجهة المحتوى.');
+      showAppNotice({ title: 'اختر قناة', message: 'حدد قناة واحدة على الأقل لتوضيح وجهة المحتوى.', tone: 'error' });
       return;
     }
     if (
@@ -82,7 +83,7 @@ export default function ComposeScreen() {
       selected.some((channel) => channel === 'instagram' || channel === 'facebook') &&
       media.length === 0
     ) {
-      Alert.alert('أرفق وسائط', 'أرفق صورة أو فيديو قبل إرسال منشور إنستغرام أو فيسبوك للمراجعة.');
+      showAppNotice({ title: 'أرفق وسائط', message: 'أرفق صورة أو فيديو قبل إرسال منشور إنستغرام أو فيسبوك للمراجعة.', tone: 'error' });
       return;
     }
     setSaving(true);
@@ -108,7 +109,7 @@ export default function ComposeScreen() {
       setHasUnsavedChanges(false);
       navigateBack('/(tabs)/content');
     } catch (error) {
-      Alert.alert('تعذّر حفظ المنشور', error instanceof Error ? error.message : 'حاول مرة أخرى.');
+      showAppNotice({ title: 'تعذّر حفظ المنشور', message: error instanceof Error ? error.message : 'حاول مرة أخرى.', tone: 'error' });
     } finally {
       setSaving(false);
     }

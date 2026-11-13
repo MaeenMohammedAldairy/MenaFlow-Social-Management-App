@@ -12,9 +12,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
-import { ActionButton, BrandHeader, EmptyState, Page, PageTitle, Panel } from "@/components/Ui";
+import { ActionButton, BrandHeader, EmptyState, IconButton, Page, PageTitle, Panel } from "@/components/Ui";
+import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { useColors } from "@/hooks/useColors";
-import { formatArabicDateTime } from "@/lib/formatting";
+import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 import { InboxPlatformTabs } from "@/components/inbox/InboxPlatformTabs";
 import {
   confirmWhatsAppDirectReplyNotSent,
@@ -41,6 +42,27 @@ function makeRequestId(): string {
   return `whatsapp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
 }
 
+function sendFailureMessage(message: WhatsAppDirectMessage): string | null {
+  if (
+    message.direction === "inbound" &&
+    message.autoReplyStatus === "failed"
+  ) {
+    if (message.autoReplyErrorCode === "SubscriptionAiQuotaError") {
+      return "تعذّر إنشاء الرد الآلي لأن حصة الذكاء الاصطناعي مستنفدة. زد الحصة أو أرسل ردًا يدويًا.";
+    }
+    if (message.autoReplyErrorCode === "AUTO_REPLY_DISABLED") {
+      return "الرد الآلي غير مفعّل لهذه الرسالة. يمكنك الرد يدويًا.";
+    }
+    return "تعذّر إرسال الرد الآلي. يمكنك الرد يدويًا أو مراجعة إعداداته.";
+  }
+  if (message.direction === "outbound" && message.status === "failed") {
+    return message.errorCode === "MANUAL_CONFIRMED_NOT_SENT"
+      ? "تأكد أن الرد اليدوي لم يصل إلى العميل. يمكنك إعادة المحاولة."
+      : "تعذّر إرسال الرد اليدوي. تحقق من اتصال WhatsApp ثم أعد المحاولة.";
+  }
+  return null;
+}
+
 function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -53,6 +75,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
   const [selectedRemoteJid, setSelectedRemoteJid] = useState<string | null>(
     initialRemoteJid ?? null,
   );
+  const [conversationSearch, setConversationSearch] = useState("");
   const [draft, setDraft] = useState("");
   const [requestId, setRequestId] = useState<string | null>(null);
   useEffect(() => {
@@ -112,6 +135,14 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
   const selectedConversation = conversations.data?.conversations.find(
     (conversation) => conversation.remoteJid === selectedRemoteJid,
   );
+  const normalizedConversationSearch = conversationSearch.trim().toLocaleLowerCase();
+  const visibleConversations = (conversations.data?.conversations ?? []).filter(
+    (conversation) =>
+      !normalizedConversationSearch ||
+      [conversation.customerNumber, conversation.preview].some((value) =>
+        value.toLocaleLowerCase().includes(normalizedConversationSearch),
+      ),
+  );
   const orderedMessages = messages.data?.messages ?? [];
   const hasUnknownSend = orderedMessages.some(
     (message) =>
@@ -170,12 +201,14 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
         title="رسائل WhatsApp الخاصة"
         subtitle="تابع المحادثات الفردية ورد يدويًا عند الحاجة."
         back={{ href: "/(tabs)/inbox", label: "العودة إلى المحادثات" }}
-      />
-      <ActionButton
-        label="إعدادات الرد الآلي"
-        icon="settings"
-        secondary
-        onPress={() => router.push("/inbox/reply-settings")}
+        action={
+          <IconButton
+            icon="settings"
+            label="إعدادات الرد الآلي"
+            color={colors.primary}
+            onPress={() => router.push("/inbox/reply-settings")}
+          />
+        }
       />
 
       {selectedRemoteJid ? (
@@ -194,7 +227,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
           <Panel style={styles.conversationPanel}>
             <View style={styles.conversationHeading}>
               <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
-                <Icon name="message-circle" size={18} color={colors.primary} />
+                <Icon name="whatsapp" size={18} color={colors.primary} />
               </View>
               <View style={styles.conversationCopy}>
                 <Text style={{ color: colors.foreground, fontWeight: "800" }}>
@@ -227,7 +260,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
             ))}
             {orderedMessages.length === 0 && !messages.isPending ? (
               <EmptyState
-                icon="message-circle"
+                icon="whatsapp"
                 title="لا توجد رسائل محفوظة"
                 body="ستظهر هنا الرسائل الواردة بعد وصولها إلى الحساب المرتبط."
               />
@@ -307,49 +340,104 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
         </>
       ) : (
         <Panel style={styles.inboxPanel}>
-          <Text style={{ color: colors.foreground, fontWeight: "800", fontSize: 15 }}>
-            المحادثات الفردية
-          </Text>
-          {conversations.isError ? (
-            <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
-              {conversations.error instanceof Error
-                ? conversations.error.message
-                : "تعذر تحميل المحادثات."}
+          <View style={styles.listHeading}>
+            <Text style={{ color: colors.foreground, fontWeight: "800", fontSize: 15 }}>
+              المحادثات الفردية
             </Text>
+            {conversations.data ? (
+              <View style={[styles.conversationCount, { backgroundColor: colors.accent }]}>
+                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: "800" }}>
+                  {formatArabicNumber(conversations.data.conversations.length)}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          <View style={[styles.searchRow, { backgroundColor: colors.background, borderColor: colors.border }]}>
+            <Icon name="search" size={17} color={colors.mutedForeground} />
+            <TextInput
+              accessibilityLabel="البحث في محادثات WhatsApp"
+              value={conversationSearch}
+              onChangeText={setConversationSearch}
+              placeholder="ابحث برقم الهاتف أو نص الرسالة"
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.searchInput, { color: colors.foreground }]}
+              returnKeyType="search"
+            />
+            {conversationSearch ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="مسح البحث"
+                hitSlop={8}
+                onPress={() => setConversationSearch("")}
+              >
+                <Icon name="x" size={17} color={colors.mutedForeground} />
+              </Pressable>
+            ) : null}
+          </View>
+          {conversations.isError ? (
+            <View style={styles.loadError}>
+              <Text accessibilityRole="alert" style={{ color: colors.destructive, textAlign: "right" }}>
+                {conversations.error instanceof Error
+                  ? conversations.error.message
+                  : "تعذر تحميل المحادثات."}
+              </Text>
+              <ActionButton
+                label="إعادة المحاولة"
+                icon="refresh-cw"
+                secondary
+                compact
+                disabled={conversations.isFetching}
+                onPress={() => void conversations.refetch()}
+              />
+            </View>
           ) : null}
           {conversations.isPending ? (
-            <Text style={{ color: colors.mutedForeground }}>جارٍ تحميل المحادثات...</Text>
+            <EmptyState icon="clock" title="جارٍ تحميل المحادثات" body="نحمّل أحدث الرسائل الواردة." />
           ) : conversations.data?.conversations.length ? (
-            conversations.data.conversations.map((conversation) => (
-              <Pressable
-                key={conversation.remoteJid}
-                accessibilityRole="button"
-                accessibilityLabel={`فتح محادثة ${conversation.customerNumber}`}
-                onPress={() => setSelectedRemoteJid(conversation.remoteJid)}
-                style={({ pressed }) => [
-                  styles.conversationRow,
-                  { borderColor: colors.border, opacity: pressed ? 0.75 : 1 },
-                ]}
-              >
-                <View style={styles.conversationCopy}>
-                  <Text style={{ color: colors.foreground, fontWeight: "700" }}>
-                    {conversation.customerNumber}
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    style={{ color: colors.mutedForeground, fontSize: 13, textAlign: "right" }}
-                  >
-                    {conversation.preview || "رسالة بدون نص"}
-                  </Text>
-                </View>
-                <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-                  {formatArabicDateTime(conversation.lastMessageAt) ?? ""}
-                </Text>
-              </Pressable>
-            ))
+            visibleConversations.length ? (
+              visibleConversations.map((conversation) => (
+                <Pressable
+                  key={conversation.remoteJid}
+                  accessibilityRole="button"
+                  accessibilityLabel={`فتح محادثة ${conversation.customerNumber}`}
+                  onPress={() => setSelectedRemoteJid(conversation.remoteJid)}
+                  style={({ pressed }) => [
+                    styles.conversationRow,
+                    { borderColor: colors.border, opacity: pressed ? 0.75 : 1 },
+                  ]}
+                >
+                  <View style={[styles.conversationAvatar, { backgroundColor: colors.greenSoft }]}>
+                    <SocialPlatformIcon platform="whatsapp" size={24} />
+                  </View>
+                  <View style={styles.conversationCopy}>
+                    <Text style={{ color: colors.foreground, fontWeight: "800" }}>
+                      {conversation.customerNumber}
+                    </Text>
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: colors.mutedForeground, fontSize: 13, textAlign: "right" }}
+                    >
+                      {conversation.preview || "رسالة بدون نص"}
+                    </Text>
+                  </View>
+                  <View style={styles.conversationMeta}>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+                      {formatArabicDateTime(conversation.lastMessageAt) ?? ""}
+                    </Text>
+                    <Icon name="chevron-left" size={17} color={colors.primary} />
+                  </View>
+                </Pressable>
+              ))
+            ) : (
+              <EmptyState
+                icon="search"
+                title="لا توجد نتائج مطابقة"
+                body="جرّب البحث برقم الهاتف أو بكلمة من الرسالة."
+              />
+            )
           ) : (
             <EmptyState
-              icon="message-circle"
+              icon="whatsapp"
               title="لا توجد محادثات فردية بعد"
               body="ستظهر المحادثات عند وصول رسائل مباشرة إلى حساب WhatsApp المرتبط."
             />
@@ -373,6 +461,7 @@ function DirectMessageBubble({
   const isBusiness = message.direction === "outbound";
   const isUnknown =
     message.status === "unknown" || message.autoReplyStatus === "unknown";
+  const failureMessage = sendFailureMessage(message);
   return (
     <Panel
       style={[
@@ -418,9 +507,9 @@ function DirectMessageBubble({
             : "جارٍ إعداد الرد الآلي..."}
         </Text>
       ) : null}
-      {message.status === "failed" || message.autoReplyStatus === "failed" ? (
-        <Text style={{ color: colors.destructive, textAlign: "right" }}>
-          لم يتم إرسال الرد الآلي أو اليدوي.
+      {failureMessage ? (
+        <Text accessibilityRole="alert" style={{ color: colors.destructive, textAlign: "right" }}>
+          {failureMessage}
         </Text>
       ) : null}
     </Panel>
@@ -429,18 +518,25 @@ function DirectMessageBubble({
 
 const styles = StyleSheet.create({
   inboxPanel: { gap: 12 },
+  listHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  conversationCount: { minWidth: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 7 },
+  searchRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 9, borderWidth: 1, borderRadius: 12, paddingHorizontal: 11 },
+  searchInput: { flex: 1, minWidth: 0, minHeight: 42, fontSize: 13, textAlign: "right", writingDirection: "rtl" },
+  loadError: { gap: 9 },
   conversationPanel: { gap: 10 },
   conversationHeading: { flexDirection: "row", alignItems: "center", gap: 10 },
   avatar: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   conversationCopy: { flex: 1, gap: 4 },
   conversationRow: {
-    minHeight: 64,
+    minHeight: 76,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  conversationAvatar: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  conversationMeta: { alignItems: "flex-end", gap: 5 },
   messageList: { gap: 10 },
   messageBubble: { width: "94%", gap: 8, borderWidth: 1, borderRadius: 12, padding: 12 },
   messageHeader: { flexDirection: "row", justifyContent: "space-between", gap: 8 },

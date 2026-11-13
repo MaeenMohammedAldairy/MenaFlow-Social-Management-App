@@ -51,8 +51,9 @@
   },
   "dependencies": {
     "@clerk/expo": "4.8.0",
-    "@react-native-async-storage/async-storage": "2.2.0",
     "@expo-google-fonts/cairo": "^0.4.2",
+    "@expo/vector-icons": "^15.1.1",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "expo-auth-session": "~58.0.16",
     "expo-crypto": "~58.0.7",
     "expo-document-picker": "~58.0.4",

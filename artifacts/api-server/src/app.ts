@@ -173,6 +173,28 @@ app.use(
     }
 
     const requestId = (req as express.Request & { id?: string | number }).id;
+    const errorDetails =
+      error && typeof error === "object"
+        ? (error as { status?: unknown; statusCode?: unknown; type?: unknown })
+        : null;
+    if (
+      req.path === "/api/social/whatsapp/webhook" &&
+      (errorDetails?.status === 413 ||
+        errorDetails?.statusCode === 413 ||
+        errorDetails?.type === "entity.too.large")
+    ) {
+      logger.warn(
+        { requestId, method: req.method, path: req.path },
+        "WhatsApp webhook payload exceeded the configured size limit",
+      );
+      res.status(413).json({
+        ok: false,
+        error: "Webhook payload exceeds the configured size limit.",
+        code: "WHATSAPP_WEBHOOK_PAYLOAD_TOO_LARGE",
+      });
+      return;
+    }
+
     logger.error(
       { err: error, requestId, method: req.method, path: req.path },
       "Unhandled API request error",

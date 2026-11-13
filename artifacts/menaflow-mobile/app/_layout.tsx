@@ -19,6 +19,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { AppFeedbackProvider } from "@/components/AppFeedback";
 import {
   useFonts,
   Cairo_200ExtraLight,
@@ -193,6 +194,7 @@ function AppNavigator({ isSignedIn }: { isSignedIn: boolean }) {
         <Stack.Screen name="whatsapp-setup" options={{ headerShown: false }} />
         <Stack.Screen name="publishing-settings" options={{ headerShown: false }} />
         <Stack.Screen name="inbox/reply-settings" options={{ headerShown: false }} />
+        <Stack.Screen name="inbox/whatsapp" options={{ headerShown: false }} />
         <Stack.Screen
           name="inbox/[conversationId]"
           options={{ headerShown: false }}
@@ -417,87 +419,89 @@ function AuthenticatedAppNavigator() {
         key={userId ?? "signed-out"}
         storageNamespace={userId ? `user:${userId}` : null}
       >
-        <View style={styles.navigator}>
-          <AppNavigator isSignedIn={Boolean(isSignedIn)} />
-          {apiErrorNotice ? (
-          <View
-            accessibilityRole="alert"
-            accessibilityLiveRegion="assertive"
-            style={[
-              styles.apiErrorNotice,
-              {
-                top: insets.top + 12,
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <Text style={[styles.apiErrorText, { color: colors.foreground }]}>
-              {apiErrorNotice.kind === "unauthorized"
-                ? apiErrorNotice.signOutFailed
-                  ? "تعذر إنهاء الجلسة. تحقق من اتصالك ثم حاول تسجيل الدخول مجددًا."
-                  : "انتهت صلاحية الجلسة أو تعذر التحقق منها. سجّل الدخول مجددًا للمتابعة."
-                : apiErrorNotice.kind === "forbidden"
-                  ? "ليس لديك صلاحية لتنفيذ هذا الإجراء."
-                  : apiErrorNotice.kind === "server"
-                    ? "حدث خطأ في الخادم. حاول مرة أخرى لاحقًا."
-                    : "تعذر الاتصال بالخادم. تحقق من اتصالك وحاول مجددًا."}
-            </Text>
-            <View style={styles.apiErrorActions}>
-              {apiErrorNotice.kind === "unauthorized" ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => void reauthenticate()}
-                  style={[
-                    styles.apiErrorButton,
-                    { backgroundColor: colors.primary },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.apiErrorButtonText,
-                      { color: colors.primaryForeground },
-                    ]}
-                  >
-                    تسجيل الدخول مجددًا
-                  </Text>
-                </Pressable>
-              ) : null}
-              {apiErrorNotice.retry ? (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => {
-                    const retry = apiErrorNotice.retry;
-                    setApiErrorNotice(null);
-                    if (retry) void retry();
-                  }}
-                  style={[
-                    styles.apiErrorButton,
-                    { backgroundColor: colors.primary },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.apiErrorButtonText,
-                      { color: colors.primaryForeground },
-                    ]}
-                  >
-                    إعادة المحاولة
-                  </Text>
-                </Pressable>
-              ) : null}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="إغلاق رسالة الخطأ"
-                onPress={() => setApiErrorNotice(null)}
-                style={styles.apiErrorDismiss}
+        <AppFeedbackProvider>
+          <View style={styles.navigator}>
+            <AppNavigator isSignedIn={Boolean(isSignedIn)} />
+            {apiErrorNotice ? (
+              <View
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+                style={[
+                  styles.apiErrorNotice,
+                  {
+                    top: insets.top + 12,
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                  },
+                ]}
               >
-                <Text style={{ color: colors.mutedForeground }}>إغلاق</Text>
-              </Pressable>
-            </View>
+                <Text style={[styles.apiErrorText, { color: colors.foreground }]}>
+                  {apiErrorNotice.kind === "unauthorized"
+                    ? apiErrorNotice.signOutFailed
+                      ? "تعذر إنهاء الجلسة. تحقق من اتصالك ثم حاول تسجيل الدخول مجددًا."
+                      : "انتهت صلاحية الجلسة أو تعذر التحقق منها. سجّل الدخول مجددًا للمتابعة."
+                    : apiErrorNotice.kind === "forbidden"
+                      ? "ليس لديك صلاحية لتنفيذ هذا الإجراء."
+                      : apiErrorNotice.kind === "server"
+                        ? "حدث خطأ في الخادم. حاول مرة أخرى لاحقًا."
+                        : "تعذر الاتصال بالخادم. تحقق من اتصالك وحاول مجددًا."}
+                </Text>
+                <View style={styles.apiErrorActions}>
+                  {apiErrorNotice.kind === "unauthorized" ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => void reauthenticate()}
+                      style={[
+                        styles.apiErrorButton,
+                        { backgroundColor: colors.primary },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.apiErrorButtonText,
+                          { color: colors.primaryForeground },
+                        ]}
+                      >
+                        تسجيل الدخول مجددًا
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  {apiErrorNotice.retry ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        const retry = apiErrorNotice.retry;
+                        setApiErrorNotice(null);
+                        if (retry) void retry();
+                      }}
+                      style={[
+                        styles.apiErrorButton,
+                        { backgroundColor: colors.primary },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.apiErrorButtonText,
+                          { color: colors.primaryForeground },
+                        ]}
+                      >
+                        إعادة المحاولة
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="إغلاق رسالة الخطأ"
+                    onPress={() => setApiErrorNotice(null)}
+                    style={styles.apiErrorDismiss}
+                  >
+                    <Text style={{ color: colors.mutedForeground }}>إغلاق</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ) : null}
           </View>
-          ) : null}
-        </View>
+        </AppFeedbackProvider>
       </StudioProvider>
     </WorkspaceContext.Provider>
   );
@@ -560,7 +564,9 @@ export default function RootLayout() {
             <KeyboardProvider>
               {isLocalAuthDisabled ? (
                 <StudioProvider>
-                  <AppNavigator isSignedIn />
+                  <AppFeedbackProvider>
+                    <AppNavigator isSignedIn />
+                  </AppFeedbackProvider>
                 </StudioProvider>
               ) : (
                 <ClerkProvider

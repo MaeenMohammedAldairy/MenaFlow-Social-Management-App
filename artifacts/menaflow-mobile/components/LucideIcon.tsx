@@ -52,6 +52,7 @@ import {
   X,
 } from 'lucide-react-native';
 import type { LucideProps } from 'lucide-react-native';
+import { SocialPlatformIcon } from '@/components/SocialPlatformIcon';
 
 const icons = {
   'alert-circle': CircleAlert,
@@ -107,13 +108,22 @@ const icons = {
   zap: Zap,
 } as const;
 
-export type LucideIconName = keyof typeof icons;
+export type LucideIconName = keyof typeof icons | 'whatsapp';
 
 type IconProps = LucideProps & {
   name: LucideIconName;
 };
 
 export function LucideIcon({ name, ...props }: IconProps) {
+  if (name === 'whatsapp') {
+    return (
+      <SocialPlatformIcon
+        platform="whatsapp"
+        size={typeof props.size === 'number' ? props.size : 24}
+      />
+    );
+  }
+
   const IconComponent = icons[name];
   return <IconComponent {...props} />;
 }

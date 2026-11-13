@@ -1,15 +1,14 @@
 import React, { useMemo, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import {
-  Alert,
   Modal,
   Pressable,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
   View,
 } from "react-native";
+import { AppAlert as Alert } from "@/components/AppFeedback";
 import { useLocalSearchParams } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import {
@@ -182,10 +181,6 @@ function confirmOrderCancellation(
   onConfirm: () => void,
 ): void {
   const message = `سيتم تسجيل الطلب ${orderNumber} كملغي.`;
-  if (Platform.OS === "web" && typeof window !== "undefined") {
-    if (window.confirm(message)) onConfirm();
-    return;
-  }
   Alert.alert("تأكيد إلغاء الطلب", message, [
     { text: "العودة", style: "cancel" },
     { text: "إلغاء الطلب", style: "destructive", onPress: onConfirm },
@@ -1360,7 +1355,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
         ) : null}
         {order.sourcePlatform === "whatsapp" && order.sourceConversationId ? (
           <View style={styles.detailRow}>
-            <Icon name="message-circle" size={14} color={colors.whatsapp} />
+            <Icon name="whatsapp" size={14} color={colors.whatsapp} />
             <Text style={[styles.detailText, { color: colors.whatsapp }]}>
               "مرتبط بمحادثة WhatsApp"
             </Text>
@@ -1401,7 +1396,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
         {whatsappConfirmationLabel(order) ? (
           <View style={styles.detailRow}>
             <Icon
-              name="message-circle"
+              name="whatsapp"
               size={14}
               color={
                 order.whatsappConfirmationStatus === "queued" ||

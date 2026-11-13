@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
 import {
-  Alert,
   Linking,
   Modal,
   Pressable,
   ScrollView,
   View,
 } from "react-native";
+import { AppAlert as Alert, showAppNotice } from "@/components/AppFeedback";
 import { Image } from "expo-image";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
@@ -428,10 +428,11 @@ export function ContentPostList({
                           accessibilityLabel="فتح المنشور الأصلي على المنصة"
                           onPress={() => {
                             void Linking.openURL(importedPermalink).catch(() =>
-                              Alert.alert(
-                                "تعذر فتح المنشور",
-                                "تحقق من اتصال الجهاز ثم أعد المحاولة.",
-                              ),
+                              showAppNotice({
+                                title: "تعذر فتح المنشور",
+                                message: "تحقق من اتصال الجهاز ثم أعد المحاولة.",
+                                tone: "error",
+                              }),
                             );
                           }}
                         >
@@ -783,12 +784,14 @@ export function ContentPostList({
                             } else if (primaryAction === "submit") {
                               void updatePostStatus(post.id, "review").catch(
                                 (error) =>
-                                  Alert.alert(
-                                    "تعذر إرسال المنشور للمراجعة",
-                                    error instanceof Error
-                                      ? error.message
-                                      : "تعذر تحديث حالة المنشور.",
-                                  ),
+                                  showAppNotice({
+                                    title: "تعذر إرسال المنشور للمراجعة",
+                                    message:
+                                      error instanceof Error
+                                        ? error.message
+                                        : "تعذر تحديث حالة المنشور.",
+                                    tone: "error",
+                                  }),
                               );
                             } else {
                               onPublish(post);
@@ -964,12 +967,14 @@ export function ContentPostList({
                               onPress={() =>
                                 void updatePostStatus(post.id, "draft").catch(
                                   (error) =>
-                                    Alert.alert(
-                                      "تعذر حفظ المسودة",
-                                      error instanceof Error
-                                        ? error.message
-                                        : "تعذر تحديث حالة المنشور.",
-                                    ),
+                                    showAppNotice({
+                                      title: "تعذر حفظ المسودة",
+                                      message:
+                                        error instanceof Error
+                                          ? error.message
+                                          : "تعذر تحديث حالة المنشور.",
+                                      tone: "error",
+                                    }),
                                 )
                               }
                               style={[
@@ -1004,12 +1009,14 @@ export function ContentPostList({
                                     style: "destructive",
                                     onPress: () =>
                                       void deletePost(post.id).catch((error) =>
-                                        Alert.alert(
-                                          "تعذر حذف المنشور",
-                                          error instanceof Error
-                                            ? error.message
-                                            : "تعذر حذف المنشور من مساحة العمل.",
-                                        ),
+                                        showAppNotice({
+                                          title: "تعذر حذف المنشور",
+                                          message:
+                                            error instanceof Error
+                                              ? error.message
+                                              : "تعذر حذف المنشور من مساحة العمل.",
+                                          tone: "error",
+                                        }),
                                       ),
                                   },
                                 ],

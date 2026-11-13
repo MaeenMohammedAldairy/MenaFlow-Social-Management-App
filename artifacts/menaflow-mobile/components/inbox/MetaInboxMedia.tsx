@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert, Linking, Pressable, StyleSheet, View } from "react-native";
+import { Linking, Pressable, StyleSheet, View } from "react-native";
+import { showAppNotice } from "@/components/AppFeedback";
 import { Image } from "expo-image";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
@@ -44,10 +45,11 @@ export function MetaInboxMedia({ media }: { media: MetaInboxMediaItem[] }) {
                 onPress={() => {
                   if (isVideo && url) {
                     void Linking.openURL(url).catch(() =>
-                      Alert.alert(
-                        "تعذر فتح الوسائط",
-                        "حاول فتح الرابط مرة أخرى.",
-                      ),
+                      showAppNotice({
+                        title: "تعذر فتح الوسائط",
+                        message: "حاول فتح الرابط مرة أخرى.",
+                        tone: "error",
+                      }),
                     );
                     return;
                   }
@@ -107,7 +109,11 @@ export function MetaInboxMedia({ media }: { media: MetaInboxMediaItem[] }) {
               }
               onPress={() => {
                 void Linking.openURL(openUrl).catch(() =>
-                  Alert.alert("تعذر فتح الوسائط", "حاول فتح الرابط مرة أخرى."),
+                  showAppNotice({
+                    title: "تعذر فتح الوسائط",
+                    message: "حاول فتح الرابط مرة أخرى.",
+                    tone: "error",
+                  }),
                 );
               }}
               style={[styles.filePreview, { backgroundColor: colors.accent }]}

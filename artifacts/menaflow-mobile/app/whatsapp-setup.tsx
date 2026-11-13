@@ -316,7 +316,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
       ) : !connected ? (
         <Panel>
           <EmptyState
-            icon="message-circle"
+            icon="whatsapp"
             title="حساب واتساب غير متصل"
             body="تعذّر تأكيد الاتصال من الخادم. ارجع إلى صفحة المصادر وأعد ربط الحساب قبل إعداد الردود."
           />
@@ -331,7 +331,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
           <Panel style={styles.connectedPanel}>
             <View style={styles.connectedHeader}>
               <View style={[styles.whatsappIcon, { backgroundColor: colors.accent }]}>
-                <Icon name="message-circle" size={23} color={colors.primary} />
+                <Icon name="whatsapp" size={23} color={colors.primary} />
               </View>
               <StatusPill label="متصل" tone="green" />
             </View>
@@ -630,7 +630,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
                   </View>
                 ) : (
                   <EmptyState
-                    icon="message-circle"
+                    icon="whatsapp"
                     title="لم تختر أي مجموعات بعد"
                     body="أضف مجموعة واتساب لبدء استيراد رسائلها وإعداد محتواها."
                   />
@@ -732,7 +732,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
                     </View>
                   ) : (
                     <EmptyState
-                      icon="message-circle"
+                      icon="whatsapp"
                       title="لا توجد مجموعات متاحة"
                       body="تحقق من اتصال واتساب أو حدّث قائمة المجموعات."
                     />

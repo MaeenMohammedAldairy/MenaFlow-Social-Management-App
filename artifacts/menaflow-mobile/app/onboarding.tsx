@@ -293,7 +293,14 @@ function AuthenticatedOnboarding() {
                 accessibilityLabel="الخطوة السابقة"
                 disabled={progress.isPending}
                 onPress={() => submitProgress("back")}
-                style={styles.backButton}
+                style={({ pressed }) => [
+                  styles.backButton,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    opacity: pressed ? 0.72 : 1,
+                  },
+                ]}
               >
                 <ArrowRight size={16} color={colors.mutedForeground} />
                 <Text
@@ -1008,11 +1015,14 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   backButton: {
-    minWidth: 60,
-    height: 38,
+    minWidth: 68,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 3,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 8,
   },
   skipButton: {
     minWidth: 60,

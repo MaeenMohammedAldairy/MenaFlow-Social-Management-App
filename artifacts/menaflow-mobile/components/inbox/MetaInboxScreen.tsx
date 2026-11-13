@@ -166,13 +166,21 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
   const lastPage = olderPages.at(-1);
   const hasMore = lastPage?.hasMore ?? inbox.data?.hasMore ?? false;
   const nextCursor = lastPage?.nextCursor ?? inbox.data?.nextCursor ?? null;
+  const canLoadOlder = hasMore && Boolean(nextCursor);
   const loadOlder = async () => {
     if (!nextCursor || loadingOlder) return;
     setLoadingOlder(true);
     setOlderError(null);
     try {
       const page = await getMetaInbox({ cursor: nextCursor });
-      setOlderPages((current) => [...current, page]);
+      const loadedIds = new Set(loadedItems.map((item) => item.id));
+      const hasNewItems = page.items.some((item) => !loadedIds.has(item.id));
+      setOlderPages((current) => [
+        ...current,
+        hasNewItems && page.hasMore && page.nextCursor
+          ? page
+          : { ...page, hasMore: false, nextCursor: null },
+      ]);
     } catch (error) {
       setOlderError(
         error instanceof Error ? error.message : "تعذر تحميل العناصر الأقدم.",
@@ -503,7 +511,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                   <View
                     style={[styles.conversationAvatar, { backgroundColor: colors.accent }]}
                   >
-                    <Icon name="message-circle" size={21} color={colors.primary} />
+                    <Icon name="whatsapp" size={21} color={colors.primary} />
                   </View>
                   <View style={styles.conversationHeading}>
                     <View style={styles.conversationTopLine}>
@@ -528,7 +536,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                     </View>
                     <View style={styles.conversationBottomLine}>
                       <View style={[styles.platformBadge, { backgroundColor: colors.accent }]}>
-                        <Icon name="message-circle" size={14} color={colors.primary} />
+                        <Icon name="whatsapp" size={14} color={colors.primary} />
                         <Text style={[styles.platformLabel, { color: colors.primary }]}>WhatsApp</Text>
                       </View>
                     </View>
@@ -694,7 +702,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           {olderError}
         </Text>
       ) : null}
-      {hasMore ? (
+      {canLoadOlder ? (
         <ActionButton
           label={loadingOlder ? "جارٍ تحميل الأقدم..." : "تحميل عناصر أقدم"}
           icon={loadingOlder ? "clock" : "chevron-down"}

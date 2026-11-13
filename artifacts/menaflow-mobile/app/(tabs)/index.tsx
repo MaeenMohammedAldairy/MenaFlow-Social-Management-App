@@ -493,7 +493,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
               { backgroundColor: colors.card },
             ]}
           >
-            <Icon name="message-circle" size={18} color={colors.whatsapp} />
+            <Icon name="whatsapp" size={18} color={colors.whatsapp} />
           </View>
           <View style={styles.orderNotificationCopy}>
             <Text

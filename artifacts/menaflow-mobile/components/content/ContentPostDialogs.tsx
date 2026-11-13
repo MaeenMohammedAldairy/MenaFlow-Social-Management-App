@@ -2,13 +2,13 @@ import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   ScrollView,
   TextInput,
   View,
 } from "react-native";
+import { showAppNotice } from "@/components/AppFeedback";
 import { Image } from "expo-image";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
@@ -402,7 +402,7 @@ export function ContentPostDialogs({
                     !editingPost?.title.trim() &&
                     editingMediaUrls.length === 0
                   ) {
-                    Alert.alert("المنشور فارغ", "أضف نصاً أو وسيطاً قبل حفظ التعديل.");
+                    showAppNotice({ title: "المنشور فارغ", message: "أضف نصاً أو وسيطاً قبل حفظ التعديل.", tone: "error" });
                     return;
                   }
                   setSaving(true);
@@ -418,12 +418,14 @@ export function ContentPostDialogs({
                     });
                     setEditingPostId(null);
                   } catch (error) {
-                    Alert.alert(
-                      "تعذر حفظ التعديل",
-                      error instanceof Error
-                        ? error.message
-                        : "تحقق من اتصال الخادم ثم أعد المحاولة.",
-                    );
+                    showAppNotice({
+                      title: "تعذر حفظ التعديل",
+                      message:
+                        error instanceof Error
+                          ? error.message
+                          : "تحقق من اتصال الخادم ثم أعد المحاولة.",
+                      tone: "error",
+                    });
                   } finally {
                     setSaving(false);
                   }

@@ -277,7 +277,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
           <View style={[styles.channelItem, { borderColor: colors.border, backgroundColor: colors.background }]}>
             <View style={styles.channelMeta}>
               <View style={[styles.channelIconWrap, { backgroundColor: colors.accent }]}>
-                <Icon name="message-circle" size={18} color={colors.whatsapp} />
+                <Icon name="whatsapp" size={18} color={colors.whatsapp} />
               </View>
               <View style={styles.channelInfo}>
                 <Text style={[styles.channelTitle, { color: colors.foreground }]}>

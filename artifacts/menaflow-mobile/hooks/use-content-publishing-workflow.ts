@@ -1,6 +1,6 @@
 import { verifyFacebookPostStatus } from "@workspace/api-client-react";
 import { useState } from "react";
-import { Alert } from "react-native";
+import { showAppNotice } from "@/components/AppFeedback";
 import { publishReasonLabel } from "@/lib/content-utils";
 import type { Channel, Post, PostStatus } from "@/context/StudioContext";
 
@@ -106,19 +106,22 @@ export function useContentPublishingWorkflow({
     try {
       await updatePostStatus(post.id, "approved");
       await refreshPosts();
-      Alert.alert(
-        "تم اعتماد المنشور",
-        autoPublish
+      showAppNotice({
+        title: "تم اعتماد المنشور",
+        message: autoPublish
           ? "تم اعتماد المنشور، وسيبدأ نشره على المنصات المختارة."
           : "حُفظ ضمن المنشورات المعتمدة، وسيُنشر عند تفعيل النشر التلقائي.",
-      );
+        tone: "success",
+      });
     } catch (error) {
-      Alert.alert(
-        "تعذر اعتماد المنشور",
-        error instanceof Error
-          ? error.message
-          : "تحقق من النص والوسائط ثم أعد المحاولة.",
-      );
+      showAppNotice({
+        title: "تعذر اعتماد المنشور",
+        message:
+          error instanceof Error
+            ? error.message
+            : "تحقق من النص والوسائط ثم أعد المحاولة.",
+        tone: "error",
+      });
     }
   };
 

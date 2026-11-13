@@ -22,6 +22,12 @@ older pages until it reaches that number or the provider runs out of history;
 fully saved messages do not consume the limit. The regular sync of new messages
 is not affected by this limit.
 
+Evolution webhooks subscribe to live message upserts, updates, and deletions.
+Bulk `MESSAGES_SET` history events are intentionally not subscribed to: their
+payloads can exceed the webhook request limit. Historical and catch-up imports
+use the explicit sync endpoint and Evolution's paginated `chat/findMessages`
+API for selected groups instead.
+
 All content sync settings default to enabled to preserve existing behavior.
 Changing a setting affects new imports and pending media retries; it does not
 delete previously stored messages or media.

@@ -22,6 +22,7 @@ export type WhatsAppDirectMessage = {
   direction: "inbound" | "outbound";
   status: WhatsAppDirectMessageStatus;
   autoReplyStatus: string | null;
+  autoReplyErrorCode: string | null;
   text: string;
   occurredAt: string;
   createdAt: string;

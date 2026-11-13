@@ -607,7 +607,7 @@ async function persistImportedMessage(
           mediaGroupId: menaWhatsAppMessages.mediaGroupId,
           mediaGroupExpectedCount: menaWhatsAppMessages.mediaGroupExpectedCount,
         })
-        .from(menaWhatsAppDirectMessages)
+        .from(menaWhatsAppMessages)
         .where(
           and(
             eq(menaWhatsAppMessages.workspaceId, workspaceId),

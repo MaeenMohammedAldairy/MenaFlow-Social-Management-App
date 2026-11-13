@@ -12,7 +12,6 @@ import { router, useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Linking,
   Pressable,
@@ -20,6 +19,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { AppAlert as Alert } from "@/components/AppFeedback";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
@@ -38,11 +38,11 @@ import { isLocalAuthDisabled } from "@/constants/auth";
 
 const platforms: Record<
   AccountPlatform,
-  { name: string; icon: "facebook" | "instagram" | "message-circle"; tintKey: "facebook" | "instagram" | "whatsapp" }
+  { name: string; icon: "facebook" | "instagram" | "whatsapp"; tintKey: "facebook" | "instagram" | "whatsapp" }
 > = {
   facebook: { name: "فيسبوك", icon: "facebook", tintKey: "facebook" },
   instagram: { name: "إنستغرام", icon: "instagram", tintKey: "instagram" },
-  whatsapp: { name: "واتساب", icon: "message-circle", tintKey: "whatsapp" },
+  whatsapp: { name: "واتساب", icon: "whatsapp", tintKey: "whatsapp" },
 };
 
 const permissionLabels: Record<string, string> = {
@@ -841,7 +841,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
               </>
             ) : platform === "whatsapp" ? (
               <EmptyState
-                icon="message-circle"
+                icon="whatsapp"
                 title="لا توجد رسائل محفوظة"
                 body="اختر مجموعات واتساب من صفحة المصادر، ثم ابدأ المزامنة لعرض الرسائل هنا."
               />

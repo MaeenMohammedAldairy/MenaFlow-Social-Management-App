@@ -63,7 +63,17 @@ export function AuthFrame({
             <View style={styles.brand}>
               {mode === 'sign-up' ? (
                 <Link href="/(auth)/sign-in" asChild>
-                  <Pressable accessibilityLabel="العودة إلى تسجيل الدخول" style={styles.backButton}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="العودة إلى تسجيل الدخول"
+                    style={({ pressed }) => [
+                      styles.backButton,
+                      {
+                        backgroundColor: colors.accent,
+                        opacity: pressed ? 0.72 : 1,
+                      },
+                    ]}
+                  >
                     <ArrowRight size={18} color={colors.foreground} />
                   </Pressable>
                 </Link>
@@ -244,12 +254,11 @@ const styles = StyleSheet.create({
   backButton: {
     position: 'absolute',
     start: 0,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F0F8FC',
   },
   headingRow: { width: '100%' },
   heading: { alignItems: 'center', gap: 4, width: '100%' },

@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import {
-  Alert,
   Linking,
   Modal,
   Pressable,
@@ -11,6 +10,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { AppAlert as Alert, showAppNotice } from "@/components/AppFeedback";
 import { Image } from "expo-image";
 import { useAuth } from "@clerk/expo";
 import {
@@ -3085,7 +3085,11 @@ function ProductPublicationHistory({
                   const permalink = publication.permalink;
                   if (!permalink) return;
                   void Linking.openURL(permalink).catch(() =>
-                    Alert.alert("تعذر فتح المنشور", "تحقق من اتصال الإنترنت."),
+                    showAppNotice({
+                      title: "تعذر فتح المنشور",
+                      message: "تحقق من اتصال الإنترنت.",
+                      tone: "error",
+                    }),
                   );
                 }}
               >

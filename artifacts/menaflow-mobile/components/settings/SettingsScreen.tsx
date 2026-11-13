@@ -1,13 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
-  Platform,
   StyleSheet,
   Switch,
   View,
 } from "react-native";
+import { AppAlert as Alert, showAppNotice } from "@/components/AppFeedback";
 import { CairoText as Text } from "@/components/CairoTypography";
 import {
   LucideIcon as Icon,
@@ -284,10 +283,11 @@ function SettingsContent({
       setAppearancePickerVisible(false);
     } catch (error) {
       console.error("Unable to save appearance preference:", error);
-      Alert.alert(
-        "تعذر تغيير المظهر",
-        "لم نتمكن من حفظ إعداد المظهر. تحقق من مساحة التخزين وحاول مرة أخرى.",
-      );
+      showAppNotice({
+        title: "تعذر تغيير المظهر",
+        message: "لم نتمكن من حفظ إعداد المظهر. تحقق من مساحة التخزين وحاول مرة أخرى.",
+        tone: "error",
+      });
     }
   };
   const confirmSignOut = () => {
@@ -301,23 +301,13 @@ function SettingsContent({
       } catch {
         const message =
           "لم يكتمل إنهاء الجلسة. تحقق من الاتصال وحاول مرة أخرى.";
-        if (Platform.OS === "web" && typeof window !== "undefined") {
-          window.alert(`تعذر تسجيل الخروج\n\n${message}`);
-        } else {
-          Alert.alert("تعذر تسجيل الخروج", message);
-        }
+        showAppNotice({ title: "تعذر تسجيل الخروج", message, tone: "error" });
       } finally {
         signOutInFlightRef.current = false;
         setSigningOut(false);
       }
     };
 
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      if (window.confirm("هل تريد إنهاء جلستك على هذا الجهاز؟")) {
-        void performSignOut();
-      }
-      return;
-    }
     Alert.alert("تسجيل الخروج", "هل تريد إنهاء جلستك على هذا الجهاز؟", [
       { text: "البقاء في الحساب", style: "cancel" },
       {
@@ -338,13 +328,18 @@ function SettingsContent({
       );
       if (!exists) throw new Error("WORKSPACE_DELETION_REQUEST_NOT_RECORDED");
       setDeletionRequestStatus("pending");
-      Alert.alert(
-        "تم تسجيل الطلب",
-        "سُجل طلب حذف مساحة العمل. لم يبدأ حذف البيانات أو الوسائط.",
-      );
+      showAppNotice({
+        title: "تم تسجيل الطلب",
+        message: "سُجل طلب حذف مساحة العمل. لم يبدأ حذف البيانات أو الوسائط.",
+        tone: "success",
+      });
     } catch (error) {
       console.error("Unable to submit workspace deletion request:", error);
-      Alert.alert("تعذر تسجيل الطلب", "تحقق من اتصالك ثم حاول مرة أخرى.");
+      showAppNotice({
+        title: "تعذر تسجيل الطلب",
+        message: "تحقق من اتصالك ثم حاول مرة أخرى.",
+        tone: "error",
+      });
     } finally {
       setSubmittingDeletionRequest(false);
     }
@@ -353,12 +348,6 @@ function SettingsContent({
     if (!canRequestWorkspaceDeletion || submittingDeletionRequest) return;
     const message =
       "سيُسجل طلب للمراجعة فقط. لن تُحذف البيانات أو الوسائط تلقائيًا.";
-    if (Platform.OS === "web" && typeof window !== "undefined") {
-      if (window.confirm(`طلب حذف مساحة العمل\n\n${message}`)) {
-        void submitWorkspaceDeletionRequest();
-      }
-      return;
-    }
     Alert.alert("طلب حذف مساحة العمل", message, [
       { text: "إلغاء", style: "cancel" },
       {
@@ -435,10 +424,11 @@ function SettingsContent({
                     accessibilityState={{ checked: selected }}
                     onPress={() => {
                       void selectWorkspace(workspace.id).catch(() => {
-                        Alert.alert(
-                          "تعذر تبديل مساحة العمل",
-                          "تحقق من اتصالك ثم حاول مرة أخرى.",
-                        );
+                        showAppNotice({
+                          title: "تعذر تبديل مساحة العمل",
+                          message: "تحقق من اتصالك ثم حاول مرة أخرى.",
+                          tone: "error",
+                        });
                       });
                     }}
                     style={({ pressed }) => [

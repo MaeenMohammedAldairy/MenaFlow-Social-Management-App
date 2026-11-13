@@ -44,11 +44,11 @@ export function InboxPlatformTabs({
               },
             ]}
           >
-            {tab.key === "facebook" || tab.key === "instagram" ? (
+            {tab.key !== "all" ? (
               <SocialPlatformIcon platform={tab.key} size={16} />
             ) : (
               <Icon
-                name={tab.key === "whatsapp" ? "message-circle" : "message-square"}
+                name="message-square"
                 size={16}
                 color={selected ? colors.primary : colors.mutedForeground}
               />

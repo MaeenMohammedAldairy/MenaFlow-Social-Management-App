@@ -835,6 +835,7 @@ router.delete("/social/whatsapp", requireWorkspace, async (req, res) => {
         throw err;
       }
     }
+    clearConnectionStateCache();
 
     if (cancelPairing) {
       const [cancelled] = await db
@@ -858,16 +859,21 @@ router.delete("/social/whatsapp", requireWorkspace, async (req, res) => {
       return;
     }
 
-    const deleted = await db
-      .delete(menaWhatsAppConnections)
+    const [disconnected] = await db
+      .update(menaWhatsAppConnections)
+      .set({
+        status: "disconnected",
+        autoSyncEnabled: false,
+        autoReplyEnabled: false,
+      })
       .where(
         and(
           eq(menaWhatsAppConnections.workspaceId, workspaceId),
           eq(menaWhatsAppConnections.instanceName, connection.instanceName),
         ),
       )
-      .returning({ ownerId: menaWhatsAppConnections.ownerId });
-    if (deleted.length === 0) {
+      .returning({ instanceName: menaWhatsAppConnections.instanceName });
+    if (!disconnected) {
       const [latest] = await db
         .select({ instanceName: menaWhatsAppConnections.instanceName })
         .from(menaWhatsAppConnections)

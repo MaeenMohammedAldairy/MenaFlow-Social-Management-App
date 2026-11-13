@@ -322,7 +322,6 @@ export async function configureWhatsAppWebhook(
           webhookBase64: false,
           events: [
             "MESSAGES_UPSERT",
-            "MESSAGES_SET",
             "MESSAGES_UPDATE",
             "MESSAGES_DELETE",
           ],

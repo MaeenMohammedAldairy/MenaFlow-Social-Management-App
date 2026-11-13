@@ -105,7 +105,13 @@ export function LegalDocumentScreen({
           accessibilityRole="button"
           accessibilityLabel="العودة إلى إنشاء الحساب"
           onPress={() => navigateBack("/(auth)/sign-up")}
-          style={[styles.backButton, { borderColor: colors.border }]}
+          style={({ pressed }) => [
+            styles.backButton,
+            {
+              backgroundColor: pressed ? colors.secondary : colors.card,
+              borderColor: colors.border,
+            },
+          ]}
         >
           <ArrowRight size={18} color={colors.primary} />
           <Text style={[styles.backText, { color: colors.primary }]}>
@@ -169,12 +175,13 @@ const styles = StyleSheet.create({
   },
   backButton: {
     minHeight: 44,
+    minWidth: 44,
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 12,
   },
   backText: { fontSize: 14, fontWeight: "700" },

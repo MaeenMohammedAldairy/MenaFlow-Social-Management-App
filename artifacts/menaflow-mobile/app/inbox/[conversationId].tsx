@@ -115,13 +115,14 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
     .sort(
       (first, second) => {
         const byDate =
-          Date.parse(first.occurredAt) - Date.parse(second.occurredAt);
-        return byDate || first.id.localeCompare(second.id);
+          Date.parse(second.occurredAt) - Date.parse(first.occurredAt);
+        return byDate || second.id.localeCompare(first.id);
       },
     );
   const lastPage = olderPages.at(-1);
   const hasMore = lastPage?.hasMore ?? inbox.data?.hasMore ?? false;
   const nextCursor = lastPage?.nextCursor ?? inbox.data?.nextCursor ?? null;
+  const canLoadOlder = hasMore && Boolean(nextCursor);
   const loadOlder = async () => {
     if (!nextCursor || !personId || !platform || loadingOlder) return;
     setLoadingOlder(true);
@@ -132,7 +133,14 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
         personId,
         platform,
       });
-      setOlderPages((current) => [...current, page]);
+      const loadedIds = new Set(loadedItems.map((item) => item.id));
+      const hasNewItems = page.items.some((item) => !loadedIds.has(item.id));
+      setOlderPages((current) => [
+        ...current,
+        hasNewItems && page.hasMore && page.nextCursor
+          ? page
+          : { ...page, hasMore: false, nextCursor: null },
+      ]);
     } catch (error) {
       setOlderError(
         error instanceof Error ? error.message : "تعذر تحميل العناصر الأقدم.",
@@ -149,7 +157,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
   const title =
     items.find((item) => item.actorName)?.actorName || "اسم غير متاح";
   const platformLabel = platform === "facebook" ? "فيسبوك" : "إنستغرام";
-  const latestItem = items.at(-1);
+  const latestItem = items[0];
   const messageCount = items.filter((item) => item.kind === "message").length;
   const commentCount = items.length - messageCount;
 
@@ -168,7 +176,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
         title={title}
         subtitle={
           platform
-            ? `محادثة ${platformLabel} · الرسائل والتعليقات مرتبة حسب وقت الاستلام`
+            ? `محادثة ${platformLabel} · الأحدث أولًا`
             : "تعذر تحديد المنصة لهذه المحادثة."
         }
         back={{ href: "/(tabs)/inbox", label: "العودة إلى صندوق الوارد" }}
@@ -348,7 +356,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
               {olderError}
             </Text>
           ) : null}
-          {hasMore ? (
+          {canLoadOlder ? (
             <ActionButton
               label={loadingOlder ? "جارٍ تحميل الأقدم..." : "تحميل عناصر أقدم"}
               icon={loadingOlder ? "clock" : "chevron-down"}

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   EvolutionApiError,
   clearConnectionStateCache,
+  configureWhatsAppWebhook,
   evolutionConnectionState,
   evolutionRequest,
   isExclusiveWhatsAppInstance,
@@ -177,6 +178,59 @@ test("sends Evolution requests with the configured base URL and API key", async 
       delete process.env.WHATSAPP_EVOLUTION_API_KEY;
     } else {
       process.env.WHATSAPP_EVOLUTION_API_KEY = originalEvolutionKey;
+    }
+  }
+});
+
+test("configures only bounded live message events on the Evolution webhook", async () => {
+  const keys = [
+    "NODE_ENV",
+    "WHATSAPP_EVOLUTION_BASE_URL",
+    "WHATSAPP_EVOLUTION_API_KEY",
+    "WHATSAPP_EVOLUTION_WEBHOOK_SECRET",
+    "WHATSAPP_EVOLUTION_WEBHOOK_URL",
+  ];
+  const previous = new Map(keys.map((key) => [key, process.env[key]]));
+  let requestUrl;
+  let requestOptions;
+  try {
+    process.env.NODE_ENV = "production";
+    process.env.WHATSAPP_EVOLUTION_BASE_URL = "https://evolution.example";
+    process.env.WHATSAPP_EVOLUTION_API_KEY = "test-api-key";
+    process.env.WHATSAPP_EVOLUTION_WEBHOOK_SECRET = "test-webhook-secret";
+    process.env.WHATSAPP_EVOLUTION_WEBHOOK_URL =
+      "https://app.example/api/social/whatsapp/webhook";
+    globalThis.fetch = async (url, options) => {
+      requestUrl = url;
+      requestOptions = options;
+      return new Response(JSON.stringify({ webhook: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    await configureWhatsAppWebhook("instance-123");
+
+    assert.equal(
+      requestUrl.toString(),
+      "https://evolution.example/webhook/set/instance-123",
+    );
+    const body = JSON.parse(requestOptions.body);
+    assert.deepEqual(body.webhook.events, [
+      "MESSAGES_UPSERT",
+      "MESSAGES_UPDATE",
+      "MESSAGES_DELETE",
+    ]);
+    assert.equal(body.webhook.webhookBase64, false);
+    assert.equal(
+      body.webhook.url,
+      "https://app.example/api/social/whatsapp/webhook",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
     }
   }
 });

@@ -35,13 +35,13 @@ import {
 } from "libphonenumber-js";
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   StyleSheet,
   View,
   useWindowDimensions,
 } from "react-native";
+import { showAppNotice } from "@/components/AppFeedback";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
@@ -523,36 +523,45 @@ function SourcesContent({
           status === "instagram_connected"
         ) {
           const detail = new URL(result.url).searchParams.get("detail");
-          Alert.alert(
-            platform === "instagram" ? "تم ربط Instagram ✓" : "تم ربط فيسبوك ✓",
-            detail ||
+          showAppNotice({
+            title: platform === "instagram" ? "تم ربط Instagram" : "تم ربط فيسبوك",
+            message:
+              detail ||
               (platform === "instagram"
                 ? "تم ربط حساب Instagram الاحترافي وصفحة Facebook المرتبطة به."
                 : "تم تحديث اتصال صفحة Facebook وحساب Instagram المهني المرتبط بها إن وُجد."),
-          );
+            tone: "success",
+          });
         } else if (status === "error") {
           const resultUrl = new URL(result.url);
           const reason = resultUrl.searchParams.get("reason") || "خطأ غير محدد";
           const detail = resultUrl.searchParams.get("detail") || undefined;
-          Alert.alert("فشل الربط", metaOAuthErrorMessage(reason, detail));
+          showAppNotice({
+            title: "فشل الربط",
+            message: metaOAuthErrorMessage(reason, detail),
+            tone: "error",
+          });
         } else {
-          Alert.alert(
-            "تعذر تأكيد الربط",
-            "لم يصل تأكيد من الخادم. تحقق من حالة الحساب ثم أعد المحاولة.",
-          );
+          showAppNotice({
+            title: "تعذر تأكيد الربط",
+            message: "لم يصل تأكيد من الخادم. تحقق من حالة الحساب ثم أعد المحاولة.",
+            tone: "error",
+          });
         }
       } else if (result.type === "cancel" || result.type === "dismiss") {
-        Alert.alert(
-          "تم إلغاء الربط",
-          "لم يتم ربط الحساب. يمكنك المحاولة مرة أخرى أو متابعة الإعداد لاحقًا.",
-        );
+        showAppNotice({
+          title: "تم إلغاء الربط",
+          message: "لم يتم ربط الحساب. يمكنك المحاولة مرة أخرى أو متابعة الإعداد لاحقًا.",
+          tone: "info",
+        });
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "خطأ غير محدد";
-      Alert.alert(
-        "تعذّر فتح صفحة الربط",
-        `تحقق من تشغيل الخادم على المنفذ 5000.\n\nالخطأ: ${message}`,
-      );
+      showAppNotice({
+        title: "تعذّر فتح صفحة الربط",
+        message: `تحقق من تشغيل الخادم على المنفذ 5000.\n\nالخطأ: ${message}`,
+        tone: "error",
+      });
     } finally {
       setSourceBusy(platform, false);
     }
@@ -893,10 +902,11 @@ function SourcesContent({
           queryKey: whatsappSyncStatusQueryKey,
         }),
       ]);
-      Alert.alert(
-        "تم حفظ الإعدادات",
-        "حُفظت مجموعات واتساب. لم تبدأ مزامنة الرسائل السابقة؛ فعّل خيار مزامنتها ثم اضغط «مزامنة الآن حسب الخيارات» عند الحاجة.",
-      );
+      showAppNotice({
+        title: "تم حفظ الإعدادات",
+        message: "حُفظت مجموعات واتساب. لم تبدأ مزامنة الرسائل السابقة؛ فعّل خيار مزامنتها ثم اضغط «مزامنة الآن حسب الخيارات» عند الحاجة.",
+        tone: "success",
+      });
     } catch (error: unknown) {
       setWhatsappSetupError(
         error instanceof Error
@@ -995,15 +1005,17 @@ function SourcesContent({
           "لتبدأ المزامنة، فعّل خيارًا واحدًا على الأقل: مزامنة الرسائل أو الصور أو الفيديوهات.",
         );
       } else if (result.status === "no_selected_groups") {
-        Alert.alert(
-          "لا توجد مجموعات محددة",
-          "أضف مجموعة واتساب واحدة على الأقل من قسم إعداد الحساب قبل مزامنة الرسائل السابقة.",
-        );
+        showAppNotice({
+          title: "لا توجد مجموعات محددة",
+          message: "أضف مجموعة واتساب واحدة على الأقل من قسم إعداد الحساب قبل مزامنة الرسائل السابقة.",
+          tone: "info",
+        });
       } else if (result.status === "no_linked_announcement_groups") {
-        Alert.alert(
-          "لا توجد مجموعات قابلة للمزامنة",
-          "لم يُعثر على مجموعات إعلانات مرتبطة ضمن المجموعات المحددة.",
-        );
+        showAppNotice({
+          title: "لا توجد مجموعات قابلة للمزامنة",
+          message: "لم يُعثر على مجموعات إعلانات مرتبطة ضمن المجموعات المحددة.",
+          tone: "info",
+        });
       } else {
         setClientTrackedSyncs((current) => ({
           ...current,
@@ -1048,26 +1060,30 @@ function SourcesContent({
           queryKey: whatsappSyncStatusQueryKey,
         });
         if (result.status === "already_running") {
-          Alert.alert(
-            "المزامنة قيد التنفيذ",
-            "هناك عملية استيراد سابقة لم تنتهِ بعد. انتظر حتى تكتمل قبل بدء مزامنة أخرى.",
-          );
+          showAppNotice({
+            title: "المزامنة قيد التنفيذ",
+            message: "هناك عملية استيراد سابقة لم تنتهِ بعد. انتظر حتى تكتمل قبل بدء مزامنة أخرى.",
+            tone: "info",
+          });
         } else {
-          Alert.alert(
-            "بدأت المزامنة",
-            syncPreviousMessages
+          showAppNotice({
+            title: "بدأت المزامنة",
+            message: syncPreviousMessages
               ? `بدأ استيراد ما يصل إلى ${parsedHistoryLimit} رسالة غير محفوظة من السجل لكل مجموعة، من ${result.groups.length} مجموعة. تابع حالة كل مجموعة في هذا القسم.`
               : `بدأ استيراد الرسائل الجديدة فقط حسب الخيارات المحددة من ${result.groups.length} مجموعة. تابع حالة كل مجموعة في هذا القسم.`,
-          );
+            tone: "success",
+          });
         }
       }
     } catch (error: unknown) {
-      Alert.alert(
-        "تعذرت المزامنة",
-        error instanceof Error
-          ? error.message
-          : "تعذّر بدء مزامنة واتساب الحقيقية.",
-      );
+      showAppNotice({
+        title: "تعذرت المزامنة",
+        message:
+          error instanceof Error
+            ? error.message
+            : "تعذّر بدء مزامنة واتساب الحقيقية.",
+        tone: "error",
+      });
     } finally {
       syncRequestInFlightRef.current = false;
       setSyncingWhatsApp(false);
@@ -1120,10 +1136,11 @@ function SourcesContent({
             latest ? { ...latest, [setting]: previous[setting] } : latest,
         );
       }
-      Alert.alert(
-        "تعذر تحديث إعداد المزامنة",
-        error instanceof Error ? error.message : "تعذّر حفظ إعدادات المزامنة.",
-      );
+      showAppNotice({
+        title: "تعذر تحديث إعداد المزامنة",
+        message: error instanceof Error ? error.message : "تعذّر حفظ إعدادات المزامنة.",
+        tone: "error",
+      });
     } finally {
       setAutoSyncSaving((current) => ({ ...current, [setting]: false }));
     }
@@ -1222,17 +1239,20 @@ function SourcesContent({
       await refreshPosts();
       if (activeGroupJid)
         await loadGroupMessages(activeGroupJid, groupMessagesPage);
-      Alert.alert(
-        "تم التحويل",
-        "أُنشئ محتوى واحد للمجموعة، ويمكنك مراجعته في صفحة المحتوى.",
-      );
+      showAppNotice({
+        title: "تم التحويل",
+        message: "أُنشئ محتوى واحد للمجموعة، ويمكنك مراجعته في صفحة المحتوى.",
+        tone: "success",
+      });
     } catch (error: unknown) {
-      Alert.alert(
-        "تعذّر التحويل",
-        error instanceof Error
-          ? error.message
-          : "تعذّر تحويل مجموعة الوسائط إلى منشور.",
-      );
+      showAppNotice({
+        title: "تعذّر التحويل",
+        message:
+          error instanceof Error
+            ? error.message
+            : "تعذّر تحويل مجموعة الوسائط إلى منشور.",
+        tone: "error",
+      });
     } finally {
       setConvertingWhatsAppGroups((current) => {
         const next = { ...current };
