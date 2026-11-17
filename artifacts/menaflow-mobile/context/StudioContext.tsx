@@ -123,6 +123,7 @@ interface StudioState {
 interface StudioContextValue extends StudioState {
   ready: boolean;
   syncing: boolean;
+  syncError: string | null;
   loadingMorePosts: boolean;
   hasMorePosts: boolean;
   storageError: string | null;
@@ -171,6 +172,7 @@ export function StudioProvider({
   const [state, setState] = useState<StudioState | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState<boolean>(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [loadingMorePosts, setLoadingMorePosts] = useState(false);
   const syncInFlightRef = useRef(false);
   const postsCursorRef = useRef<string | null>(null);
@@ -192,22 +194,24 @@ export function StudioProvider({
       const response = await fetchApiResponse('/api/posts/page?limit=20');
       if (!response.ok) throw new Error(`POSTS_PAGE_HTTP_${response.status}`);
       const page = await response.json() as { items?: unknown; nextCursor?: unknown };
-      if (Array.isArray(page.items)) {
-        postsCursorRef.current =
-          typeof page.nextCursor === 'string' ? page.nextCursor : null;
-        const mapped = page.items.map((post) => mapApiPost(post as Record<string, any>));
+      if (!Array.isArray(page.items)) {
+        throw new Error('POSTS_PAGE_RESPONSE_INVALID');
+      }
+      setSyncError(null);
+      postsCursorRef.current =
+        typeof page.nextCursor === 'string' ? page.nextCursor : null;
+      const mapped = page.items.map((post) => mapApiPost(post as Record<string, any>));
 
-        const current = stateRef.current;
-        const serverIds = new Set(mapped.map((post) => post.id));
-        for (const id of serverIds) serverPostIdsRef.current.add(id);
-        const previouslyLoadedFromServer = current.posts.filter(
-          (post) =>
-            serverPostIdsRef.current.has(post.id) && !serverIds.has(post.id),
-        );
-        const nextPosts = [...mapped, ...previouslyLoadedFromServer];
-        if (postsHaveChanged(current.posts, nextPosts)) {
-          commit((latest) => ({ ...latest, posts: nextPosts }));
-        }
+      const current = stateRef.current;
+      const serverIds = new Set(mapped.map((post) => post.id));
+      for (const id of serverIds) serverPostIdsRef.current.add(id);
+      const previouslyLoadedFromServer = current.posts.filter(
+        (post) =>
+          serverPostIdsRef.current.has(post.id) && !serverIds.has(post.id),
+      );
+      const nextPosts = [...mapped, ...previouslyLoadedFromServer];
+      if (postsHaveChanged(current.posts, nextPosts)) {
+        commit((latest) => ({ ...latest, posts: nextPosts }));
       }
       if (includeSettings) {
         try {
@@ -221,6 +225,9 @@ export function StudioProvider({
       }
     } catch (error) {
       console.warn('Unable to refresh posts from the server:', error);
+      setSyncError(
+        'تعذّرت مزامنة المنشورات مع الخادم. يمكنك متابعة المحتوى المحفوظ ثم إعادة المحاولة.',
+      );
     } finally {
       syncInFlightRef.current = false;
       if (showProgress) setSyncing(false);
@@ -354,6 +361,7 @@ export function StudioProvider({
     preferences: state?.preferences ?? defaults.preferences,
     ready: state !== null && storageError === null,
     syncing,
+    syncError,
     loadingMorePosts,
     hasMorePosts: postsCursorRef.current !== null,
     storageError,

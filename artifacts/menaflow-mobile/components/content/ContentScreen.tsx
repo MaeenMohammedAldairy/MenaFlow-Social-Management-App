@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Pressable,
   RefreshControl,
@@ -86,6 +86,8 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     : routeDateParam;
   const {
     posts,
+    ready,
+    storageError,
     loadMorePosts,
     loadingMorePosts,
     hasMorePosts,
@@ -95,6 +97,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     deletePost,
     refreshPosts,
     syncing,
+    syncError,
     autoPublishSettings,
   } = useStudio();
   const [filter, setFilter] = useState<PostStatus | "all">("all");
@@ -115,6 +118,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
   const [editingBody, setEditingBody] = useState("");
   const [editingMediaUrls, setEditingMediaUrls] = useState<string[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [connectedChannels, setConnectedChannels] = useState<
     Array<Extract<Channel, "facebook" | "instagram">>
   >([]);
@@ -255,16 +259,41 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     setFiltersExpanded(false);
   };
 
-  useEffect(() => {
-    if (visiblePosts.length === 0 && hasMorePosts && !loadingMorePosts) {
-      void loadMorePosts().catch((error) => {
-        console.warn(
-          "Unable to find more content matching the selected filters:",
-          error,
+  const loadMoreContent = useCallback(
+    async (retry = false) => {
+      if (!hasMorePosts || loadingMorePosts || (loadMoreError && !retry))
+        return;
+      setLoadMoreError(null);
+      try {
+        await loadMorePosts();
+      } catch (error) {
+        console.warn("Unable to load more posts:", error);
+        setLoadMoreError(
+          "تعذّر تحميل المزيد من المنشورات. تحقق من اتصالك ثم أعد المحاولة.",
         );
-      });
+      }
+    },
+    [hasMorePosts, loadMoreError, loadMorePosts, loadingMorePosts],
+  );
+
+  useEffect(() => {
+    if (
+      ready &&
+      !loadMoreError &&
+      visiblePosts.length === 0 &&
+      hasMorePosts &&
+      !loadingMorePosts
+    ) {
+      void loadMoreContent();
     }
-  }, [visiblePosts.length, hasMorePosts, loadingMorePosts, loadMorePosts]);
+  }, [
+    hasMorePosts,
+    loadMoreContent,
+    loadMoreError,
+    loadingMorePosts,
+    ready,
+    visiblePosts.length,
+  ]);
   const groupedPostsByKey = new Map<
     string,
     { key: string; title: string; posts: typeof visiblePosts }
@@ -290,8 +319,11 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await refreshPosts();
-    setRefreshing(false);
+    try {
+      await refreshPosts();
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const onEdit = (post: Post) => {
@@ -320,9 +352,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           contentOffset.y + layoutMeasurement.height >=
           contentSize.height - 900
         ) {
-          void loadMorePosts().catch((error) => {
-            console.warn("Unable to load the next content page:", error);
-          });
+          void loadMoreContent();
         }
       }}
       refreshControl={
@@ -404,7 +434,16 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           </View>
         </View>
         {connectionLoadError ? (
-          <View style={styles.connectionLoadError}>
+          <View
+            style={[
+              styles.connectionLoadError,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.destructive,
+                borderWidth: 1,
+              },
+            ]}
+          >
             <Text
               accessibilityRole="alert"
               style={[styles.intro, { color: colors.destructive }]}
@@ -434,6 +473,32 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           الرسائل والوسائط المزامنة تُحوّل إلى منشورات متاحة للمراجعة والنشر
           اليدوي أو التلقائي.
         </Text>
+        {syncError ? (
+          <View
+            style={[
+              styles.connectionLoadError,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.destructive,
+                borderWidth: 1,
+              },
+            ]}
+          >
+            <Text
+              accessibilityRole="alert"
+              style={[styles.intro, { color: colors.destructive }]}
+            >
+              {syncError}
+            </Text>
+            <ActionButton
+              label={syncing ? "جارٍ إعادة المزامنة…" : "إعادة المزامنة"}
+              icon={syncing ? "clock" : "refresh-cw"}
+              secondary
+              disabled={syncing}
+              onPress={() => void refreshPosts()}
+            />
+          </View>
+        ) : null}
         <View style={styles.prioritySectionHeading}>
           <View
             style={[
@@ -836,24 +901,37 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           ) : null}
         </View>
 
-        <ContentPostList
-          visiblePosts={visiblePosts}
-          groupedPosts={groupedPosts}
-          filter={filter}
-          hasActiveFilters={hasActiveFilters}
-          onClearFilters={clearContentFilters}
-          loadingMorePosts={loadingMorePosts}
-          mediaPreviewUrls={mediaPreviewUrls}
-          onMediaError={() => void refreshPosts()}
-          verifyingPostId={verifyingPostId}
-          verificationFeedback={verificationFeedback}
-          onVerifyFacebookStatus={onVerifyFacebookStatus}
-          onEdit={onEdit}
-          onPublish={onPublish}
-          onApprove={onApprove}
-          updatePostStatus={updatePostStatus}
-          deletePost={deletePost}
-        />
+        {!ready ? (
+          <EmptyState
+            icon={storageError ? "alert-circle" : "clock"}
+            title={
+              storageError ? "تعذّر تحميل المنشورات" : "جارٍ تحميل المنشورات"
+            }
+            body={storageError || "نحمّل بيانات مساحة العمل قبل عرض المنشورات."}
+          />
+        ) : (
+          <ContentPostList
+            visiblePosts={visiblePosts}
+            groupedPosts={groupedPosts}
+            filter={filter}
+            hasActiveFilters={hasActiveFilters}
+            onClearFilters={clearContentFilters}
+            onCreatePost={() => router.push("/compose")}
+            loadingMorePosts={loadingMorePosts}
+            loadMoreError={loadMoreError}
+            onRetryLoadMore={() => void loadMoreContent(true)}
+            mediaPreviewUrls={mediaPreviewUrls}
+            onMediaError={() => void refreshPosts()}
+            verifyingPostId={verifyingPostId}
+            verificationFeedback={verificationFeedback}
+            onVerifyFacebookStatus={onVerifyFacebookStatus}
+            onEdit={onEdit}
+            onPublish={onPublish}
+            onApprove={onApprove}
+            updatePostStatus={updatePostStatus}
+            deletePost={deletePost}
+          />
+        )}
       </Panel>
       <ContentPostDialogs
         posts={posts}
