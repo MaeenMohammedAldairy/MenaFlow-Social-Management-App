@@ -79,11 +79,9 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
   const [draft, setDraft] = useState("");
   const [requestId, setRequestId] = useState<string | null>(null);
   useEffect(() => {
-    if (initialRemoteJid) {
-      setSelectedRemoteJid(initialRemoteJid);
-      setDraft("");
-      setRequestId(null);
-    }
+    setSelectedRemoteJid(initialRemoteJid ?? null);
+    setDraft("");
+    setRequestId(null);
   }, [initialRemoteJid]);
   const inboxKey = ["whatsapp-direct-inbox", userId ?? "local"] as const;
   const conversations = useQuery({
@@ -240,32 +238,50 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
             </View>
           </Panel>
           {messages.isError ? (
-            <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
-              {messages.error instanceof Error
-                ? messages.error.message
-                : "تعذر تحميل المحادثة."}
-            </Text>
+            <View style={styles.loadError}>
+              <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
+                {messages.error instanceof Error
+                  ? messages.error.message
+                  : "تعذر تحميل المحادثة."}
+              </Text>
+              <ActionButton
+                label={messages.isFetching ? "جارٍ التحقق..." : "إعادة المحاولة"}
+                icon={messages.isFetching ? "clock" : "refresh-cw"}
+                secondary
+                compact
+                disabled={messages.isFetching}
+                onPress={() => void messages.refetch()}
+              />
+            </View>
           ) : null}
-          <View style={styles.messageList}>
-            {orderedMessages.map((message) => (
-              <DirectMessageBubble
-                key={message.id}
-                message={message}
-                onConfirmNotSent={() => confirmNotSent.mutate(message.id)}
-                confirming={
-                  confirmNotSent.isPending &&
-                  confirmNotSent.variables === message.id
-                }
-              />
-            ))}
-            {orderedMessages.length === 0 && !messages.isPending ? (
-              <EmptyState
-                icon="whatsapp"
-                title="لا توجد رسائل محفوظة"
-                body="ستظهر هنا الرسائل الواردة بعد وصولها إلى الحساب المرتبط."
-              />
-            ) : null}
-          </View>
+          {messages.isPending && orderedMessages.length === 0 ? (
+            <Panel style={styles.messageLoading}>
+              <Icon name="clock" size={18} color={colors.primary} />
+              <Text style={{ color: colors.mutedForeground }}>
+                جارٍ تحميل رسائل المحادثة...
+              </Text>
+            </Panel>
+          ) : orderedMessages.length > 0 ? (
+            <View style={styles.messageList}>
+              {orderedMessages.map((message) => (
+                <DirectMessageBubble
+                  key={message.id}
+                  message={message}
+                  onConfirmNotSent={() => confirmNotSent.mutate(message.id)}
+                  confirming={
+                    confirmNotSent.isPending &&
+                    confirmNotSent.variables === message.id
+                  }
+                />
+              ))}
+            </View>
+          ) : messages.isError ? null : (
+            <EmptyState
+              icon="whatsapp"
+              title="لا توجد رسائل محفوظة"
+              body="ستظهر هنا الرسائل الواردة بعد وصولها إلى الحساب المرتبط."
+            />
+          )}
           {reply.error ? (
             <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
               {reply.error instanceof Error ? reply.error.message : "تعذر إرسال الرد."}
@@ -400,7 +416,10 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
                   key={conversation.remoteJid}
                   accessibilityRole="button"
                   accessibilityLabel={`فتح محادثة ${conversation.customerNumber}`}
-                  onPress={() => setSelectedRemoteJid(conversation.remoteJid)}
+                  onPress={() => {
+                    setSelectedRemoteJid(conversation.remoteJid);
+                    router.setParams({ remoteJid: conversation.remoteJid });
+                  }}
                   style={({ pressed }) => [
                     styles.conversationRow,
                     { borderColor: colors.border, opacity: pressed ? 0.75 : 1 },
@@ -538,6 +557,13 @@ const styles = StyleSheet.create({
   conversationAvatar: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   conversationMeta: { alignItems: "flex-end", gap: 5 },
   messageList: { gap: 10 },
+  messageLoading: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+  },
   messageBubble: { width: "94%", gap: 8, borderWidth: 1, borderRadius: 12, padding: 12 },
   messageHeader: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
   unknownBlock: { gap: 8 },
