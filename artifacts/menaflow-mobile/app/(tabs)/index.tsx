@@ -535,11 +535,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
           ]}
         >
           <View style={styles.heroText}>
-            {width >= 420 ? (
-              <Text style={[styles.heroEyebrow, { color: colors.primary }]}>
-                {heroEyebrow}
-              </Text>
-            ) : null}
+            <Text style={[styles.heroEyebrow, { color: colors.primary }]}>{heroEyebrow}</Text>
             <Text
               style={[
                 styles.heroTitle,
@@ -559,7 +555,6 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
             icon={heroPrimary.icon}
             onPress={heroPrimary.onPress}
             disabled={heroPrimary.disabled}
-            compact={width < 420}
           />
         </View>
       </View>
@@ -647,30 +642,31 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                 },
               ]}
             >
-              <View
-                style={[styles.metricIcon, { backgroundColor: colors.accent }]}
-              >
-                <Icon name={metric.icon} size={17} color={colors.primary} />
-              </View>
-              <Text style={[styles.metricNumber, { color: colors.foreground }]}>
-                {metric.value}
-              </Text>
-              <View style={styles.metricCopy}>
+              <View style={styles.metricHeading}>
                 <Text
+                  numberOfLines={2}
                   style={[styles.metricLabel, { color: colors.foreground }]}
                 >
                   {metric.label}
                 </Text>
-                <Text
-                  numberOfLines={2}
-                  style={[
-                    styles.metricDescription,
-                    { color: colors.mutedForeground },
-                  ]}
+                <View
+                  style={[styles.metricIcon, { backgroundColor: colors.accent }]}
                 >
-                  {metric.description}
-                </Text>
+                  <Icon name={metric.icon} size={17} color={colors.primary} />
+                </View>
               </View>
+              <Text style={[styles.metricNumber, { color: colors.foreground }]}>
+                {metric.value}
+              </Text>
+              <Text
+                numberOfLines={2}
+                style={[
+                  styles.metricDescription,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                {metric.description}
+              </Text>
             </View>
           </Pressable>
         ))}
@@ -1373,7 +1369,9 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   heroContentPhone: {
-    gap: 10,
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 12,
   },
   heroContentCompact: {
     gap: 8,
@@ -1399,24 +1397,34 @@ const styles = StyleSheet.create({
   metricPressable: { flexBasis: "48%", flexGrow: 0, minWidth: 0 },
   metricPressableWide: { flexBasis: "23%", flexGrow: 1 },
   metricCard: {
-    minHeight: 140,
+    minHeight: 122,
     alignItems: "stretch",
     borderWidth: 1,
     borderRadius: 18,
-    padding: 13,
-    gap: 7,
+    padding: 12,
+    gap: 4,
+  },
+  metricHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
   },
   metricIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "flex-end",
   },
   metricNumber: { fontSize: 27, fontWeight: "800", textAlign: "right" },
-  metricCopy: { alignItems: "stretch", gap: 2 },
-  metricLabel: { fontSize: 13, textAlign: "right", fontWeight: "700" },
+  metricLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: 13,
+    textAlign: "right",
+    fontWeight: "700",
+  },
   metricDescription: { fontSize: 10, lineHeight: 15, textAlign: "right" },
   link: { fontSize: 12, fontWeight: "700" },
   channelHeading: { gap: 3 },
