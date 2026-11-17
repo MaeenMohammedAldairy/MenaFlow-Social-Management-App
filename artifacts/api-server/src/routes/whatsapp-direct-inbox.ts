@@ -118,16 +118,33 @@ router.get(
       string,
       { message: typeof rows[number]; text: string }
     >();
+    let skippedEncryptedMessages = 0;
     for (const row of rows) {
-      const remoteJid = decryptWhatsAppDirectMessageValue(
-        row.encryptedRemoteJid,
-      );
-      if (!latestByConversation.has(remoteJid)) {
-        latestByConversation.set(remoteJid, {
-          message: row,
-          text: decryptWhatsAppDirectMessageValue(row.encryptedTextBody),
-        });
+      try {
+        const remoteJid = decryptWhatsAppDirectMessageValue(
+          row.encryptedRemoteJid,
+        );
+        if (!latestByConversation.has(remoteJid)) {
+          latestByConversation.set(remoteJid, {
+            message: row,
+            text: decryptWhatsAppDirectMessageValue(row.encryptedTextBody),
+          });
+        }
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          error.message !== "INVALID_ENCRYPTED_TOKEN"
+        ) {
+          throw error;
+        }
+        skippedEncryptedMessages += 1;
       }
+    }
+    if (skippedEncryptedMessages > 0) {
+      req.log.warn(
+        { count: skippedEncryptedMessages },
+        "Skipped WhatsApp messages with unreadable encrypted content",
+      );
     }
     const conversations = [...latestByConversation.values()]
       .slice(0, conversationPageSize)
