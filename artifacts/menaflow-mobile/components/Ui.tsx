@@ -51,10 +51,7 @@ export function Page({
         contentMaxWidth ? styles.constrainedContent : null,
         contentMaxWidth ? { maxWidth: contentMaxWidth } : null,
         {
-          paddingTop:
-            Platform.OS === 'web'
-              ? Math.max(insets.top, 67) + 8
-              : insets.top + 8,
+          paddingTop: insets.top + 8,
           paddingBottom:
             bottomPadding === undefined
               ? Platform.OS === 'web'
