@@ -9,6 +9,7 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
+import { getWhatsAppAutoReplySettings } from "@workspace/api-client-react";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
@@ -25,8 +26,10 @@ import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { InboxPlatformTabs, type InboxPlatform } from "@/components/inbox/InboxPlatformTabs";
 import { formatArabicDateTime } from "@/lib/formatting";
 import {
+  getMetaAutoReplySettings,
   getMetaInbox,
   metaInboxPersonId,
+  type MetaAutoReplySettingsResponse,
   type MetaInboxItem,
   type MetaInboxKind,
   type MetaInboxPlatform,
@@ -108,6 +111,30 @@ function inboxErrorMessage(error: unknown): string {
   return error.message;
 }
 
+function metaReplyStatus(
+  response: MetaAutoReplySettingsResponse,
+  platform: MetaInboxPlatform,
+): string {
+  const { settings, readiness } = response;
+  const platformReadiness = readiness[platform];
+  if (!platformReadiness.connected) return "الحساب غير متصل";
+  if (!platformReadiness.tokenReady) return "يحتاج إعدادًا";
+
+  const enabledKinds =
+    platform === "facebook"
+      ? [settings.facebookMessagesEnabled, settings.facebookCommentsEnabled]
+      : [settings.instagramMessagesEnabled, settings.instagramCommentsEnabled];
+  if (!settings.enabled || !enabledKinds.some(Boolean)) return "متوقف";
+
+  const kindReadiness = [
+    platformReadiness.messagesReady,
+    platformReadiness.commentsReady,
+  ].filter((_, index) => enabledKinds[index]);
+  if (kindReadiness.every(Boolean)) return "مفعّل وجاهز";
+  if (kindReadiness.some(Boolean)) return "جاهز جزئيًا";
+  return "يحتاج إعدادًا";
+}
+
 export function MetaInboxScreen() {
   return isLocalAuthDisabled ? (
     <MetaInboxContent userId={null} />
@@ -141,6 +168,19 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState<string | null>(null);
   const queryKey = ["meta-inbox", userId ?? "local"] as const;
+  const canLoadAccountSettings = isLocalAuthDisabled || Boolean(userId);
+  const metaReplySettings = useQuery({
+    queryKey: ["meta-auto-reply-settings", userId ?? "local"],
+    queryFn: getMetaAutoReplySettings,
+    enabled: canLoadAccountSettings,
+    retry: false,
+  });
+  const whatsAppReplySettings = useQuery({
+    queryKey: ["whatsappAutoReplySettings", userId ?? "local"],
+    queryFn: getWhatsAppAutoReplySettings,
+    enabled: platform === "all" && canLoadAccountSettings,
+    retry: false,
+  });
   const inbox = useQuery({
     queryKey,
     queryFn: () => getMetaInbox(),
@@ -193,6 +233,8 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
     setOlderPages([]);
     setOlderError(null);
     void inbox.refetch();
+    void metaReplySettings.refetch();
+    if (platform === "all") void whatsAppReplySettings.refetch();
     if (platform === "all") void whatsappInbox.refetch();
   };
   const filteredItems =
@@ -245,12 +287,19 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
     setFilter("all");
     router.setParams({ platform: nextPlatform });
   };
+  const visibleMetaPlatforms: MetaInboxPlatform[] =
+    platform === "all" ? ["facebook", "instagram"] : [platform];
 
   return (
     <Page
       refreshControl={
         <RefreshControl
-          refreshing={inbox.isRefetching || whatsappInbox.isRefetching}
+          refreshing={
+            inbox.isRefetching ||
+            whatsappInbox.isRefetching ||
+            metaReplySettings.isRefetching ||
+            whatsAppReplySettings.isRefetching
+          }
           onRefresh={refreshInbox}
           tintColor={colors.primary}
         />
@@ -276,12 +325,106 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
         />
       </Panel>
 
-      <ActionButton
-        label="إعدادات الرد الآلي"
-        icon="settings"
-        secondary
-        onPress={() => router.push("/inbox/reply-settings")}
-      />
+      <Panel style={styles.automationSummary}>
+        <View style={styles.automationHeading}>
+          <View style={[styles.toolbarIcon, { backgroundColor: colors.accent }]}>
+            <Icon name="zap" size={17} color={colors.primary} />
+          </View>
+          <View style={styles.automationCopy}>
+            <Text style={[styles.toolbarTitle, { color: colors.foreground }]}>
+              حالة الرد الآلي
+            </Text>
+            <Text
+              style={[
+                styles.automationDescription,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              تحقق من جاهزية القنوات قبل انتظار رد تلقائي.
+            </Text>
+          </View>
+        </View>
+        {metaReplySettings.data ? (
+          visibleMetaPlatforms.map((channel) => (
+            <View key={channel} style={styles.automationStatusRow}>
+              <SocialPlatformIcon platform={channel} size={16} />
+              <Text
+                style={[
+                  styles.automationStatus,
+                  { color: colors.foreground },
+                ]}
+              >
+                {channel === "facebook" ? "فيسبوك" : "إنستغرام"}:{" "}
+                {metaReplyStatus(metaReplySettings.data, channel)}
+              </Text>
+            </View>
+          ))
+        ) : metaReplySettings.isPending ? (
+          <Text
+            style={[
+              styles.automationDescription,
+              { color: colors.mutedForeground },
+            ]}
+          >
+            جارٍ التحقق من حالة Meta...
+          </Text>
+        ) : (
+          <Text
+            accessibilityRole="alert"
+            style={[
+              styles.automationDescription,
+              { color: colors.destructive },
+            ]}
+          >
+            تعذر التحقق من إعدادات الرد الآلي لـ Meta.
+          </Text>
+        )}
+        {platform === "all" ? (
+          whatsAppReplySettings.data ? (
+            <View style={styles.automationStatusRow}>
+              <SocialPlatformIcon platform="whatsapp" size={16} />
+              <Text
+                style={[
+                  styles.automationStatus,
+                  { color: colors.foreground },
+                ]}
+              >
+                WhatsApp:{" "}
+                {!whatsAppReplySettings.data.connected
+                  ? "الحساب غير متصل"
+                  : whatsAppReplySettings.data.settings.enabled
+                    ? "مفعّل"
+                    : "متوقف"}
+              </Text>
+            </View>
+          ) : whatsAppReplySettings.isPending ? (
+            <Text
+              style={[
+                styles.automationDescription,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              جارٍ التحقق من حالة WhatsApp...
+            </Text>
+          ) : (
+            <Text
+              accessibilityRole="alert"
+              style={[
+                styles.automationDescription,
+                { color: colors.destructive },
+              ]}
+            >
+              تعذر التحقق من إعدادات الرد الآلي لـ WhatsApp.
+            </Text>
+          )
+        ) : null}
+        <ActionButton
+          label="إدارة إعدادات الرد الآلي"
+          icon="settings"
+          secondary
+          onPress={() => router.push("/inbox/reply-settings")}
+        />
+      </Panel>
 
       <Panel style={styles.inboxToolbar}>
         <View style={styles.toolbarHeading}>
@@ -715,6 +858,21 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
 }
 
 const styles = StyleSheet.create({
+  automationSummary: { gap: 10 },
+  automationHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  automationCopy: { flex: 1, minWidth: 0, gap: 3 },
+  automationDescription: { fontSize: 11, lineHeight: 17, textAlign: "right" },
+  automationStatusRow: {
+    minHeight: 32,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  automationStatus: { fontSize: 12, fontWeight: "700", textAlign: "right" },
   inboxIntro: { padding: 18, gap: 12 },
   inboxEyebrow: {
     alignSelf: "flex-start",

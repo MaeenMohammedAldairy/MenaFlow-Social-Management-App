@@ -55,6 +55,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
     ? rawPlatform[0]
     : rawPlatform;
   const platform = isMetaPlatform(platformParam) ? platformParam : null;
+  const inboxListQueryKey = ["meta-inbox", userId ?? "local"] as const;
   const queryKey = [
     "meta-inbox",
     userId ?? "local",
@@ -90,7 +91,8 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
       setActionError(
         error instanceof Error ? error.message : "تعذر إرسال الرد.",
       ),
-    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: inboxListQueryKey }),
   });
   const confirmRetry = useMutation({
     mutationFn: (item: MetaInboxItem) => confirmMetaInboxReplyNotSent(item.id),
@@ -101,7 +103,8 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
           ? error.message
           : "تعذر تأكيد نتيجة محاولة الرد.",
       ),
-    onSettled: () => queryClient.invalidateQueries({ queryKey }),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: inboxListQueryKey }),
   });
 
   const loadedItems = [
@@ -184,7 +187,10 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
 
       {actionError ? (
         <Panel style={[styles.errorPanel, { borderColor: colors.destructive }]}>
-          <Text style={{ color: colors.destructive, textAlign: "right" }}>
+          <Text
+            accessibilityRole="alert"
+            style={{ color: colors.destructive, textAlign: "right" }}
+          >
             {actionError}
           </Text>
         </Panel>
@@ -194,22 +200,30 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
         <Text style={[styles.notice, { color: colors.mutedForeground }]}>
           جارٍ تحميل المحادثة...
         </Text>
-      ) : inbox.isError ? (
-        <EmptyState
-          icon="alert-circle"
-          title="تعذر تحميل المحادثة"
-          body={
-            inbox.error instanceof Error
-              ? inbox.error.message
-              : "تحقق من اتصال الإنترنت ثم أعد المحاولة."
-          }
-        />
       ) : !personId || !platform ? (
         <EmptyState
           icon="message-square"
           title="رابط المحادثة غير صالح"
           body="ارجع إلى صندوق الوارد وافتح المحادثة من القائمة."
         />
+      ) : inbox.isError && items.length === 0 ? (
+        <View style={styles.retryPanel}>
+          <EmptyState
+            icon="alert-circle"
+            title="تعذر تحميل المحادثة"
+            body={
+              inbox.error instanceof Error
+                ? inbox.error.message
+                : "تحقق من اتصال الإنترنت ثم أعد المحاولة."
+            }
+          />
+          <ActionButton
+            label={inbox.isFetching ? "جارٍ التحقق..." : "إعادة المحاولة"}
+            icon={inbox.isFetching ? "clock" : "refresh-cw"}
+            disabled={inbox.isFetching}
+            onPress={() => void inbox.refetch()}
+          />
+        </View>
       ) : items.length === 0 && !inbox.isPending ? (
         <EmptyState
           icon="message-square"
@@ -218,6 +232,22 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
         />
       ) : (
         <View style={styles.thread}>
+          {inbox.isError ? (
+            <Panel style={styles.retryPanel}>
+              <Text
+                accessibilityRole="alert"
+                style={{ color: colors.destructive, textAlign: "right" }}
+              >
+                تعذر تحديث المحادثة. ما تم تحميله ما زال ظاهرًا.
+              </Text>
+              <ActionButton
+                label={inbox.isFetching ? "جارٍ التحقق..." : "إعادة المحاولة"}
+                icon={inbox.isFetching ? "clock" : "refresh-cw"}
+                disabled={inbox.isFetching}
+                onPress={() => void inbox.refetch()}
+              />
+            </Panel>
+          ) : null}
           <Panel style={styles.summary}>
             <View style={styles.summaryTop}>
               <View style={styles.summaryCopy}>
@@ -372,6 +402,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
 
 const styles = StyleSheet.create({
   errorPanel: { borderWidth: 1 },
+  retryPanel: { gap: 10, padding: 14 },
   notice: { textAlign: "center", paddingVertical: 16 },
   thread: { gap: 12 },
   summary: { gap: 10, padding: 14 },
