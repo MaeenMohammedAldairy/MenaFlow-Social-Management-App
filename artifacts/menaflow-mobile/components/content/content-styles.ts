@@ -22,6 +22,16 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 13,
   },
   createPostLabel: { fontSize: 12, fontWeight: "700" },
+  emptyStatePrimaryAction: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    gap: 7,
+    borderRadius: 13,
+    paddingHorizontal: 16,
+  },
   autoPublishPanel: { gap: 12 },
   autoPublishHeader: {
     minHeight: 68,

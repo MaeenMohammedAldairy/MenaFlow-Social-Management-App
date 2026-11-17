@@ -11,7 +11,7 @@ import { Image } from "expo-image";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
-import { EmptyState, StatusPill } from "@/components/Ui";
+import { ActionButton, EmptyState, StatusPill } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { formatArabicDate, formatArabicDateTime } from "@/lib/formatting";
 import type { Post, PostStatus } from "@/context/StudioContext";
@@ -31,7 +31,10 @@ type ContentPostListProps = {
   filter: PostStatus | "all";
   hasActiveFilters: boolean;
   onClearFilters: () => void;
+  onCreatePost: () => void;
   loadingMorePosts: boolean;
+  loadMoreError: string | null;
+  onRetryLoadMore: () => void;
   mediaPreviewUrls: Record<string, string>;
   onMediaError: () => void;
   verifyingPostId: string | null;
@@ -136,7 +139,10 @@ export function ContentPostList({
   filter,
   hasActiveFilters,
   onClearFilters,
+  onCreatePost,
   loadingMorePosts,
+  loadMoreError,
+  onRetryLoadMore,
   mediaPreviewUrls,
   onMediaError,
   verifyingPostId,
@@ -252,7 +258,7 @@ export function ContentPostList({
   };
   return (
     <>
-      {visiblePosts.length === 0 ? (
+      {visiblePosts.length === 0 && !loadingMorePosts ? (
         <>
           <EmptyState
             icon="file-plus"
@@ -282,9 +288,33 @@ export function ContentPostList({
                 مسح المرشحات
               </Text>
             </Pressable>
+          ) : filter === "all" ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إنشاء منشور جديد"
+              onPress={onCreatePost}
+              style={({ pressed }) => [
+                styles.emptyStatePrimaryAction,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: pressed ? 0.84 : 1,
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                },
+              ]}
+            >
+              <Icon name="plus" size={17} color={colors.primaryForeground} />
+              <Text
+                style={[
+                  styles.createPostLabel,
+                  { color: colors.primaryForeground },
+                ]}
+              >
+                إنشاء منشور
+              </Text>
+            </Pressable>
           ) : null}
         </>
-      ) : (
+      ) : visiblePosts.length > 0 ? (
         groupedPosts.map((group) => (
           <View key={group.key} style={styles.postGroup}>
             <Text style={[styles.postGroupTitle, { color: colors.foreground }]}>
@@ -1038,7 +1068,7 @@ export function ContentPostList({
             })}
           </View>
         ))
-      )}
+      ) : null}
       {loadingMorePosts ? (
         <Text
           style={[
@@ -1048,6 +1078,32 @@ export function ContentPostList({
         >
           جارٍ تحميل المزيد…
         </Text>
+      ) : null}
+      {loadMoreError ? (
+        <View
+          style={[
+            styles.connectionLoadError,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.destructive,
+              borderWidth: 1,
+            },
+          ]}
+        >
+          <Text
+            accessibilityRole="alert"
+            style={[styles.intro, { color: colors.destructive }]}
+          >
+            {loadMoreError}
+          </Text>
+          <ActionButton
+            label={loadingMorePosts ? "جارٍ التحميل…" : "إعادة المحاولة"}
+            icon={loadingMorePosts ? "clock" : "refresh-cw"}
+            secondary
+            disabled={loadingMorePosts}
+            onPress={onRetryLoadMore}
+          />
+        </View>
       ) : null}
       <Modal
         visible={previewPost !== null}
