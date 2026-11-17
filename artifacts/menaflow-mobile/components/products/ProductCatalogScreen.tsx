@@ -568,6 +568,13 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         : allProducts.filter((product) => product.status === "archived").length,
     extractions: extractionCount,
   };
+  const selectCatalogTab = (tab: CatalogTabId) => {
+    if (tab === activeTab) return;
+    setActiveTab(tab);
+    setSelectedProductIds(new Set());
+    setProductSearch("");
+    setError("");
+  };
   const selectedAllVisible =
     selectableVisibleProducts.length > 0 &&
     selectableVisibleProducts.every((product) =>
@@ -873,7 +880,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           </View>
           <PageTitle
             title="كتالوج المنتجات"
-            subtitle="استخرج المنتجات من الرسائل والمنشورات، وراجع بياناتها ومخزونها قبل نشرها أو استخدامها في الردود."
+            subtitle="اجمع المنتجات من الرسائل والمنشورات، وراجعها كمسودات، ثم اعتمدها قبل نشرها أو استخدامها في الردود."
             back={{
               href:
                 returnTo === "settings"
@@ -913,14 +920,82 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
             }
           />
         </Panel>
+        <View
+          accessibilityLabel="ملخص حالة كتالوج المنتجات"
+          style={styles.catalogOverview}
+        >
+          {(
+            [
+              {
+                tab: "active" as const,
+                label: "مفعّلة",
+                count: tabCounts.active,
+                icon: "check-circle" as const,
+              },
+              {
+                tab: "drafts" as const,
+                label: "مسودات",
+                count: tabCounts.drafts,
+                icon: "file-text" as const,
+              },
+              {
+                tab: "extractions" as const,
+                label: "تحتاج مراجعة",
+                count: tabCounts.extractions,
+                icon: "alert-circle" as const,
+              },
+            ] as const
+          ).map((item) => (
+            <Pressable
+              key={item.tab}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.label}: ${item.count === null ? "جارٍ التحميل" : formatArabicNumber(item.count)}`}
+              accessibilityHint="يفتح قائمة المنتجات المرتبطة بهذه الحالة"
+              onPress={() => selectCatalogTab(item.tab)}
+              style={({ pressed }) => [
+                styles.catalogOverviewItem,
+                {
+                  backgroundColor:
+                    activeTab === item.tab ? colors.accent : colors.card,
+                  borderColor:
+                    activeTab === item.tab ? colors.primary : colors.border,
+                  opacity: pressed ? 0.76 : 1,
+                },
+              ]}
+            >
+              <Icon
+                name={item.icon}
+                size={17}
+                color={
+                  item.tab === "extractions" && item.count
+                    ? colors.warning
+                    : colors.primary
+                }
+              />
+              <Text
+                style={[
+                  styles.catalogOverviewCount,
+                  { color: colors.foreground },
+                ]}
+              >
+                {item.count === null ? "…" : formatArabicNumber(item.count)}
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.catalogOverviewLabel,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
         <CatalogTabs
           activeTab={activeTab}
           counts={tabCounts}
-          onSelect={(tab) => {
-            if (tab === activeTab) return;
-            setActiveTab(tab);
-            setSelectedProductIds(new Set());
-          }}
+          onSelect={selectCatalogTab}
         />
 
         {error ? (
@@ -938,6 +1013,36 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
 
         {activeTab === "extractions" ? (
           <View style={styles.section}>
+            <Panel style={styles.reviewGuidance}>
+              <View
+                style={[
+                  styles.reviewGuidanceIcon,
+                  { backgroundColor: colors.accent },
+                ]}
+              >
+                <Icon name="shield" size={18} color={colors.primary} />
+              </View>
+              <View style={styles.reviewGuidanceCopy}>
+                <Text
+                  style={[
+                    styles.reviewGuidanceTitle,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  الاقتراحات ليست منتجات معتمدة
+                </Text>
+                <Text
+                  style={[
+                    styles.reviewGuidanceBody,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  راجع النص المصدر وصحّح السعر والتوفر قبل حفظ المسودة. لن
+                  تُستخدم بيانات الاقتراح في ردود العملاء حتى تراجعها وتفعّل
+                  المنتج.
+                </Text>
+              </View>
+            </Panel>
             <Panel style={styles.scanPanel}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
                 فحص محتوى الحسابات المتصلة
@@ -1535,7 +1640,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   accessibilityLabel="البحث في المنتجات"
                   value={productSearch}
                   onChangeText={setProductSearch}
-                  placeholder="ابحث بالاسم أو رقم المنتج"
+                  placeholder="ابحث بالاسم أو الرمز أو الوصف"
                   placeholderTextColor={colors.mutedForeground}
                   style={[
                     styles.productSearchInput,
@@ -1639,14 +1744,59 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               <EmptyState
                 icon="search"
                 title="لا توجد نتائج مطابقة"
-                body="جرّب اسمًا أو رقم منتج مختلفًا."
+                body="جرّب اسمًا أو رمزًا أو كلمة من وصف المنتج."
               />
             ) : (
-              <EmptyState
-                icon="file-text"
-                title="لا توجد منتجات بعد"
-                body="أضف منتجًا موثوقًا أو ابدأ من أحد منشوراتك المنشورة كمسودة."
-              />
+              <Panel style={styles.catalogEmptyPanel}>
+                <EmptyState
+                  icon={
+                    activeTab === "archived"
+                      ? "package"
+                      : activeTab === "drafts"
+                        ? "file-text"
+                        : activeTab === "active"
+                          ? "check-circle"
+                          : "package"
+                  }
+                  title={
+                    activeTab === "archived"
+                      ? "الأرشيف فارغ"
+                      : activeTab === "drafts"
+                        ? "لا توجد مسودات"
+                        : activeTab === "active"
+                          ? "لا توجد منتجات مفعّلة"
+                          : "ابدأ كتالوج منتجاتك"
+                  }
+                  body={
+                    activeTab === "archived"
+                      ? "ستظهر هنا المنتجات التي تؤرشفها لاحقًا."
+                      : activeTab === "drafts"
+                        ? "ستظهر هنا المنتجات الجديدة والمنتجات التي تنتظر استكمال بياناتها."
+                        : activeTab === "active"
+                          ? "راجع بيانات المنتج ثم فعّله ليصبح جاهزًا للاستخدام."
+                          : "أضف منتجًا يدويًا أو راجع اقتراحًا مستخرجًا من رسائلك ومنشوراتك."
+                  }
+                />
+                <View style={styles.catalogEmptyActions}>
+                  <ActionButton
+                    label="إضافة منتج"
+                    icon="plus"
+                    secondary
+                    onPress={() =>
+                      openEditor({
+                        id: null,
+                        value: emptyDraft,
+                        mediaPreviews: [],
+                      })
+                    }
+                  />
+                  <ActionButton
+                    label="مراجعة الاقتراحات"
+                    icon="search"
+                    onPress={() => selectCatalogTab("extractions")}
+                  />
+                </View>
+              </Panel>
             )}
           </View>
         ) : null}
@@ -3036,6 +3186,17 @@ function ProductCard({
             {selectionDisabledReason}
           </Text>
         ) : null}
+        <View
+          style={[styles.productCardAction, { borderTopColor: colors.border }]}
+        >
+          <Icon name="edit-3" size={15} color={colors.primary} />
+          <Text
+            style={[styles.productCardActionText, { color: colors.primary }]}
+          >
+            تعديل بيانات المنتج
+          </Text>
+          <Icon name="chevron-left" size={15} color={colors.primary} />
+        </View>
       </Panel>
     </Pressable>
   );
@@ -3400,6 +3561,51 @@ function DropdownField({
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   catalogIntro: { gap: 12, padding: 18 },
+  catalogOverview: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  catalogOverviewItem: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 82,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 5,
+    paddingVertical: 8,
+  },
+  catalogOverviewCount: { fontSize: 16, fontWeight: "800" },
+  catalogOverviewLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  reviewGuidance: {
+    flexDirection: "row-reverse",
+    alignItems: "flex-start",
+    gap: 10,
+    padding: 12,
+  },
+  reviewGuidanceIcon: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+  },
+  reviewGuidanceCopy: { flex: 1, gap: 4 },
+  reviewGuidanceTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" },
+  reviewGuidanceBody: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  catalogEmptyPanel: { gap: 12, padding: 14 },
+  catalogEmptyActions: {
+    flexDirection: "row",
+    justifyContent: "center",
+    flexWrap: "wrap",
+    gap: 8,
+  },
   catalogEyebrow: {
     alignSelf: "flex-start",
     minHeight: 28,
@@ -3586,6 +3792,20 @@ const styles = StyleSheet.create({
   publishBarCount: { fontSize: 13, fontWeight: "800", textAlign: "right" },
   publishBarHint: { fontSize: 11, lineHeight: 16, textAlign: "right" },
   productCard: { gap: 7 },
+  productCardAction: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 6,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 4,
+    paddingTop: 9,
+  },
+  productCardActionText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "right",
+  },
   publicationPanel: { gap: 10 },
   publicationJob: {
     gap: 5,
