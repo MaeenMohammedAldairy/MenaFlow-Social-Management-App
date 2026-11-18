@@ -91,8 +91,115 @@ export async function requeueWhatsAppProductMessage(
     ));
 }
 
+async function hasCompleteWhatsAppProductMedia(
+  workspaceId: string,
+  messageId: string,
+): Promise<boolean> {
+  const [message] = await db
+    .select({
+      id: menaWhatsAppMessages.id,
+      instanceName: menaWhatsAppMessages.instanceName,
+      groupId: menaWhatsAppMessages.groupId,
+      mediaGroupId: menaWhatsAppMessages.mediaGroupId,
+      mediaGroupSource: menaWhatsAppMessages.mediaGroupSource,
+    })
+    .from(menaWhatsAppMessages)
+    .where(and(
+      eq(menaWhatsAppMessages.id, messageId),
+      eq(menaWhatsAppMessages.workspaceId, workspaceId),
+    ))
+    .limit(1);
+  if (!message?.groupId) return false;
+
+  let sourceMessageIds: string[] = [message.id];
+  const confirmedBundle = await getWhatsAppContentBundle({
+    workspaceId,
+    instanceName: message.instanceName,
+    groupId: message.groupId,
+  }, message.id);
+  if (confirmedBundle) {
+    sourceMessageIds = confirmedBundle.messageIds;
+  } else if (
+    message.mediaGroupId &&
+    (message.mediaGroupSource === "protocol_association" ||
+      message.mediaGroupSource === "provider_album_container")
+  ) {
+    const albumMessages = await db
+      .select({ id: menaWhatsAppMessages.id })
+      .from(menaWhatsAppMessages)
+      .where(and(
+        eq(menaWhatsAppMessages.workspaceId, workspaceId),
+        eq(menaWhatsAppMessages.instanceName, message.instanceName),
+        eq(menaWhatsAppMessages.groupId, message.groupId),
+        eq(menaWhatsAppMessages.mediaGroupId, message.mediaGroupId),
+        eq(menaWhatsAppMessages.mediaGroupSource, message.mediaGroupSource),
+      ));
+    sourceMessageIds = albumMessages.map((item) => item.id);
+  }
+  sourceMessageIds = [...new Set(sourceMessageIds)];
+  if (sourceMessageIds.length === 0) return false;
+
+  const sourceMessages = await db
+    .select({
+      id: menaWhatsAppMessages.id,
+      textBody: menaWhatsAppMessages.textBody,
+      caption: menaWhatsAppMessages.caption,
+      mediaAvailable: menaWhatsAppMessages.mediaAvailable,
+      mediaDownloadStatus: menaWhatsAppMessages.mediaDownloadStatus,
+      mediaGroupSource: menaWhatsAppMessages.mediaGroupSource,
+      mediaGroupExpectedCount: menaWhatsAppMessages.mediaGroupExpectedCount,
+    })
+    .from(menaWhatsAppMessages)
+    .where(and(
+      eq(menaWhatsAppMessages.workspaceId, workspaceId),
+      inArray(menaWhatsAppMessages.id, sourceMessageIds),
+    ));
+  if (
+    sourceMessages.length !== sourceMessageIds.length ||
+    !sourceMessages.some((item) => Boolean(item.textBody?.trim() || item.caption?.trim()))
+  ) return false;
+
+  const mediaRows = await db
+    .select({
+      messageId: menaWhatsAppMessageMedia.messageId,
+      downloadStatus: menaWhatsAppMessageMedia.downloadStatus,
+    })
+    .from(menaWhatsAppMessageMedia)
+    .where(and(
+      eq(menaWhatsAppMessageMedia.workspaceId, workspaceId),
+      inArray(menaWhatsAppMessageMedia.messageId, sourceMessageIds),
+    ));
+  if (mediaRows.length === 0) return false;
+
+  const mediaFailed = sourceMessages.some(
+    (item) => item.mediaDownloadStatus === "failed",
+  ) || mediaRows.some((item) => item.downloadStatus === "failed");
+  const mediaPending = sourceMessages.some((item) =>
+    item.mediaAvailable &&
+    item.mediaDownloadStatus !== "failed" &&
+    (item.mediaDownloadStatus === "pending" ||
+      !mediaRows.some((media) =>
+        media.messageId === item.id && media.downloadStatus === "stored",
+      )),
+  );
+  const expectedCount = Math.max(
+    0,
+    ...sourceMessages
+      .filter((item) =>
+        item.mediaGroupSource === "protocol_association" ||
+        item.mediaGroupSource === "provider_album_container",
+      )
+      .map((item) => item.mediaGroupExpectedCount ?? 0),
+  );
+  return !mediaFailed &&
+    !mediaPending &&
+    expectedCount <= mediaRows.length &&
+    mediaRows.every((item) => item.downloadStatus === "stored");
+}
+
 export async function queueUnprocessedWhatsAppProductMessages(
   workspaceId: string,
+  messageId?: string,
 ): Promise<number> {
   const [connection] = await db
     .select({ id: menaWhatsAppGroupSelections.id })
@@ -132,6 +239,7 @@ export async function queueUnprocessedWhatsAppProductMessages(
     )
     .where(and(
       eq(menaWhatsAppMessages.workspaceId, workspaceId),
+      ...(messageId ? [eq(menaWhatsAppMessages.id, messageId)] : []),
       eq(menaWhatsAppMessages.messageStatus, "received"),
       or(
         sql`length(trim(coalesce(${menaWhatsAppMessages.textBody}, ''))) > 0`,
@@ -149,6 +257,9 @@ export async function queueUnprocessedWhatsAppProductMessages(
     .orderBy(asc(menaWhatsAppMessages.messageTimestamp))
     .limit(200);
   if (messages.length === 0) return 0;
+  if (messageId && !(await hasCompleteWhatsAppProductMedia(workspaceId, messageId))) {
+    return 0;
+  }
   const now = new Date();
   await db
     .insert(whatsappProductExtractionJobs)

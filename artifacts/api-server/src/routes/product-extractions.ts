@@ -230,9 +230,21 @@ router.post(
       return;
     }
     const workspaceId = requestWorkspaceId(req);
+    const hasTargetMessage = req.body?.messageId !== undefined;
+    const messageId =
+      typeof req.body?.messageId === "string"
+        ? req.body.messageId.trim()
+        : "";
+    if (hasTargetMessage && !messageId) {
+      res.status(400).json({ error: "معرّف الرسالة غير صالح." });
+      return;
+    }
     try {
       const queuedMessages =
-        await queueUnprocessedWhatsAppProductMessages(workspaceId);
+        await queueUnprocessedWhatsAppProductMessages(
+          workspaceId,
+          messageId || undefined,
+        );
       res.status(202).json({
         queuedMessages,
       });

@@ -286,12 +286,20 @@ export async function getWhatsAppProductExtractions(): Promise<
   return result.suggestions;
 }
 
-export async function analyzeWhatsAppProductMessages(): Promise<{
+export async function analyzeWhatsAppProductMessages(
+  messageId?: string,
+): Promise<{
   queuedMessages: number;
 }> {
   const response = await fetchApiResponse(
     "/api/social/products/extract-whatsapp",
-    { method: "POST" },
+    messageId
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messageId }),
+        }
+      : { method: "POST" },
   );
   return responseJson(response);
 }
