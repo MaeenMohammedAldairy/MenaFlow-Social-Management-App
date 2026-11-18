@@ -38,6 +38,7 @@ import {
   extractWhatsAppMediaGroupId,
   extractWhatsAppMediaGroupExpectedCount,
   extractWhatsAppWebhookBatch,
+  getWhatsAppWebhookGroupJidCandidates,
   hasWhatsAppMessageContent,
   isWhatsAppAlbumContainer,
   filterHistoryRecordsForGroup,
@@ -1842,15 +1843,11 @@ export async function processWebhookEvent(
 
   if (!connection.autoSyncEnabled) return;
 
-  const groupJidCandidates = [
-    ...new Set(
-      [
-        eventRemoteJid,
-        normalizeRemoteJid(eventKey?.remoteJidAlt),
-        remoteJid,
-      ].filter((jid): jid is string => Boolean(jid)),
-    ),
-  ];
+  const groupJidCandidates = getWhatsAppWebhookGroupJidCandidates(
+    eventRemoteJid,
+    eventRemoteJidAlt,
+    remoteJid,
+  );
   const [groupIdentity] = await db
     .select({
       groupId: menaWhatsAppGroupJids.groupId,

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   filterHistoryRecordsForGroup,
   extractRemoteJidFromEnvelope,
+  getWhatsAppWebhookGroupJidCandidates,
   isWhatsAppMessageWebhookEvent,
   isSelectedWhatsAppGroupMessage,
   normalizeWhatsAppWebhookEventName,
@@ -315,6 +316,18 @@ test("normalizes Evolution webhook event labels", () => {
   assert.equal(isWhatsAppMessageWebhookEvent("MESSAGES_UPSERT"), true);
   assert.equal(isWhatsAppMessageWebhookEvent("QRCODE_UPDATED"), false);
   assert.equal(isWhatsAppMessageWebhookEvent(null), false);
+});
+
+test("matches selected groups when a webhook carries the group JID as an alternate JID", () => {
+  const groupJid = "120363012345678901@g.us";
+  assert.deepEqual(
+    getWhatsAppWebhookGroupJidCandidates(
+      "120363012345678901@lid",
+      groupJid,
+      groupJid,
+    ),
+    ["120363012345678901@lid", groupJid],
+  );
 });
 
 test("recognizes batched message sync events and ignores status-only message updates", () => {
