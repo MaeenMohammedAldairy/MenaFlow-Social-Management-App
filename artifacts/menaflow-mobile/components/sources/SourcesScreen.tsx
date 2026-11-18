@@ -65,6 +65,7 @@ import {
   metaOAuthErrorMessage,
 } from "@/constants/meta-oauth";
 import { groupWhatsAppMessages } from "@/lib/source-message-groups";
+import { analyzeWhatsAppProductMessages } from "@/lib/product-catalog-api";
 import {
   CountryPickerModal,
   DisconnectConfirmModal,
@@ -1217,41 +1218,41 @@ function SourcesContent({
     setGroupMessagesOpen(false);
   };
 
-  const convertWhatsAppGroupToPost = async (messageId: string) => {
+  const addWhatsAppGroupToProductReview = async (messageId: string) => {
     setConvertingWhatsAppGroups((current) => ({
       ...current,
       [messageId]: true,
     }));
     try {
-      const response = await fetchApiResponse("/api/posts/from-message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messageId }),
-      });
-      const result = (await response.json()) as { error?: unknown };
-      if (!response.ok) {
-        throw new Error(
-          typeof result.error === "string"
-            ? result.error
-            : "تعذّر تحويل مجموعة الوسائط إلى منشور.",
-        );
-      }
-      await refreshPosts();
+      const result = await analyzeWhatsAppProductMessages(messageId);
       if (activeGroupJid)
         await loadGroupMessages(activeGroupJid, groupMessagesPage);
       showAppNotice({
-        title: "تم التحويل",
-        message: "أُنشئ محتوى واحد للمجموعة، وسيتم فتح صفحة المنتجات.",
+        title:
+          result.queuedMessages > 0
+            ? "أُضيفت للمراجعة"
+            : "فتح مراجعة المنتجات",
+        message:
+          result.queuedMessages > 0
+            ? "أُضيفت المجموعة إلى طابور تحليل المنتجات. ستظهر النتيجة في قائمة المراجعة عند اكتمالها."
+            : "لم تُضف رسالة جديدة؛ تحقّق من وجود اقتراح سابق مرتبط بهذه المجموعة.",
         tone: "success",
       });
-      router.push("/(tabs)/products");
+      router.push({
+        pathname: "/(tabs)/products",
+        params: {
+          tab: "extractions",
+          sourceMessageId: messageId,
+          queuedMessages: String(result.queuedMessages),
+        },
+      });
     } catch (error: unknown) {
       showAppNotice({
-        title: "تعذّر التحويل",
+        title: "تعذّرت الإضافة إلى المراجعة",
         message:
           error instanceof Error
             ? error.message
-            : "تعذّر تحويل مجموعة الوسائط إلى منشور.",
+            : "تعذّرت إضافة المجموعة إلى مراجعة المنتجات.",
         tone: "error",
       });
     } finally {
@@ -1262,7 +1263,6 @@ function SourcesContent({
       });
     }
   };
-
   const decideWhatsAppAssociation = async (
     sourceMessageId: string,
     candidateMessageId: string,
@@ -1858,7 +1858,9 @@ function SourcesContent({
         associationError={associationError}
         onClose={closeGroupMessages}
         onPreview={setPreviewMediaUrl}
-        onConvert={(messageId) => void convertWhatsAppGroupToPost(messageId)}
+        onAddToProductReview={(messageId) =>
+          void addWhatsAppGroupToProductReview(messageId)
+        }
         onAssociationDecision={(
           sourceMessageId,
           candidateMessageId,

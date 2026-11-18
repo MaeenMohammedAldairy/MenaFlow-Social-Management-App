@@ -28,7 +28,7 @@ interface WhatsAppGroupMessagesModalProps {
   associationError?: string;
   onClose: () => void;
   onPreview: (url: string) => void;
-  onConvert: (messageId: string) => void;
+  onAddToProductReview: (messageId: string) => void;
   onAssociationDecision: (
     sourceMessageId: string,
     candidateMessageId: string,
@@ -51,7 +51,7 @@ export function WhatsAppGroupMessagesModal({
   associationError,
   onClose,
   onPreview,
-  onConvert,
+  onAddToProductReview,
   onAssociationDecision,
   onLoadPage,
 }: WhatsAppGroupMessagesModalProps) {
@@ -196,7 +196,7 @@ export function WhatsAppGroupMessagesModal({
                     convertingMessageIds={convertingMessageIds ?? {}}
                     associationDecisionPending={associationDecisionPending ?? null}
                     onPreview={onPreview}
-                    onConvert={(messageId) => onConvert(messageId)}
+                    onAddToProductReview={(messageId) => onAddToProductReview(messageId)}
                     onAssociationDecision={onAssociationDecision}
                   />
                 ))}

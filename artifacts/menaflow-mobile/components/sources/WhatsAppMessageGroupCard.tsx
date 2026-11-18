@@ -15,7 +15,7 @@ type Props = {
   group: DisplayedWhatsAppMessageGroup;
   convertingMessageIds: Record<string, boolean>;
   onPreview: (url: string) => void;
-  onConvert: (messageId: string) => void;
+  onAddToProductReview: (messageId: string) => void;
   associationDecisionPending: string | null;
   onAssociationDecision: (
     sourceMessageId: string,
@@ -28,7 +28,7 @@ export function WhatsAppMessageGroupCard({
   group,
   convertingMessageIds,
   onPreview,
-  onConvert,
+  onAddToProductReview,
   associationDecisionPending,
   onAssociationDecision,
 }: Props) {
@@ -221,12 +221,11 @@ export function WhatsAppMessageGroupCard({
         group.mediaFailed ||
         group.contentBundleId
       ) &&
-      !group.postId &&
       canConvert ? (
         <Pressable
           accessibilityRole="button"
           disabled={converting}
-          onPress={() => sourceMessage && onConvert(sourceMessage.id)}
+          onPress={() => sourceMessage && onAddToProductReview(sourceMessage.id)}
           style={[
             styles.convertAction,
             {
@@ -241,11 +240,7 @@ export function WhatsAppMessageGroupCard({
             <Icon name="file-plus" size={14} color={colors.primary} />
           )}
           <Text style={[styles.convertActionLabel, { color: colors.primary }]}>
-            {group.mediaFailed
-              ? "إنشاء مسودة للمراجعة"
-              : group.mediaPending
-                ? "بانتظار اكتمال الوسائط"
-                : "تحويل المجموعة إلى محتوى"}
+            إضافة إلى مراجعة المنتجات
           </Text>
         </Pressable>
       ) : null}

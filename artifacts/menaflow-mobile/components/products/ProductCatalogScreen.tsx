@@ -282,10 +282,18 @@ function AuthenticatedProductCatalog() {
 
 function ProductCatalogContent({ userId }: { userId: string | null }) {
   const colors = useColors();
-  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  const { returnTo, tab, sourceMessageId, queuedMessages } =
+    useLocalSearchParams<{
+      returnTo?: string;
+      tab?: string;
+      sourceMessageId?: string;
+      queuedMessages?: string;
+    }>();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<CatalogTabId>("all");
+  const [activeTab, setActiveTab] = useState<CatalogTabId>(() =>
+    tab === "extractions" ? "extractions" : "all",
+  );
   const [productSearch, setProductSearch] = useState("");
   const [selectedProductIds, setSelectedProductIds] = useState<Set<string>>(
     new Set(),
@@ -308,6 +316,13 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     "messages" | "posts" | null
   >(null);
   const [scannedPosts, setScannedPosts] = useState<SocialAccountPost[]>([]);
+  const targetedSourceMessageId = sourceMessageId?.trim() || null;
+  useEffect(() => {
+    if (tab !== "extractions") return;
+    setActiveTab("extractions");
+    setSelectedProductIds(new Set());
+    setProductSearch("");
+  }, [tab, sourceMessageId]);
   const catalogKey = ["product-catalog", userId ?? "local", activeTab] as const;
   const candidatesKey = ["product-post-candidates", userId ?? "local"] as const;
   const extractionsKey = [
@@ -548,6 +563,19 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   const selectableVisibleProducts = visibleProducts.filter(
     (product) => productPublicationDisabledReason(product) === null,
   );
+  const targetedSuggestion = targetedSourceMessageId
+    ? extractions.data?.find((suggestion) =>
+        suggestion.sources.some((source) => source.id === targetedSourceMessageId),
+      ) ?? null
+    : null;
+  const extractionsForDisplay = targetedSuggestion
+    ? [
+        targetedSuggestion,
+        ...(extractions.data ?? []).filter(
+          (suggestion) => suggestion.id !== targetedSuggestion.id,
+        ),
+      ]
+    : extractions.data ?? [];
   const extractionCount =
     extractions.isPending || candidates.isPending
       ? null
@@ -1013,6 +1041,22 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
 
         {activeTab === "extractions" ? (
           <View style={styles.section}>
+            {targetedSourceMessageId ? (
+              <Panel style={styles.reviewGuidance}>
+                <Text
+                  style={[
+                    styles.reviewGuidanceBody,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {targetedSuggestion
+                    ? "هذا الاقتراح مرتبط برسائل المجموعة ويظهر أولاً في القائمة."
+                    : Number(queuedMessages) > 0
+                      ? "أُضيفت رسائل المجموعة إلى الطابور. تُحدّث القائمة تلقائيًا وسيظهر الاقتراح عند اكتمال التحليل."
+                      : "لم يظهر اقتراح مرتبط بعد؛ قد تكون الرسائل عولجت سابقًا أو لم تعد مؤهلة للاستخراج."}
+                </Text>
+              </Panel>
+            ) : null}
             <Panel style={styles.reviewGuidance}>
               <View
                 style={[
@@ -1431,7 +1475,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               </Text>
             ) : extractions.data?.length ? (
               <>
-                {extractions.data.map((suggestion) => (
+                {extractionsForDisplay.map((suggestion) => (
                   <ProductExtractionCard
                     key={suggestion.id}
                     suggestion={suggestion}
