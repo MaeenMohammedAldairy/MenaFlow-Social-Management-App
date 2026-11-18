@@ -1238,6 +1238,7 @@ function SourcesContent({
             : "لم تُضف رسالة جديدة؛ تحقّق من وجود اقتراح سابق مرتبط بهذه المجموعة.",
         tone: "success",
       });
+      closeGroupMessages();
       router.push({
         pathname: "/(tabs)/products",
         params: {
