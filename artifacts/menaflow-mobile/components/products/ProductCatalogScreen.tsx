@@ -20,7 +20,7 @@ import {
   type AccountPlatform,
   type SocialAccountPost,
 } from "@workspace/api-client-react";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams, useSegments } from "expo-router";
 import {
   useMutation,
   useQuery,
@@ -317,6 +317,12 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   >(null);
   const [scannedPosts, setScannedPosts] = useState<SocialAccountPost[]>([]);
   const targetedSourceMessageId = sourceMessageId?.trim() || null;
+  const segments = useSegments();
+  const isProductCatalogRouteFocused =
+    segments[segments.length - 1] === "products" ||
+    segments[segments.length - 1] === "product-catalog";
+  const autoOpenedTargetSuggestionRef = useRef<string | null>(null);
+  const targetDraftRefreshRequestedRef = useRef<string | null>(null);
   useEffect(() => {
     if (tab !== "extractions") return;
     setActiveTab("extractions");
@@ -436,7 +442,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
       setError("");
       setAnalysisSummary(
         result.queuedMessages > 0
-          ? `تمت جدولة معالجة ${result.queuedMessages} رسالة. ستظهر المنتجات والاقتراحات تلقائيًا بعد اكتمالها.`
+          ? `أُضيفت ${result.queuedMessages} رسالة إلى طابور تحليل المنتجات. لا تُجدول للنشر تلقائيًا؛ ستظهر النتائج للمراجعة بعد اكتمالها.`
           : "لا توجد رسائل جديدة أو غير معالجة في المجموعات المحددة.",
       );
       setScannedPosts([]);
@@ -863,6 +869,53 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     setError("");
   };
 
+  useEffect(() => {
+    if (
+      !isProductCatalogRouteFocused ||
+      !targetedSourceMessageId ||
+      !targetedSuggestion ||
+      autoOpenedTargetSuggestionRef.current === targetedSuggestion.id
+    ) {
+      return;
+    }
+
+    if (targetedSuggestion.status === "draft_created") {
+      const linkedProduct =
+        catalog.data?.find((item) => item.id === targetedSuggestion.productId) ??
+        null;
+      if (!linkedProduct) {
+        if (
+          (catalog.data !== undefined || catalog.isError) &&
+          targetDraftRefreshRequestedRef.current !== targetedSuggestion.id
+        ) {
+          targetDraftRefreshRequestedRef.current = targetedSuggestion.id;
+          void catalog.refetch();
+        }
+        return;
+      }
+      autoOpenedTargetSuggestionRef.current = targetedSuggestion.id;
+      openExtractionEditor(targetedSuggestion, linkedProduct, false);
+      return;
+    }
+
+    if (
+      targetedSuggestion.status !== "review" &&
+      targetedSuggestion.status !== "possible_duplicate"
+    ) {
+      return;
+    }
+    autoOpenedTargetSuggestionRef.current = targetedSuggestion.id;
+    openExtractionEditor(targetedSuggestion, null, true);
+  }, [
+    catalog.data,
+    catalog.isError,
+    catalog.refetch,
+    isProductCatalogRouteFocused,
+    openExtractionEditor,
+    targetedSourceMessageId,
+    targetedSuggestion,
+  ]);
+
   const confirmDismissExtraction = (suggestionId: string) => {
     Alert.alert(
       "استبعاد الاقتراح؟",
@@ -1052,7 +1105,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   {targetedSuggestion
                     ? "هذا الاقتراح مرتبط برسائل المجموعة ويظهر أولاً في القائمة."
                     : Number(queuedMessages) > 0
-                      ? "أُضيفت رسائل المجموعة إلى الطابور. تُحدّث القائمة تلقائيًا وسيظهر الاقتراح عند اكتمال التحليل."
+                      ? "تجري معالجة الرسائل؛ لا يُنشأ منشور مجدول. سيفتح نموذج المراجعة تلقائيًا عند ظهور النتيجة."
                       : "لم يظهر اقتراح مرتبط بعد؛ قد تكون الرسائل عولجت سابقًا أو لم تعد مؤهلة للاستخراج."}
                 </Text>
               </Panel>
