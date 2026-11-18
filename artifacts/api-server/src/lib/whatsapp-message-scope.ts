@@ -178,6 +178,18 @@ export function normalizeRemoteJid(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+export function getWhatsAppWebhookGroupJidCandidates(
+  ...values: unknown[]
+): string[] {
+  return [
+    ...new Set(
+      values
+        .map(normalizeRemoteJid)
+        .filter((jid): jid is string => Boolean(jid)),
+    ),
+  ];
+}
+
 export function extractRemoteJidFromEnvelope(value: unknown): string | null {
   const seen = new Set<unknown>();
 
