@@ -1241,9 +1241,10 @@ function SourcesContent({
         await loadGroupMessages(activeGroupJid, groupMessagesPage);
       showAppNotice({
         title: "تم التحويل",
-        message: "أُنشئ محتوى واحد للمجموعة، ويمكنك مراجعته في صفحة المحتوى.",
+        message: "أُنشئ محتوى واحد للمجموعة، وسيتم فتح صفحة المنتجات.",
         tone: "success",
       });
+      router.push("/(tabs)/products");
     } catch (error: unknown) {
       showAppNotice({
         title: "تعذّر التحويل",
