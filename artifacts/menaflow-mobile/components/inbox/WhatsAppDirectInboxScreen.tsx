@@ -8,7 +8,12 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@clerk/expo";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
@@ -22,8 +27,16 @@ import {
   getWhatsAppDirectConversations,
   getWhatsAppDirectMessages,
   sendWhatsAppDirectReply,
+  whatsappDirectMessagePlaceholder,
   type WhatsAppDirectMessage,
+  type WhatsAppDirectMessageCursor,
 } from "@/lib/whatsapp-direct-inbox-api";
+
+function directConversationLabel(remoteJid: string): string {
+  return remoteJid.endsWith("@lid")
+    ? `معرّف ${remoteJid.replace(/@lid$/, "")}`
+    : remoteJid.replace(/@s\.whatsapp\.net$/, "");
+}
 
 function AuthenticatedWhatsAppDirectInbox() {
   const { userId } = useAuth();
@@ -96,9 +109,12 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
     userId ?? "local",
     selectedRemoteJid,
   ] as const;
-  const messages = useQuery({
+  const messages = useInfiniteQuery({
     queryKey: messagesKey,
-    queryFn: () => getWhatsAppDirectMessages(selectedRemoteJid!),
+    initialPageParam: undefined as WhatsAppDirectMessageCursor | undefined,
+    queryFn: ({ pageParam }) =>
+      getWhatsAppDirectMessages(selectedRemoteJid!, pageParam),
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: Boolean(selectedRemoteJid && (isLocalAuthDisabled || userId)),
     refetchInterval: 10_000,
     refetchOnWindowFocus: true,
@@ -141,7 +157,10 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
         value.toLocaleLowerCase().includes(normalizedConversationSearch),
       ),
   );
-  const orderedMessages = messages.data?.messages ?? [];
+  const orderedMessages = messages.data
+    ? [...messages.data.pages].reverse().flatMap((page) => page.messages)
+    : [];
+  const canReply = selectedRemoteJid?.endsWith("@s.whatsapp.net") ?? false;
   const hasUnknownSend = orderedMessages.some(
     (message) =>
       message.status === "unknown" || message.autoReplyStatus === "unknown",
@@ -157,6 +176,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
   const sendReply = () => {
     if (
       !selectedRemoteJid ||
+      !canReply ||
       !draft.trim() ||
       reply.isPending ||
       hasUnknownSend ||
@@ -229,7 +249,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
               </View>
               <View style={styles.conversationCopy}>
                 <Text style={{ color: colors.foreground, fontWeight: "800" }}>
-                  {selectedConversation?.customerNumber ?? selectedRemoteJid.replace(/@s\.whatsapp\.net$/, "")}
+                  {selectedConversation?.customerNumber ?? directConversationLabel(selectedRemoteJid)}
                 </Text>
                 <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
                   تنتهي صلاحية الرسائل بعد 90 يومًا.
@@ -263,6 +283,20 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
             </Panel>
           ) : orderedMessages.length > 0 ? (
             <View style={styles.messageList}>
+              {messages.hasNextPage ? (
+                <ActionButton
+                  label={
+                    messages.isFetchingNextPage
+                      ? "جارٍ تحميل الرسائل الأقدم..."
+                      : "تحميل رسائل أقدم"
+                  }
+                  icon={messages.isFetchingNextPage ? "clock" : "chevron-up"}
+                  secondary
+                  compact
+                  disabled={messages.isFetchingNextPage}
+                  onPress={() => void messages.fetchNextPage()}
+                />
+              ) : null}
               {orderedMessages.map((message) => (
                 <DirectMessageBubble
                   key={message.id}
@@ -304,55 +338,61 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
               جارٍ تجهيز الرد الآلي أو إرساله؛ انتظر تحديث الحالة قبل الرد اليدوي.
             </Text>
           ) : null}
-          <View style={styles.composer}>
-            <TextInput
-              accessibilityLabel="اكتب ردًا خاصًا على WhatsApp"
-              value={draft}
-              onChangeText={(text) => {
-                setDraft(text.slice(0, 2000));
-                setRequestId(null);
-              }}
-              editable={!hasUnknownSend && !hasPendingAutoReply && !reply.isPending}
-              maxLength={2000}
-              multiline
-              textAlign="right"
-              placeholder="اكتب ردًا خاصًا..."
-              placeholderTextColor={colors.mutedForeground}
-              style={[
-                styles.input,
-                {
-                  color: colors.foreground,
-                  borderColor: colors.border,
-                  backgroundColor: colors.background,
-                },
-              ]}
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="إرسال رد WhatsApp"
-              disabled={
-                !draft.trim() ||
-                reply.isPending ||
-                hasUnknownSend ||
-                hasPendingAutoReply
-              }
-              onPress={sendReply}
-              style={({ pressed }) => [
-                styles.sendButton,
-                {
-                  backgroundColor: colors.primary,
-                  opacity:
-                    !draft.trim() || reply.isPending || hasUnknownSend || hasPendingAutoReply
-                      ? 0.45
-                      : pressed
-                        ? 0.78
-                        : 1,
-                },
-              ]}
-            >
-              <Icon name="send" size={17} color={colors.primaryForeground} />
-            </Pressable>
-          </View>
+          {canReply ? (
+            <View style={styles.composer}>
+              <TextInput
+                accessibilityLabel="اكتب ردًا خاصًا على WhatsApp"
+                value={draft}
+                onChangeText={(text) => {
+                  setDraft(text.slice(0, 2000));
+                  setRequestId(null);
+                }}
+                editable={!hasUnknownSend && !hasPendingAutoReply && !reply.isPending}
+                maxLength={2000}
+                multiline
+                textAlign="right"
+                placeholder="اكتب ردًا خاصًا..."
+                placeholderTextColor={colors.mutedForeground}
+                style={[
+                  styles.input,
+                  {
+                    color: colors.foreground,
+                    borderColor: colors.border,
+                    backgroundColor: colors.background,
+                  },
+                ]}
+              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إرسال رد WhatsApp"
+                disabled={
+                  !draft.trim() ||
+                  reply.isPending ||
+                  hasUnknownSend ||
+                  hasPendingAutoReply
+                }
+                onPress={sendReply}
+                style={({ pressed }) => [
+                  styles.sendButton,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity:
+                      !draft.trim() || reply.isPending || hasUnknownSend || hasPendingAutoReply
+                        ? 0.45
+                        : pressed
+                          ? 0.78
+                          : 1,
+                  },
+                ]}
+              >
+                <Icon name="send" size={17} color={colors.primaryForeground} />
+              </Pressable>
+            </View>
+          ) : (
+            <Text accessibilityRole="alert" style={{ color: colors.warning, textAlign: "right" }}>
+              وصلت هذه المحادثة بمعرّف LID دون رقم هاتف بديل؛ يمكن عرض الرسائل، لكن لا يمكن إرسال رد آمن.
+            </Text>
+          )}
         </>
       ) : (
         <Panel style={styles.inboxPanel}>
@@ -481,6 +521,7 @@ function DirectMessageBubble({
   const isUnknown =
     message.status === "unknown" || message.autoReplyStatus === "unknown";
   const failureMessage = sendFailureMessage(message);
+  const messageTypeLabel = whatsappDirectMessagePlaceholder(message.messageType);
   return (
     <Panel
       style={[
@@ -501,8 +542,13 @@ function DirectMessageBubble({
         </Text>
       </View>
       <Text selectable style={{ color: colors.foreground, textAlign: "right", lineHeight: 22 }}>
-        {message.text || "رسالة بدون نص"}
+        {message.text || messageTypeLabel}
       </Text>
+      {message.text && message.messageType !== "text" ? (
+        <Text style={{ color: colors.mutedForeground, textAlign: "right", fontSize: 12 }}>
+          {messageTypeLabel}
+        </Text>
+      ) : null}
       {isUnknown ? (
         <View style={styles.unknownBlock}>
           <Text accessibilityRole="alert" style={{ color: colors.warning, textAlign: "right" }}>

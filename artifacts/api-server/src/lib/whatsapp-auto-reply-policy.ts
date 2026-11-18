@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { selectWhatsAppDirectJid } from "./whatsapp-direct-messages.ts";
 
 export type WhatsAppAutoReplyLanguage = "ar" | "match_customer";
 export type WhatsAppAutoReplyTone =
@@ -33,9 +34,10 @@ export function autoReplySettingsHash(
 export function isDirectIncomingWhatsAppMessage(input: {
   fromMe: unknown;
   remoteJid: string | null;
+  remoteJidAlt?: string | null;
 }): boolean {
   return input.fromMe === false &&
-    Boolean(input.remoteJid?.endsWith("@s.whatsapp.net"));
+    Boolean(selectWhatsAppDirectJid(input.remoteJid, input.remoteJidAlt));
 }
 
 export function buildWhatsAppAutoReplyPrompt(

@@ -83,10 +83,13 @@ import {
 import { isDirectIncomingWhatsAppMessage } from "../lib/whatsapp-auto-reply-policy";
 import {
   buildWhatsAppDirectMessageContext,
+  classifyWhatsAppDirectMessage,
   decryptWhatsAppDirectMessageValue,
   encryptWhatsAppDirectMessageValue,
+  isWhatsAppDirectPhoneJid,
   normalizeWhatsAppDirectMessageText,
   redactWhatsAppPrivateData,
+  selectWhatsAppDirectJid,
   whatsappDirectConversationKeys,
   whatsappDirectMessageExpiry,
 } from "../lib/whatsapp-direct-messages";
@@ -1243,6 +1246,26 @@ async function processWhatsAppAutoReplyAsync(input: {
 }): Promise<void> {
   let sendStarted = false;
   try {
+    if (!isWhatsAppDirectPhoneJid(input.remoteJid)) {
+      await db
+        .update(menaWhatsAppAutoReplyEvents)
+        .set({
+          status: "failed",
+          errorCode: "WHATSAPP_RECIPIENT_PHONE_REQUIRED",
+          leaseExpiresAt: null,
+          completedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+            eq(
+              menaWhatsAppAutoReplyEvents.workspaceId,
+              input.connection.workspaceId,
+            ),
+          ),
+        );
+      return;
+    }
     // Re-check the toggle before generating/sending so a merchant who disabled
     // auto replies while the job was pending never gets a reply sent.
     const [latestConnection] = await db
@@ -1701,15 +1724,27 @@ export async function processWebhookEvent(
   const eventPayload = asRecord(payloadData ?? payload) ?? payload;
   const eventKey =
     asRecord(eventPayload?.key ?? payloadData?.key) ?? asRecord(payload.key);
+  const eventMessage = asRecord(eventPayload?.message);
+  const eventMessageKey = asRecord(eventMessage?.key);
   const eventRemoteJid =
     normalizeRemoteJid(eventKey?.remoteJid) ??
     normalizeRemoteJid(eventPayload?.remoteJid) ??
     remoteJid;
+  const eventRemoteJidAlt =
+    normalizeRemoteJid(eventKey?.remoteJidAlt) ??
+    normalizeRemoteJid(eventPayload?.remoteJidAlt) ??
+    normalizeRemoteJid(eventMessageKey?.remoteJidAlt) ??
+    normalizeRemoteJid(eventMessage?.remoteJidAlt);
+  const directRemoteJid = selectWhatsAppDirectJid(
+    eventRemoteJid,
+    eventRemoteJidAlt,
+  );
   const isDirectIncoming =
     eventName === "MESSAGES_UPSERT" &&
     isDirectIncomingWhatsAppMessage({
       fromMe: eventKey?.fromMe ?? eventPayload?.fromMe,
       remoteJid: eventRemoteJid,
+      remoteJidAlt: eventRemoteJidAlt,
     });
   const incomingMessageCandidate = isDirectIncoming
     ? (asRecord(eventPayload.message) ?? eventPayload)
@@ -1722,8 +1757,7 @@ export async function processWebhookEvent(
   const isDirectConversationMessage =
     eventName === "MESSAGES_UPSERT" &&
     (isDirectIncoming ||
-      (eventKey?.fromMe === true &&
-        Boolean(eventRemoteJid?.endsWith("@s.whatsapp.net"))));
+      (eventKey?.fromMe === true && Boolean(directRemoteJid)));
   const directMessageId =
     typeof eventKey?.id === "string"
       ? eventKey.id
@@ -1734,16 +1768,31 @@ export async function processWebhookEvent(
   if (
     isDirectConversationMessage &&
     directMessageId &&
-    eventRemoteJid
+    directRemoteJid
   ) {
     const direction = eventKey?.fromMe === true ? "outbound" : "inbound";
-    const directMessage = asRecord(eventPayload.message) ?? eventPayload;
+    const directMessage = eventMessage ?? eventPayload;
     const messageText = extractWhatsAppTextFromMessage(directMessage);
-    const messageTimestamp = new Date();
+    const messageType = classifyWhatsAppDirectMessage(
+      directMessage,
+      messageText,
+    );
+    const messageTimestamp =
+      [
+        directMessage.messageTimestamp,
+        directMessage.timestamp,
+        eventPayload.messageTimestamp,
+        eventPayload.timestamp,
+        directMessage.t,
+        eventPayload.t,
+      ]
+        .map(parseWhatsAppHistoryTimestamp)
+        .find((timestamp): timestamp is Date => Boolean(timestamp)) ??
+      new Date();
     const conversationKey = whatsappDirectConversationKeys(
       connection.workspaceId,
       instanceName,
-      eventRemoteJid,
+      directRemoteJid,
     )[0]!;
     directConversationKey = conversationKey;
     await db.insert(menaWhatsAppDirectMessages).values({
@@ -1752,13 +1801,14 @@ export async function processWebhookEvent(
       workspaceId: connection.workspaceId,
       instanceName,
       remoteJidHash: conversationKey,
-      encryptedRemoteJid: encryptWhatsAppDirectMessageValue(eventRemoteJid),
+      encryptedRemoteJid: encryptWhatsAppDirectMessageValue(directRemoteJid),
       providerMessageId: directMessageId,
       direction,
       status: direction === "outbound" ? "sent" : "received",
       encryptedTextBody: encryptWhatsAppDirectMessageValue(
         normalizeWhatsAppDirectMessageText(messageText ?? ""),
       ),
+      messageType,
       messageTimestamp,
       expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
     }).onConflictDoNothing();
@@ -1768,6 +1818,7 @@ export async function processWebhookEvent(
     connection.autoReplyEnabled &&
     !customerOptedOut &&
     isDirectIncoming &&
+    isWhatsAppDirectPhoneJid(directRemoteJid) &&
     incomingMessageCandidate
   ) {
     const customerMessage = extractWhatsAppTextFromMessage(

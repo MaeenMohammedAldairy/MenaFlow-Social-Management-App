@@ -4,6 +4,7 @@ import {
   buildWhatsAppAutoReplySystemInstruction,
   type WhatsAppAutoReplySettings,
 } from "./whatsapp-auto-reply-policy.ts";
+import { whatsappDirectPhoneNumber } from "./whatsapp-direct-messages.ts";
 
 
 export type WhatsAppAutoReplyContextTurn = {
@@ -77,7 +78,7 @@ export async function sendWhatsAppAutoReply(
   remoteJid: string,
   text: string,
 ): Promise<string | null> {
-  const number = remoteJid.replace(/@s\.whatsapp\.net$/, "");
+  const number = whatsappDirectPhoneNumber(remoteJid);
   const response = await evolutionRequest(
     `message/sendText/${encodeURIComponent(instanceName)}`,
     {
