@@ -83,7 +83,6 @@ import {
 import { isDirectIncomingWhatsAppMessage } from "../lib/whatsapp-auto-reply-policy";
 import {
   buildWhatsAppDirectMessageContext,
-  classifyWhatsAppDirectMessage,
   decryptWhatsAppDirectMessageValue,
   encryptWhatsAppDirectMessageValue,
   isWhatsAppDirectPhoneJid,
@@ -1773,10 +1772,6 @@ export async function processWebhookEvent(
     const direction = eventKey?.fromMe === true ? "outbound" : "inbound";
     const directMessage = eventMessage ?? eventPayload;
     const messageText = extractWhatsAppTextFromMessage(directMessage);
-    const messageType = classifyWhatsAppDirectMessage(
-      directMessage,
-      messageText,
-    );
     const messageTimestamp =
       [
         directMessage.messageTimestamp,
@@ -1808,7 +1803,6 @@ export async function processWebhookEvent(
       encryptedTextBody: encryptWhatsAppDirectMessageValue(
         normalizeWhatsAppDirectMessageText(messageText ?? ""),
       ),
-      messageType,
       messageTimestamp,
       expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
     }).onConflictDoNothing();
