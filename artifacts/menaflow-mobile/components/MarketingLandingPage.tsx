@@ -127,6 +127,7 @@ export function MarketingLandingPage() {
               <Image
                 source={require("../assets/images/icon.png")}
                 style={styles.brandIcon}
+                accessibilityLabel="شعار MenaFlow"
               />
               <Text style={[styles.brandName, { color: colors.foreground }]}>
                 MenaFlow
@@ -192,17 +193,25 @@ export function MarketingLandingPage() {
                   إدارة التواصل من مكان واحد
                 </Text>
               </View>
-              <Text style={[styles.heroTitle, { color: colors.foreground }]}>
-                نظّم محتواك ومحادثات عملائك مع MenaFlow
+              <Text
+                accessibilityRole="header"
+                style={[
+                  styles.heroTitle,
+                  compact && styles.heroTitleCompact,
+                  { color: colors.foreground },
+                ]}
+              >
+                أدر محتواك ومحادثات عملائك في مكان واحد
               </Text>
               <Text
                 style={[
                   styles.heroDescription,
+                  compact && styles.heroDescriptionCompact,
                   { color: colors.mutedForeground },
                 ]}
               >
-                مساحة عمل تساعدك على متابعة النشر، والرسائل، والمنتجات، والطلبات
-                ضمن تجربة عربية واضحة.
+                رتّب النشر، تابع رسائل العملاء، ونظّم المنتجات والطلبات ضمن
+                مساحة عمل عربية واضحة.
               </Text>
               <View
                 style={[
@@ -215,12 +224,14 @@ export function MarketingLandingPage() {
                     accessibilityRole="button"
                     style={StyleSheet.flatten([
                       styles.primaryCta,
+                      compact && styles.primaryCtaCompact,
                       { backgroundColor: colors.primary },
                     ])}
                   >
                     <Text
                       style={[
                         styles.ctaText,
+                        compact && styles.ctaTextCompact,
                         { color: colors.primaryForeground },
                       ]}
                     >
@@ -238,31 +249,48 @@ export function MarketingLandingPage() {
                     accessibilityRole="button"
                     style={StyleSheet.flatten([
                       styles.secondaryCta,
+                      compact && styles.secondaryCtaCompact,
                       { borderColor: colors.border },
                     ])}
                   >
                     <Text
-                      style={[styles.ctaText, { color: colors.foreground }]}
+                      style={[
+                        styles.ctaText,
+                        compact && styles.ctaTextCompact,
+                        { color: colors.foreground },
+                      ]}
                     >
-                      لدي حساب بالفعل
+                      {compact ? "تسجيل الدخول" : "لدي حساب بالفعل"}
                     </Text>
                   </Pressable>
                 </Link>
               </View>
               <Text
-                style={[styles.heroNote, { color: colors.mutedForeground }]}
+                style={[
+                  styles.heroNote,
+                  compact && styles.heroNoteCompact,
+                  { color: colors.mutedForeground },
+                ]}
               >
-                ابدأ بالخطة المجانية؛ لا يلزم اختيار باقة مدفوعة لإنشاء حساب.
+                خطة مجانية للبدء؛ لا يلزم اختيار باقة مدفوعة.
               </Text>
             </View>
             <View
               style={[
                 styles.heroVisual,
+                compact && styles.heroVisualCompact,
                 { backgroundColor: colors.accent, borderColor: colors.border },
               ]}
+              accessible
+              accessibilityRole="image"
+              accessibilityLabel="معاينة مساحة عمل لإدارة المحتوى والمحادثات والطلبات"
             >
               <View
-                style={[styles.visualTop, { backgroundColor: colors.card }]}
+                style={[
+                  styles.visualTop,
+                  compact && styles.visualTopCompact,
+                  { backgroundColor: colors.card },
+                ]}
               >
                 <View
                   style={[
@@ -276,7 +304,12 @@ export function MarketingLandingPage() {
                   مساحة العمل
                 </Text>
               </View>
-              <View style={styles.visualStats}>
+              <View
+                style={[
+                  styles.visualStats,
+                  compact && styles.visualStatsCompact,
+                ]}
+              >
                 {[
                   ["منشورات", "تنظيم المحتوى"],
                   ["محادثات", "متابعة الرسائل"],
@@ -286,12 +319,14 @@ export function MarketingLandingPage() {
                     key={label}
                     style={[
                       styles.visualStat,
+                      compact && styles.visualStatCompact,
                       { backgroundColor: colors.card },
                     ]}
                   >
                     <Text
                       style={[
                         styles.visualStatLabel,
+                        compact && styles.visualStatLabelCompact,
                         { color: colors.mutedForeground },
                       ]}
                     >
@@ -300,6 +335,7 @@ export function MarketingLandingPage() {
                     <Text
                       style={[
                         styles.visualStatCaption,
+                        compact && styles.visualStatCaptionCompact,
                         { color: colors.foreground },
                       ]}
                     >
@@ -311,8 +347,12 @@ export function MarketingLandingPage() {
             </View>
           </View>
 
-          <View style={styles.section}>
+          <View
+            style={[styles.section, compact && styles.sectionCompact]}
+            nativeID="features"
+          >
             <SectionHeading
+              compact={compact}
               eyebrow="ماذا يمكنك أن تدير؟"
               title="أدوات مترابطة لعملك اليومي"
               description="تابع المهام الأساسية لقنواتك الاجتماعية وعملياتك من لوحة واحدة."
@@ -360,8 +400,15 @@ export function MarketingLandingPage() {
             </View>
           </View>
 
-          <View style={[styles.section, { backgroundColor: colors.secondary }]}>
+          <View
+            style={[
+              styles.section,
+              compact && styles.sectionCompact,
+              { backgroundColor: colors.secondary },
+            ]}
+          >
             <SectionHeading
+              compact={compact}
               eyebrow="طريقة البدء"
               title="ثلاث خطوات للانطلاق"
               description="إعداد بسيط يعرّفك على مساحة العمل قبل البدء باستخدامها."
@@ -372,6 +419,7 @@ export function MarketingLandingPage() {
                   key={step.number}
                   style={[
                     styles.stepCard,
+                    compact && styles.stepCardCompact,
                     compact || !showThreeColumns
                       ? styles.halfWidth
                       : styles.thirdWidth,
@@ -402,8 +450,12 @@ export function MarketingLandingPage() {
             </View>
           </View>
 
-          <View style={styles.section} nativeID="pricing">
+          <View
+            style={[styles.section, compact && styles.sectionCompact]}
+            nativeID="pricing"
+          >
             <SectionHeading
+              compact={compact}
               eyebrow="الأسعار"
               title="اختر حدود الاستخدام المناسبة لك"
               description="الأسعار الشهرية وحدود الاستخدام المعروضة مبنية على إعدادات الباقات الحالية."
@@ -511,7 +563,10 @@ export function MarketingLandingPage() {
             </Text>
             <View style={styles.footerLinks}>
               <Link href="/(auth)/terms" asChild>
-                <Pressable accessibilityRole="link">
+                <Pressable
+                  accessibilityRole="link"
+                  style={styles.footerLinkTapTarget}
+                >
                   <Text
                     style={[
                       styles.footerLink,
@@ -523,7 +578,10 @@ export function MarketingLandingPage() {
                 </Pressable>
               </Link>
               <Link href="/(auth)/privacy" asChild>
-                <Pressable accessibilityRole="link">
+                <Pressable
+                  accessibilityRole="link"
+                  style={styles.footerLinkTapTarget}
+                >
                   <Text
                     style={[
                       styles.footerLink,
@@ -546,22 +604,37 @@ function SectionHeading({
   eyebrow,
   title,
   description,
+  compact = false,
 }: {
   eyebrow: string;
   title: string;
   description: string;
+  compact?: boolean;
 }) {
   const colors = useColors();
   return (
-    <View style={styles.sectionHeading}>
+    <View
+      style={[styles.sectionHeading, compact && styles.sectionHeadingCompact]}
+    >
       <Text style={[styles.sectionEyebrow, { color: colors.primary }]}>
         {eyebrow}
       </Text>
-      <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+      <Text
+        accessibilityRole="header"
+        style={[
+          styles.sectionTitle,
+          compact && styles.sectionTitleCompact,
+          { color: colors.foreground },
+        ]}
+      >
         {title}
       </Text>
       <Text
-        style={[styles.sectionDescription, { color: colors.mutedForeground }]}
+        style={[
+          styles.sectionDescription,
+          compact && styles.sectionDescriptionCompact,
+          { color: colors.mutedForeground },
+        ]}
       >
         {description}
       </Text>
@@ -588,7 +661,7 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: "row", alignItems: "center", gap: 9 },
   headerActionsCompact: { gap: 7 },
   headerLink: {
-    minHeight: 40,
+    minHeight: 44,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
@@ -596,7 +669,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 13,
   },
   headerPrimary: {
-    minHeight: 40,
+    minHeight: 44,
     justifyContent: "center",
     alignItems: "center",
     borderRadius: 12,
@@ -604,7 +677,7 @@ const styles = StyleSheet.create({
   },
   headerLinkText: { fontSize: 13, fontWeight: "700" },
   hero: {
-    marginTop: 28,
+    marginTop: 24,
     padding: 28,
     borderWidth: 1,
     borderRadius: 26,
@@ -613,10 +686,11 @@ const styles = StyleSheet.create({
     gap: 28,
   },
   heroCompact: {
-    padding: 20,
+    marginTop: 16,
+    padding: 16,
     flexDirection: "column",
     alignItems: "stretch",
-    gap: 20,
+    gap: 14,
   },
   heroCopy: { flex: 1, gap: 13 },
   eyebrow: {
@@ -627,14 +701,20 @@ const styles = StyleSheet.create({
   },
   eyebrowText: { fontSize: 12, fontWeight: "800" },
   heroTitle: { maxWidth: 650, fontSize: 38, lineHeight: 54, fontWeight: "900" },
+  heroTitleCompact: { fontSize: 30, lineHeight: 43 },
   heroDescription: { maxWidth: 620, fontSize: 16, lineHeight: 28 },
+  heroDescriptionCompact: { fontSize: 14, lineHeight: 23 },
   heroActions: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     flexWrap: "wrap",
   },
-  heroActionsCompact: { flexDirection: "column", alignItems: "stretch" },
+  heroActionsCompact: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 8,
+  },
   primaryCta: {
     minHeight: 48,
     borderRadius: 14,
@@ -652,8 +732,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  primaryCtaCompact: { flex: 1, minWidth: 0, paddingHorizontal: 10 },
+  secondaryCtaCompact: { flex: 1, minWidth: 0, paddingHorizontal: 8 },
   ctaText: { fontSize: 14, fontWeight: "800" },
+  ctaTextCompact: { fontSize: 12 },
   heroNote: { fontSize: 12, lineHeight: 20 },
+  heroNoteCompact: { fontSize: 11, lineHeight: 18 },
   heroVisual: {
     width: 300,
     maxWidth: "100%",
@@ -662,6 +746,7 @@ const styles = StyleSheet.create({
     padding: 13,
     gap: 10,
   },
+  heroVisualCompact: { width: "100%", padding: 10, gap: 7 },
   visualTop: {
     minHeight: 42,
     borderRadius: 12,
@@ -670,9 +755,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 8,
   },
+  visualTopCompact: { minHeight: 36 },
   visualDot: { width: 8, height: 8, borderRadius: 4 },
   visualLabel: { fontSize: 13, fontWeight: "800" },
   visualStats: { gap: 8 },
+  visualStatsCompact: { flexDirection: "row", gap: 6 },
   visualStat: {
     minHeight: 58,
     borderRadius: 12,
@@ -680,10 +767,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     gap: 2,
   },
+  visualStatCompact: {
+    flex: 1,
+    minHeight: 62,
+    alignItems: "center",
+    paddingHorizontal: 3,
+  },
   visualStatLabel: { fontSize: 11 },
+  visualStatLabelCompact: { fontSize: 10, textAlign: "center" },
   visualStatCaption: { fontSize: 13, fontWeight: "700" },
+  visualStatCaptionCompact: {
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: "center",
+  },
   section: { marginTop: 22, padding: 24, borderRadius: 24 },
+  sectionCompact: { marginTop: 16, padding: 18 },
   sectionHeading: { alignItems: "center", gap: 7, marginBottom: 18 },
+  sectionHeadingCompact: { gap: 5, marginBottom: 14 },
   sectionEyebrow: { fontSize: 12, fontWeight: "800" },
   sectionTitle: {
     fontSize: 25,
@@ -691,7 +792,9 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
   },
+  sectionTitleCompact: { fontSize: 21, lineHeight: 30 },
   sectionDescription: { fontSize: 14, lineHeight: 23, textAlign: "center" },
+  sectionDescriptionCompact: { fontSize: 13, lineHeight: 21 },
   featureGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   column: { flexDirection: "column" },
   featureCard: {
@@ -720,6 +823,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 8,
   },
+  stepCardCompact: { padding: 14 },
   thirdWidth: { width: "31%" },
   stepNumber: { fontSize: 25, fontWeight: "900" },
   planGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
@@ -746,7 +850,7 @@ const styles = StyleSheet.create({
   limitRow: { flexDirection: "row", alignItems: "flex-start", gap: 7 },
   limitText: { flex: 1, fontSize: 12, lineHeight: 19 },
   planButton: {
-    minHeight: 42,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 12,
     alignItems: "center",
@@ -775,6 +879,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 15,
     flexWrap: "wrap",
+  },
+  footerLinkTapTarget: {
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: "center",
+    paddingHorizontal: 4,
   },
   footerLink: { fontSize: 12, textDecorationLine: "underline" },
 });
