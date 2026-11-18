@@ -36,19 +36,19 @@ import { isLocalAuthDisabled } from "@/constants/auth";
 
 const slides = [
   {
-    title: "منصتك الذكية لإدارة حساباتك الاجتماعية",
-    description: "كل أدواتك في مكان واحد، لتوفر وقتك وجهدك وتزيد من تأثيرك.",
+    title: "كل حساباتك الاجتماعية في مكان واحد",
+    description: "تابع حساباتك واجمع أعمالك اليومية في مساحة عمل واحدة.",
     artwork: "dashboard",
   },
   {
-    title: "مساعدك الذكي لمحتوى علامتك",
+    title: "حوّل فكرتك إلى محتوى جاهز",
     description:
-      "أنشئ أفكارًا ومسودات لمحتواك بسهولة، وابدأ بخطوتك الإبداعية التالية.",
+      "استعن بالمساعد الذكي لإنشاء أفكار ومسودات تناسب علامتك.",
     artwork: "assistant",
   },
   {
-    title: "محتواك ومنصاتك في مساحة واحدة",
-    description: "جهّز منشوراتك وتابع حساباتك الاجتماعية من لوحة تحكم موحدة.",
+    title: "استعد لإدارة محتواك بسهولة",
+    description: "أنشئ محتواك وأدر حساباتك الاجتماعية من لوحة موحّدة.",
     artwork: "publishing",
   },
 ] as const;
@@ -224,14 +224,19 @@ function AuthenticatedOnboarding() {
 
           <View
             style={styles.dots}
+            accessible
+            accessibilityRole="progressbar"
             accessibilityLabel={`الخطوة ${slide + 1} من ${slides.length}`}
+            accessibilityValue={{
+              min: 1,
+              max: slides.length,
+              now: slide + 1,
+              text: `الخطوة ${slide + 1} من ${slides.length}`,
+            }}
           >
             {slides.map((item, index) => (
               <View
                 key={item.artwork}
-                accessibilityLabel={
-                  index === slide ? "الخطوة الحالية" : undefined
-                }
                 style={[
                   styles.dot,
                   {
@@ -279,7 +284,11 @@ function AuthenticatedOnboarding() {
                     { color: colors.primaryForeground },
                   ]}
                 >
-                  {slide === slides.length - 1 ? "ابدأ الآن" : "التالي"}
+                  {slide === slides.length - 1
+                    ? status.data.socialAccountsCompleted
+                      ? "ابدأ الآن"
+                      : "ربط حساباتك"
+                    : "التالي"}
                 </Text>
                 <ArrowLeft size={18} color={colors.primaryForeground} />
               </>
@@ -321,7 +330,7 @@ function AuthenticatedOnboarding() {
               <Text
                 style={[styles.skipText, { color: colors.mutedForeground }]}
               >
-                تخطي
+                تخطي المقدمة
               </Text>
             </Pressable>
           </View>
@@ -1026,7 +1035,7 @@ const styles = StyleSheet.create({
   },
   skipButton: {
     minWidth: 60,
-    height: 38,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
   },
