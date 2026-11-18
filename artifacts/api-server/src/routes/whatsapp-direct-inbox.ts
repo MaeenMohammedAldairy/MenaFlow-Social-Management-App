@@ -64,6 +64,7 @@ function messageResponse(
   const remoteJid = decryptWhatsAppDirectMessageValue(
     message.encryptedRemoteJid,
   );
+  const text = decryptWhatsAppDirectMessageValue(message.encryptedTextBody);
   return {
     id: message.id,
     remoteJid,
@@ -71,8 +72,8 @@ function messageResponse(
     status: message.status,
     autoReplyStatus,
     autoReplyErrorCode,
-    text: decryptWhatsAppDirectMessageValue(message.encryptedTextBody),
-    messageType: message.messageType,
+    text,
+    messageType: text.trim() ? "text" : "unknown",
     occurredAt: message.messageTimestamp,
     createdAt: message.createdAt,
     errorCode: message.errorCode,
@@ -154,7 +155,7 @@ router.get(
           customerNumber: remoteJid.endsWith("@s.whatsapp.net")
             ? remoteJid.replace(/@s\.whatsapp\.net$/, "")
             : `معرّف ${remoteJid.replace(/@lid$/, "")}`,
-          preview: text || whatsappDirectMessagePlaceholder(message.messageType),
+          preview: text || whatsappDirectMessagePlaceholder("unknown"),
           lastDirection: message.direction,
           lastStatus: message.status,
           lastMessageAt: message.messageTimestamp,

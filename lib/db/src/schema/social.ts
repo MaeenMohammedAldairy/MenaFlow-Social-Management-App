@@ -284,21 +284,6 @@ export const menaWhatsAppDirectMessages = pgTable(
       .default("received"),
     errorCode: text("error_code"),
     encryptedTextBody: text("encrypted_text_body").notNull(),
-    messageType: text("message_type")
-      .$type<
-        | "text"
-        | "image"
-        | "video"
-        | "audio"
-        | "document"
-        | "sticker"
-        | "album"
-        | "location"
-        | "contact"
-        | "unknown"
-      >()
-      .notNull()
-      .default("text"),
     messageTimestamp: timestamp("message_timestamp", { withTimezone: true })
       .notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
@@ -344,10 +329,6 @@ export const menaWhatsAppDirectMessages = pgTable(
     check(
       "mena_whatsapp_direct_messages_text_length_check",
       sql`length(${table.encryptedTextBody}) <= 6000`,
-    ),
-    check(
-      "mena_whatsapp_direct_messages_message_type_check",
-      sql`${table.messageType} IN ('text', 'image', 'video', 'audio', 'document', 'sticker', 'album', 'location', 'contact', 'unknown')`,
     ),
   ],
 );
