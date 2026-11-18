@@ -2,14 +2,56 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildWhatsAppDirectMessageContext,
+  classifyWhatsAppDirectMessage,
   decryptWhatsAppDirectMessageValue,
   encryptWhatsAppDirectMessageValue,
+  isWhatsAppDirectPhoneJid,
+  normalizeWhatsAppDirectJid,
   normalizeWhatsAppDirectMessageText,
   redactWhatsAppPrivateData,
+  selectWhatsAppDirectJid,
   whatsappDirectMessageExpiry,
+  whatsappDirectMessagePlaceholder,
+  whatsappDirectPhoneNumber,
   whatsappDirectConversationKeys,
   WHATSAPP_DIRECT_MESSAGE_RETENTION_DAYS,
 } from "./whatsapp-direct-messages.ts";
+
+test("normalizes phone and LID JIDs and prefers a phone alternate for replies", () => {
+  assert.equal(
+    normalizeWhatsAppDirectJid("967777123456:4@s.whatsapp.net"),
+    "967777123456@s.whatsapp.net",
+  );
+  assert.equal(
+    selectWhatsAppDirectJid("12345678901234@lid", "967777123456@s.whatsapp.net"),
+    "967777123456@s.whatsapp.net",
+  );
+  assert.equal(
+    selectWhatsAppDirectJid("12345678901234@lid"),
+    "12345678901234@lid",
+  );
+  assert.equal(isWhatsAppDirectPhoneJid("12345678901234@lid"), false);
+  assert.equal(selectWhatsAppDirectJid("120363000000000000@g.us"), null);
+  assert.equal(whatsappDirectPhoneNumber("967777123456:4@s.whatsapp.net"), "967777123456");
+  assert.throws(
+    () => whatsappDirectPhoneNumber("12345678901234@lid"),
+    /WHATSAPP_RECIPIENT_PHONE_REQUIRED/,
+  );
+});
+
+test("classifies media-only messages for a non-empty inbox display", () => {
+  assert.equal(
+    classifyWhatsAppDirectMessage(
+      { ephemeralMessage: { message: { imageMessage: { mimetype: "image/jpeg" } } } },
+      null,
+    ),
+    "image",
+  );
+  assert.equal(classifyWhatsAppDirectMessage({ audioMessage: {} }, null), "audio");
+  assert.equal(classifyWhatsAppDirectMessage({ locationMessage: {} }, null), "location");
+  assert.equal(classifyWhatsAppDirectMessage({ conversation: "مرحبًا" }, "مرحبًا"), "text");
+  assert.match(whatsappDirectMessagePlaceholder("image"), /المرفق غير محفوظ/);
+});
 
 test("expires direct messages after the configured retention period", () => {
   const timestamp = new Date("2026-11-13T00:00:00.000Z");

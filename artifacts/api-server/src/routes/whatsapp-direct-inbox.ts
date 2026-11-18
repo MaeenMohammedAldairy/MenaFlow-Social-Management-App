@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, or } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
 import {
   db,
@@ -12,7 +12,10 @@ import { sendWhatsAppAutoReply } from "../lib/whatsapp-auto-reply";
 import {
   decryptWhatsAppDirectMessageValue,
   encryptWhatsAppDirectMessageValue,
+  isWhatsAppDirectPhoneJid,
+  normalizeWhatsAppDirectJid,
   normalizeWhatsAppDirectMessageText,
+  whatsappDirectMessagePlaceholder,
   whatsappDirectConversationKeys,
   whatsappDirectMessageExpiry,
 } from "../lib/whatsapp-direct-messages";
@@ -24,14 +27,7 @@ const conversationScanLimit = 500;
 const messagePageSize = 100;
 
 function parseRemoteJid(value: unknown): string | null {
-  if (
-    typeof value !== "string" ||
-    value.length > 120 ||
-    !/^\d{7,20}@s\.whatsapp\.net$/.test(value)
-  ) {
-    return null;
-  }
-  return value;
+  return normalizeWhatsAppDirectJid(value);
 }
 
 function parseClientRequestId(value: unknown): string | null {
@@ -76,6 +72,7 @@ function messageResponse(
     autoReplyStatus,
     autoReplyErrorCode,
     text: decryptWhatsAppDirectMessageValue(message.encryptedTextBody),
+    messageType: message.messageType,
     occurredAt: message.messageTimestamp,
     createdAt: message.createdAt,
     errorCode: message.errorCode,
@@ -148,16 +145,21 @@ router.get(
     }
     const conversations = [...latestByConversation.values()]
       .slice(0, conversationPageSize)
-      .map(({ message, text }) => ({
-        remoteJid: decryptWhatsAppDirectMessageValue(message.encryptedRemoteJid),
-        customerNumber: decryptWhatsAppDirectMessageValue(
+      .map(({ message, text }) => {
+        const remoteJid = decryptWhatsAppDirectMessageValue(
           message.encryptedRemoteJid,
-        ).replace(/@s\.whatsapp\.net$/, ""),
-        preview: text,
-        lastDirection: message.direction,
-        lastStatus: message.status,
-        lastMessageAt: message.messageTimestamp,
-      }));
+        );
+        return {
+          remoteJid,
+          customerNumber: remoteJid.endsWith("@s.whatsapp.net")
+            ? remoteJid.replace(/@s\.whatsapp\.net$/, "")
+            : `معرّف ${remoteJid.replace(/@lid$/, "")}`,
+          preview: text || whatsappDirectMessagePlaceholder(message.messageType),
+          lastDirection: message.direction,
+          lastStatus: message.status,
+          lastMessageAt: message.messageTimestamp,
+        };
+      });
 
     res.json({ conversations });
   },
@@ -183,12 +185,46 @@ router.get(
       res.status(404).json({ error: "لا يوجد حساب واتساب مرتبط بهذه المساحة." });
       return;
     }
+    const hasCursor =
+      req.query.beforeTimestamp !== undefined || req.query.beforeId !== undefined;
+    const beforeTimestampValue =
+      typeof req.query.beforeTimestamp === "string"
+        ? new Date(req.query.beforeTimestamp)
+        : null;
+    const beforeId =
+      typeof req.query.beforeId === "string" ? req.query.beforeId.trim() : "";
+    if (
+      hasCursor &&
+      (!beforeTimestampValue ||
+        !Number.isFinite(beforeTimestampValue.getTime()) ||
+        !beforeId ||
+        beforeId.length > 200)
+    ) {
+      res.status(400).json({ error: "مؤشر الرسائل الأقدم غير صالح." });
+      return;
+    }
     const conversationKeys = whatsappDirectConversationKeys(
       workspaceId,
       connection.instanceName,
       remoteJid,
     );
-    const messages = await db
+    const cursorCondition =
+      beforeTimestampValue && beforeId
+        ? or(
+            lt(
+              menaWhatsAppDirectMessages.messageTimestamp,
+              beforeTimestampValue,
+            ),
+            and(
+              eq(
+                menaWhatsAppDirectMessages.messageTimestamp,
+                beforeTimestampValue,
+              ),
+              lt(menaWhatsAppDirectMessages.id, beforeId),
+            ),
+          )
+        : undefined;
+    const fetchedMessages = await db
       .select()
       .from(menaWhatsAppDirectMessages)
       .where(
@@ -197,13 +233,24 @@ router.get(
           eq(menaWhatsAppDirectMessages.instanceName, connection.instanceName),
           inArray(menaWhatsAppDirectMessages.remoteJidHash, conversationKeys),
           gt(menaWhatsAppDirectMessages.expiresAt, new Date()),
+          ...(cursorCondition ? [cursorCondition] : []),
         ),
       )
       .orderBy(
         desc(menaWhatsAppDirectMessages.messageTimestamp),
-        desc(menaWhatsAppDirectMessages.createdAt),
+        desc(menaWhatsAppDirectMessages.id),
       )
-      .limit(messagePageSize);
+      .limit(messagePageSize + 1);
+    const hasNextPage = fetchedMessages.length > messagePageSize;
+    const messages = fetchedMessages.slice(0, messagePageSize);
+    const oldestMessage = messages.at(-1);
+    const nextCursor =
+      hasNextPage && oldestMessage
+        ? {
+            beforeTimestamp: oldestMessage.messageTimestamp.toISOString(),
+            beforeId: oldestMessage.id,
+          }
+        : null;
 
     const inboundIds = messages
       .filter((message) => message.direction === "inbound" && message.providerMessageId)
@@ -235,21 +282,38 @@ router.get(
       const key = message.providerMessageId ?? message.id;
       if (!uniqueMessages.has(key)) uniqueMessages.set(key, message);
     }
-    res.json({
-      messages: [...uniqueMessages.values()].map((message) =>
-        (() => {
-          const autoReply =
-            message.direction === "inbound" && message.providerMessageId
-              ? autoReplyByMessage.get(message.providerMessageId)
-              : undefined;
-          return messageResponse(
+    const responseMessages: ReturnType<typeof messageResponse>[] = [];
+    let skippedEncryptedMessages = 0;
+    for (const message of uniqueMessages.values()) {
+      const autoReply =
+        message.direction === "inbound" && message.providerMessageId
+          ? autoReplyByMessage.get(message.providerMessageId)
+          : undefined;
+      try {
+        responseMessages.push(
+          messageResponse(
             message,
             autoReply?.status ?? null,
             autoReply?.errorCode ?? null,
-          );
-        })(),
-      ),
-    });
+          ),
+        );
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          error.message !== "INVALID_ENCRYPTED_TOKEN"
+        ) {
+          throw error;
+        }
+        skippedEncryptedMessages += 1;
+      }
+    }
+    if (skippedEncryptedMessages > 0) {
+      req.log.warn(
+        { count: skippedEncryptedMessages },
+        "Skipped WhatsApp messages with unreadable encrypted content",
+      );
+    }
+    res.json({ messages: responseMessages, nextCursor });
   },
 );
 
@@ -265,9 +329,22 @@ router.post(
     const remoteJid = parseRemoteJid(req.body?.remoteJid);
     const text = parseReplyText(req.body?.text);
     const clientRequestId = parseClientRequestId(req.body?.clientRequestId);
-    if (!remoteJid || !text || !clientRequestId) {
+    if (!remoteJid) {
       res.status(400).json({
-        error: "تحقق من رقم المحادثة ونص الرد ومعرّف الطلب.",
+        error: "معرّف محادثة واتساب غير صالح.",
+      });
+      return;
+    }
+    if (!isWhatsAppDirectPhoneJid(remoteJid)) {
+      res.status(409).json({
+        error:
+          "لا يمكن إرسال الرد لأن واتساب لم يوفّر رقم الهاتف البديل لهذا المعرّف.",
+      });
+      return;
+    }
+    if (!text || !clientRequestId) {
+      res.status(400).json({
+        error: "تحقق من نص الرد ومعرّف الطلب.",
       });
       return;
     }

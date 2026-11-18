@@ -16,6 +16,21 @@ test("limits automatic replies to incoming individual chats", () => {
   );
   assert.equal(
     isDirectIncomingWhatsAppMessage({
+      fromMe: false,
+      remoteJid: "12345678901234@lid",
+      remoteJidAlt: "967777187184@s.whatsapp.net",
+    }),
+    true,
+  );
+  assert.equal(
+    isDirectIncomingWhatsAppMessage({
+      fromMe: false,
+      remoteJid: "12345678901234@lid",
+    }),
+    true,
+  );
+  assert.equal(
+    isDirectIncomingWhatsAppMessage({
       fromMe: true,
       remoteJid: "967777187184@s.whatsapp.net",
     }),
