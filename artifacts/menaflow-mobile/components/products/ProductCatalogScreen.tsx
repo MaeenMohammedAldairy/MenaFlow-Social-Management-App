@@ -948,30 +948,18 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         }
       >
         <BrandHeader />
-        <Panel style={styles.catalogIntro}>
-          <View
-            style={[styles.catalogEyebrow, { backgroundColor: colors.accent }]}
-          >
-            <Icon name="package" size={15} color={colors.primary} />
-            <Text
-              style={[styles.catalogEyebrowText, { color: colors.primary }]}
-            >
-              مكتبة منتجاتك
-            </Text>
-          </View>
+        <View style={styles.catalogIntro}>
           <PageTitle
             title="كتالوج المنتجات"
-            subtitle="اجمع المنتجات من الرسائل والمنشورات، وراجعها كمسودات، ثم اعتمدها قبل نشرها أو استخدامها في الردود."
-            back={{
-              href:
-                returnTo === "settings"
-                  ? "/(tabs)/more/settings"
-                  : "/(tabs)/products",
-              label:
-                returnTo === "settings"
-                  ? "العودة إلى الإعدادات"
-                  : "العودة إلى المنتجات",
-            }}
+            subtitle="إدارة منتجاتك ومسوداتك"
+            back={
+              returnTo === "settings"
+                ? {
+                    href: "/(tabs)/more/settings",
+                    label: "العودة إلى الإعدادات",
+                  }
+                : undefined
+            }
             action={
               <Pressable
                 accessibilityRole="button"
@@ -1000,7 +988,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               </Pressable>
             }
           />
-        </Panel>
+        </View>
         <View
           accessibilityLabel="ملخص حالة كتالوج المنتجات"
           style={styles.catalogOverview}
@@ -1111,34 +1099,16 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               </Panel>
             ) : null}
             <Panel style={styles.reviewGuidance}>
-              <View
+              <Icon name="shield" size={16} color={colors.primary} />
+              <Text
                 style={[
-                  styles.reviewGuidanceIcon,
-                  { backgroundColor: colors.accent },
+                  styles.reviewGuidanceBody,
+                  { color: colors.mutedForeground },
                 ]}
               >
-                <Icon name="shield" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.reviewGuidanceCopy}>
-                <Text
-                  style={[
-                    styles.reviewGuidanceTitle,
-                    { color: colors.foreground },
-                  ]}
-                >
-                  الاقتراحات ليست منتجات معتمدة
-                </Text>
-                <Text
-                  style={[
-                    styles.reviewGuidanceBody,
-                    { color: colors.mutedForeground },
-                  ]}
-                >
-                  راجع النص المصدر وصحّح السعر والتوفر قبل حفظ المسودة. لن
-                  تُستخدم بيانات الاقتراح في ردود العملاء حتى تراجعها وتفعّل
-                  المنتج.
-                </Text>
-              </View>
+                اقتراحات غير معتمدة — راجع السعر والتوفر؛ لا تُستخدم في الردود
+                قبل المراجعة والتفعيل.
+              </Text>
             </Panel>
             <Panel style={styles.scanPanel}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -3657,7 +3627,7 @@ function DropdownField({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  catalogIntro: { gap: 12, padding: 18 },
+  catalogIntro: { gap: 0, padding: 0 },
   catalogOverview: {
     flexDirection: "row",
     gap: 8,
@@ -3665,7 +3635,7 @@ const styles = StyleSheet.create({
   catalogOverviewItem: {
     flex: 1,
     minWidth: 0,
-    minHeight: 82,
+    minHeight: 68,
     alignItems: "center",
     justifyContent: "center",
     gap: 3,
@@ -3682,20 +3652,17 @@ const styles = StyleSheet.create({
   },
   reviewGuidance: {
     flexDirection: "row-reverse",
-    alignItems: "flex-start",
-    gap: 10,
-    padding: 12,
-  },
-  reviewGuidanceIcon: {
-    width: 36,
-    height: 36,
     alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 12,
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
   },
-  reviewGuidanceCopy: { flex: 1, gap: 4 },
-  reviewGuidanceTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" },
-  reviewGuidanceBody: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  reviewGuidanceBody: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 17,
+    textAlign: "right",
+  },
   catalogEmptyPanel: { gap: 12, padding: 14 },
   catalogEmptyActions: {
     flexDirection: "row",
@@ -3703,18 +3670,8 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
   },
-  catalogEyebrow: {
-    alignSelf: "flex-start",
-    minHeight: 28,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 10,
-    paddingHorizontal: 9,
-  },
-  catalogEyebrowText: { fontSize: 11, fontWeight: "700" },
   addButton: {
-    minHeight: 42,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
