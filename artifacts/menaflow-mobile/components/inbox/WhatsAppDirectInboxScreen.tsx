@@ -204,44 +204,33 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
         />
       }
     >
-      <BrandHeader />
-      <InboxPlatformTabs
-        activePlatform="whatsapp"
-        onSelect={(platform) => {
-          if (platform === "whatsapp") return;
-          router.replace({
-            pathname: "/(tabs)/inbox",
-            params: { platform },
-          });
-        }}
-      />
-      <PageTitle
-        title="رسائل WhatsApp الخاصة"
-        subtitle="تابع المحادثات الفردية ورد يدويًا عند الحاجة."
-        back={{ href: "/(tabs)/inbox", label: "العودة إلى المحادثات" }}
-        action={
-          <IconButton
-            icon="settings"
-            label="إعدادات الرد الآلي"
-            color={colors.primary}
-            onPress={() => router.push("/inbox/reply-settings")}
-          />
-        }
-      />
+      <View style={styles.inboxHeader}>
+        <BrandHeader />
+        <PageTitle
+          title="المحادثات"
+          action={
+            <IconButton
+              icon="settings"
+              label="إعدادات الرد الآلي"
+              color={colors.primary}
+              onPress={() => router.push("/inbox/reply-settings")}
+            />
+          }
+        />
+        <InboxPlatformTabs
+          activePlatform="whatsapp"
+          onSelect={(platform) => {
+            if (platform === "whatsapp") return;
+            router.replace({
+              pathname: "/(tabs)/inbox",
+              params: { platform },
+            });
+          }}
+        />
+      </View>
 
       {selectedRemoteJid ? (
         <>
-          <ActionButton
-            label="قائمة المحادثات"
-            icon="chevron-right"
-            secondary
-            onPress={() => {
-              setSelectedRemoteJid(null);
-              router.setParams({ remoteJid: undefined });
-              setDraft("");
-              setRequestId(null);
-            }}
-          />
           <Panel style={styles.conversationPanel}>
             <View style={styles.conversationHeading}>
               <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
@@ -251,10 +240,21 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
                 <Text style={{ color: colors.foreground, fontWeight: "800" }}>
                   {selectedConversation?.customerNumber ?? directConversationLabel(selectedRemoteJid)}
                 </Text>
-                <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
+                <Text numberOfLines={1} style={{ color: colors.mutedForeground, fontSize: 11 }}>
                   تنتهي صلاحية الرسائل بعد 90 يومًا.
                 </Text>
               </View>
+              <IconButton
+                icon="chevron-right"
+                label="العودة إلى قائمة المحادثات"
+                color={colors.primary}
+                onPress={() => {
+                  setSelectedRemoteJid(null);
+                  router.setParams({ remoteJid: undefined });
+                  setDraft("");
+                  setRequestId(null);
+                }}
+              />
             </View>
           </Panel>
           {messages.isError ? (
@@ -582,13 +582,14 @@ function DirectMessageBubble({
 }
 
 const styles = StyleSheet.create({
+  inboxHeader: { gap: 10 },
   inboxPanel: { gap: 12 },
   listHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   conversationCount: { minWidth: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", paddingHorizontal: 7 },
   searchRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 9, borderWidth: 1, borderRadius: 12, paddingHorizontal: 11 },
   searchInput: { flex: 1, minWidth: 0, minHeight: 42, fontSize: 13, textAlign: "right", writingDirection: "rtl" },
   loadError: { gap: 9 },
-  conversationPanel: { gap: 10 },
+  conversationPanel: { gap: 0, padding: 10 },
   conversationHeading: { flexDirection: "row", alignItems: "center", gap: 10 },
   avatar: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   conversationCopy: { flex: 1, gap: 4 },

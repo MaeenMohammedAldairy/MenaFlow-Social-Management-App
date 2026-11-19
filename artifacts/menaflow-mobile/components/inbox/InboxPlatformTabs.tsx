@@ -33,6 +33,9 @@ export function InboxPlatformTabs({
           <Pressable
             key={tab.key}
             accessibilityRole="tab"
+            accessibilityLabel={
+              tab.key === "all" ? "جميع المنصات" : `منصة ${tab.label}`
+            }
             accessibilityState={{ selected }}
             onPress={() => onSelect(tab.key)}
             style={({ pressed }) => [
@@ -45,11 +48,11 @@ export function InboxPlatformTabs({
             ]}
           >
             {tab.key !== "all" ? (
-              <SocialPlatformIcon platform={tab.key} size={16} />
+              <SocialPlatformIcon platform={tab.key} size={17} />
             ) : (
               <Icon
                 name="message-square"
-                size={16}
+                size={17}
                 color={selected ? colors.primary : colors.mutedForeground}
               />
             )}
@@ -81,14 +84,14 @@ const styles = StyleSheet.create({
   tab: {
     flex: 1,
     minWidth: 0,
-    minHeight: 42,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
+    gap: 5,
     borderWidth: 1,
     borderRadius: 10,
-    paddingHorizontal: 4,
+    paddingHorizontal: 5,
   },
-  tabLabel: { fontSize: 10, fontWeight: "700" },
+  tabLabel: { fontSize: 11, fontWeight: "700" },
 });

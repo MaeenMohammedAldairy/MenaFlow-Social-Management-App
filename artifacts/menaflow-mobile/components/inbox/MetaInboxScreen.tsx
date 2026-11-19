@@ -17,6 +17,7 @@ import {
   ActionButton,
   BrandHeader,
   EmptyState,
+  IconButton,
   Page,
   PageTitle,
   Panel,
@@ -24,7 +25,7 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { InboxPlatformTabs, type InboxPlatform } from "@/components/inbox/InboxPlatformTabs";
-import { formatArabicDateTime } from "@/lib/formatting";
+import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 import {
   getMetaAutoReplySettings,
   getMetaInbox,
@@ -42,7 +43,7 @@ import {
 type InboxFilter = "all" | MetaInboxKind;
 
 const filters: Array<{ key: InboxFilter; label: string }> = [
-  { key: "all", label: "الكل" },
+  { key: "all", label: "كل الأنواع" },
   { key: "message", label: "الرسائل" },
   { key: "comment", label: "التعليقات" },
 ];
@@ -305,158 +306,149 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
         />
       }
     >
-      <BrandHeader />
-      <InboxPlatformTabs activePlatform={platform} onSelect={selectPlatform} />
-      <Panel style={styles.inboxIntro}>
-        <View
-          style={[
-            styles.inboxEyebrow,
-            { backgroundColor: colors.accent },
-          ]}
-        >
-          <Icon name="message-square" size={15} color={colors.primary} />
-          <Text style={[styles.inboxEyebrowText, { color: colors.primary }]}>
-            المحادثات الواردة
-          </Text>
-        </View>
+      <View style={styles.inboxHeader}>
+        <BrandHeader />
         <PageTitle
           title="المحادثات"
-          subtitle="تابع رسائل وتعليقات منصاتك من مكان واحد."
+          action={
+            <IconButton
+              icon="settings"
+              label="إدارة إعدادات الرد الآلي"
+              color={colors.primary}
+              onPress={() => router.push("/inbox/reply-settings")}
+            />
+          }
         />
-      </Panel>
+        <InboxPlatformTabs
+          activePlatform={platform}
+          onSelect={selectPlatform}
+        />
 
-      <Panel style={styles.automationSummary}>
-        <View style={styles.automationHeading}>
-          <View style={[styles.toolbarIcon, { backgroundColor: colors.accent }]}>
-            <Icon name="zap" size={17} color={colors.primary} />
-          </View>
-          <View style={styles.automationCopy}>
-            <Text style={[styles.toolbarTitle, { color: colors.foreground }]}>
+        <Panel style={styles.automationSummary}>
+          <View style={styles.automationHeading}>
+            <Icon name="zap" size={15} color={colors.primary} />
+            <Text style={[styles.automationHeadingText, { color: colors.foreground }]}>
               حالة الرد الآلي
             </Text>
-            <Text
-              style={[
-                styles.automationDescription,
-                { color: colors.mutedForeground },
-              ]}
-            >
-              تحقق من جاهزية القنوات قبل انتظار رد تلقائي.
-            </Text>
           </View>
-        </View>
-        {metaReplySettings.data ? (
-          visibleMetaPlatforms.map((channel) => (
-            <View key={channel} style={styles.automationStatusRow}>
-              <SocialPlatformIcon platform={channel} size={16} />
+          <View style={styles.automationStatuses}>
+            {metaReplySettings.data ? (
+              visibleMetaPlatforms.map((channel) => (
+                <View
+                  key={channel}
+                  style={[
+                    styles.automationStatusChip,
+                    { backgroundColor: colors.secondary },
+                  ]}
+                >
+                  <SocialPlatformIcon platform={channel} size={14} />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.automationStatus,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    {channel === "facebook" ? "فيسبوك" : "إنستغرام"} ·{" "}
+                    {metaReplyStatus(metaReplySettings.data, channel)}
+                  </Text>
+                </View>
+              ))
+            ) : (
               <Text
                 style={[
-                  styles.automationStatus,
-                  { color: colors.foreground },
+                  styles.automationMessage,
+                  {
+                    color: metaReplySettings.isPending
+                      ? colors.mutedForeground
+                      : colors.destructive,
+                  },
                 ]}
               >
-                {channel === "facebook" ? "فيسبوك" : "إنستغرام"}:{" "}
-                {metaReplyStatus(metaReplySettings.data, channel)}
+                {metaReplySettings.isPending
+                  ? "جارٍ التحقق من حالة Meta..."
+                  : "تعذر التحقق من إعدادات الرد الآلي لـ Meta."}
               </Text>
-            </View>
-          ))
-        ) : metaReplySettings.isPending ? (
-          <Text
-            style={[
-              styles.automationDescription,
-              { color: colors.mutedForeground },
-            ]}
-          >
-            جارٍ التحقق من حالة Meta...
-          </Text>
-        ) : (
-          <Text
-            accessibilityRole="alert"
-            style={[
-              styles.automationDescription,
-              { color: colors.destructive },
-            ]}
-          >
-            تعذر التحقق من إعدادات الرد الآلي لـ Meta.
-          </Text>
-        )}
-        {platform === "all" ? (
-          whatsAppReplySettings.data ? (
-            <View style={styles.automationStatusRow}>
-              <SocialPlatformIcon platform="whatsapp" size={16} />
-              <Text
-                style={[
-                  styles.automationStatus,
-                  { color: colors.foreground },
-                ]}
-              >
-                WhatsApp:{" "}
-                {!whatsAppReplySettings.data.connected
-                  ? "الحساب غير متصل"
-                  : whatsAppReplySettings.data.settings.enabled
-                    ? "مفعّل"
-                    : "متوقف"}
-              </Text>
-            </View>
-          ) : whatsAppReplySettings.isPending ? (
-            <Text
-              style={[
-                styles.automationDescription,
-                { color: colors.mutedForeground },
-              ]}
-            >
-              جارٍ التحقق من حالة WhatsApp...
-            </Text>
-          ) : (
-            <Text
-              accessibilityRole="alert"
-              style={[
-                styles.automationDescription,
-                { color: colors.destructive },
-              ]}
-            >
-              تعذر التحقق من إعدادات الرد الآلي لـ WhatsApp.
-            </Text>
-          )
-        ) : null}
-        <ActionButton
-          label="إدارة إعدادات الرد الآلي"
-          icon="settings"
-          secondary
-          onPress={() => router.push("/inbox/reply-settings")}
-        />
-      </Panel>
+            )}
+            {platform === "all" ? (
+              whatsAppReplySettings.data ? (
+                <View
+                  style={[
+                    styles.automationStatusChip,
+                    { backgroundColor: colors.secondary },
+                  ]}
+                >
+                  <SocialPlatformIcon platform="whatsapp" size={14} />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.automationStatus,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    واتساب ·{" "}
+                    {!whatsAppReplySettings.data.connected
+                      ? "الحساب غير متصل"
+                      : whatsAppReplySettings.data.settings.enabled
+                        ? "مفعّل"
+                        : "متوقف"}
+                  </Text>
+                </View>
+              ) : (
+                <Text
+                  style={[
+                    styles.automationMessage,
+                    {
+                      color: whatsAppReplySettings.isPending
+                        ? colors.mutedForeground
+                        : colors.destructive,
+                    },
+                  ]}
+                >
+                  {whatsAppReplySettings.isPending
+                    ? "جارٍ التحقق من حالة WhatsApp..."
+                    : "تعذر التحقق من إعدادات الرد الآلي لـ WhatsApp."}
+                </Text>
+              )
+            ) : null}
+          </View>
+        </Panel>
+      </View>
 
       <Panel style={styles.inboxToolbar}>
         <View style={styles.toolbarHeading}>
-          <View style={styles.toolbarTitleGroup}>
-            <View
-              style={[
-                styles.toolbarIcon,
-                { backgroundColor: colors.accent },
-              ]}
+          <Text style={[styles.toolbarTitle, { color: colors.foreground }]}>
+            نوع التفاعل
+          </Text>
+          <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>
+            {formatArabicNumber(rows.length)} محادثة
+          </Text>
+        </View>
+        <View
+          style={[
+            styles.searchRow,
+            { borderColor: colors.border, backgroundColor: colors.background },
+          ]}
+        >
+          <Icon name="search" size={18} color={colors.mutedForeground} />
+          <TextInput
+            accessibilityLabel="ابحث في الرسائل والتعليقات"
+            value={search}
+            onChangeText={setSearch}
+            placeholder="ابحث بالاسم أو نص الرسالة"
+            placeholderTextColor={colors.mutedForeground}
+            returnKeyType="search"
+            style={[styles.searchInput, { color: colors.foreground }]}
+          />
+          {search ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="مسح البحث"
+              onPress={() => setSearch("")}
+              hitSlop={8}
             >
-              <Icon name="message-square" size={17} color={colors.primary} />
-            </View>
-            <Text style={[styles.toolbarTitle, { color: colors.foreground }]}>
-              المحادثات الواردة
-            </Text>
-          </View>
-          {inbox.data || whatsappInbox.data ? (
-            <View
-              style={[
-                styles.totalBadge,
-                { backgroundColor: colors.secondary },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.totalBadgeText,
-                  { color: colors.foreground },
-                ]}
-              >
-                {rows.length}
-              </Text>
-            </View>
+              <Icon name="x" size={17} color={colors.mutedForeground} />
+            </Pressable>
           ) : null}
         </View>
         <View style={styles.filters}>
@@ -501,50 +493,21 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                 >
                   {option.label}
                 </Text>
-                {count !== null ? (
-                  <Text
-                    style={[
-                      styles.filterCount,
-                      {
-                        color: selected
-                          ? colors.primaryForeground
-                          : colors.mutedForeground,
-                      },
-                    ]}
-                  >
-                    {count}
-                  </Text>
-                ) : null}
+                <Text
+                  style={[
+                    styles.filterCount,
+                    {
+                      color: selected
+                        ? colors.primaryForeground
+                        : colors.mutedForeground,
+                    },
+                  ]}
+                >
+                  {formatArabicNumber(count)}
+                </Text>
               </Pressable>
             );
           })}
-        </View>
-        <View
-          style={[
-            styles.searchRow,
-            { borderColor: colors.border, backgroundColor: colors.background },
-          ]}
-        >
-          <Icon name="search" size={18} color={colors.mutedForeground} />
-          <TextInput
-            accessibilityLabel="ابحث في الرسائل والتعليقات"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="ابحث بالاسم أو نص الرسالة"
-            placeholderTextColor={colors.mutedForeground}
-            returnKeyType="search"
-            style={[styles.searchInput, { color: colors.foreground }]}
-          />
-          {search ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="مسح البحث"
-              onPress={() => setSearch("")}
-              hitSlop={8}
-            >
-              <Icon name="x" size={17} color={colors.mutedForeground} />
-            </Pressable>
-          ) : null}
         </View>
         {inbox.isError ? (
           <Panel style={[styles.loadError, { borderColor: colors.border }]}>
@@ -592,16 +555,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           {inbox.data?.webhook.lastEventAt ? (
             <Text style={[styles.lastEvent, { color: colors.mutedForeground }]}>
               {`آخر نشاط: ${formatArabicDateTime(inbox.data.webhook.lastEventAt) ?? "غير محدد"}`}
-            </Text>
-          ) : null}
-          {inbox.data || whatsappInbox.data ? (
-            <Text
-              style={[
-                styles.resultCount,
-                { color: colors.mutedForeground },
-              ]}
-            >
-              {rows.length} محادثة محمّلة
             </Text>
           ) : null}
         </View>
@@ -677,12 +630,13 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                         {conversation.preview || "رسالة بدون نص"}
                       </Text>
                     </View>
-                    <View style={styles.conversationBottomLine}>
-                      <View style={[styles.platformBadge, { backgroundColor: colors.accent }]}>
-                        <Icon name="whatsapp" size={14} color={colors.primary} />
-                        <Text style={[styles.platformLabel, { color: colors.primary }]}>WhatsApp</Text>
+                    {platform === "all" ? (
+                      <View style={styles.conversationBottomLine}>
+                        <View style={[styles.platformBadge, { backgroundColor: colors.accent }]}>
+                          <Text style={[styles.platformLabel, { color: colors.primary }]}>WhatsApp</Text>
+                        </View>
                       </View>
-                    </View>
+                    ) : null}
                   </View>
                   <Icon name="chevron-left" size={19} color={colors.primary} />
                 </Pressable>
@@ -771,27 +725,28 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                     </Text>
                   </View>
                   <View style={styles.conversationBottomLine}>
-                    <View
-                      style={[
-                        styles.platformBadge,
-                        { backgroundColor: colors.accent },
-                      ]}
-                    >
-                      <SocialPlatformIcon platform={group.platform} size={16} />
-                      <Text
+                    {platform === "all" ? (
+                      <View
                         style={[
-                          styles.platformLabel,
-                          {
-                            color:
-                              group.platform === "instagram"
-                                ? colors.instagram
-                                : colors.facebook,
-                          },
+                          styles.platformBadge,
+                          { backgroundColor: colors.accent },
                         ]}
                       >
-                        {group.platform === "facebook" ? "فيسبوك" : "إنستغرام"}
-                      </Text>
-                    </View>
+                        <Text
+                          style={[
+                            styles.platformLabel,
+                            {
+                              color:
+                                group.platform === "instagram"
+                                  ? colors.instagram
+                                  : colors.facebook,
+                            },
+                          ]}
+                        >
+                          {group.platform === "facebook" ? "فيسبوك" : "إنستغرام"}
+                        </Text>
+                      </View>
+                    ) : null}
                     <View style={styles.conversationCounts}>
                       <View style={styles.countItem}>
                         <Icon
@@ -858,32 +813,36 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
 }
 
 const styles = StyleSheet.create({
-  automationSummary: { gap: 10 },
+  inboxHeader: { gap: 10 },
+  automationSummary: { gap: 8, padding: 10, borderRadius: 14 },
   automationHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-  },
-  automationCopy: { flex: 1, minWidth: 0, gap: 3 },
-  automationDescription: { fontSize: 11, lineHeight: 17, textAlign: "right" },
-  automationStatusRow: {
-    minHeight: 32,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  automationStatus: { fontSize: 12, fontWeight: "700", textAlign: "right" },
-  inboxIntro: { padding: 18, gap: 12 },
-  inboxEyebrow: {
-    alignSelf: "flex-start",
-    minHeight: 28,
-    flexDirection: "row",
+    flexDirection: "row-reverse",
     alignItems: "center",
     gap: 6,
-    borderRadius: 10,
-    paddingHorizontal: 9,
   },
-  inboxEyebrowText: { fontSize: 11, fontWeight: "700" },
+  automationHeadingText: { fontSize: 12, fontWeight: "800" },
+  automationStatuses: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  automationStatusChip: {
+    minHeight: 28,
+    maxWidth: "100%",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 9,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  automationStatus: {
+    flexShrink: 1,
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+  automationMessage: { fontSize: 11, lineHeight: 16, textAlign: "right" },
   loadError: { alignItems: "center", gap: 10, paddingVertical: 20 },
   loadErrorIcon: {
     width: 52,
@@ -899,51 +858,30 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
   },
-  inboxToolbar: { gap: 12 },
+  inboxToolbar: { gap: 10, padding: 12 },
   toolbarHeading: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
   },
-  toolbarTitleGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-  },
-  toolbarIcon: {
-    width: 34,
-    height: 34,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 11,
-  },
-  toolbarTitle: { fontSize: 15, fontWeight: "800", textAlign: "right" },
-  totalBadge: {
-    minWidth: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    paddingHorizontal: 7,
-  },
-  totalBadgeText: { fontSize: 12, fontWeight: "800" },
+  toolbarTitle: { fontSize: 12, fontWeight: "800", textAlign: "right" },
   filters: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   filter: {
     borderWidth: 1,
     borderRadius: 12,
-    minHeight: 36,
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     paddingHorizontal: 11,
   },
   filterLabel: { fontSize: 11, fontWeight: "700" },
-  filterCount: { fontSize: 10, fontWeight: "700" },
+  filterCount: { fontSize: 11, fontWeight: "700" },
   toolbarFooter: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-start",
     gap: 8,
   },
   resultCount: { fontSize: 11, fontWeight: "700" },
@@ -972,15 +910,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   items: { gap: 12 },
-  groups: { gap: 14 },
+  groups: { gap: 10 },
   conversationCard: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     borderWidth: 1,
-    borderRadius: 18,
-    padding: 14,
-    minHeight: 108,
+    borderRadius: 16,
+    padding: 12,
+    minHeight: 96,
   },
   conversationAvatar: {
     width: 46,
@@ -1027,6 +965,5 @@ const styles = StyleSheet.create({
   conversationCounts: { flexDirection: "row", alignItems: "center", gap: 10 },
   countItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   conversationMeta: { fontSize: 11 },
-  resultsCount: { fontSize: 12, textAlign: "left" },
   lastEvent: { fontSize: 12, textAlign: "left" },
 });
