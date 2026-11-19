@@ -25,7 +25,7 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { InboxPlatformTabs, type InboxPlatform } from "@/components/inbox/InboxPlatformTabs";
-import { formatArabicDateTime } from "@/lib/formatting";
+import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 import {
   getMetaAutoReplySettings,
   getMetaInbox,
