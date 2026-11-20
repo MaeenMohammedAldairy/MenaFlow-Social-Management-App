@@ -67,7 +67,7 @@ export default function WhatsAppSetupScreen() {
     <Redirect
       href={{
         pathname: "/inbox/reply-settings",
-        params: { tab: "whatsapp", ...(returnTo ? { returnTo } : {}) },
+        params: { channel: "whatsapp", ...(returnTo ? { returnTo } : {}) },
       }}
     />
   );
@@ -352,44 +352,10 @@ function WhatsAppReplyContent({
         </Panel>
       ) : (
         <>
-          <Panel style={styles.connectedPanel}>
-            <View style={styles.connectedHeader}>
-              <View style={[styles.whatsappIcon, { backgroundColor: colors.accent }]}>
-                <Icon name="whatsapp" size={23} color={colors.primary} />
-              </View>
-              <StatusPill label="متصل" tone="green" />
-            </View>
-            <Text style={[styles.connectedTitle, { color: colors.foreground }]}>
-              تم ربط حسابك بنجاح
-            </Text>
-            <Text style={[styles.body, { color: colors.mutedForeground }]}>
-              حساب واتساب متصل. يمكنك الآن ضبط طريقة التعامل مع الرسائل الواردة.
-            </Text>
-            <View style={[styles.accountRow, { borderColor: colors.border }]}>
-              <View style={styles.accountCopy}>
-                <Text style={[styles.accountTitle, { color: colors.foreground }]}>
-                  حساب واتساب المرتبط
-                </Text>
-                <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-                  {settingsQuery.data?.phoneNumber || "الرقم المرتبط"}
-                </Text>
-              </View>
-              <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-                متصل عبر Evolution API
-              </Text>
-            </View>
-            <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-              حالة الاتصال معروضة بعد التحقق المباشر من الخادم.
-            </Text>
-          </Panel>
-
           <Panel>
-            <SectionTitle title="إعداد الردود التلقائية (اختياري)" />
-            <Text style={[styles.body, { color: colors.mutedForeground }]}>
-              اضبط أسلوب الرد على رسائل العملاء في المحادثات الفردية. لا تُرسل الردود تلقائيًا إلا بعد اختبارها ثم تفعيلها يدويًا.
-            </Text>
             <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-              عند التفعيل، يُرسل نص الرسالة الفردية إلى مزود الذكاء الاصطناعي المهيأ على الخادم لإنشاء الرد. لا تُستخدم رسائل المجموعات للرد الآلي.
+              يُرسل نص الرسالة الفردية إلى مزود الذكاء الاصطناعي المهيأ على الخادم
+              لإنشاء الرد، ولا تُستخدم رسائل المجموعات. اختبر الرد قبل تفعيله.
             </Text>
 
             <View style={[styles.switchRow, { borderColor: colors.border }]}>
@@ -852,30 +818,6 @@ const styles = StyleSheet.create({
   },
   body: { fontSize: 13, lineHeight: 21, textAlign: "right" },
   bodySmall: { fontSize: 12, lineHeight: 18, textAlign: "right" },
-  connectedPanel: { gap: 12 },
-  connectedHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  whatsappIcon: {
-    width: 46,
-    height: 46,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 15,
-  },
-  connectedTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  accountRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderTopWidth: 1,
-    paddingTop: 12,
-    gap: 10,
-  },
-  accountCopy: { flex: 1, gap: 2, alignItems: "flex-start" },
-  accountTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" },
   switchRow: {
     flexDirection: "row",
     alignItems: "center",

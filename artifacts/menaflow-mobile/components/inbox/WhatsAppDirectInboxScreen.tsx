@@ -224,7 +224,12 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
             icon="settings"
             label="إعدادات الرد الآلي"
             color={colors.primary}
-            onPress={() => router.push("/inbox/reply-settings")}
+            onPress={() =>
+              router.push({
+                pathname: "/inbox/reply-settings",
+                params: { channel: "whatsapp" },
+              })
+            }
           />
         </View>
       </View>
