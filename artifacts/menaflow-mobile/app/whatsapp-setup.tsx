@@ -316,498 +316,498 @@ function WhatsAppReplyContent({
 
   return (
     <>
-  {settingsQuery.isLoading ? (
-    <Panel>
-      <View style={styles.loadingRow}>
-        <ActivityIndicator color={colors.primary} />
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          جارٍ التحقق من اتصال واتساب…
-        </Text>
-      </View>
-    </Panel>
-  ) : settingsQuery.isError ? (
-    <Panel>
-      <Text style={[styles.body, { color: colors.destructive }]}>
-        {errorMessage(settingsQuery.error, "تعذّر تحميل إعداد الحساب.")}
-      </Text>
-      <ActionButton
-        label="إعادة المحاولة"
-        icon="refresh-cw"
-        secondary
-        onPress={retrySettings}
-      />
-    </Panel>
-  ) : !connected ? (
-    <Panel>
-      <EmptyState
-        icon="whatsapp"
-        title="حساب واتساب غير متصل"
-        body="تعذّر تأكيد الاتصال من الخادم. ارجع إلى صفحة المصادر وأعد ربط الحساب قبل إعداد الردود."
-      />
-      <ActionButton
-        label={returnLabel}
-        icon="chevron-right"
-        onPress={returnToPreviousScreen}
-      />
-    </Panel>
-  ) : (
-    <>
-      <Panel style={styles.connectedPanel}>
-        <View style={styles.connectedHeader}>
-          <View style={[styles.whatsappIcon, { backgroundColor: colors.accent }]}>
-            <Icon name="whatsapp" size={23} color={colors.primary} />
-          </View>
-          <StatusPill label="متصل" tone="green" />
-        </View>
-        <Text style={[styles.connectedTitle, { color: colors.foreground }]}>
-          تم ربط حسابك بنجاح
-        </Text>
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          حساب واتساب متصل. يمكنك الآن ضبط طريقة التعامل مع الرسائل الواردة.
-        </Text>
-        <View style={[styles.accountRow, { borderColor: colors.border }]}>
-          <View style={styles.accountCopy}>
-            <Text style={[styles.accountTitle, { color: colors.foreground }]}>
-              حساب واتساب المرتبط
-            </Text>
-            <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-              {settingsQuery.data?.phoneNumber || "الرقم المرتبط"}
+      {settingsQuery.isLoading ? (
+        <Panel>
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={[styles.body, { color: colors.mutedForeground }]}>
+              جارٍ التحقق من اتصال واتساب…
             </Text>
           </View>
-          <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-            متصل عبر Evolution API
+        </Panel>
+      ) : settingsQuery.isError ? (
+        <Panel>
+          <Text style={[styles.body, { color: colors.destructive }]}>
+            {errorMessage(settingsQuery.error, "تعذّر تحميل إعداد الحساب.")}
           </Text>
-        </View>
-        <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-          حالة الاتصال معروضة بعد التحقق المباشر من الخادم.
-        </Text>
-      </Panel>
-
-      <Panel>
-        <SectionTitle title="إعداد الردود التلقائية (اختياري)" />
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          اضبط أسلوب الرد على رسائل العملاء في المحادثات الفردية. لا تُرسل الردود تلقائيًا إلا بعد اختبارها ثم تفعيلها يدويًا.
-        </Text>
-        <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-          عند التفعيل، يُرسل نص الرسالة الفردية إلى مزود الذكاء الاصطناعي المهيأ على الخادم لإنشاء الرد. لا تُستخدم رسائل المجموعات للرد الآلي.
-        </Text>
-
-        <View style={[styles.switchRow, { borderColor: colors.border }]}>
-          <View style={styles.switchCopy}>
-            <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
-              الردود بالذكاء الاصطناعي
-            </Text>
-            <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-              {settings.enabled ? "الرد التلقائي مفعّل" : "متوقف حتى تفعيله بعد الاختبار"}
-            </Text>
-          </View>
-          <Switch
-            accessibilityLabel="تفعيل الردود بالذكاء الاصطناعي"
-            accessibilityRole="switch"
-            accessibilityState={{ checked: settings.enabled, disabled: saving }}
-            value={settings.enabled}
-            onValueChange={(enabled) => updateSettings({ enabled })}
-            trackColor={{ false: colors.border, true: colors.primary }}
-            thumbColor={colors.card}
-            disabled={saving}
+          <ActionButton
+            label="إعادة المحاولة"
+            icon="refresh-cw"
+            secondary
+            onPress={retrySettings}
           />
-        </View>
+        </Panel>
+      ) : !connected ? (
+        <Panel>
+          <EmptyState
+            icon="whatsapp"
+            title="حساب واتساب غير متصل"
+            body="تعذّر تأكيد الاتصال من الخادم. ارجع إلى صفحة المصادر وأعد ربط الحساب قبل إعداد الردود."
+          />
+          <ActionButton
+            label={returnLabel}
+            icon="chevron-right"
+            onPress={returnToPreviousScreen}
+          />
+        </Panel>
+      ) : (
+        <>
+          <Panel style={styles.connectedPanel}>
+            <View style={styles.connectedHeader}>
+              <View style={[styles.whatsappIcon, { backgroundColor: colors.accent }]}>
+                <Icon name="whatsapp" size={23} color={colors.primary} />
+              </View>
+              <StatusPill label="متصل" tone="green" />
+            </View>
+            <Text style={[styles.connectedTitle, { color: colors.foreground }]}>
+              تم ربط حسابك بنجاح
+            </Text>
+            <Text style={[styles.body, { color: colors.mutedForeground }]}>
+              حساب واتساب متصل. يمكنك الآن ضبط طريقة التعامل مع الرسائل الواردة.
+            </Text>
+            <View style={[styles.accountRow, { borderColor: colors.border }]}>
+              <View style={styles.accountCopy}>
+                <Text style={[styles.accountTitle, { color: colors.foreground }]}>
+                  حساب واتساب المرتبط
+                </Text>
+                <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+                  {settingsQuery.data?.phoneNumber || "الرقم المرتبط"}
+                </Text>
+              </View>
+              <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+                متصل عبر Evolution API
+              </Text>
+            </View>
+            <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+              حالة الاتصال معروضة بعد التحقق المباشر من الخادم.
+            </Text>
+          </Panel>
 
-        <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
-            لغة الردود
-          </Text>
-          <View style={styles.choiceRow}>
-            <ChoiceButton
-              label="العربية تلقائيًا"
-              selected={settings.language === "ar"}
-              onPress={() => updateSettings({ language: "ar" })}
-            />
-            <ChoiceButton
-              label="لغة العميل"
-              selected={settings.language === "match_customer"}
-              onPress={() => updateSettings({ language: "match_customer" })}
-            />
-          </View>
-        </View>
+          <Panel>
+            <SectionTitle title="إعداد الردود التلقائية (اختياري)" />
+            <Text style={[styles.body, { color: colors.mutedForeground }]}>
+              اضبط أسلوب الرد على رسائل العملاء في المحادثات الفردية. لا تُرسل الردود تلقائيًا إلا بعد اختبارها ثم تفعيلها يدويًا.
+            </Text>
+            <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+              عند التفعيل، يُرسل نص الرسالة الفردية إلى مزود الذكاء الاصطناعي المهيأ على الخادم لإنشاء الرد. لا تُستخدم رسائل المجموعات للرد الآلي.
+            </Text>
 
-        <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
-            أسلوب الرد
-          </Text>
-          <View style={styles.choiceRow}>
-            {tones.map((tone) => (
-              <ChoiceButton
-                key={tone.value}
-                label={tone.label}
-                selected={settings.tone === tone.value}
-                onPress={() => updateSettings({ tone: tone.value })}
+            <View style={[styles.switchRow, { borderColor: colors.border }]}>
+              <View style={styles.switchCopy}>
+                <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
+                  الردود بالذكاء الاصطناعي
+                </Text>
+                <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+                  {settings.enabled ? "الرد التلقائي مفعّل" : "متوقف حتى تفعيله بعد الاختبار"}
+                </Text>
+              </View>
+              <Switch
+                accessibilityLabel="تفعيل الردود بالذكاء الاصطناعي"
+                accessibilityRole="switch"
+                accessibilityState={{ checked: settings.enabled, disabled: saving }}
+                value={settings.enabled}
+                onValueChange={(enabled) => updateSettings({ enabled })}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor={colors.card}
+                disabled={saving}
               />
-            ))}
-          </View>
-        </View>
+            </View>
 
-        <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
-            تعليمات إضافية للذكاء الاصطناعي
-          </Text>
-          <TextInput
-            accessibilityLabel="تعليمات إضافية للذكاء الاصطناعي"
-            value={settings.instructions}
-            onChangeText={(instructions) =>
-              updateSettings({ instructions: instructions.slice(0, 2000) })
-            }
-            placeholder="مثال: رحّب بالعميل، وأجب عن الأسعار اعتمادًا على المعلومات التي أضيفها هنا."
-            placeholderTextColor={colors.mutedForeground}
-            multiline
-            maxLength={2000}
-            textAlign="right"
-            style={[
-              styles.textInput,
-              {
-                backgroundColor: colors.background,
-                borderColor: colors.border,
-                color: colors.foreground,
-              },
-            ]}
-          />
-          <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-            لا يوجد كتالوج منتجات في إعداد الردود الحالي؛ لا تكتب أسعارًا أو حقائق غير مؤكدة.
-          </Text>
-        </View>
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
+                لغة الردود
+              </Text>
+              <View style={styles.choiceRow}>
+                <ChoiceButton
+                  label="العربية تلقائيًا"
+                  selected={settings.language === "ar"}
+                  onPress={() => updateSettings({ language: "ar" })}
+                />
+                <ChoiceButton
+                  label="لغة العميل"
+                  selected={settings.language === "match_customer"}
+                  onPress={() => updateSettings({ language: "match_customer" })}
+                />
+              </View>
+            </View>
 
-        <View style={styles.fieldGroup}>
-          <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
-            اختبار الرد قبل التفعيل
-          </Text>
-          <View style={styles.presetChipsRow}>
-            {[
-              { label: "سعر وتوفر", text: "كم سعر المنتج وهل متوفر الآن؟" },
-              { label: "مواصفات وألوان", text: "هل يتوفر منه ألوان أو مقاسات ثانية؟" },
-              { label: "طلب وشراء", text: "أريد طلب حبة، كيف طريقة الدفع والتوصيل؟" },
-              { label: "أوقات وعنوان", text: "أين موقعكم ومتى أوقات دوامكم؟" },
-            ].map((preset) => (
-              <Text
-                key={preset.label}
-                accessibilityRole="button"
-                onPress={() => {
-                  setTestMessage(preset.text);
-                  setTestReply("");
-                  setTestedSettings("");
-                  setSettingsNotice("");
-                }}
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
+                أسلوب الرد
+              </Text>
+              <View style={styles.choiceRow}>
+                {tones.map((tone) => (
+                  <ChoiceButton
+                    key={tone.value}
+                    label={tone.label}
+                    selected={settings.tone === tone.value}
+                    onPress={() => updateSettings({ tone: tone.value })}
+                  />
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
+                تعليمات إضافية للذكاء الاصطناعي
+              </Text>
+              <TextInput
+                accessibilityLabel="تعليمات إضافية للذكاء الاصطناعي"
+                value={settings.instructions}
+                onChangeText={(instructions) =>
+                  updateSettings({ instructions: instructions.slice(0, 2000) })
+                }
+                placeholder="مثال: رحّب بالعميل، وأجب عن الأسعار اعتمادًا على المعلومات التي أضيفها هنا."
+                placeholderTextColor={colors.mutedForeground}
+                multiline
+                maxLength={2000}
+                textAlign="right"
                 style={[
-                  styles.presetChip,
+                  styles.textInput,
                   {
-                    backgroundColor: colors.card,
+                    backgroundColor: colors.background,
                     borderColor: colors.border,
                     color: colors.foreground,
                   },
                 ]}
-              >
-                {preset.label}
-              </Text>
-            ))}
-          </View>
-          <TextInput
-            accessibilityLabel="رسالة عميل للاختبار"
-            value={testMessage}
-            onChangeText={(value) => {
-              setTestMessage(value.slice(0, 1000));
-              setTestReply("");
-              setTestedSettings("");
-              setSettingsNotice("");
-            }}
-            placeholder="مثال: هل يمكن معرفة مواعيد العمل؟"
-            placeholderTextColor={colors.mutedForeground}
-            multiline
-            maxLength={1000}
-            textAlign="right"
-            style={[
-              styles.textInput,
-              styles.testMessageInput,
-              {
-                backgroundColor: colors.background,
-                borderColor: colors.border,
-                color: colors.foreground,
-              },
-            ]}
-          />
-          <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-            رسالة الاختبار تُرسل إلى مزود الذكاء الاصطناعي لإنتاج معاينة فقط، ولا تصل إلى واتساب.
-          </Text>
-          <ActionButton
-            label={testing ? "جارٍ إنشاء المعاينة…" : "اختبار الرد"}
-            icon={testing ? "refresh-cw" : "message-square"}
-            secondary
-            disabled={testing || !testMessage.trim()}
-            onPress={() => void runReplyTest()}
-          />
-          {testReply ? (
-            <View style={[styles.previewCard, { backgroundColor: colors.accent }]}>
-              <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
-                معاينة الرد
-              </Text>
-              <Text style={[styles.body, { color: colors.foreground }]}>
-                {testReply}
+              />
+              <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+                لا يوجد كتالوج منتجات في إعداد الردود الحالي؛ لا تكتب أسعارًا أو حقائق غير مؤكدة.
               </Text>
             </View>
-          ) : null}
-          {testIsCurrent ? (
-            <StatusPill label="تم اختبار الإعدادات الحالية" tone="green" />
-          ) : null}
-        </View>
 
-        {settingsError ? (
-          <Text accessibilityRole="alert" style={[styles.notice, { color: colors.destructive }]}>
-            {settingsError}
-          </Text>
-        ) : null}
-        {settingsNotice ? (
-          <Text style={[styles.notice, { color: colors.primary }]}>
-            {settingsNotice}
-          </Text>
-        ) : null}
-        <ActionButton
-          label={saving ? "جارٍ حفظ الإعدادات…" : "حفظ إعدادات الردود"}
-          icon={saving ? "refresh-cw" : "save"}
-          disabled={saving}
-          onPress={() => void saveSettings()}
-        />
-      </Panel>
+            <View style={styles.fieldGroup}>
+              <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
+                اختبار الرد قبل التفعيل
+              </Text>
+              <View style={styles.presetChipsRow}>
+                {[
+                  { label: "سعر وتوفر", text: "كم سعر المنتج وهل متوفر الآن؟" },
+                  { label: "مواصفات وألوان", text: "هل يتوفر منه ألوان أو مقاسات ثانية؟" },
+                  { label: "طلب وشراء", text: "أريد طلب حبة، كيف طريقة الدفع والتوصيل؟" },
+                  { label: "أوقات وعنوان", text: "أين موقعكم ومتى أوقات دوامكم؟" },
+                ].map((preset) => (
+                  <Text
+                    key={preset.label}
+                    accessibilityRole="button"
+                    onPress={() => {
+                      setTestMessage(preset.text);
+                      setTestReply("");
+                      setTestedSettings("");
+                      setSettingsNotice("");
+                    }}
+                    style={[
+                      styles.presetChip,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        color: colors.foreground,
+                      },
+                    ]}
+                  >
+                    {preset.label}
+                  </Text>
+                ))}
+              </View>
+              <TextInput
+                accessibilityLabel="رسالة عميل للاختبار"
+                value={testMessage}
+                onChangeText={(value) => {
+                  setTestMessage(value.slice(0, 1000));
+                  setTestReply("");
+                  setTestedSettings("");
+                  setSettingsNotice("");
+                }}
+                placeholder="مثال: هل يمكن معرفة مواعيد العمل؟"
+                placeholderTextColor={colors.mutedForeground}
+                multiline
+                maxLength={1000}
+                textAlign="right"
+                style={[
+                  styles.textInput,
+                  styles.testMessageInput,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                    color: colors.foreground,
+                  },
+                ]}
+              />
+              <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+                رسالة الاختبار تُرسل إلى مزود الذكاء الاصطناعي لإنتاج معاينة فقط، ولا تصل إلى واتساب.
+              </Text>
+              <ActionButton
+                label={testing ? "جارٍ إنشاء المعاينة…" : "اختبار الرد"}
+                icon={testing ? "refresh-cw" : "message-square"}
+                secondary
+                disabled={testing || !testMessage.trim()}
+                onPress={() => void runReplyTest()}
+              />
+              {testReply ? (
+                <View style={[styles.previewCard, { backgroundColor: colors.accent }]}>
+                  <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
+                    معاينة الرد
+                  </Text>
+                  <Text style={[styles.body, { color: colors.foreground }]}>
+                    {testReply}
+                  </Text>
+                </View>
+              ) : null}
+              {testIsCurrent ? (
+                <StatusPill label="تم اختبار الإعدادات الحالية" tone="green" />
+              ) : null}
+            </View>
 
-      <Panel>
-        <SectionTitle title="مصادر البيانات والمجموعات" />
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          اختر مجموعات واتساب التي تريد استيراد رسائلها وإعداد محتواها. هذا الاختيار منفصل عن الردود الآلية، التي تعمل على المحادثات الفردية فقط.
-        </Text>
-        {groupSelectionsQuery.isLoading ? (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={[styles.body, { color: colors.mutedForeground }]}>
-              جارٍ تحميل المجموعات المختارة…
-            </Text>
-          </View>
-        ) : groupSelectionsQuery.isError ? (
-          <View style={styles.errorBlock}>
-            <Text style={[styles.body, { color: colors.destructive }]}>
-              {errorMessage(groupSelectionsQuery.error, "تعذّر تحميل المجموعات المختارة.")}
-            </Text>
+            {settingsError ? (
+              <Text accessibilityRole="alert" style={[styles.notice, { color: colors.destructive }]}>
+                {settingsError}
+              </Text>
+            ) : null}
+            {settingsNotice ? (
+              <Text style={[styles.notice, { color: colors.primary }]}>
+                {settingsNotice}
+              </Text>
+            ) : null}
             <ActionButton
-              label="إعادة المحاولة"
-              icon="refresh-cw"
-              secondary
-              onPress={() => void groupSelectionsQuery.refetch()}
+              label={saving ? "جارٍ حفظ الإعدادات…" : "حفظ إعدادات الردود"}
+              icon={saving ? "refresh-cw" : "save"}
+              disabled={saving}
+              onPress={() => void saveSettings()}
             />
-          </View>
-        ) : (
-          <>
-            {selectedGroupJids.length > 0 ? (
-              <View style={styles.groupList}>
-                {selectedGroupJids.map((groupJid) => {
-                  const group =
-                    groupsQuery.data?.groups.find(
-                      (item) => item.groupJid === groupJid,
-                    ) ??
-                    groupSelectionsQuery.data?.groups.find(
-                      (item) => item.groupJid === groupJid,
-                    );
-                  return (
-                    <View
-                      key={groupJid}
-                      style={[
-                        styles.groupRow,
-                        { borderColor: colors.border },
-                      ]}
-                    >
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`إزالة ${group?.name ?? "المجموعة"} من الاختيار`}
-                        onPress={() => toggleGroup(groupJid)}
-                        style={styles.removeGroupButton}
-                      >
-                        <Icon name="x" size={16} color={colors.destructive} />
-                      </Pressable>
-                      <View style={styles.groupCopy}>
-                        <Text
+          </Panel>
+
+          <Panel>
+            <SectionTitle title="مصادر البيانات والمجموعات" />
+            <Text style={[styles.body, { color: colors.mutedForeground }]}>
+              اختر مجموعات واتساب التي تريد استيراد رسائلها وإعداد محتواها. هذا الاختيار منفصل عن الردود الآلية، التي تعمل على المحادثات الفردية فقط.
+            </Text>
+            {groupSelectionsQuery.isLoading ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator color={colors.primary} />
+                <Text style={[styles.body, { color: colors.mutedForeground }]}>
+                  جارٍ تحميل المجموعات المختارة…
+                </Text>
+              </View>
+            ) : groupSelectionsQuery.isError ? (
+              <View style={styles.errorBlock}>
+                <Text style={[styles.body, { color: colors.destructive }]}>
+                  {errorMessage(groupSelectionsQuery.error, "تعذّر تحميل المجموعات المختارة.")}
+                </Text>
+                <ActionButton
+                  label="إعادة المحاولة"
+                  icon="refresh-cw"
+                  secondary
+                  onPress={() => void groupSelectionsQuery.refetch()}
+                />
+              </View>
+            ) : (
+              <>
+                {selectedGroupJids.length > 0 ? (
+                  <View style={styles.groupList}>
+                    {selectedGroupJids.map((groupJid) => {
+                      const group =
+                        groupsQuery.data?.groups.find(
+                          (item) => item.groupJid === groupJid,
+                        ) ??
+                        groupSelectionsQuery.data?.groups.find(
+                          (item) => item.groupJid === groupJid,
+                        );
+                      return (
+                        <View
+                          key={groupJid}
                           style={[
-                            styles.fieldTitle,
-                            { color: colors.foreground },
+                            styles.groupRow,
+                            { borderColor: colors.border },
                           ]}
                         >
-                          {group?.name ?? "مجموعة واتساب"}
-                        </Text>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`إزالة ${group?.name ?? "المجموعة"} من الاختيار`}
+                            onPress={() => toggleGroup(groupJid)}
+                            style={styles.removeGroupButton}
+                          >
+                            <Icon name="x" size={16} color={colors.destructive} />
+                          </Pressable>
+                          <View style={styles.groupCopy}>
+                            <Text
+                              style={[
+                                styles.fieldTitle,
+                                { color: colors.foreground },
+                              ]}
+                            >
+                              {group?.name ?? "مجموعة واتساب"}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.bodySmall,
+                                { color: colors.mutedForeground },
+                              ]}
+                            >
+                              {group
+                                ? "مجموعة إعلانات"
+                                : "المجموعة المختارة"}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <EmptyState
+                    icon="whatsapp"
+                    title="لم تختر أي مجموعات بعد"
+                    body="أضف مجموعة واتساب لبدء استيراد رسائلها وإعداد محتواها."
+                  />
+                )}
+
+                <ActionButton
+                  label={showAvailableGroups ? "إخفاء المجموعات" : "إضافة مجموعة جديدة"}
+                  icon={showAvailableGroups ? "chevron-left" : "plus"}
+                  secondary
+                  onPress={() => {
+                    const opening = !showAvailableGroups;
+                    setShowAvailableGroups(opening);
+                    setGroupsFetchEnabled(opening);
+                  }}
+                />
+
+                {showAvailableGroups ? (
+                  groupsQuery.isLoading ? (
+                    <View style={styles.loadingRow}>
+                      <ActivityIndicator color={colors.primary} />
+                      <Text
+                        style={[
+                          styles.body,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        جارٍ تحميل المجموعات المتاحة…
+                      </Text>
+                    </View>
+                  ) : groupsQuery.isError ? (
+                    <View style={styles.errorBlock}>
+                      <Text style={[styles.body, { color: colors.destructive }]}>
+                        {errorMessage(
+                          groupsQuery.error,
+                          "تعذّر تحميل المجموعات المتاحة.",
+                        )}
+                      </Text>
+                      <ActionButton
+                        label="إعادة المحاولة"
+                        icon="refresh-cw"
+                        secondary
+                        onPress={() => {
+                          setGroupsFetchEnabled(true);
+                          void groupsQuery.refetch();
+                        }}
+                      />
+                    </View>
+                  ) : groupsQuery.data?.groups.length ? (
+                    <View style={styles.groupList}>
+                      {groupsQuery.data.groups
+                        .filter(
+                          (group) =>
+                            !selectedGroupJids.includes(group.groupJid),
+                        )
+                        .map((group) => (
+                          <Pressable
+                            key={group.groupJid}
+                            accessibilityRole="button"
+                            accessibilityLabel={`إضافة مجموعة ${group.name}`}
+                            onPress={() => toggleGroup(group.groupJid)}
+                            style={[
+                              styles.groupRow,
+                              { borderColor: colors.border },
+                            ]}
+                          >
+                            <Icon name="plus" size={17} color={colors.primary} />
+                            <View style={styles.groupCopy}>
+                              <Text
+                                style={[
+                                  styles.fieldTitle,
+                                  { color: colors.foreground },
+                                ]}
+                              >
+                                {group.name}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.bodySmall,
+                                  { color: colors.mutedForeground },
+                                ]}
+                              >
+                                "مجموعة إعلانات"
+                              </Text>
+                            </View>
+                          </Pressable>
+                        ))}
+                      {groupsQuery.data.groups.every((group) =>
+                        selectedGroupJids.includes(group.groupJid),
+                      ) ? (
                         <Text
                           style={[
                             styles.bodySmall,
                             { color: colors.mutedForeground },
                           ]}
                         >
-                          {group
-                            ? "مجموعة إعلانات"
-                            : "المجموعة المختارة"}
+                          أُضيفت جميع المجموعات المتاحة.
                         </Text>
-                      </View>
+                      ) : null}
                     </View>
-                  );
-                })}
-              </View>
-            ) : (
-              <EmptyState
-                icon="whatsapp"
-                title="لم تختر أي مجموعات بعد"
-                body="أضف مجموعة واتساب لبدء استيراد رسائلها وإعداد محتواها."
-              />
+                  ) : (
+                    <EmptyState
+                      icon="whatsapp"
+                      title="لا توجد مجموعات متاحة"
+                      body="تحقق من اتصال واتساب أو حدّث قائمة المجموعات."
+                    />
+                  )
+                ) : null}
+              </>
             )}
-
-            <ActionButton
-              label={showAvailableGroups ? "إخفاء المجموعات" : "إضافة مجموعة جديدة"}
-              icon={showAvailableGroups ? "chevron-left" : "plus"}
-              secondary
-              onPress={() => {
-                const opening = !showAvailableGroups;
-                setShowAvailableGroups(opening);
-                setGroupsFetchEnabled(opening);
-              }}
-            />
-
-            {showAvailableGroups ? (
-              groupsQuery.isLoading ? (
-                <View style={styles.loadingRow}>
-                  <ActivityIndicator color={colors.primary} />
-                  <Text
-                    style={[
-                      styles.body,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    جارٍ تحميل المجموعات المتاحة…
-                  </Text>
-                </View>
-              ) : groupsQuery.isError ? (
-                <View style={styles.errorBlock}>
-                  <Text style={[styles.body, { color: colors.destructive }]}>
-                    {errorMessage(
-                      groupsQuery.error,
-                      "تعذّر تحميل المجموعات المتاحة.",
-                    )}
-                  </Text>
-                  <ActionButton
-                    label="إعادة المحاولة"
-                    icon="refresh-cw"
-                    secondary
-                    onPress={() => {
-                      setGroupsFetchEnabled(true);
-                      void groupsQuery.refetch();
-                    }}
-                  />
-                </View>
-              ) : groupsQuery.data?.groups.length ? (
-                <View style={styles.groupList}>
-                  {groupsQuery.data.groups
-                    .filter(
-                      (group) =>
-                        !selectedGroupJids.includes(group.groupJid),
-                    )
-                    .map((group) => (
-                      <Pressable
-                        key={group.groupJid}
-                        accessibilityRole="button"
-                        accessibilityLabel={`إضافة مجموعة ${group.name}`}
-                        onPress={() => toggleGroup(group.groupJid)}
-                        style={[
-                          styles.groupRow,
-                          { borderColor: colors.border },
-                        ]}
-                      >
-                        <Icon name="plus" size={17} color={colors.primary} />
-                        <View style={styles.groupCopy}>
-                          <Text
-                            style={[
-                              styles.fieldTitle,
-                              { color: colors.foreground },
-                            ]}
-                          >
-                            {group.name}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.bodySmall,
-                              { color: colors.mutedForeground },
-                            ]}
-                          >
-                            "مجموعة إعلانات"
-                          </Text>
-                        </View>
-                      </Pressable>
-                    ))}
-                  {groupsQuery.data.groups.every((group) =>
-                    selectedGroupJids.includes(group.groupJid),
-                  ) ? (
-                    <Text
-                      style={[
-                        styles.bodySmall,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      أُضيفت جميع المجموعات المتاحة.
-                    </Text>
-                  ) : null}
-                </View>
-              ) : (
-                <EmptyState
-                  icon="whatsapp"
-                  title="لا توجد مجموعات متاحة"
-                  body="تحقق من اتصال واتساب أو حدّث قائمة المجموعات."
-                />
-              )
+            {groupsError ? (
+              <Text accessibilityRole="alert" style={[styles.notice, { color: colors.destructive }]}>
+                {groupsError}
+              </Text>
             ) : null}
-          </>
-        )}
-        {groupsError ? (
-          <Text accessibilityRole="alert" style={[styles.notice, { color: colors.destructive }]}>
-            {groupsError}
-          </Text>
-        ) : null}
-        {groupsNotice ? (
-          <Text style={[styles.notice, { color: colors.primary }]}>
-            {groupsNotice}
-          </Text>
-        ) : null}
-        <ActionButton
-          label={savingGroups ? "جارٍ حفظ المجموعات…" : "حفظ إعدادات المجموعات"}
-          icon={savingGroups ? "refresh-cw" : "save"}
-          secondary
-          disabled={
-            savingGroups ||
-            !groupsInitialized ||
-            groupSelectionsQuery.isLoading
-          }
-          onPress={() => void saveGroups()}
-        />
-        {selectedGroupJids.length === 0 ? (
-          <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-            اختر مجموعة واحدة على الأقل لبدء مزامنة رسائلها.
-          </Text>
-        ) : null}
-        <ActionButton
-          label={
-            returnTo === "connect-accounts"
-              ? "متابعة إلى إتمام الإعداد"
-              : "متابعة إلى المزامنة"
-          }
-          icon="chevron-left"
-          disabled={
-            savingGroups ||
-            selectedGroupJids.length === 0 ||
-            !groupsInitialized
-          }
-          onPress={() => void continueAfterGroups()}
-        />
-      </Panel>
+            {groupsNotice ? (
+              <Text style={[styles.notice, { color: colors.primary }]}>
+                {groupsNotice}
+              </Text>
+            ) : null}
+            <ActionButton
+              label={savingGroups ? "جارٍ حفظ المجموعات…" : "حفظ إعدادات المجموعات"}
+              icon={savingGroups ? "refresh-cw" : "save"}
+              secondary
+              disabled={
+                savingGroups ||
+                !groupsInitialized ||
+                groupSelectionsQuery.isLoading
+              }
+              onPress={() => void saveGroups()}
+            />
+            {selectedGroupJids.length === 0 ? (
+              <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+                اختر مجموعة واحدة على الأقل لبدء مزامنة رسائلها.
+              </Text>
+            ) : null}
+            <ActionButton
+              label={
+                returnTo === "connect-accounts"
+                  ? "متابعة إلى إتمام الإعداد"
+                  : "متابعة إلى المزامنة"
+              }
+              icon="chevron-left"
+              disabled={
+                savingGroups ||
+                selectedGroupJids.length === 0 ||
+                !groupsInitialized
+              }
+              onPress={() => void continueAfterGroups()}
+            />
+          </Panel>
 
-    </>
-  )}
+        </>
+      )}
     </>
   );
 }
