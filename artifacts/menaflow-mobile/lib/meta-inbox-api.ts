@@ -2,6 +2,7 @@ import { fetchApiResponse } from "@workspace/api-client-react";
 
 export type MetaInboxPlatform = "facebook" | "instagram";
 export type MetaInboxKind = "message" | "comment";
+export type InboxPlatform = "all" | MetaInboxPlatform | "whatsapp";
 
 export type MetaInboxMedia = {
   type: string;
