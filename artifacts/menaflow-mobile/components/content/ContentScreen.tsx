@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -110,7 +111,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     "all" | "facebook" | "instagram"
   >("all");
   const [dateFilter, setDateFilter] = useState<"all" | "7" | "30">("all");
-  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [sortMode, setSortMode] = useState<"priority" | "newest" | "oldest">(
     "priority",
   );
@@ -257,8 +258,17 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
     setPlatformFilter("all");
     setDateFilter("all");
     setSearch("");
-    setFiltersExpanded(false);
+    setFiltersOpen(false);
   };
+  const activeFilterCount =
+    (filter !== "all" ? 1 : 0) +
+    (platformFilter !== "all" ? 1 : 0) +
+    (dateFilter !== "all" ? 1 : 0) +
+    (sortMode !== "priority" ? 1 : 0);
+  const statusCounts = posts.reduce<Record<string, number>>((counts, post) => {
+    counts[post.status] = (counts[post.status] ?? 0) + 1;
+    return counts;
+  }, {});
 
   const loadMoreContent = useCallback(
     async (retry = false) => {
@@ -347,6 +357,87 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
 
   return (
     <Page scroll={false}>
+      <View style={styles.filterBar}>
+        <View
+          style={[
+            styles.searchRow,
+            {
+              backgroundColor: colors.background,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Icon name="search" size={17} color={colors.mutedForeground} />
+          <TextInput
+            accessibilityLabel="ابحث في المنشورات"
+            value={search}
+            onChangeText={setSearch}
+            placeholder="ابحث في المنشورات"
+            placeholderTextColor={colors.mutedForeground}
+            style={[styles.searchInput, { color: colors.foreground }]}
+            textAlign="right"
+            returnKeyType="search"
+          />
+          {search ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="مسح البحث"
+              onPress={() => setSearch("")}
+              style={styles.clearSearchButton}
+              hitSlop={8}
+            >
+              <Icon name="x" size={16} color={colors.mutedForeground} />
+            </Pressable>
+          ) : null}
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={
+            activeFilterCount > 0
+              ? `التصفية، ${activeFilterCount} مطبقة`
+              : "التصفية"
+          }
+          accessibilityState={{ expanded: filtersOpen }}
+          onPress={() => setFiltersOpen(true)}
+          style={({ pressed }) => [
+            styles.filterBarButton,
+            {
+              backgroundColor:
+                activeFilterCount > 0 ? colors.accent : colors.card,
+              borderColor: colors.border,
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
+        >
+          <Icon
+            name="filter"
+            size={17}
+            color={
+              activeFilterCount > 0 ? colors.primary : colors.mutedForeground
+            }
+          />
+          <Text style={[styles.filterLabel, { color: colors.foreground }]}>
+            تصفية
+          </Text>
+          {activeFilterCount > 0 ? (
+            <View
+              style={[
+                styles.activeFilterBadge,
+                { backgroundColor: colors.primary },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.activeFilterBadgeText,
+                  { color: colors.primaryForeground },
+                ]}
+              >
+                {activeFilterCount}
+              </Text>
+            </View>
+          ) : null}
+        </Pressable>
+      </View>
       <ContentPostList
         ready={ready}
         header={
@@ -496,403 +587,6 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             />
           </View>
         ) : null}
-        <View style={styles.prioritySectionHeading}>
-          <View
-            style={[
-              styles.priorityHeadingIcon,
-              { backgroundColor: colors.accent },
-            ]}
-          >
-            <Icon name="clock" size={15} color={colors.primary} />
-          </View>
-          <Text style={[styles.priorityHeading, { color: colors.foreground }]}>
-            تحتاج إلى متابعة
-          </Text>
-        </View>
-        <View style={styles.priorityFilters}>
-          {[
-            {
-              key: "review" as const,
-              label: "بانتظار المراجعة",
-              icon: "eye" as const,
-              count: posts.filter((post) => post.status === "review").length,
-            },
-            {
-              key: "failed" as const,
-              label: "فشل النشر",
-              icon: "alert-circle" as const,
-              count: posts.filter((post) => post.status === "failed").length,
-            },
-            {
-              key: "scheduled" as const,
-              label: "مؤجلة (دون موعد)",
-              icon: "clock" as const,
-              count: posts.filter((post) => post.status === "scheduled").length,
-            },
-          ].map((item) => (
-            <Pressable
-              key={item.key}
-              accessibilityRole="button"
-              accessibilityLabel={`${item.label}: ${item.count}`}
-              accessibilityState={{ selected: filter === item.key }}
-              onPress={() => setFilter(filter === item.key ? "all" : item.key)}
-              style={({ pressed }) => [
-                styles.priorityFilter,
-                {
-                  backgroundColor:
-                    filter === item.key ? colors.primary : colors.secondary,
-                  borderColor:
-                    filter === item.key
-                      ? colors.primary
-                      : item.count > 0
-                        ? colors.warning
-                        : colors.border,
-                  opacity: pressed ? 0.82 : 1,
-                },
-              ]}
-            >
-              <Icon
-                name={item.icon}
-                size={15}
-                color={
-                  filter === item.key
-                    ? colors.primaryForeground
-                    : item.count > 0
-                      ? colors.warning
-                      : colors.mutedForeground
-                }
-              />
-              <Text
-                style={[
-                  styles.filterLabel,
-                  {
-                    color:
-                      filter === item.key
-                        ? colors.primaryForeground
-                        : colors.foreground,
-                  },
-                ]}
-              >
-                {item.label}
-              </Text>
-              <View
-                style={[
-                  styles.priorityCount,
-                  {
-                    backgroundColor:
-                      filter === item.key ? colors.card : colors.background,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.priorityCountText,
-                    {
-                      color:
-                        filter === item.key
-                          ? colors.primary
-                          : item.count > 0
-                            ? colors.warning
-                            : colors.mutedForeground,
-                    },
-                  ]}
-                >
-                  {item.count}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
-        </View>
-        <Text style={[styles.priorityHint, { color: colors.mutedForeground }]}>
-          الأعداد تخص المنشورات المحمّلة حاليًا.
-        </Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.statusFilterScroll}
-          contentContainerStyle={styles.statusFilterContent}
-        >
-          {[
-            { key: "all" as const, label: "الكل" },
-            { key: "draft" as const, label: "مسودات" },
-            { key: "approved" as const, label: "معتمد للنشر التلقائي" },
-            { key: "published" as const, label: "تم النشر" },
-            { key: "publishing" as const, label: "قيد الإرسال" },
-          ].map((item) => (
-            <Pressable
-              key={item.key}
-              accessibilityRole="button"
-              accessibilityState={{ selected: filter === item.key }}
-              onPress={() => setFilter(item.key)}
-              style={({ pressed }) => [
-                styles.filterChip,
-                {
-                  backgroundColor:
-                    filter === item.key ? colors.primary : colors.secondary,
-                  opacity: pressed ? 0.76 : 1,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterLabel,
-                  {
-                    color:
-                      filter === item.key
-                        ? colors.primaryForeground
-                        : colors.mutedForeground,
-                  },
-                ]}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ expanded: filtersExpanded }}
-          onPress={() => setFiltersExpanded((expanded) => !expanded)}
-          style={({ pressed }) => [
-            styles.advancedFilterToggle,
-            {
-              borderColor: colors.border,
-              backgroundColor: filtersExpanded ? colors.accent : colors.card,
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Icon
-            name="filter"
-            size={16}
-            color={filtersExpanded ? colors.primary : colors.mutedForeground}
-          />
-          <Text style={[styles.filterLabel, { color: colors.foreground }]}>
-            {platformFilter !== "all" || dateFilter !== "all"
-              ? `التصفية: ${
-                  platformFilter === "facebook"
-                    ? "فيسبوك"
-                    : platformFilter === "instagram"
-                      ? "إنستغرام"
-                      : ""
-                }${
-                  platformFilter !== "all" && dateFilter !== "all" ? " · " : ""
-                }${
-                  dateFilter === "7"
-                    ? "آخر 7 أيام"
-                    : dateFilter === "30"
-                      ? "آخر 30 يوماً"
-                      : ""
-                }`
-              : "تصفية حسب المنصة والتاريخ"}
-          </Text>
-          {platformFilter !== "all" || dateFilter !== "all" ? (
-            <View
-              style={[
-                styles.activeFilterBadge,
-                { backgroundColor: colors.accent },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.activeFilterBadgeText,
-                  { color: colors.primary },
-                ]}
-              >
-                {(platformFilter !== "all" ? 1 : 0) +
-                  (dateFilter !== "all" ? 1 : 0)}
-              </Text>
-            </View>
-          ) : null}
-          <Icon
-            name={filtersExpanded ? "chevron-up" : "chevron-down"}
-            size={16}
-            color={colors.mutedForeground}
-          />
-        </Pressable>
-        <View
-          style={[
-            styles.searchRow,
-            {
-              backgroundColor: colors.background,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <Icon name="search" size={17} color={colors.mutedForeground} />
-          <TextInput
-            accessibilityLabel="ابحث في المنشورات"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="ابحث في المنشورات"
-            placeholderTextColor={colors.mutedForeground}
-            style={[styles.searchInput, { color: colors.foreground }]}
-            textAlign="right"
-            returnKeyType="search"
-          />
-          {search ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="مسح البحث"
-              onPress={() => setSearch("")}
-              style={styles.clearSearchButton}
-              hitSlop={8}
-            >
-              <Icon name="x" size={16} color={colors.mutedForeground} />
-            </Pressable>
-          ) : null}
-        </View>
-        {filtersExpanded ? (
-          <View style={styles.advancedFilters}>
-            <Text
-              style={[
-                styles.filterGroupLabel,
-                { color: colors.mutedForeground },
-              ]}
-            >
-              المنصة
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterRowContent}
-            >
-              {[
-                { value: "all" as const, label: "كل المنصات" },
-                { value: "facebook" as const, label: "فيسبوك" },
-                { value: "instagram" as const, label: "إنستغرام" },
-              ].map((item) => (
-                <Pressable
-                  key={item.value}
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    selected: platformFilter === item.value,
-                  }}
-                  onPress={() => setPlatformFilter(item.value)}
-                  style={({ pressed }) => [
-                    styles.filterChip,
-                    {
-                      backgroundColor:
-                        platformFilter === item.value
-                          ? colors.primary
-                          : colors.secondary,
-                      opacity: pressed ? 0.78 : 1,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterLabel,
-                      {
-                        color:
-                          platformFilter === item.value
-                            ? colors.primaryForeground
-                            : colors.mutedForeground,
-                      },
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-            <Text
-              style={[
-                styles.filterGroupLabel,
-                { color: colors.mutedForeground },
-              ]}
-            >
-              الفترة
-            </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterRowContent}
-            >
-              {[
-                { value: "all" as const, label: "كل التواريخ" },
-                { value: "7" as const, label: "7 أيام" },
-                { value: "30" as const, label: "30 يوماً" },
-              ].map((item) => (
-                <Pressable
-                  key={item.value}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: dateFilter === item.value }}
-                  onPress={() => setDateFilter(item.value)}
-                  style={({ pressed }) => [
-                    styles.filterChip,
-                    {
-                      backgroundColor:
-                        dateFilter === item.value
-                          ? colors.primary
-                          : colors.secondary,
-                      opacity: pressed ? 0.78 : 1,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.filterLabel,
-                      {
-                        color:
-                          dateFilter === item.value
-                            ? colors.primaryForeground
-                            : colors.mutedForeground,
-                      },
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        ) : null}
-        <View style={styles.sortRow}>
-          <Text
-            style={[styles.filterGroupLabel, { color: colors.mutedForeground }]}
-          >
-            ترتيب
-          </Text>
-          <View style={styles.filterRow}>
-            {[
-              { value: "priority" as const, label: "الأولوية" },
-              { value: "newest" as const, label: "الأحدث" },
-              { value: "oldest" as const, label: "الأقدم" },
-            ].map((item) => (
-              <Pressable
-                key={item.value}
-                accessibilityRole="button"
-                accessibilityState={{ selected: sortMode === item.value }}
-                onPress={() => setSortMode(item.value)}
-                style={({ pressed }) => [
-                  styles.filterChip,
-                  {
-                    backgroundColor:
-                      sortMode === item.value
-                        ? colors.accent
-                        : colors.secondary,
-                    opacity: pressed ? 0.78 : 1,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.filterLabel,
-                    {
-                      color:
-                        sortMode === item.value
-                          ? colors.primary
-                          : colors.mutedForeground,
-                    },
-                  ]}
-                >
-                  {item.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </View>
         <View style={styles.resultsSummary}>
           <Text style={[styles.intro, { color: colors.mutedForeground }]}>
             المنشورات المطابقة المحمّلة: {visiblePosts.length}
@@ -1013,6 +707,185 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
         retryConfirmationVisible={retryConfirmationVisible}
         setRetryConfirmationVisible={setRetryConfirmationVisible}
       />
+      <Modal
+        visible={filtersOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFiltersOpen(false)}
+      >
+        <View style={styles.filtersSheetWrap}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="إغلاق التصفية"
+            onPress={() => setFiltersOpen(false)}
+            style={styles.filtersBackdrop}
+          />
+          <View
+            style={[
+              styles.filtersSheet,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.filtersSheetHeader}>
+              <Text
+                style={[styles.filtersSheetTitle, { color: colors.foreground }]}
+              >
+                التصفية
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={clearContentFilters}
+                hitSlop={8}
+              >
+                <Text style={[styles.reviewAction, { color: colors.primary }]}>
+                  مسح الكل
+                </Text>
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.filtersSheetBody}
+              showsVerticalScrollIndicator={false}
+            >
+              <FilterChipGroup
+                title="بحاجة إلى متابعة"
+                selected={filter}
+                onSelect={(key) => setFilter(key as PostStatus | "all")}
+                options={[
+                  {
+                    key: "review",
+                    label: "بانتظار المراجعة",
+                    count: statusCounts.review ?? 0,
+                  },
+                  {
+                    key: "failed",
+                    label: "فشل النشر",
+                    count: statusCounts.failed ?? 0,
+                  },
+                  {
+                    key: "scheduled",
+                    label: "مؤجلة (دون موعد)",
+                    count: statusCounts.scheduled ?? 0,
+                  },
+                ]}
+              />
+              <FilterChipGroup
+                title="الحالة"
+                selected={filter}
+                onSelect={(key) => setFilter(key as PostStatus | "all")}
+                options={[
+                  { key: "all", label: "الكل" },
+                  { key: "draft", label: "مسودات" },
+                  { key: "approved", label: "معتمد للنشر التلقائي" },
+                  { key: "published", label: "تم النشر" },
+                  { key: "publishing", label: "قيد الإرسال" },
+                ]}
+              />
+              <FilterChipGroup
+                title="المنصة"
+                selected={platformFilter}
+                onSelect={(key) =>
+                  setPlatformFilter(key as "all" | "facebook" | "instagram")
+                }
+                options={[
+                  { key: "all", label: "كل المنصات" },
+                  { key: "facebook", label: "فيسبوك" },
+                  { key: "instagram", label: "إنستغرام" },
+                ]}
+              />
+              <FilterChipGroup
+                title="الفترة"
+                selected={dateFilter}
+                onSelect={(key) => setDateFilter(key as "all" | "7" | "30")}
+                options={[
+                  { key: "all", label: "كل التواريخ" },
+                  { key: "7", label: "7 أيام" },
+                  { key: "30", label: "30 يوماً" },
+                ]}
+              />
+              <FilterChipGroup
+                title="الترتيب"
+                selected={sortMode}
+                onSelect={(key) =>
+                  setSortMode(key as "priority" | "newest" | "oldest")
+                }
+                options={[
+                  { key: "priority", label: "الأولوية" },
+                  { key: "newest", label: "الأحدث" },
+                  { key: "oldest", label: "الأقدم" },
+                ]}
+              />
+            </ScrollView>
+            <ActionButton
+              label="عرض النتائج"
+              icon="check"
+              onPress={() => setFiltersOpen(false)}
+            />
+          </View>
+        </View>
+      </Modal>
     </Page>
+  );
+}
+
+function FilterChipGroup({
+  title,
+  options,
+  selected,
+  onSelect,
+}: {
+  title: string;
+  options: Array<{ key: string; label: string; count?: number }>;
+  selected: string;
+  onSelect: (key: string) => void;
+}) {
+  const colors = useColors();
+  return (
+    <View style={styles.filterGroup}>
+      <Text style={[styles.filterGroupLabel, { color: colors.mutedForeground }]}>
+        {title}
+      </Text>
+      <View style={styles.filterRow}>
+        {options.map((option) => {
+          const isSelected = option.key === selected;
+          return (
+            <Pressable
+              key={option.key}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
+              accessibilityLabel={
+                option.count === undefined
+                  ? option.label
+                  : `${option.label}: ${option.count}`
+              }
+              onPress={() => onSelect(option.key)}
+              style={({ pressed }) => [
+                styles.filterChip,
+                {
+                  backgroundColor: isSelected
+                    ? colors.primary
+                    : colors.secondary,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.filterLabel,
+                  {
+                    color: isSelected
+                      ? colors.primaryForeground
+                      : colors.mutedForeground,
+                  },
+                ]}
+              >
+                {option.count === undefined
+                  ? option.label
+                  : `${option.label} · ${option.count}`}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
