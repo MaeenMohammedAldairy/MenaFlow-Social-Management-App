@@ -93,5 +93,5 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 5,
   },
-  tabLabel: { fontSize: 11, fontWeight: "700" },
+  tabLabel: { fontSize: 12, fontWeight: "700" },
 });

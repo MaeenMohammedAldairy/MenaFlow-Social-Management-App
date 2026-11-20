@@ -241,7 +241,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
                 <Text style={{ color: colors.foreground, fontWeight: "800" }}>
                   {selectedConversation?.customerNumber ?? directConversationLabel(selectedRemoteJid)}
                 </Text>
-                <Text numberOfLines={1} style={{ color: colors.mutedForeground, fontSize: 11 }}>
+                <Text numberOfLines={1} style={{ color: colors.mutedForeground, fontSize: 12 }}>
                   تنتهي صلاحية الرسائل بعد 90 يومًا.
                 </Text>
               </View>
@@ -422,7 +422,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
             </Text>
             {conversations.data ? (
               <View style={[styles.conversationCount, { backgroundColor: colors.accent }]}>
-                <Text style={{ color: colors.primary, fontSize: 11, fontWeight: "800" }}>
+                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: "800" }}>
                   {formatArabicNumber(conversations.data.conversations.length)}
                 </Text>
               </View>
@@ -520,7 +520,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
                     </Text>
                   </View>
                   <View style={styles.conversationMeta}>
-                    <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+                    <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
                       {formatArabicDateTime(conversation.lastMessageAt) ?? ""}
                     </Text>
                     <Icon name="chevron-left" size={17} color={colors.primary} />

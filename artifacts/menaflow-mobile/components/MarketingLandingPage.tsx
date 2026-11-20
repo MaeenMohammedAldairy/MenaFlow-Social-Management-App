@@ -737,7 +737,7 @@ const styles = StyleSheet.create({
   ctaText: { fontSize: 14, fontWeight: "800" },
   ctaTextCompact: { fontSize: 12 },
   heroNote: { fontSize: 12, lineHeight: 20 },
-  heroNoteCompact: { fontSize: 11, lineHeight: 18 },
+  heroNoteCompact: { fontSize: 12, lineHeight: 18 },
   heroVisual: {
     width: 300,
     maxWidth: "100%",
@@ -773,11 +773,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 3,
   },
-  visualStatLabel: { fontSize: 11 },
-  visualStatLabelCompact: { fontSize: 10, textAlign: "center" },
+  visualStatLabel: { fontSize: 12 },
+  visualStatLabelCompact: { fontSize: 12, textAlign: "center" },
   visualStatCaption: { fontSize: 13, fontWeight: "700" },
   visualStatCaptionCompact: {
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     textAlign: "center",
   },

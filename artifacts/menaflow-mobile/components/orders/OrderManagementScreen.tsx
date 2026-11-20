@@ -544,7 +544,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                           deliveryForm.deliveryStatus === status
                             ? colors.primaryForeground
                             : colors.foreground,
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: "700",
                       }}
                     >
@@ -656,7 +656,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                           deliveryForm.collectionStatus === status
                             ? colors.primaryForeground
                             : colors.foreground,
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: "700",
                       }}
                     >
@@ -825,7 +825,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                   color: colors.primary,
                   flex: 1,
                   textAlign: "right",
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: "700",
                 }}
               >
@@ -1171,7 +1171,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                     color: selected
                       ? colors.primaryForeground
                       : colors.foreground,
-                    fontSize: 11,
+                    fontSize: 12,
                     fontWeight: "700",
                   }}
                 >
@@ -1318,7 +1318,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
             ]}
           >
             <Text
-              style={{ color: statusColor, fontSize: 11, fontWeight: "800" }}
+              style={{ color: statusColor, fontSize: 12, fontWeight: "800" }}
             >
               {statusLabels[order.status]}
             </Text>
@@ -1650,7 +1650,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
     marginTop: 3,
   },
-  fieldHint: { fontSize: 10, textAlign: "right" },
+  fieldHint: { fontSize: 12, textAlign: "right" },
   input: {
     minHeight: 44,
     borderWidth: 1,
@@ -1692,7 +1692,7 @@ const styles = StyleSheet.create({
   },
   productCopy: { flex: 1, minWidth: 0, alignItems: "flex-start", gap: 3 },
   productName: { fontSize: 12, fontWeight: "700", textAlign: "right" },
-  productPrice: { fontSize: 10, textAlign: "right" },
+  productPrice: { fontSize: 12, textAlign: "right" },
   quantityControl: { flexDirection: "row", alignItems: "center", gap: 8 },
   quantityButton: {
     width: 28,
@@ -1734,7 +1734,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 7,
   },
-  countText: { fontSize: 11, fontWeight: "800" },
+  countText: { fontSize: 12, fontWeight: "800" },
   orderList: { gap: 10 },
   orderSeparator: { height: 10 },
   orderHeaderStack: { gap: 18, marginBottom: 10 },
@@ -1752,7 +1752,7 @@ const styles = StyleSheet.create({
   orderNumber: { fontSize: 14, fontWeight: "900" },
   orderCustomer: { fontSize: 12, fontWeight: "600" },
   statusBadge: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6 },
-  orderDate: { fontSize: 10, textAlign: "right" },
+  orderDate: { fontSize: 12, textAlign: "right" },
   lineItems: { gap: 7 },
   lineItem: {
     flexDirection: "row",
@@ -1761,13 +1761,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   lineName: { flex: 1, fontSize: 12, textAlign: "right" },
-  linePrice: { fontSize: 11, fontWeight: "700" },
+  linePrice: { fontSize: 12, fontWeight: "700" },
   detailRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  detailText: { flex: 1, fontSize: 11, textAlign: "right" },
-  orderNotes: { fontSize: 11, lineHeight: 18, textAlign: "right" },
+  detailText: { flex: 1, fontSize: 12, textAlign: "right" },
+  orderNotes: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   history: { gap: 5, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 9 },
-  historyTitle: { textAlign: "right", fontSize: 10, fontWeight: "800" },
-  historyText: { textAlign: "right", fontSize: 10 },
+  historyTitle: { textAlign: "right", fontSize: 12, fontWeight: "800" },
+  historyText: { textAlign: "right", fontSize: 12 },
   orderActions: { gap: 7, alignItems: "stretch" },
   cancelButton: {
     minHeight: 38,

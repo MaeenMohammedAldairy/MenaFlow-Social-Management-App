@@ -529,5 +529,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  stepBadgeText: { fontSize: 11, fontWeight: '800', textAlign: 'right' },
+  stepBadgeText: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
 });

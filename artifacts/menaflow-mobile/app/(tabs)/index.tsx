@@ -1388,7 +1388,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "right",
   },
-  orderNotificationText: { fontSize: 11, lineHeight: 17, textAlign: "right" },
+  orderNotificationText: { fontSize: 12, lineHeight: 17, textAlign: "right" },
   hero: {
     borderRadius: 20,
     borderWidth: 1,
@@ -1410,7 +1410,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   heroText: { flex: 1, minWidth: 0, alignItems: "flex-start", gap: 4 },
-  heroEyebrow: { fontSize: 11, fontWeight: "700" },
+  heroEyebrow: { fontSize: 12, fontWeight: "700" },
   heroTitle: { fontSize: 22, fontWeight: "800", textAlign: "right" },
   heroTitlePhone: { fontSize: 16 },
   heroTitleCompact: { fontSize: 15 },
@@ -1458,10 +1458,10 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontWeight: "700",
   },
-  metricDescription: { fontSize: 10, lineHeight: 15, textAlign: "right" },
+  metricDescription: { fontSize: 12, lineHeight: 15, textAlign: "right" },
   link: { fontSize: 12, fontWeight: "700" },
   channelHeading: { gap: 3 },
-  channelSectionSubtitle: { fontSize: 11, lineHeight: 16, textAlign: "right" },
+  channelSectionSubtitle: { fontSize: 12, lineHeight: 16, textAlign: "right" },
   channelRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1523,7 +1523,7 @@ const styles = StyleSheet.create({
   },
   channelName: { fontSize: 13, fontWeight: "700", flexShrink: 1 },
   channelState: {
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 14,
     textAlign: "center",
     flexShrink: 1,
@@ -1540,13 +1540,13 @@ const styles = StyleSheet.create({
   },
   channelHintText: {
     flex: 1,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     textAlign: "right",
   },
   channelAccount: {
     maxWidth: "100%",
-    fontSize: 9,
+    fontSize: 12,
     lineHeight: 13,
     textAlign: "center",
   },
@@ -1588,13 +1588,13 @@ const styles = StyleSheet.create({
   },
   activityStatus: { alignSelf: "flex-start" },
   activityTitle: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  activityDescription: { fontSize: 11, lineHeight: 16, textAlign: "right" },
+  activityDescription: { fontSize: 12, lineHeight: 16, textAlign: "right" },
   activityPlatform: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
   },
-  activityDate: { fontSize: 10, lineHeight: 15, textAlign: "right" },
+  activityDate: { fontSize: 12, lineHeight: 15, textAlign: "right" },
   activityError: { gap: 8, paddingVertical: 10 },
   activityErrorText: { fontSize: 12, lineHeight: 18, textAlign: "center" },
   reviewButton: {
@@ -1603,5 +1603,5 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 10,
   },
-  reviewButtonLabel: { fontSize: 11, fontWeight: "700" },
+  reviewButtonLabel: { fontSize: 12, fontWeight: "700" },
 });

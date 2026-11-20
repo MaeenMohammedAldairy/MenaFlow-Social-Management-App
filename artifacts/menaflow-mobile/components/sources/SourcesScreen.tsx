@@ -2282,8 +2282,8 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   summaryValue: { fontSize: 17, fontWeight: "800" },
-  summaryRecent: { fontSize: 10, fontWeight: "700", textAlign: "right" },
-  summaryLabel: { fontSize: 10, fontWeight: "600" },
+  summaryRecent: { fontSize: 12, fontWeight: "700", textAlign: "right" },
+  summaryLabel: { fontSize: 12, fontWeight: "600" },
   tabBar: {
     flexDirection: "row",
     gap: 4,

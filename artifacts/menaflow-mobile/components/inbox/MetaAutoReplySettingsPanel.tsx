@@ -1488,7 +1488,7 @@ export function MetaAutoReplySettingsPanel({
                                 styles.bodySmall,
                                 {
                                   color: colors.mutedForeground,
-                                  fontSize: 11,
+                                  fontSize: 12,
                                 },
                               ]}
                             >
@@ -1828,7 +1828,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    fontSize: 11,
+    fontSize: 12,
     overflow: "hidden",
   },
 });

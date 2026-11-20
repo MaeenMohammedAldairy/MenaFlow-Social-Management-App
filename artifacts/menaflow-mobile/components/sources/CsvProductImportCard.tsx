@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   tableHeaderRow: { paddingVertical: 5 },
-  tableCell: { flex: 1, fontSize: 11, textAlign: "right" },
+  tableCell: { flex: 1, fontSize: 12, textAlign: "right" },
   tableHeaderCell: { fontWeight: "800" },
   preview: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 8 },
   previewTitle: { fontSize: 14, fontWeight: "700" },

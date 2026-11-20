@@ -458,9 +458,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   phoneInput: { flex: 1, textAlign: "left", writingDirection: "ltr" },
-  phoneNumberHint: { fontSize: 11, lineHeight: 17, textAlign: "left" },
+  phoneNumberHint: { fontSize: 12, lineHeight: 17, textAlign: "left" },
   existingNumberNote: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  existingNumberNoteText: { fontSize: 11, lineHeight: 17, textAlign: "right" },
+  existingNumberNoteText: { fontSize: 12, lineHeight: 17, textAlign: "right" },
   dialogError: { fontSize: 12, lineHeight: 18, textAlign: "left" },
   dialogActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   dialogButton: {

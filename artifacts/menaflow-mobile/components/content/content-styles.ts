@@ -11,7 +11,7 @@ export const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 9,
   },
-  contentEyebrowText: { fontSize: 11, fontWeight: "700" },
+  contentEyebrowText: { fontSize: 12, fontWeight: "700" },
   addButton: {
     minHeight: 42,
     flexDirection: "row",
@@ -57,7 +57,7 @@ export const styles = StyleSheet.create({
     borderRadius: 13,
   },
   autoPublishTitleCopy: { flex: 1, gap: 2 },
-  autoPublishDescription: { fontSize: 10, lineHeight: 15, textAlign: "right" },
+  autoPublishDescription: { fontSize: 12, lineHeight: 15, textAlign: "right" },
   postWorkspace: { gap: 12 },
   prioritySectionHeading: {
     flexDirection: "row",
@@ -145,8 +145,8 @@ export const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 5,
   },
-  priorityCountText: { fontSize: 11, fontWeight: "800" },
-  priorityHint: { fontSize: 10, textAlign: "right", marginTop: -4 },
+  priorityCountText: { fontSize: 12, fontWeight: "800" },
+  priorityHint: { fontSize: 12, textAlign: "right", marginTop: -4 },
   statusFilterScroll: { flexGrow: 0, marginBottom: 2 },
   statusFilterContent: { flexDirection: "row", gap: 7, paddingVertical: 2 },
   filterChip: {
@@ -155,7 +155,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 12,
   },
-  filterLabel: { fontSize: 11, fontWeight: "700" },
+  filterLabel: { fontSize: 12, fontWeight: "700" },
   advancedFilterToggle: {
     minHeight: 46,
     borderWidth: 1,
@@ -173,10 +173,10 @@ export const styles = StyleSheet.create({
     justifyContent: "center",
     marginStart: "auto",
   },
-  activeFilterBadgeText: { fontSize: 10, fontWeight: "800" },
+  activeFilterBadgeText: { fontSize: 12, fontWeight: "800" },
   advancedFilters: { gap: 8 },
   sortRow: { gap: 6 },
-  filterGroupLabel: { fontSize: 11, fontWeight: "700", textAlign: "right" },
+  filterGroupLabel: { fontSize: 12, fontWeight: "700", textAlign: "right" },
   resultsSummary: {
     flexDirection: "row",
     alignItems: "center",
@@ -217,7 +217,7 @@ export const styles = StyleSheet.create({
   },
   postTitleWrap: { flex: 1, alignItems: "flex-start", gap: 3 },
   postTitle: { fontSize: 14, fontWeight: "800" },
-  postDate: { fontSize: 10 },
+  postDate: { fontSize: 12 },
   reviewPreviewButton: {
     minHeight: 36,
     borderRadius: 8,
@@ -237,11 +237,11 @@ export const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  mediaVideoLabel: { fontSize: 11, fontWeight: "700" },
-  mediaLabel: { fontSize: 10, fontWeight: "700" },
-  missingMedia: { textAlign: "left", fontSize: 11 },
+  mediaVideoLabel: { fontSize: 12, fontWeight: "700" },
+  mediaLabel: { fontSize: 12, fontWeight: "700" },
+  missingMedia: { textAlign: "left", fontSize: 12 },
   postBody: { textAlign: "left", fontSize: 12, lineHeight: 19 },
-  sourceText: { textAlign: "left", fontSize: 10, lineHeight: 16 },
+  sourceText: { textAlign: "left", fontSize: 12, lineHeight: 16 },
   postFooter: {
     flexDirection: "row",
     alignItems: "center",
@@ -265,7 +265,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 3,
   },
-  postChannel: { fontSize: 10, fontWeight: "700" },
+  postChannel: { fontSize: 12, fontWeight: "700" },
   postActions: {
     width: "100%",
     gap: 8,
@@ -399,7 +399,7 @@ export const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 4,
   },
-  reviewAction: { fontSize: 11, fontWeight: "800" },
+  reviewAction: { fontSize: 12, fontWeight: "800" },
   channelChips: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -471,7 +471,7 @@ export const styles = StyleSheet.create({
   },
   editMediaThumbnail: { width: 86, height: 68, borderRadius: 7 },
   editMediaPlaceholder: { alignItems: "center", justifyContent: "center" },
-  editMediaOrder: { fontSize: 10, fontWeight: "700" },
+  editMediaOrder: { fontSize: 12, fontWeight: "700" },
   editMediaActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -510,7 +510,7 @@ export const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 8,
   },
-  publishChannelStatus: { fontSize: 11, fontWeight: "700" },
+  publishChannelStatus: { fontSize: 12, fontWeight: "700" },
   publishLinkRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -520,7 +520,7 @@ export const styles = StyleSheet.create({
   publishUrl: {
     flex: 1,
     minWidth: 0,
-    fontSize: 10,
+    fontSize: 12,
     textAlign: "left",
     writingDirection: "ltr",
   },

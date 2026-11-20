@@ -694,7 +694,7 @@ const styles = StyleSheet.create({
   },
   stepNumber: { fontSize: 12, fontWeight: "900" },
   stepDivider: { width: 1, height: 13 },
-  stepTotal: { fontSize: 11, fontWeight: "700" },
+  stepTotal: { fontSize: 12, fontWeight: "700" },
   artwork: {
     width: "100%",
     minHeight: 245,
@@ -885,7 +885,7 @@ const styles = StyleSheet.create({
   },
   clockText: {
     color: "#FFFFFF",
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: "900",
     marginTop: -3,
   },
@@ -967,7 +967,7 @@ const styles = StyleSheet.create({
     gap: 5,
     marginTop: 2,
   },
-  postActionText: { color: "#FFFFFF", fontSize: 9, fontWeight: "800" },
+  postActionText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
   phoneFacebook: { top: 44, left: 3 },
   phoneInstagram: { top: 6, right: 28 },
   phoneWhatsapp: { bottom: 20, right: 7 },

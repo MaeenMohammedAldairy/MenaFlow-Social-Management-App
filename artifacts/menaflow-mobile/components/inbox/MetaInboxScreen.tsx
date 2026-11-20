@@ -891,11 +891,11 @@ const styles = StyleSheet.create({
   },
   automationStatus: {
     flexShrink: 1,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700",
     textAlign: "right",
   },
-  automationMessage: { fontSize: 11, lineHeight: 16, textAlign: "right" },
+  automationMessage: { fontSize: 12, lineHeight: 16, textAlign: "right" },
   loadError: { alignItems: "center", gap: 10, paddingVertical: 20 },
   loadErrorIcon: {
     width: 52,
@@ -929,15 +929,15 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingHorizontal: 11,
   },
-  filterLabel: { fontSize: 11, fontWeight: "700" },
-  filterCount: { fontSize: 11, fontWeight: "700" },
+  filterLabel: { fontSize: 12, fontWeight: "700" },
+  filterCount: { fontSize: 12, fontWeight: "700" },
   toolbarFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
     gap: 8,
   },
-  resultCount: { fontSize: 11, fontWeight: "700" },
+  resultCount: { fontSize: 12, fontWeight: "700" },
   searchRow: {
     minHeight: 48,
     flexDirection: "row",
@@ -985,7 +985,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "right",
   },
-  conversationDate: { fontSize: 10, textAlign: "left" },
+  conversationDate: { fontSize: 12, textAlign: "left" },
   conversationPreviewRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1006,9 +1006,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 4,
   },
-  platformLabel: { fontSize: 10, fontWeight: "700" },
+  platformLabel: { fontSize: 12, fontWeight: "700" },
   conversationCounts: { flexDirection: "row", alignItems: "center", gap: 10 },
   countItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  conversationMeta: { fontSize: 11 },
+  conversationMeta: { fontSize: 12 },
   lastEvent: { fontSize: 12, textAlign: "left" },
 });

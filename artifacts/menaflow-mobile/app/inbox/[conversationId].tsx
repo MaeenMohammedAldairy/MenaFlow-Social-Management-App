@@ -409,7 +409,7 @@ const styles = StyleSheet.create({
   summaryTop: { flexDirection: "row", alignItems: "center", gap: 10 },
   summaryCopy: { flex: 1, gap: 3 },
   summaryName: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  summaryMeta: { fontSize: 11, textAlign: "right" },
+  summaryMeta: { fontSize: 12, textAlign: "right" },
   counts: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   countBadge: {
     flexDirection: "row",
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 6,
   },
-  count: { fontSize: 11, textAlign: "right", fontWeight: "700" },
+  count: { fontSize: 12, textAlign: "right", fontWeight: "700" },
   timeline: { gap: 0 },
   timelineItem: { position: "relative", paddingLeft: 12, paddingBottom: 14 },
   timelineMarker: {

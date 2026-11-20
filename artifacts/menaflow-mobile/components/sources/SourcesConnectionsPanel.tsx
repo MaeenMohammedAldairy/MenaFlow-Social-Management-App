@@ -531,7 +531,7 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     gap: 5,
   },
-  disconnectLabel: { fontSize: 11, fontWeight: "700" },
+  disconnectLabel: { fontSize: 12, fontWeight: "700" },
   error: { fontSize: 12, lineHeight: 19, textAlign: "right" },
   errorRetry: {
     marginTop: 6,
@@ -544,5 +544,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  errorRetryLabel: { fontSize: 11, fontWeight: "800" },
+  errorRetryLabel: { fontSize: 12, fontWeight: "800" },
 });
