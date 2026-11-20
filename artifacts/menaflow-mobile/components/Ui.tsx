@@ -7,6 +7,7 @@ import { LucideIcon as Icon, type LucideIconName } from '@/components/LucideIcon
 import { AppAlert } from '@/components/AppFeedback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { useStudio } from '@/context/StudioContext';
 import { isLocalAuthDisabled } from '@/constants/auth';
 import { getOrderSummary } from '@/lib/orders-api';
@@ -71,6 +72,7 @@ export function Page({
           </Text>
         </View>
       ) : null}
+      <OfflineBanner />
       {children}
     </View>
   );

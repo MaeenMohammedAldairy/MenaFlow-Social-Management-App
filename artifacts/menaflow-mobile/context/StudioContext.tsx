@@ -13,6 +13,10 @@ import {
   type WhatsAppBacklogResult,
   type PostPublishResponse,
 } from '@workspace/api-client-react';
+import {
+  markNetworkAvailable,
+  markNetworkUnavailable,
+} from '@/lib/network-status';
 
 export type Channel = 'instagram' | 'facebook' | 'whatsapp';
 export type PostStatus = 'draft' | 'review' | 'approved' | 'scheduled' | 'publishing' | 'published' | 'failed';
@@ -223,7 +227,9 @@ export function StudioProvider({
           console.warn('Unable to refresh auto-publish settings:', error);
         }
       }
+      markNetworkAvailable();
     } catch (error) {
+      if (error instanceof TypeError) markNetworkUnavailable();
       console.warn('Unable to refresh posts from the server:', error);
       setSyncError(
         'تعذّرت مزامنة المنشورات مع الخادم. يمكنك متابعة المحتوى المحفوظ ثم إعادة المحاولة.',
