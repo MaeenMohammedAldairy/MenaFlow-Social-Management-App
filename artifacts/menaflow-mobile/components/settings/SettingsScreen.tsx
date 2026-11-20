@@ -552,8 +552,8 @@ function SettingsContent({
           accessibilityRole="button"
           onPress={() =>
             router.push({
-              pathname: "/(tabs)/more/sources",
-              params: { view: "publishing", returnTo: "settings" },
+              pathname: "/(tabs)/more/accounts",
+              params: { returnTo: "settings" },
             })
           }
         >

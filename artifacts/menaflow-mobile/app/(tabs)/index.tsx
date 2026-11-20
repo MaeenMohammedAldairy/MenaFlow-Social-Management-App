@@ -270,16 +270,16 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
     .slice(0, 4);
 
   const openPublishing = () =>
-    router.push({
-      pathname: "/(tabs)/more/sources",
-      params: { view: "publishing" },
-    });
+    router.push("/(tabs)/more/accounts");
   const openReconnect = (
     platform: "facebook" | "instagram" | "whatsapp",
     reconnect = false,
   ) =>
     router.push({
-      pathname: "/(tabs)/more/sources",
+      pathname:
+        platform === "whatsapp"
+          ? "/(tabs)/more/sources"
+          : "/(tabs)/more/accounts",
       params: {
         connect: platform,
         ...(reconnect ? { reconnect: "true" } : {}),
@@ -693,10 +693,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                   <Pressable
                     accessibilityRole="button"
                     onPress={() =>
-                      router.push({
-                        pathname: "/(tabs)/more/sources",
-                        params: { view: "publishing" },
-                      })
+                      router.push("/(tabs)/more/accounts")
                     }
                     style={({ pressed }) => ({
                       opacity: pressed ? 0.7 : 1,
@@ -822,10 +819,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                         return;
                       }
                       if (channel.platform === "whatsapp") {
-                        router.push({
-                          pathname: "/(tabs)/more/sources",
-                          params: { view: "publishing" },
-                        });
+                        router.push("/(tabs)/more/sources");
                         return;
                       }
                       if (channel.connected) {
@@ -836,7 +830,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                         return;
                       }
                       router.push({
-                        pathname: "/(tabs)/more/sources",
+                        pathname: "/(tabs)/more/accounts",
                         ...(channel.isConnecting || channel.isUnavailable
                           ? {}
                           : {

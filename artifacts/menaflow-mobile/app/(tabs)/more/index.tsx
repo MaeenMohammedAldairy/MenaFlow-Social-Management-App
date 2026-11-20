@@ -19,10 +19,11 @@ const destinationGroups: Array<{
   description: string;
   icon: LucideIconName;
   accent: "primary" | "blue" | "purple";
-  params?: { view: "publishing" };
+  params?: { returnTo: "settings" };
   path:
     | "/(tabs)/more/orders"
     | "/(tabs)/more/sources"
+    | "/(tabs)/more/accounts"
     | "/(tabs)/more/reports"
     | "/(tabs)/more/settings"
     | "/inbox/reply-settings"
@@ -65,8 +66,7 @@ const destinationGroups: Array<{
         description: "ربط وإدارة حسابات النشر والقنوات المرتبطة بالمساحة",
         icon: "share-2",
         accent: "primary",
-        path: "/(tabs)/more/sources",
-        params: { view: "publishing" },
+        path: "/(tabs)/more/accounts",
       },
       {
         title: "مصادر البيانات",

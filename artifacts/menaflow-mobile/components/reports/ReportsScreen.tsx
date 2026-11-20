@@ -223,10 +223,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
             <Pressable
               accessibilityRole="button"
               onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/more/sources",
-                  params: { view: "publishing" },
-                })
+                router.push("/(tabs)/more/accounts")
               }
             >
               <Text style={[styles.link, { color: colors.primary }]}>حسابات النشر</Text>
@@ -317,10 +314,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
               label="إدارة حسابات النشر"
               icon="link"
               onPress={() =>
-                router.push({
-                  pathname: "/(tabs)/more/sources",
-                  params: { view: "publishing" },
-                })
+                router.push("/(tabs)/more/accounts")
               }
             />
           </View>

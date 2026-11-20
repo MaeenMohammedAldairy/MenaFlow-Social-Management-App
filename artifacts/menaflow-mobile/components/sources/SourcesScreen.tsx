@@ -2210,10 +2210,17 @@ export default function SourcesRoute() {
     view?: string;
   }>();
 
+  const isPublishingTarget =
+    view === "publishing" ||
+    connect === "facebook" ||
+    connect === "instagram";
+
   return (
     <Redirect
       href={{
-        pathname: "/(tabs)/more/sources",
+        pathname: isPublishingTarget
+          ? "/(tabs)/more/accounts"
+          : "/(tabs)/more/sources",
         params: {
           ...(connect ? { connect } : {}),
           ...(reconnect ? { reconnect } : {}),
