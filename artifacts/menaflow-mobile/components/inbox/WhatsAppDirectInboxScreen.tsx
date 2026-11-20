@@ -16,6 +16,7 @@ import {
 } from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { CairoText as Text } from "@/components/CairoTypography";
+import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, BrandHeader, EmptyState, IconButton, Page, PageTitle, Panel } from "@/components/Ui";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
@@ -275,12 +276,31 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
             </View>
           ) : null}
           {messages.isPending && orderedMessages.length === 0 ? (
-            <Panel style={styles.messageLoading}>
-              <Icon name="clock" size={18} color={colors.primary} />
-              <Text style={{ color: colors.mutedForeground }}>
-                جارٍ تحميل رسائل المحادثة...
-              </Text>
-            </Panel>
+            <View
+              accessible
+              accessibilityLabel="جارٍ تحميل رسائل المحادثة"
+              style={styles.messageList}
+            >
+              {[0, 1, 2].map((index) => (
+                <Panel
+                  key={`message-skeleton-${index}`}
+                  style={[
+                    styles.messageBubble,
+                    {
+                      alignSelf: index % 2 === 0 ? "flex-end" : "flex-start",
+                      borderColor: colors.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.messageHeader}>
+                    <Skeleton width={64} height={9} radius={5} />
+                    <Skeleton width={88} height={9} radius={5} />
+                  </View>
+                  <Skeleton width="100%" height={10} radius={5} />
+                  <Skeleton width="64%" height={10} radius={5} />
+                </Panel>
+              ))}
+            </View>
           ) : orderedMessages.length > 0 ? (
             <View style={styles.messageList}>
               {messages.hasNextPage ? (
@@ -448,7 +468,27 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
             </View>
           ) : null}
           {conversations.isPending ? (
-            <EmptyState icon="clock" title="جارٍ تحميل المحادثات" body="نحمّل أحدث الرسائل الواردة." />
+            <View accessible accessibilityLabel="جارٍ تحميل المحادثات">
+              {[0, 1, 2].map((index) => (
+                <View
+                  key={`conversation-skeleton-${index}`}
+                  style={[
+                    styles.conversationRow,
+                    { borderColor: colors.border },
+                  ]}
+                >
+                  <Skeleton width={40} height={40} radius={13} />
+                  <View style={styles.conversationCopy}>
+                    <Skeleton width="48%" height={12} radius={6} />
+                    <Skeleton width="78%" height={10} radius={5} />
+                  </View>
+                  <View style={styles.conversationMeta}>
+                    <Skeleton width={44} height={9} radius={5} />
+                    <Skeleton width={28} height={9} radius={5} />
+                  </View>
+                </View>
+              ))}
+            </View>
           ) : conversations.data?.conversations.length ? (
             visibleConversations.length ? (
               visibleConversations.map((conversation) => (
@@ -604,13 +644,6 @@ const styles = StyleSheet.create({
   conversationAvatar: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   conversationMeta: { alignItems: "flex-end", gap: 5 },
   messageList: { gap: 10 },
-  messageLoading: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 9,
-  },
   messageBubble: { width: "94%", gap: 8, borderWidth: 1, borderRadius: 12, padding: 12 },
   messageHeader: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
   unknownBlock: { gap: 8 },
