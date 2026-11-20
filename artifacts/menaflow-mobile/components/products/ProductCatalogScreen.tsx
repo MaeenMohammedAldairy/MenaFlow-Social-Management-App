@@ -1005,78 +1005,6 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
             </>
           }
         />
-        <View
-          accessibilityLabel="ملخص حالة كتالوج المنتجات"
-          style={styles.catalogOverview}
-        >
-          {(
-            [
-              {
-                tab: "active" as const,
-                label: "مفعّلة",
-                count: tabCounts.active,
-                icon: "check-circle" as const,
-              },
-              {
-                tab: "drafts" as const,
-                label: "مسودات",
-                count: tabCounts.drafts,
-                icon: "file-text" as const,
-              },
-              {
-                tab: "extractions" as const,
-                label: "تحتاج مراجعة",
-                count: tabCounts.extractions,
-                icon: "alert-circle" as const,
-              },
-            ] as const
-          ).map((item) => (
-            <Pressable
-              key={item.tab}
-              accessibilityRole="button"
-              accessibilityLabel={`${item.label}: ${item.count === null ? "جارٍ التحميل" : formatArabicNumber(item.count)}`}
-              accessibilityHint="يفتح قائمة المنتجات المرتبطة بهذه الحالة"
-              onPress={() => selectCatalogTab(item.tab)}
-              style={({ pressed }) => [
-                styles.catalogOverviewItem,
-                {
-                  backgroundColor:
-                    activeTab === item.tab ? colors.accent : colors.card,
-                  borderColor:
-                    activeTab === item.tab ? colors.primary : colors.border,
-                  opacity: pressed ? 0.76 : 1,
-                },
-              ]}
-            >
-              <Icon
-                name={item.icon}
-                size={17}
-                color={
-                  item.tab === "extractions" && item.count
-                    ? colors.warning
-                    : colors.primary
-                }
-              />
-              <Text
-                style={[
-                  styles.catalogOverviewCount,
-                  { color: colors.foreground },
-                ]}
-              >
-                {item.count === null ? "…" : formatArabicNumber(item.count)}
-              </Text>
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.catalogOverviewLabel,
-                  { color: colors.mutedForeground },
-                ]}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
         <CatalogTabs
           activeTab={activeTab}
           counts={tabCounts}
@@ -3700,28 +3628,6 @@ function DropdownField({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  catalogOverview: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  catalogOverviewItem: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 68,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 5,
-    paddingVertical: 8,
-  },
-  catalogOverviewCount: { fontSize: 16, fontWeight: "800" },
-  catalogOverviewLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    textAlign: "center",
-  },
   reviewGuidance: {
     flexDirection: "row-reverse",
     alignItems: "center",
