@@ -14,6 +14,7 @@ import {
   type LucideIconName,
 } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
+import { channelNote, marketingPlans } from "@/constants/pricing";
 
 const features: Array<{
   icon: LucideIconName;
@@ -46,36 +47,36 @@ const features: Array<{
   },
 ];
 
-const plans = [
+const faqs = [
   {
-    name: "مجاني",
-    price: "$0",
-    description: "للبدء وتنظيم سير العمل الأساسي.",
-    limits: [
-      "10 منشورات شهريًا",
-      "10 عمليات توليد بالذكاء الاصطناعي شهريًا",
-      "حتى قناتين",
-    ],
+    id: "whatsapp",
+    question: "هل يعمل مع واتساب أعمال؟",
+    answer:
+      "نعم. تربط واتساب أعمال بمساحة العمل من قسم المصادر، فتصل الرسائل الواردة وتظهر بجانب محادثات فيسبوك وإنستغرام.",
   },
   {
-    name: "بداية",
-    price: "$9",
-    description: "لإدارة نشاطك بمساحة أكبر للنشر.",
-    limits: [
-      "100 منشور شهريًا",
-      "100 عملية توليد بالذكاء الاصطناعي شهريًا",
-      "حتى 3 قنوات",
-    ],
+    id: "start",
+    question: "هل أحتاج بطاقة بنكية للبدء؟",
+    answer:
+      "لا. الخطة المجانية تكفي لتجربة النشر وتنظيم الطلبات، والباقات المدفوعة اختيارية ومعروضة حاليًا للتعريف بحدودها.",
   },
   {
-    name: "نمو",
-    price: "$29",
-    description: "لأحجام عمل تحتاج إلى حدود استخدام أعلى.",
-    limits: [
-      "500 منشور شهريًا",
-      "500 عملية توليد بالذكاء الاصطناعي شهريًا",
-      "حتى 3 قنوات",
-    ],
+    id: "platforms",
+    question: "أي المنصات مدعومة؟",
+    answer:
+      "فيسبوك وإنستغرام عبر Meta، وواتساب أعمال. يتم ربط الحسابات من قسم الحسابات داخل التطبيق.",
+  },
+  {
+    id: "arabic",
+    question: "هل الواجهة عربية بالكامل؟",
+    answer:
+      "نعم، على تطبيق الجوال ونسخة الويب من اليمين إلى اليسار. والأرقام تُعرض لاتينية لتطابق ما تكتبه في الأسعار وأرقام الطلبات.",
+  },
+  {
+    id: "data",
+    question: "أين تُخزَّن بياناتي؟",
+    answer:
+      "بيانات كل مساحة عمل معزولة عن غيرها، وتفاصيل المعالجة والحذف موضّحة في سياسة الخصوصية.",
   },
 ];
 
@@ -99,6 +100,7 @@ const steps = [
 
 export function MarketingLandingPage() {
   const colors = useColors();
+  const [openFaq, setOpenFaq] = React.useState<string | null>(null);
   const { width } = useWindowDimensions();
   const compact = width < 720;
   const showThreeColumns = width >= 980;
@@ -190,7 +192,7 @@ export function MarketingLandingPage() {
                 style={[styles.eyebrow, { backgroundColor: colors.accent }]}
               >
                 <Text style={[styles.eyebrowText, { color: colors.primary }]}>
-                  إدارة التواصل من مكان واحد
+                  لمتاجر فيسبوك وإنستغرام وواتساب
                 </Text>
               </View>
               <Text
@@ -201,7 +203,7 @@ export function MarketingLandingPage() {
                   { color: colors.foreground },
                 ]}
               >
-                أدر محتواك ومحادثات عملائك في مكان واحد
+                رسالة واتساب واحدة… تصبح منشورًا مجدولًا وطلبًا مُتابَعًا
               </Text>
               <Text
                 style={[
@@ -210,8 +212,8 @@ export function MarketingLandingPage() {
                   { color: colors.mutedForeground },
                 ]}
               >
-                رتّب النشر، تابع رسائل العملاء، ونظّم المنتجات والطلبات ضمن
-                مساحة عمل عربية واضحة.
+                بدل التنقّل بين تطبيق النشر وجداول الطلبات ومحادثات واتساب،
+                اجمع المحتوى والرسائل والطلبات في مساحة عمل عربية واحدة.
               </Text>
               <View
                 style={[
@@ -461,9 +463,9 @@ export function MarketingLandingPage() {
               description="الأسعار الشهرية وحدود الاستخدام المعروضة مبنية على إعدادات الباقات الحالية."
             />
             <View style={[styles.planGrid, compact && styles.column]}>
-              {plans.map((plan, index) => (
+              {marketingPlans.map((plan, index) => (
                 <View
-                  key={plan.name}
+                  key={plan.id}
                   style={[
                     styles.planCard,
                     compact ? styles.fullWidth : styles.planWidth,
@@ -486,7 +488,7 @@ export function MarketingLandingPage() {
                   </Text>
                   <View style={styles.priceLine}>
                     <Text style={[styles.price, { color: colors.foreground }]}>
-                      {plan.price}
+                      {`$${plan.monthlyPriceUsd}`}
                     </Text>
                     <Text
                       style={[
@@ -547,6 +549,72 @@ export function MarketingLandingPage() {
               والاشتراكات المدفوعة غير مفعّلة حاليًا؛ الباقات المدفوعة معروضة
               للتعريف بحدودها فقط.
             </Text>
+            <Text
+              style={[styles.pricingNotice, { color: colors.mutedForeground }]}
+            >
+              {channelNote}
+            </Text>
+          </View>
+
+          <View
+            style={[styles.section, compact && styles.sectionCompact]}
+            nativeID="faq"
+          >
+            <SectionHeading
+              compact={compact}
+              eyebrow="الأسئلة الشائعة"
+              title="ما يُسأل عنه قبل البدء"
+              description="إجابات موجزة عن الربط والبيانات والبدء."
+            />
+            <View style={styles.faqList}>
+              {faqs.map((item) => {
+                const open = openFaq === item.id;
+                return (
+                  <View
+                    key={item.id}
+                    style={[
+                      styles.faqItem,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ expanded: open }}
+                      accessibilityLabel={item.question}
+                      onPress={() => setOpenFaq(open ? null : item.id)}
+                      style={styles.faqQuestion}
+                    >
+                      <Text
+                        style={[
+                          styles.faqQuestionText,
+                          { color: colors.foreground },
+                        ]}
+                      >
+                        {item.question}
+                      </Text>
+                      <Icon
+                        name={open ? "chevron-up" : "chevron-down"}
+                        size={18}
+                        color={colors.mutedForeground}
+                      />
+                    </Pressable>
+                    {open ? (
+                      <Text
+                        style={[
+                          styles.faqAnswer,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        {item.answer}
+                      </Text>
+                    ) : null}
+                  </View>
+                );
+              })}
+            </View>
           </View>
 
           <View
@@ -643,6 +711,22 @@ function SectionHeading({
 }
 
 const styles = StyleSheet.create({
+  faqList: { gap: 10, width: "100%" },
+  faqItem: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 10,
+  },
+  faqQuestion: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  faqQuestionText: { flex: 1, fontSize: 15, fontWeight: "700" },
+  faqAnswer: { fontSize: 14, lineHeight: 24, textAlign: "right" },
   page: { flex: 1, alignItems: "center" },
   scrollContent: { width: "100%", alignItems: "center", paddingBottom: 24 },
   content: { alignSelf: "center" },
