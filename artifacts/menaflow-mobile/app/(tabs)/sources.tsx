@@ -11,9 +11,7 @@ export default function SourcesRoute() {
   }>();
 
   const isPublishingTarget =
-    view === "publishing" ||
-    connect === "facebook" ||
-    connect === "instagram";
+    view === "publishing" || connect === "facebook" || connect === "instagram";
 
   return (
     <Redirect

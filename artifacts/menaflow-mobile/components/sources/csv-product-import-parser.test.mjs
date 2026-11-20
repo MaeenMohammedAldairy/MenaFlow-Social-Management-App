@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { parseProductRows } from "./csv-product-import-parser.ts";
+import { PRODUCT_CSV_TEMPLATE } from "./csv-product-template.ts";
 
 test("parses quoted CSV fields and maps products to drafts", () => {
   const [row] = parseProductRows(
@@ -42,4 +43,23 @@ test("reports missing names and duplicate SKUs per row", () => {
 test("rejects malformed quoting and missing name headers", () => {
   assert.throws(() => parseProductRows('name\n"منتج'), /غير مكتمل/);
   assert.throws(() => parseProductRows("sku,price\nA-1,10"), /عمود name/);
+});
+
+test("accepts the shortened Arabic sku header used in the import guide", () => {
+  const [row] = parseProductRows("الاسم,الرمز\nمحفظة,W-7");
+
+  assert.equal(row.error, undefined);
+  assert.equal(row.product.sku, "W-7");
+});
+
+test("ships a template whose sample rows import without errors", () => {
+  const rows = parseProductRows(PRODUCT_CSV_TEMPLATE);
+
+  assert.equal(rows.length, 2);
+  for (const row of rows) {
+    assert.equal(row.error, undefined);
+    assert.equal(row.product.status, "draft");
+    assert.ok(row.product.name);
+    assert.ok(row.product.currency);
+  }
 });

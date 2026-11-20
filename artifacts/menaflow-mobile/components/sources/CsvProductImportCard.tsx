@@ -11,6 +11,7 @@ import {
   parseProductRows,
   type ImportRow,
 } from "./csv-product-import-parser";
+import { downloadProductCsvTemplate } from "./download-csv-template";
 
 type ImportReport = {
   imported: number;
@@ -34,6 +35,8 @@ export function CsvProductImportCard({
   const [report, setReport] = useState<ImportReport | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [templateMessage, setTemplateMessage] = useState("");
   const [progress, setProgress] = useState<{
     done: number;
     total: number;
@@ -75,6 +78,21 @@ export function CsvProductImportCard({
       setError(
         cause instanceof Error ? cause.message : "تعذر قراءة ملف CSV المحدد.",
       );
+    }
+  };
+
+  const downloadTemplate = async () => {
+    if (templateBusy) return;
+    setTemplateBusy(true);
+    setTemplateMessage("");
+    try {
+      setTemplateMessage(await downloadProductCsvTemplate());
+    } catch (cause) {
+      setTemplateMessage(
+        cause instanceof Error ? cause.message : "تعذر تجهيز قالب CSV.",
+      );
+    } finally {
+      setTemplateBusy(false);
     }
   };
 
@@ -166,6 +184,21 @@ export function CsvProductImportCard({
           أقصى 200 منتج في الملف.
         </Text>
       </View>
+      <ActionButton
+        label={templateBusy ? "جارٍ تجهيز القالب…" : "تنزيل قالب CSV"}
+        icon="download"
+        secondary
+        onPress={() => void downloadTemplate()}
+        disabled={templateBusy}
+      />
+      {templateMessage ? (
+        <Text
+          accessibilityLiveRegion="polite"
+          style={[styles.help, { color: colors.mutedForeground }]}
+        >
+          {templateMessage}
+        </Text>
+      ) : null}
       <ActionButton
         label={busy ? "جارٍ الاستيراد…" : "اختيار ملف CSV"}
         icon="file-plus"
