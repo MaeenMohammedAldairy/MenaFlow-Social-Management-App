@@ -31,6 +31,7 @@ import {
   CairoText as Text,
   CairoTextInput,
 } from "@/components/CairoTypography";
+import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   ActionButton,
@@ -174,7 +175,7 @@ function ProductMediaThumbnail({ uri, label }: { uri: string; label: string }) {
         <Text
           style={{
             color: colors.mutedForeground,
-            fontSize: 10,
+            fontSize: 12,
             textAlign: "center",
           }}
         >
@@ -256,7 +257,7 @@ function CatalogTabs({
                 <Text
                   style={{
                     color: selected ? colors.primary : colors.mutedForeground,
-                    fontSize: 10,
+                    fontSize: 12,
                     fontWeight: "700",
                   }}
                 >
@@ -1805,11 +1806,27 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 />
               </Panel>
             ) : catalog.isPending ? (
-              <EmptyState
-                icon="clock"
-                title="جارٍ تجهيز كتالوجك"
-                body="نحمّل بيانات المنتجات المعتمدة."
-              />
+              <View
+                accessible
+                accessibilityLabel="جارٍ تجهيز كتالوجك"
+                style={styles.productSkeletonList}
+              >
+                {[0, 1].map((index) => (
+                  <Panel
+                    key={`product-skeleton-${index}`}
+                    style={styles.productCard}
+                  >
+                    <View style={styles.productHeading}>
+                      <Skeleton width={22} height={22} radius={7} />
+                      <Skeleton width="55%" height={14} radius={6} />
+                      <Skeleton width={54} height={18} radius={9} />
+                    </View>
+                    <Skeleton width="100%" height={10} radius={5} />
+                    <Skeleton width="72%" height={10} radius={5} />
+                    <Skeleton width={92} height={26} radius={9} />
+                  </Panel>
+                ))}
+              </View>
             ) : visibleProducts.length ? (
               visibleProducts.map((product) => (
                 <ProductCard
@@ -2062,6 +2079,8 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
             <ScrollView
               contentContainerStyle={styles.form}
               keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
+              keyboardDismissMode="on-drag"
             >
               <CsvProductImportCard
                 userId={userId}
@@ -2106,6 +2125,8 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
             <ScrollView
               contentContainerStyle={styles.form}
               keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
+              keyboardDismissMode="on-drag"
             >
               {error ? (
                 <Text
@@ -2805,7 +2826,7 @@ function ExtractionFieldReview({
             <Text
               style={{
                 color: selected ? colors.primaryForeground : colors.foreground,
-                fontSize: 11,
+                fontSize: 12,
               }}
             >
               {label}
@@ -3707,7 +3728,7 @@ const styles = StyleSheet.create({
   },
   catalogOverviewCount: { fontSize: 16, fontWeight: "800" },
   catalogOverviewLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700",
     textAlign: "center",
   },
@@ -3720,7 +3741,7 @@ const styles = StyleSheet.create({
   },
   reviewGuidanceBody: {
     flex: 1,
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     textAlign: "right",
   },
@@ -3855,7 +3876,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 6,
   },
-  productCountText: { fontSize: 11, fontWeight: "700" },
+  productCountText: { fontSize: 12, fontWeight: "700" },
   catalogToolbar: { gap: 12, padding: 14 },
   catalogError: {
     alignItems: "center",
@@ -3912,8 +3933,9 @@ const styles = StyleSheet.create({
   },
   publishBarCopy: { flex: 1, gap: 4, alignItems: "flex-start" },
   publishBarCount: { fontSize: 13, fontWeight: "800", textAlign: "right" },
-  publishBarHint: { fontSize: 11, lineHeight: 16, textAlign: "right" },
+  publishBarHint: { fontSize: 12, lineHeight: 16, textAlign: "right" },
   productCard: { gap: 7 },
+  productSkeletonList: { gap: 10 },
   productCardAction: {
     flexDirection: "row-reverse",
     alignItems: "center",
@@ -4012,7 +4034,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    fontSize: 11,
+    fontSize: 12,
   },
   description: { fontSize: 12, lineHeight: 19, textAlign: "left" },
   candidate: { gap: 9 },
@@ -4030,7 +4052,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   extractionField: { gap: 2 },
-  evidence: { fontSize: 11, lineHeight: 18, textAlign: "left" },
+  evidence: { fontSize: 12, lineHeight: 18, textAlign: "left" },
   sourceMessage: {
     gap: 3,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -4039,7 +4061,7 @@ const styles = StyleSheet.create({
   },
   sourceMessageToggle: {
     alignSelf: "flex-start",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
     textAlign: "right",
   },

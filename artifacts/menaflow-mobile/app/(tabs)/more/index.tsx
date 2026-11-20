@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 7,
   },
-  countText: { fontSize: 11, fontWeight: "800" },
+  countText: { fontSize: 12, fontWeight: "800" },
   destinations: {
     gap: 9,
   },
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   destinationDescription: {
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     textAlign: "right",
   },

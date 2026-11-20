@@ -98,6 +98,8 @@ export function CountryPickerModal({
           />
           <ScrollView
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            keyboardDismissMode="on-drag"
             style={styles.countryList}
             contentContainerStyle={styles.countryListContent}
           >
@@ -222,7 +224,7 @@ const styles = StyleSheet.create({
     textAlign: "left",
     writingDirection: "ltr",
   },
-  phoneNumberHint: { fontSize: 11, lineHeight: 17, textAlign: "right" },
+  phoneNumberHint: { fontSize: 12, lineHeight: 17, textAlign: "right" },
   dialogButton: {
     minHeight: 44,
     borderWidth: 1,

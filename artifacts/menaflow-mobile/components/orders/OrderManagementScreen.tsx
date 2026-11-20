@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import {
+  FlatList,
   Modal,
   Pressable,
   RefreshControl,
@@ -8,6 +9,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppAlert as Alert } from "@/components/AppFeedback";
 import { useLocalSearchParams } from "expo-router";
 import { useAuth } from "@clerk/expo";
@@ -29,7 +31,13 @@ import {
   CairoText as Text,
   CairoTextInput,
 } from "@/components/CairoTypography";
+import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
+import {
+  FilterBar,
+  FilterChipGroup,
+  FilterSheet,
+} from "@/components/FilterBar";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { useColors } from "@/hooks/useColors";
 import {
@@ -202,6 +210,7 @@ function AuthenticatedOrders() {
 
 function OrderManagementContent({ userId }: { userId: string | null }) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{
     sourceMetaInboxItemId?: string | string[];
@@ -214,6 +223,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
     ? params.customerName[0]
     : params.customerName;
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(Boolean(initialSourceId));
   const [customerName, setCustomerName] = useState(initialCustomerName ?? "");
@@ -478,49 +488,19 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
   };
 
   return (
-    <Page
-      refreshControl={
-        <RefreshControl
-          refreshing={orders.isRefetching}
-          onRefresh={() => void orders.refetch()}
-          tintColor={colors.primary}
+    <Page scroll={false}>
+      <FilterBar
+        activeCount={statusFilter === "all" ? 0 : 1}
+        onOpenFilters={() => setFiltersOpen(true)}
+      >
+        <CairoTextInput
+          accessibilityLabel="ابحث بالعميل أو رقم الطلب"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="ابحث بالعميل أو رقم الطلب"
+          style={[styles.searchInput, { color: colors.foreground }]}
         />
-      }
-    >
-      <BrandHeader />
-      <PageTitle
-        title="الطلبات"
-        subtitle="سجّل الطلبات وتابع حجز المخزون وتجهيز الشحنات والتحصيل."
-        back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
-        action={
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={showForm ? "إغلاق نموذج الطلب" : "إنشاء طلب"}
-            onPress={() => {
-              setShowForm((current) => !current);
-              setFormError(null);
-              setSuccessMessage(null);
-            }}
-            style={[styles.addButton, { backgroundColor: colors.primary }]}
-          >
-            <Icon
-              name={showForm ? "x" : "plus"}
-              size={17}
-              color={colors.primaryForeground}
-            />
-            <Text
-              style={{
-                color: colors.primaryForeground,
-                fontWeight: "800",
-                fontSize: 12,
-              }}
-            >
-              {showForm ? "إغلاق" : "طلب جديد"}
-            </Text>
-          </Pressable>
-        }
-      />
-
+      </FilterBar>
       <Modal
         visible={Boolean(deliveryEditOrder)}
         transparent
@@ -533,6 +513,8 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           <ScrollView
             contentContainerStyle={styles.modalScrollContent}
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            keyboardDismissMode="on-drag"
           >
             <Panel style={styles.deliveryModal}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -580,7 +562,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                           deliveryForm.deliveryStatus === status
                             ? colors.primaryForeground
                             : colors.foreground,
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: "700",
                       }}
                     >
@@ -692,7 +674,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                           deliveryForm.collectionStatus === status
                             ? colors.primaryForeground
                             : colors.foreground,
-                        fontSize: 11,
+                        fontSize: 12,
                         fontWeight: "700",
                       }}
                     >
@@ -755,6 +737,63 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
         </View>
       </Modal>
 
+      <FlatList
+        data={loadedOrders}
+        keyExtractor={(order) => order.id}
+        renderItem={({ item }) => (
+          <OrderCard
+            order={item}
+            isUpdating={
+              statusMutation.isPending &&
+              statusMutation.variables?.id === item.id
+            }
+            onStatusChange={(status) =>
+              statusMutation.mutate({ id: item.id, status })
+            }
+            onDeliveryEdit={() => openDeliveryEditor(item)}
+            deliveryPending={
+              deliveryMutation.isPending &&
+              deliveryMutation.variables?.orderId === item.id
+            }
+          />
+        )}
+        ItemSeparatorComponent={() => <View style={styles.orderSeparator} />}
+        ListHeaderComponent={
+          <View style={styles.orderHeaderStack}>
+      <BrandHeader />
+      <PageTitle
+        title="الطلبات"
+        subtitle="سجّل الطلبات وتابع حجز المخزون وتجهيز الشحنات والتحصيل."
+        back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
+        action={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={showForm ? "إغلاق نموذج الطلب" : "إنشاء طلب"}
+            onPress={() => {
+              setShowForm((current) => !current);
+              setFormError(null);
+              setSuccessMessage(null);
+            }}
+            style={[styles.addButton, { backgroundColor: colors.primary }]}
+          >
+            <Icon
+              name={showForm ? "x" : "plus"}
+              size={17}
+              color={colors.primaryForeground}
+            />
+            <Text
+              style={{
+                color: colors.primaryForeground,
+                fontWeight: "800",
+                fontSize: 12,
+              }}
+            >
+              {showForm ? "إغلاق" : "طلب جديد"}
+            </Text>
+          </Pressable>
+        }
+      />
+
       {successMessage ? (
         <Panel style={[styles.noticePanel, { backgroundColor: colors.accent }]}>
           <Icon name="check-circle" size={18} color={colors.primary} />
@@ -804,7 +843,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                   color: colors.primary,
                   flex: 1,
                   textAlign: "right",
-                  fontSize: 11,
+                  fontSize: 12,
                   fontWeight: "700",
                 }}
               >
@@ -1107,136 +1146,121 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
             </View>
           ) : null}
         </View>
-        <View
-          style={[
-            styles.searchBox,
-            { backgroundColor: colors.background, borderColor: colors.border },
-          ]}
-        >
-          <Icon name="search" size={17} color={colors.mutedForeground} />
-          <CairoTextInput
-            accessibilityLabel="ابحث بالعميل أو رقم الطلب"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="ابحث بالعميل أو رقم الطلب"
-            style={[styles.searchInput, { color: colors.foreground }]}
-          />
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.statusFilters}
-        >
-          {orderStatuses.map((status) => {
-            const selected = statusFilter === status.id;
-            return (
-              <Pressable
-                key={status.id}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                onPress={() => setStatusFilter(status.id)}
-                style={[
-                  styles.statusFilter,
-                  {
-                    backgroundColor: selected
-                      ? colors.primary
-                      : colors.background,
-                    borderColor: selected ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: selected
-                      ? colors.primaryForeground
-                      : colors.foreground,
-                    fontSize: 11,
-                    fontWeight: "700",
-                  }}
-                >
-                  {status.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-        {orders.isPending ? (
-          <Text
-            style={[styles.inlineNotice, { color: colors.mutedForeground }]}
-          >
-            جارٍ تحميل الطلبات...
-          </Text>
-        ) : orders.isError && !orders.data ? (
-          <View style={styles.errorInline}>
-            <Text style={{ color: colors.destructive, textAlign: "right" }}>
-              {orderErrorMessage(orders.error)}
-            </Text>
-            <ActionButton
-              label="إعادة المحاولة"
-              icon="refresh-cw"
-              onPress={() => void orders.refetch()}
-            />
+      </Panel>
           </View>
-        ) : loadedOrders.length ? (
-          <View style={styles.orderList}>
-            {loadedOrders.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                isUpdating={
-                  statusMutation.isPending &&
-                  statusMutation.variables?.id === order.id
-                }
-                onStatusChange={(status) =>
-                  statusMutation.mutate({ id: order.id, status })
-                }
-                onDeliveryEdit={() => openDeliveryEditor(order)}
-                deliveryPending={
-                  deliveryMutation.isPending &&
-                  deliveryMutation.variables?.orderId === order.id
-                }
-              />
-            ))}
-            {orders.hasNextPage ? (
-              <ActionButton
-                label={
-                  orders.isFetchingNextPage
-                    ? "جارٍ تحميل المزيد..."
-                    : "تحميل طلبات أقدم"
-                }
-                icon={orders.isFetchingNextPage ? "clock" : "chevron-down"}
-                disabled={orders.isFetchingNextPage}
-                onPress={() => void orders.fetchNextPage()}
-              />
-            ) : null}
-            {orders.isError ? (
-              <View style={styles.errorInline}>
-                <Text
-                  accessibilityRole="alert"
-                  style={{ color: colors.destructive, textAlign: "right" }}
+        }
+        ListEmptyComponent={
+          orders.isPending ? (
+            <View
+              accessible
+              accessibilityLabel="جارٍ تحميل الطلبات"
+              style={styles.orderList}
+            >
+              {[0, 1, 2].map((index) => (
+                <Panel
+                  key={`order-skeleton-${index}`}
+                  style={[styles.orderCard, { borderColor: colors.border }]}
                 >
-                  {orderErrorMessage(orders.error)}
-                </Text>
+                  <View style={styles.orderTop}>
+                    <View style={styles.orderHeading}>
+                      <Skeleton width={110} height={15} radius={6} />
+                      <Skeleton width={150} height={11} radius={5} />
+                    </View>
+                    <Skeleton width={72} height={22} radius={10} />
+                  </View>
+                  <Skeleton width={120} height={10} radius={5} />
+                  <Skeleton width="70%" height={10} radius={5} />
+                </Panel>
+              ))}
+            </View>
+          ) : orders.isError && !orders.data ? (
+            <View style={styles.errorInline}>
+              <Text style={{ color: colors.destructive, textAlign: "right" }}>
+                {orderErrorMessage(orders.error)}
+              </Text>
+              <ActionButton
+                label="إعادة المحاولة"
+                icon="refresh-cw"
+                onPress={() => void orders.refetch()}
+              />
+            </View>
+          ) : (
+            <EmptyState
+              icon="shopping-bag"
+              title={search ? "لا توجد نتائج" : "لا توجد طلبات بعد"}
+              body={
+                search
+                  ? "جرّب كلمة بحث مختلفة."
+                  : "ابدأ بتسجيل أول طلب من زر «طلب جديد»."
+              }
+            />
+          )
+        }
+        ListFooterComponent={
+          loadedOrders.length ? (
+            <View style={styles.orderListFooter}>
+              {orders.hasNextPage ? (
                 <ActionButton
-                  label="إعادة المحاولة"
-                  icon="refresh-cw"
+                  label={
+                    orders.isFetchingNextPage
+                      ? "جارٍ تحميل المزيد..."
+                      : "تحميل طلبات أقدم"
+                  }
+                  icon={orders.isFetchingNextPage ? "clock" : "chevron-down"}
+                  disabled={orders.isFetchingNextPage}
                   onPress={() => void orders.fetchNextPage()}
                 />
-              </View>
-            ) : null}
-          </View>
-        ) : (
-          <EmptyState
-            icon="shopping-bag"
-            title={search ? "لا توجد نتائج" : "لا توجد طلبات بعد"}
-            body={
-              search
-                ? "جرّب كلمة بحث مختلفة."
-                : "ابدأ بتسجيل أول طلب من زر «طلب جديد»."
-            }
+              ) : null}
+              {orders.isError ? (
+                <View style={styles.errorInline}>
+                  <Text
+                    accessibilityRole="alert"
+                    style={{ color: colors.destructive, textAlign: "right" }}
+                  >
+                    {orderErrorMessage(orders.error)}
+                  </Text>
+                  <ActionButton
+                    label="إعادة المحاولة"
+                    icon="refresh-cw"
+                    onPress={() => void orders.fetchNextPage()}
+                  />
+                </View>
+              ) : null}
+            </View>
+          ) : undefined
+        }
+        style={styles.orderListFill}
+        contentContainerStyle={[
+          styles.orderListContent,
+          { paddingBottom: 112 + insets.bottom },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={orders.isRefetching}
+            onRefresh={() => void orders.refetch()}
+            tintColor={colors.primary}
           />
-        )}
-      </Panel>
+        }
+      />
+      <FilterSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onClear={() => setStatusFilter("all")}
+      >
+        <FilterChipGroup
+          title="حالة الطلب"
+          selected={statusFilter}
+          onSelect={(key) => setStatusFilter(key as OrderStatus | "all")}
+          options={orderStatuses.map((status) => ({
+            key: status.id,
+            label: status.label,
+          }))}
+        />
+      </FilterSheet>
     </Page>
   );
 
@@ -1274,7 +1298,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
             ]}
           >
             <Text
-              style={{ color: statusColor, fontSize: 11, fontWeight: "800" }}
+              style={{ color: statusColor, fontSize: 12, fontWeight: "800" }}
             >
               {statusLabels[order.status]}
             </Text>
@@ -1606,7 +1630,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
     marginTop: 3,
   },
-  fieldHint: { fontSize: 10, textAlign: "right" },
+  fieldHint: { fontSize: 12, textAlign: "right" },
   input: {
     minHeight: 44,
     borderWidth: 1,
@@ -1648,7 +1672,7 @@ const styles = StyleSheet.create({
   },
   productCopy: { flex: 1, minWidth: 0, alignItems: "flex-start", gap: 3 },
   productName: { fontSize: 12, fontWeight: "700", textAlign: "right" },
-  productPrice: { fontSize: 10, textAlign: "right" },
+  productPrice: { fontSize: 12, textAlign: "right" },
   quantityControl: { flexDirection: "row", alignItems: "center", gap: 8 },
   quantityButton: {
     width: 28,
@@ -1674,14 +1698,6 @@ const styles = StyleSheet.create({
   },
   totalLabel: { fontSize: 13, fontWeight: "800" },
   totalValue: { fontSize: 15, fontWeight: "900" },
-  statusFilters: { flexDirection: "row", gap: 7, paddingVertical: 2 },
-  statusFilter: {
-    minHeight: 34,
-    justifyContent: "center",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 11,
-  },
   countBadge: {
     minWidth: 27,
     height: 27,
@@ -1690,8 +1706,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 7,
   },
-  countText: { fontSize: 11, fontWeight: "800" },
+  countText: { fontSize: 12, fontWeight: "800" },
   orderList: { gap: 10 },
+  orderSeparator: { height: 10 },
+  orderHeaderStack: { gap: 18, marginBottom: 10 },
+  orderListContent: { paddingBottom: 8 },
+  orderListFill: { flex: 1 },
+  orderListFooter: { gap: 10, paddingTop: 10 },
   orderCard: { gap: 10, padding: 13 },
   orderTop: {
     flexDirection: "row",
@@ -1703,7 +1724,7 @@ const styles = StyleSheet.create({
   orderNumber: { fontSize: 14, fontWeight: "900" },
   orderCustomer: { fontSize: 12, fontWeight: "600" },
   statusBadge: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6 },
-  orderDate: { fontSize: 10, textAlign: "right" },
+  orderDate: { fontSize: 12, textAlign: "right" },
   lineItems: { gap: 7 },
   lineItem: {
     flexDirection: "row",
@@ -1712,13 +1733,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   lineName: { flex: 1, fontSize: 12, textAlign: "right" },
-  linePrice: { fontSize: 11, fontWeight: "700" },
+  linePrice: { fontSize: 12, fontWeight: "700" },
   detailRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  detailText: { flex: 1, fontSize: 11, textAlign: "right" },
-  orderNotes: { fontSize: 11, lineHeight: 18, textAlign: "right" },
+  detailText: { flex: 1, fontSize: 12, textAlign: "right" },
+  orderNotes: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   history: { gap: 5, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 9 },
-  historyTitle: { textAlign: "right", fontSize: 10, fontWeight: "800" },
-  historyText: { textAlign: "right", fontSize: 10 },
+  historyTitle: { textAlign: "right", fontSize: 12, fontWeight: "800" },
+  historyText: { textAlign: "right", fontSize: 12 },
   orderActions: { gap: 7, alignItems: "stretch" },
   cancelButton: {
     minHeight: 38,

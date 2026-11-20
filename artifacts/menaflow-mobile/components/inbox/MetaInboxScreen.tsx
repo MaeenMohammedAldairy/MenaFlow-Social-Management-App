@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  FlatList,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -12,6 +13,7 @@ import { useAuth } from "@clerk/expo";
 import { getWhatsAppAutoReplySettings } from "@workspace/api-client-react";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { CairoText as Text } from "@/components/CairoTypography";
+import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   ActionButton,
@@ -22,9 +24,15 @@ import {
   PageTitle,
   Panel,
 } from "@/components/Ui";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
-import { InboxPlatformTabs, type InboxPlatform } from "@/components/inbox/InboxPlatformTabs";
+import type { InboxPlatform } from "@/components/inbox/InboxPlatformTabs";
+import {
+  FilterBar,
+  FilterChipGroup,
+  FilterSheet,
+} from "@/components/FilterBar";
 import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 import {
   getMetaAutoReplySettings,
@@ -151,6 +159,7 @@ function AuthenticatedMetaInbox() {
 
 function MetaInboxContent({ userId }: { userId: string | null }) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const { platform: routePlatform } = useLocalSearchParams<{ platform?: string }>();
   const initialPlatform: Exclude<InboxPlatform, "whatsapp"> =
     routePlatform === "facebook" || routePlatform === "instagram"
@@ -288,24 +297,266 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
     setFilter("all");
     router.setParams({ platform: nextPlatform });
   };
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterCounts = filters.reduce<Record<string, number>>((counts, option) => {
+    counts[option.key] =
+      loadedItems.filter(
+        (item) =>
+          (platform === "all" || item.platform === platform) &&
+          (option.key === "all" || item.kind === option.key),
+      ).length +
+      (platform === "all" && option.key !== "comment"
+        ? whatsappConversations.length
+        : 0);
+    return counts;
+  }, {});
+  const activeFilterCount =
+    (filter !== "all" ? 1 : 0) + (platform !== "all" ? 1 : 0);
   const visibleMetaPlatforms: MetaInboxPlatform[] =
     platform === "all" ? ["facebook", "instagram"] : [platform];
 
-  return (
-    <Page
-      refreshControl={
-        <RefreshControl
-          refreshing={
-            inbox.isRefetching ||
-            whatsappInbox.isRefetching ||
-            metaReplySettings.isRefetching ||
-            whatsAppReplySettings.isRefetching
+  const renderRow = (row: InboxListRow) => {
+    if (row.kind === "whatsapp") {
+      const { conversation } = row;
+      return (
+        <Pressable
+          key={row.key}
+          accessibilityRole="button"
+          accessibilityLabel={`فتح محادثة WhatsApp مع ${conversation.customerNumber}`}
+          onPress={() =>
+            router.push({
+              pathname: "/inbox/whatsapp",
+              params: { remoteJid: conversation.remoteJid },
+            })
           }
-          onRefresh={refreshInbox}
-          tintColor={colors.primary}
+          style={[
+            styles.conversationCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <View
+            style={[styles.conversationAvatar, { backgroundColor: colors.accent }]}
+          >
+            <Icon name="whatsapp" size={21} color={colors.primary} />
+          </View>
+          <View style={styles.conversationHeading}>
+            <View style={styles.conversationTopLine}>
+              <Text
+                style={[styles.conversationTitle, { color: colors.foreground }]}
+                numberOfLines={1}
+              >
+                {conversation.customerNumber}
+              </Text>
+              <Text style={[styles.conversationDate, { color: colors.mutedForeground }]}>
+                {formatArabicDateTime(conversation.lastMessageAt) ?? "غير محدد"}
+              </Text>
+            </View>
+            <View style={styles.conversationPreviewRow}>
+              <Icon name="message-circle" size={15} color={colors.mutedForeground} />
+              <Text
+                style={[styles.conversationPreview, { color: colors.mutedForeground }]}
+                numberOfLines={1}
+              >
+                {conversation.preview || "رسالة بدون نص"}
+              </Text>
+            </View>
+            {platform === "all" ? (
+              <View style={styles.conversationBottomLine}>
+                <View style={[styles.platformBadge, { backgroundColor: colors.accent }]}>
+                  <Text style={[styles.platformLabel, { color: colors.primary }]}>WhatsApp</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+          <Icon name="chevron-left" size={19} color={colors.primary} />
+        </Pressable>
+      );
+    }
+    const { group } = row;
+    const latestItem = latestInboxItem(group);
+    const messageCount = group.items.filter(
+      (item) => item.kind === "message",
+    ).length;
+    const commentCount = group.items.length - messageCount;
+    return (
+      <Pressable
+        key={group.key}
+        accessibilityRole="button"
+        accessibilityLabel={`فتح محادثة ${group.title}، ${messageCount} رسالة محمّلة و${commentCount} تعليق محمّل`}
+        onPress={() =>
+          router.push({
+            pathname: "/inbox/[conversationId]",
+            params: {
+              conversationId: metaInboxPersonId(group.items[0]),
+              platform: group.platform,
+            },
+          })
+        }
+        style={[
+          styles.conversationCard,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.conversationAvatar,
+            { backgroundColor: colors.accent },
+          ]}
+        >
+          <SocialPlatformIcon platform={group.platform} size={25} />
+        </View>
+        <View style={styles.conversationHeading}>
+          <View style={styles.conversationTopLine}>
+            <Text
+              style={[
+                styles.conversationTitle,
+                { color: colors.foreground },
+              ]}
+              numberOfLines={1}
+            >
+              {group.title}
+            </Text>
+            <Text
+              style={[
+                styles.conversationDate,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              {formatArabicDateTime(latestItem.occurredAt) ??
+                "غير محدد"}
+            </Text>
+          </View>
+          <View style={styles.conversationPreviewRow}>
+            <Icon
+              name={
+                latestItem.kind === "comment"
+                  ? "message-square"
+                  : "message-circle"
+              }
+              size={15}
+              color={colors.mutedForeground}
+            />
+            <Text
+              style={[
+                styles.conversationPreview,
+                { color: colors.mutedForeground },
+              ]}
+              numberOfLines={1}
+            >
+              {latestItem.text ||
+                (latestItem.media.length > 0
+                  ? "رسالة تحتوي على مرفق"
+                  : latestItem.kind === "comment"
+                    ? "تعليق بدون نص"
+                    : "رسالة بدون نص")}
+            </Text>
+          </View>
+          <View style={styles.conversationBottomLine}>
+            {platform === "all" ? (
+              <View
+                style={[
+                  styles.platformBadge,
+                  { backgroundColor: colors.accent },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.platformLabel,
+                    {
+                      color:
+                        group.platform === "instagram"
+                          ? colors.instagram
+                          : colors.facebook,
+                    },
+                  ]}
+                >
+                  {group.platform === "facebook" ? "فيسبوك" : "إنستغرام"}
+                </Text>
+              </View>
+            ) : null}
+            <View style={styles.conversationCounts}>
+              <View style={styles.countItem}>
+                <Icon
+                  name="message-circle"
+                  size={13}
+                  color={colors.mutedForeground}
+                />
+                <Text
+                  style={[
+                    styles.conversationMeta,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {messageCount}
+                </Text>
+              </View>
+              <View style={styles.countItem}>
+                <Icon
+                  name="message-square"
+                  size={13}
+                  color={colors.mutedForeground}
+                />
+                <Text
+                  style={[
+                    styles.conversationMeta,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {commentCount}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        <Icon
+          name="chevron-left"
+          size={19}
+          color={
+            group.platform === "instagram"
+              ? colors.instagram
+              : colors.facebook
+          }
         />
-      }
-    >
+      </Pressable>
+    );
+  };
+
+  return (
+    <Page scroll={false}>
+      <FilterBar
+        activeCount={activeFilterCount}
+        onOpenFilters={() => setFiltersOpen(true)}
+      >
+        <TextInput
+          accessibilityLabel="ابحث في الرسائل والتعليقات"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="ابحث بالاسم أو نص الرسالة"
+          placeholderTextColor={colors.mutedForeground}
+          returnKeyType="search"
+          style={[styles.searchInput, { color: colors.foreground }]}
+        />
+        {search ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="مسح البحث"
+            onPress={() => setSearch("")}
+            hitSlop={8}
+          >
+            <Icon name="x" size={17} color={colors.mutedForeground} />
+          </Pressable>
+        ) : null}
+      </FilterBar>
+      <FlatList
+        data={rows}
+        keyExtractor={(row) => row.key}
+        renderItem={({ item }) => renderRow(item)}
+        ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
+        ListHeaderComponent={
+          <View style={styles.listHeaderStack}>
       <View style={styles.inboxHeader}>
         <BrandHeader />
         <PageTitle
@@ -319,11 +570,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
             />
           }
         />
-        <InboxPlatformTabs
-          activePlatform={platform}
-          onSelect={selectPlatform}
-        />
-
         <Panel style={styles.automationSummary}>
           <View style={styles.automationHeading}>
             <Icon name="zap" size={15} color={colors.primary} />
@@ -418,96 +664,11 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
       <Panel style={styles.inboxToolbar}>
         <View style={styles.toolbarHeading}>
           <Text style={[styles.toolbarTitle, { color: colors.foreground }]}>
-            نوع التفاعل
+            المحادثات
           </Text>
           <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>
             {formatArabicNumber(rows.length)} محادثة
           </Text>
-        </View>
-        <View
-          style={[
-            styles.searchRow,
-            { borderColor: colors.border, backgroundColor: colors.background },
-          ]}
-        >
-          <Icon name="search" size={18} color={colors.mutedForeground} />
-          <TextInput
-            accessibilityLabel="ابحث في الرسائل والتعليقات"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="ابحث بالاسم أو نص الرسالة"
-            placeholderTextColor={colors.mutedForeground}
-            returnKeyType="search"
-            style={[styles.searchInput, { color: colors.foreground }]}
-          />
-          {search ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="مسح البحث"
-              onPress={() => setSearch("")}
-              hitSlop={8}
-            >
-              <Icon name="x" size={17} color={colors.mutedForeground} />
-            </Pressable>
-          ) : null}
-        </View>
-        <View style={styles.filters}>
-          {filters.map((option) => {
-            const selected = filter === option.key;
-            const count =
-              loadedItems.filter((item) => {
-                return (
-                  (platform === "all" || item.platform === platform) &&
-                  (option.key === "all" || item.kind === option.key)
-                );
-              }).length +
-              (platform === "all" && option.key !== "comment"
-                ? whatsappConversations.length
-                : 0);
-            return (
-              <Pressable
-                key={option.key}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => setFilter(option.key)}
-                style={({ pressed }) => [
-                  styles.filter,
-                  {
-                    backgroundColor: selected
-                      ? colors.primary
-                      : colors.background,
-                    borderColor: selected ? colors.primary : colors.border,
-                    opacity: pressed ? 0.78 : 1,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.filterLabel,
-                    {
-                      color: selected
-                        ? colors.primaryForeground
-                        : colors.foreground,
-                    },
-                  ]}
-                >
-                  {option.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.filterCount,
-                    {
-                      color: selected
-                        ? colors.primaryForeground
-                        : colors.mutedForeground,
-                    },
-                  ]}
-                >
-                  {formatArabicNumber(count)}
-                </Text>
-              </Pressable>
-            );
-          })}
         </View>
         {inbox.isError ? (
           <Panel style={[styles.loadError, { borderColor: colors.border }]}>
@@ -559,15 +720,40 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           ) : null}
         </View>
       </Panel>
-
+          </View>
+        }
+        ListEmptyComponent={
+          <>
       {rows.length === 0 &&
       (inbox.isPending || (platform === "all" && whatsappInbox.isPending)) ? (
-        <Panel style={styles.loadingPanel}>
-          <Icon name="clock" size={18} color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
-            جارٍ تحميل الرسائل والتعليقات...
-          </Text>
-        </Panel>
+        <View
+          accessible
+          accessibilityLabel="جارٍ تحميل الرسائل والتعليقات"
+          style={styles.groups}
+        >
+          {[0, 1, 2].map((index) => (
+            <View
+              key={`inbox-skeleton-${index}`}
+              style={[
+                styles.conversationCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Skeleton width={46} height={46} radius={16} />
+              <View style={styles.conversationHeading}>
+                <View style={styles.conversationTopLine}>
+                  <Skeleton width="42%" height={12} radius={6} />
+                  <Skeleton width={54} height={10} radius={5} />
+                </View>
+                <Skeleton width="86%" height={10} radius={5} />
+                <Skeleton width="60%" height={10} radius={5} />
+              </View>
+            </View>
+          ))}
+        </View>
       ) : rows.length === 0 &&
       (inbox.isError || (platform === "all" && whatsappInbox.isError)) ? null : rows.length === 0 ? (
         <EmptyState
@@ -583,218 +769,11 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
               : "ستظهر هنا الرسائل والتعليقات الواردة إلى حساباتك المتصلة."
           }
         />
-      ) : rows.length > 0 ? (
-        <View style={styles.groups}>
-          {rows.map((row) => {
-            if (row.kind === "whatsapp") {
-              const { conversation } = row;
-              return (
-                <Pressable
-                  key={row.key}
-                  accessibilityRole="button"
-                  accessibilityLabel={`فتح محادثة WhatsApp مع ${conversation.customerNumber}`}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/inbox/whatsapp",
-                      params: { remoteJid: conversation.remoteJid },
-                    })
-                  }
-                  style={[
-                    styles.conversationCard,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                  ]}
-                >
-                  <View
-                    style={[styles.conversationAvatar, { backgroundColor: colors.accent }]}
-                  >
-                    <Icon name="whatsapp" size={21} color={colors.primary} />
-                  </View>
-                  <View style={styles.conversationHeading}>
-                    <View style={styles.conversationTopLine}>
-                      <Text
-                        style={[styles.conversationTitle, { color: colors.foreground }]}
-                        numberOfLines={1}
-                      >
-                        {conversation.customerNumber}
-                      </Text>
-                      <Text style={[styles.conversationDate, { color: colors.mutedForeground }]}>
-                        {formatArabicDateTime(conversation.lastMessageAt) ?? "غير محدد"}
-                      </Text>
-                    </View>
-                    <View style={styles.conversationPreviewRow}>
-                      <Icon name="message-circle" size={15} color={colors.mutedForeground} />
-                      <Text
-                        style={[styles.conversationPreview, { color: colors.mutedForeground }]}
-                        numberOfLines={1}
-                      >
-                        {conversation.preview || "رسالة بدون نص"}
-                      </Text>
-                    </View>
-                    {platform === "all" ? (
-                      <View style={styles.conversationBottomLine}>
-                        <View style={[styles.platformBadge, { backgroundColor: colors.accent }]}>
-                          <Text style={[styles.platformLabel, { color: colors.primary }]}>WhatsApp</Text>
-                        </View>
-                      </View>
-                    ) : null}
-                  </View>
-                  <Icon name="chevron-left" size={19} color={colors.primary} />
-                </Pressable>
-              );
-            }
-            const { group } = row;
-            const latestItem = latestInboxItem(group);
-            const messageCount = group.items.filter(
-              (item) => item.kind === "message",
-            ).length;
-            const commentCount = group.items.length - messageCount;
-            return (
-              <Pressable
-                key={group.key}
-                accessibilityRole="button"
-                accessibilityLabel={`فتح محادثة ${group.title}، ${messageCount} رسالة محمّلة و${commentCount} تعليق محمّل`}
-                onPress={() =>
-                  router.push({
-                    pathname: "/inbox/[conversationId]",
-                    params: {
-                      conversationId: metaInboxPersonId(group.items[0]),
-                      platform: group.platform,
-                    },
-                  })
-                }
-                style={[
-                  styles.conversationCard,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.conversationAvatar,
-                    { backgroundColor: colors.accent },
-                  ]}
-                >
-                  <SocialPlatformIcon platform={group.platform} size={25} />
-                </View>
-                <View style={styles.conversationHeading}>
-                  <View style={styles.conversationTopLine}>
-                    <Text
-                      style={[
-                        styles.conversationTitle,
-                        { color: colors.foreground },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {group.title}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.conversationDate,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      {formatArabicDateTime(latestItem.occurredAt) ??
-                        "غير محدد"}
-                    </Text>
-                  </View>
-                  <View style={styles.conversationPreviewRow}>
-                    <Icon
-                      name={
-                        latestItem.kind === "comment"
-                          ? "message-square"
-                          : "message-circle"
-                      }
-                      size={15}
-                      color={colors.mutedForeground}
-                    />
-                    <Text
-                      style={[
-                        styles.conversationPreview,
-                        { color: colors.mutedForeground },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {latestItem.text ||
-                        (latestItem.media.length > 0
-                          ? "رسالة تحتوي على مرفق"
-                          : latestItem.kind === "comment"
-                            ? "تعليق بدون نص"
-                            : "رسالة بدون نص")}
-                    </Text>
-                  </View>
-                  <View style={styles.conversationBottomLine}>
-                    {platform === "all" ? (
-                      <View
-                        style={[
-                          styles.platformBadge,
-                          { backgroundColor: colors.accent },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.platformLabel,
-                            {
-                              color:
-                                group.platform === "instagram"
-                                  ? colors.instagram
-                                  : colors.facebook,
-                            },
-                          ]}
-                        >
-                          {group.platform === "facebook" ? "فيسبوك" : "إنستغرام"}
-                        </Text>
-                      </View>
-                    ) : null}
-                    <View style={styles.conversationCounts}>
-                      <View style={styles.countItem}>
-                        <Icon
-                          name="message-circle"
-                          size={13}
-                          color={colors.mutedForeground}
-                        />
-                        <Text
-                          style={[
-                            styles.conversationMeta,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          {messageCount}
-                        </Text>
-                      </View>
-                      <View style={styles.countItem}>
-                        <Icon
-                          name="message-square"
-                          size={13}
-                          color={colors.mutedForeground}
-                        />
-                        <Text
-                          style={[
-                            styles.conversationMeta,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          {commentCount}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-                <Icon
-                  name="chevron-left"
-                  size={19}
-                  color={
-                    group.platform === "instagram"
-                      ? colors.instagram
-                      : colors.facebook
-                  }
-                />
-              </Pressable>
-            );
-          })}
-        </View>
       ) : null}
+          </>
+        }
+        ListFooterComponent={
+          <>
       {olderError ? (
         <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
           {olderError}
@@ -808,11 +787,68 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           onPress={() => void loadOlder()}
         />
       ) : null}
+          </>
+        }
+        style={styles.listFill}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: 112 + insets.bottom },
+        ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              inbox.isRefetching ||
+              whatsappInbox.isRefetching ||
+              metaReplySettings.isRefetching ||
+              whatsAppReplySettings.isRefetching
+            }
+            onRefresh={refreshInbox}
+            tintColor={colors.primary}
+          />
+        }
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      />
+      <FilterSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onClear={() => {
+          setFilter("all");
+          selectPlatform("all");
+        }}
+      >
+        <FilterChipGroup
+          title="نوع التفاعل"
+          selected={filter}
+          onSelect={(key) => setFilter(key as InboxFilter)}
+          options={filters.map((option) => ({
+            key: option.key,
+            label: option.label,
+            count: filterCounts[option.key] ?? 0,
+          }))}
+        />
+        <FilterChipGroup
+          title="المنصة"
+          selected={platform}
+          onSelect={(key) => selectPlatform(key as InboxPlatform)}
+          options={[
+            { key: "all", label: "كل المنصات" },
+            { key: "facebook", label: "فيسبوك" },
+            { key: "instagram", label: "إنستغرام" },
+          ]}
+        />
+      </FilterSheet>
     </Page>
   );
 }
 
 const styles = StyleSheet.create({
+  listFill: { flex: 1 },
+  listContent: { gap: 10 },
+  listHeaderStack: { gap: 18 },
+  rowSeparator: { height: 10 },
   inboxHeader: { gap: 10 },
   automationSummary: { gap: 8, padding: 10, borderRadius: 14 },
   automationHeading: {
@@ -838,11 +874,11 @@ const styles = StyleSheet.create({
   },
   automationStatus: {
     flexShrink: 1,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "700",
     textAlign: "right",
   },
-  automationMessage: { fontSize: 11, lineHeight: 16, textAlign: "right" },
+  automationMessage: { fontSize: 12, lineHeight: 16, textAlign: "right" },
   loadError: { alignItems: "center", gap: 10, paddingVertical: 20 },
   loadErrorIcon: {
     width: 52,
@@ -866,42 +902,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   toolbarTitle: { fontSize: 12, fontWeight: "800", textAlign: "right" },
-  filters: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  filter: {
-    borderWidth: 1,
-    borderRadius: 12,
-    minHeight: 40,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 11,
-  },
-  filterLabel: { fontSize: 11, fontWeight: "700" },
-  filterCount: { fontSize: 11, fontWeight: "700" },
   toolbarFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-start",
     gap: 8,
   },
-  resultCount: { fontSize: 11, fontWeight: "700" },
-  loadingPanel: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 9,
-  },
-  loadingText: { fontSize: 12, textAlign: "center" },
-  searchRow: {
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-  },
+  resultCount: { fontSize: 12, fontWeight: "700" },
   searchInput: {
     flex: 1,
     minHeight: 46,
@@ -940,7 +947,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "right",
   },
-  conversationDate: { fontSize: 10, textAlign: "left" },
+  conversationDate: { fontSize: 12, textAlign: "left" },
   conversationPreviewRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -961,9 +968,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7,
     paddingVertical: 4,
   },
-  platformLabel: { fontSize: 10, fontWeight: "700" },
+  platformLabel: { fontSize: 12, fontWeight: "700" },
   conversationCounts: { flexDirection: "row", alignItems: "center", gap: 10 },
   countItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  conversationMeta: { fontSize: 11 },
+  conversationMeta: { fontSize: 12 },
   lastEvent: { fontSize: 12, textAlign: "left" },
 });

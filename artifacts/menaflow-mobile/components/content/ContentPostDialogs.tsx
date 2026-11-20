@@ -2,7 +2,9 @@ import type { Dispatch, SetStateAction } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   TextInput,
@@ -200,7 +202,10 @@ export function ContentPostDialogs({
           requestEditClose();
         }}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalBackdrop}
+        >
           <View
             style={[
               styles.editModal,
@@ -437,7 +442,7 @@ export function ContentPostDialogs({
               </Pressable>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       <Modal
         visible={publishDialogPostId !== null}

@@ -7,6 +7,7 @@ import { LucideIcon as Icon, type LucideIconName } from '@/components/LucideIcon
 import { AppAlert } from '@/components/AppFeedback';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { useStudio } from '@/context/StudioContext';
 import { isLocalAuthDisabled } from '@/constants/auth';
 import { getOrderSummary } from '@/lib/orders-api';
@@ -48,15 +49,18 @@ export function Page({
     <View
       style={[
         styles.pageContent,
+        scroll ? null : styles.pageContentFill,
         contentMaxWidth ? styles.constrainedContent : null,
         contentMaxWidth ? { maxWidth: contentMaxWidth } : null,
         {
           paddingTop: insets.top + 8,
           paddingBottom:
             bottomPadding === undefined
-              ? Platform.OS === 'web'
-                ? 112
-                : 112 + insets.bottom
+              ? scroll
+                ? Platform.OS === 'web'
+                  ? 112
+                  : 112 + insets.bottom
+                : 0
               : bottomPadding + insets.bottom,
         },
       ]}
@@ -68,6 +72,7 @@ export function Page({
           </Text>
         </View>
       ) : null}
+      <OfflineBanner />
       {children}
     </View>
   );
@@ -79,6 +84,8 @@ export function Page({
           onScroll={onScroll}
           scrollEventThrottle={onScroll ? 250 : undefined}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
@@ -463,6 +470,7 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   scrollContent: { flexGrow: 1 },
   pageContent: { paddingHorizontal: 18, gap: 18 },
+  pageContentFill: { flex: 1 },
   constrainedContent: { width: '100%', alignSelf: 'center' },
   brandHeader: { width: '100%', alignSelf: 'stretch', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', minHeight: 58, paddingHorizontal: 10, borderWidth: 1, borderRadius: 17 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
@@ -523,5 +531,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 4,
   },
-  stepBadgeText: { fontSize: 11, fontWeight: '800', textAlign: 'right' },
+  stepBadgeText: { fontSize: 12, fontWeight: '800', textAlign: 'right' },
 });

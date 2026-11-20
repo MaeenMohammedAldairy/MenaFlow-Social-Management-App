@@ -765,7 +765,7 @@ const styles = StyleSheet.create({
     gap: 3,
     paddingHorizontal: 6,
   },
-  clearFiltersText: { fontSize: 11, fontWeight: "700" },
+  clearFiltersText: { fontSize: 12, fontWeight: "700" },
   filterGroup: { gap: 8 },
   filterHeading: { fontSize: 12, fontWeight: "700", textAlign: "right" },
   filterOptions: { flexDirection: "row", gap: 8, paddingVertical: 2 },
@@ -786,14 +786,14 @@ const styles = StyleSheet.create({
   },
   activitySectionTitleGroup: { gap: 2, alignItems: "flex-start" },
   activitySectionTitle: { fontSize: 17, fontWeight: "800", textAlign: "right" },
-  activitySectionSubtitle: { fontSize: 11, textAlign: "right" },
+  activitySectionSubtitle: { fontSize: 12, textAlign: "right" },
   activityCountBadge: {
     minHeight: 30,
     justifyContent: "center",
     borderRadius: 15,
     paddingHorizontal: 10,
   },
-  activityCountText: { fontSize: 10, fontWeight: "700" },
+  activityCountText: { fontSize: 12, fontWeight: "700" },
   activityList: { gap: 10 },
   activityRow: {
     flexDirection: "row",
@@ -827,10 +827,10 @@ const styles = StyleSheet.create({
   },
   activityDescription: {
     width: "100%",
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 17,
     textAlign: "right",
   },
   activityMeta: { flexDirection: "row", alignItems: "center", gap: 5 },
-  activityDate: { fontSize: 11, lineHeight: 17, textAlign: "right" },
+  activityDate: { fontSize: 12, lineHeight: 17, textAlign: "right" },
 });

@@ -56,6 +56,12 @@ import { applyAppearanceMode, readAppearanceMode } from "@/lib/appearance";
 import { signOutAndClearQueryCache } from "@/lib/sign-out";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { useColors } from "@/hooks/useColors";
+import { WebFocusRing } from "@/components/WebFocusRing";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import {
+  markNetworkAvailable,
+  markNetworkUnavailable,
+} from "@/lib/network-status";
 
 if (Platform.OS === "web" && typeof document !== "undefined") {
   document.documentElement.lang = "ar";
@@ -66,7 +72,7 @@ if (Platform.OS === "web" && typeof document !== "undefined") {
 SplashScreen.preventAutoHideAsync();
 
 type ApiErrorNotice = {
-  kind: "unauthorized" | "forbidden" | "server" | "network";
+  kind: "unauthorized" | "forbidden" | "server";
   retry?: () => Promise<void>;
   signOutFailed?: boolean;
 };
@@ -98,7 +104,7 @@ function reportApiError(
   } else if (status !== null && status >= 500) {
     apiErrorListener?.({ kind: "server", retry });
   } else if (error instanceof TypeError) {
-    apiErrorListener?.({ kind: "network", retry });
+    markNetworkUnavailable();
   }
 }
 
@@ -114,6 +120,7 @@ function isWorkspaceSummary(value: unknown): value is WorkspaceSummary {
 
 queryClient = new QueryClient({
   queryCache: new QueryCache({
+    onSuccess: () => markNetworkAvailable(),
     onError: (error, query) => {
       reportApiError(error, () =>
         queryClient.refetchQueries({
@@ -124,6 +131,7 @@ queryClient = new QueryClient({
     },
   }),
   mutationCache: new MutationCache({
+    onSuccess: () => markNetworkAvailable(),
     onError: (error) => reportApiError(error),
   }),
   defaultOptions: {
@@ -234,6 +242,11 @@ function AuthenticatedAppNavigator() {
       : null;
   const activeWorkspaceIdRef = React.useRef<string | null>(null);
   activeWorkspaceIdRef.current = activeWorkspaceId;
+  const offline = useNetworkStatus();
+  React.useEffect(() => {
+    if (offline) return;
+    void queryClient.refetchQueries({ type: "active" });
+  }, [offline]);
 
   const workspaceListQuery = useQuery({
     queryKey: ["workspace-list", userId ?? null],
@@ -443,9 +456,7 @@ function AuthenticatedAppNavigator() {
                       : "انتهت صلاحية الجلسة أو تعذر التحقق منها. سجّل الدخول مجددًا للمتابعة."
                     : apiErrorNotice.kind === "forbidden"
                       ? "ليس لديك صلاحية لتنفيذ هذا الإجراء."
-                      : apiErrorNotice.kind === "server"
-                        ? "حدث خطأ في الخادم. حاول مرة أخرى لاحقًا."
-                        : "تعذر الاتصال بالخادم. تحقق من اتصالك وحاول مجددًا."}
+                      : "حدث خطأ في الخادم. حاول مرة أخرى لاحقًا."}
                 </Text>
                 <View style={styles.apiErrorActions}>
                   {apiErrorNotice.kind === "unauthorized" ? (
@@ -562,6 +573,7 @@ export default function RootLayout() {
       <ErrorBoundary>
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView style={{ flex: 1, direction: "rtl" }}>
+            <WebFocusRing />
             <KeyboardProvider>
               {isLocalAuthDisabled ? (
                 <StudioProvider>

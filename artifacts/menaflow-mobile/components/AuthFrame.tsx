@@ -5,6 +5,7 @@ import { Link } from 'expo-router';
 import { CairoText as Text } from '@/components/CairoTypography';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import { useColors } from '@/hooks/useColors';
 
 type AuthMode = 'sign-in' | 'sign-up';
@@ -112,6 +113,7 @@ export function AuthFrame({
               </View>
             </View>
 
+            <OfflineBanner />
             {children}
           </View>
         </View>

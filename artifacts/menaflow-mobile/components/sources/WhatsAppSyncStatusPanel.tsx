@@ -535,7 +535,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(127, 127, 127, 0.25)",
   },
-  settingState: { fontSize: 10, fontWeight: "700" },
+  settingState: { fontSize: 12, fontWeight: "700" },
   manageGroupsButton: {
     minHeight: 34,
     borderWidth: 1,
@@ -558,8 +558,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   summaryValue: { fontSize: 17, fontWeight: "800" },
-  summaryRecent: { fontSize: 10, fontWeight: "700", textAlign: "right" },
-  summaryLabel: { fontSize: 9, fontWeight: "600" },
+  summaryRecent: { fontSize: 12, fontWeight: "700", textAlign: "right" },
+  summaryLabel: { fontSize: 12, fontWeight: "600" },
   sectionCaption: {
     fontSize: 12,
     fontWeight: "800",
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 8,
   },
-  noticeText: { flex: 1, fontSize: 11, lineHeight: 17, textAlign: "right" },
+  noticeText: { flex: 1, fontSize: 12, lineHeight: 17, textAlign: "right" },
   historyLimitContainer: { gap: 7 },
   collapsibleHeader: {
     minHeight: 52,
@@ -610,7 +610,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  secondaryActionLabel: { fontSize: 11, fontWeight: "800" },
+  secondaryActionLabel: { fontSize: 12, fontWeight: "800" },
   error: { fontSize: 12, lineHeight: 18, textAlign: "left" },
   syncStatusLine: {
     flexDirection: "row",
@@ -619,7 +619,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 8,
   },
-  syncStatusText: { fontSize: 11, lineHeight: 17, textAlign: "left" },
+  syncStatusText: { fontSize: 12, lineHeight: 17, textAlign: "left" },
   syncStatusList: { gap: 8 },
   syncStatusItem: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 6 },
   groupRow: {
@@ -635,10 +635,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   syncStatusGroup: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "800",
     textAlign: "right",
     flexShrink: 1,
   },
-  syncStatusError: { fontSize: 10, lineHeight: 15, textAlign: "left" },
+  syncStatusError: { fontSize: 12, lineHeight: 15, textAlign: "left" },
 });

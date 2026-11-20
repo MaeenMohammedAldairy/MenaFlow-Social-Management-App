@@ -82,7 +82,7 @@ function ClassicTabLayout({ hidden }: { hidden: boolean }) {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
-        tabBarLabelStyle: { fontFamily: "Cairo_700Bold", fontSize: 10 },
+        tabBarLabelStyle: { fontFamily: "Cairo_700Bold", fontSize: 12 },
         headerShown: false,
         tabBarStyle: {
           position: "absolute",

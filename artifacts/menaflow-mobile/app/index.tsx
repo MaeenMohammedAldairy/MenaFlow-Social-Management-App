@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query';
 import React from 'react';
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   StyleSheet,
   View,
@@ -54,11 +53,7 @@ function RoutedAppIndex() {
   const { isLoaded, isSignedIn } = useAuth();
   if (!isLoaded) return <LoadingState />;
   if (isSignedIn) return <AuthenticatedAppIndex />;
-  return Platform.OS === 'web' ? (
-    <MarketingLandingPage />
-  ) : (
-    <Redirect href="/(auth)/sign-in" />
-  );
+  return <MarketingLandingPage />;
 }
 
 function AuthenticatedAppIndex() {

@@ -1,10 +1,13 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 import {
+  FlatList,
   Linking,
   Modal,
   Pressable,
   ScrollView,
   View,
+  type RefreshControlProps,
+  type ScrollViewProps,
 } from "react-native";
 import { AppAlert as Alert, showAppNotice } from "@/components/AppFeedback";
 import { Image } from "expo-image";
@@ -12,6 +15,7 @@ import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { ActionButton, EmptyState, StatusPill } from "@/components/Ui";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { formatArabicDate, formatArabicDateTime } from "@/lib/formatting";
 import type { Post, PostStatus } from "@/context/StudioContext";
@@ -26,6 +30,10 @@ import {
 import { styles } from "./content-styles";
 
 type ContentPostListProps = {
+  header?: ReactNode;
+  ready?: boolean;
+  refreshControl?: ReactElement<RefreshControlProps>;
+  onScroll?: ScrollViewProps["onScroll"];
   visiblePosts: Post[];
   groupedPosts: Array<{ key: string; title: string; posts: Post[] }>;
   filter: PostStatus | "all";
@@ -134,6 +142,10 @@ function postReadinessMessage(post: Post): string | null {
 }
 
 export function ContentPostList({
+  header,
+  ready = true,
+  refreshControl,
+  onScroll,
   visiblePosts,
   groupedPosts,
   filter,
@@ -155,6 +167,7 @@ export function ContentPostList({
   deletePost,
 }: ContentPostListProps) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -256,855 +269,892 @@ export function ContentPostList({
       </View>
     );
   };
-  return (
-    <>
-      {visiblePosts.length === 0 && !loadingMorePosts ? (
-        <>
-          <EmptyState
-            icon="file-plus"
-            title={
-              !hasActiveFilters && filter === "all"
-                ? "لا توجد منشورات بعد"
-                : hasActiveFilters
-                  ? "لا توجد نتائج"
-                  : "لا توجد عناصر في هذا القسم"
-            }
-            body={
-              !hasActiveFilters
-                ? "أنشئ منشوراً جديداً أو قم بتحويل رسالة واتساب إلى محتوى تسويقي."
-                : "لا توجد منشورات تطابق البحث والمرشحات الحالية."
-            }
+
+  const listItems = ready
+    ? groupedPosts.flatMap((group) => [
+        { kind: "group" as const, group },
+        ...group.posts.map((post) => ({ kind: "post" as const, post })),
+      ])
+    : [];
+
+  const renderPostCard = (post: Post) => {
+    const status = statusInfo(post.status);
+    const displayTitle = displayPostTitle(post);
+    const readinessMessage = postReadinessMessage(post);
+    const expanded = expandedPostIds.has(post.id);
+    const actionsExpanded = expandedActionPostIds.has(post.id);
+    const publishChannelResults = post.channels.flatMap((channel) => {
+      if (channel !== "facebook" && channel !== "instagram")
+        return [];
+      const result = post.publishResults?.[channel];
+      if (!result || typeof result !== "object") return [];
+      const resultRecord = result as Record<string, unknown>;
+      return typeof resultRecord.status === "string"
+        ? [
+            {
+              channel,
+              status: resultRecord.status,
+              reason: resultRecord.reason,
+            },
+          ]
+        : [];
+    });
+    const publishedChannels = publishChannelResults
+      .filter((result) => result.status === "published")
+      .map((result) => platformLabel(result.channel));
+    const failedChannels = publishChannelResults.filter(
+      (result) => result.status !== "published",
+    );
+    const partiallyPublished =
+      post.status === "failed" &&
+      publishedChannels.length > 0 &&
+      failedChannels.length > 0;
+    const allChannelsPublished =
+      post.status === "failed" &&
+      publishChannelResults.length > 0 &&
+      publishChannelResults.every(
+        (result) => result.status === "published",
+      );
+    const displayedStatus = partiallyPublished
+      ? { label: "نجح جزئيًا", tone: "amber" as const }
+      : allChannelsPublished
+        ? { label: "تم النشر", tone: "green" as const }
+        : status;
+    const primaryAction =
+      post.status === "review"
+        ? "preview"
+        : post.status === "draft"
+          ? "submit"
+          : ["approved", "scheduled", "failed"].includes(post.status)
+            ? "publish"
+            : null;
+    const sourceText = post.sourceText ?? "";
+    const isMetaImported = post.sourceType === "meta_import";
+    const importedPlatform =
+      post.metadata?.externalPlatform === "facebook" ||
+      post.metadata?.externalPlatform === "instagram"
+        ? post.metadata.externalPlatform
+        : null;
+    const importedPermalink =
+      typeof post.metadata?.permalinkUrl === "string" &&
+      post.metadata.permalinkUrl.startsWith("https://")
+        ? post.metadata.permalinkUrl
+        : null;
+    const canExpand =
+      post.body.length > 240 || sourceText.length > 160;
+    const reviewReason =
+      (publishChannelResults.length === 0 ? post.error : null) ||
+      (typeof post.metadata?.reviewReason === "string"
+        ? post.metadata.reviewReason
+        : null);
+    const facebookResult = post.publishResults?.facebook;
+    const facebookStatus =
+      facebookResult && typeof facebookResult === "object"
+        ? (facebookResult as Record<string, unknown>).status
+        : null;
+    return (
+      <View
+        key={post.id}
+        style={[styles.postCard, { borderColor: colors.border }]}
+      >
+        <View style={styles.postHeader}>
+          <StatusPill
+            label={displayedStatus.label}
+            tone={displayedStatus.tone}
           />
-          {hasActiveFilters ? (
+          <View style={styles.postTitleWrap}>
+            <Text
+              style={[styles.postTitle, { color: colors.foreground }]}
+              numberOfLines={2}
+            >
+              {displayTitle}
+            </Text>
+            <Text
+              style={[
+                styles.postDate,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              {formatArabicDate(
+                post.sourceMessageDate ?? post.createdAt,
+              ) ?? "غير محدد"}
+            </Text>
+          </View>
+        </View>
+
+        {isMetaImported ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            {importedPlatform ? (
+              <SocialPlatformIcon
+                platform={importedPlatform}
+                size={18}
+              />
+            ) : null}
+            <Text
+              style={[
+                styles.postDate,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              منشور مستورد من{" "}
+              {importedPlatform
+                ? platformLabel(importedPlatform)
+                : "منصة Meta"}{" "}
+              · لا يُعاد نشره من هنا
+            </Text>
+            {importedPermalink ? (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel="فتح المنشور الأصلي على المنصة"
+                onPress={() => {
+                  void Linking.openURL(importedPermalink).catch(() =>
+                    showAppNotice({
+                      title: "تعذر فتح المنشور",
+                      message: "تحقق من اتصال الجهاز ثم أعد المحاولة.",
+                      tone: "error",
+                    }),
+                  );
+                }}
+              >
+                <Text
+                  style={[
+                    styles.reviewAction,
+                    { color: colors.primary },
+                  ]}
+                >
+                  عرض على المنصة
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        ) : null}
+
+        {post.mediaUrls && post.mediaUrls.length > 0 && (
+          <View style={styles.mediaPreview}>
+            <View style={styles.mediaImages}>
+              {post.mediaUrls.slice(0, 3).map((mediaUrl, index) => {
+                const mediaType = postMediaType(post, mediaUrl);
+                const previewUrl = mediaPreviewUrl(
+                  mediaUrl,
+                  post.mediaPreviewUrls?.[index],
+                  mediaPreviewUrls,
+                );
+                return mediaType === "video" ? (
+                  <View
+                    key={`${mediaUrl}-${index}`}
+                    style={[
+                      styles.mediaVideo,
+                      { backgroundColor: colors.accent },
+                    ]}
+                  >
+                    <Icon
+                      name="play"
+                      size={22}
+                      color={colors.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.mediaVideoLabel,
+                        { color: colors.primary },
+                      ]}
+                    >
+                      فيديو
+                    </Text>
+                  </View>
+                ) : mediaType === "image" ? (
+                  failedMediaUrls.has(previewUrl) ? (
+                    <View
+                      key={`${mediaUrl}-${index}`}
+                      accessibilityLabel="تعذر تحميل الوسيط"
+                      style={[
+                        styles.mediaVideo,
+                        { backgroundColor: colors.accent },
+                      ]}
+                    >
+                      <Icon
+                        name="alert-circle"
+                        size={20}
+                        color={colors.destructive}
+                      />
+                      <Text
+                        style={[
+                          styles.mediaVideoLabel,
+                          { color: colors.destructive },
+                        ]}
+                      >
+                        تعذر التحميل
+                      </Text>
+                    </View>
+                  ) : (
+                    <Image
+                      key={`${mediaUrl}-${index}`}
+                      source={{ uri: previewUrl }}
+                      style={styles.mediaImage}
+                      contentFit="cover"
+                      cachePolicy="disk"
+                      priority="low"
+                      accessibilityLabel={`وسيط ${index + 1} للمنشور`}
+                      onError={() => markMediaFailed(previewUrl)}
+                    />
+                  )
+                ) : (
+                  <View
+                    key={`${mediaUrl}-${index}`}
+                    style={[
+                      styles.mediaVideo,
+                      { backgroundColor: colors.accent },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.mediaVideoLabel,
+                        { color: colors.primary },
+                      ]}
+                    >
+                      مستند
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+            <Text
+              style={[styles.mediaLabel, { color: colors.primary }]}
+            >
+              {post.mediaUrls.length} وسائط مرتبطة
+            </Text>
+          </View>
+        )}
+        {!post.mediaUrls || post.mediaUrls.length === 0 ? (
+          <Text
+            style={[
+              styles.missingMedia,
+              { color: colors.mutedForeground },
+            ]}
+          >
+            لا توجد وسائط مرفقة
+          </Text>
+        ) : null}
+
+        <Text
+          style={[styles.postBody, { color: colors.mutedForeground }]}
+          numberOfLines={expanded ? undefined : 4}
+        >
+          {post.body || "لا يوجد نص للمنشور"}
+        </Text>
+
+        {post.sourceGroupName ? (
+          <Text
+            style={[styles.sourceText, { color: colors.primary }]}
+          >
+            مجموعة واتساب: {post.sourceGroupName}
+          </Text>
+        ) : null}
+        {post.sourceText?.trim() &&
+        post.sourceText.trim() !== post.body.trim() ? (
+          <Text
+            style={[
+              styles.sourceText,
+              { color: colors.mutedForeground },
+            ]}
+            numberOfLines={expanded ? 8 : 2}
+          >
+            {post.sourceType === "whatsapp"
+              ? "مصدر واتساب: "
+              : "المصدر: "}
+            {post.sourceText}
+          </Text>
+        ) : null}
+        {canExpand ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded }}
+            onPress={() =>
+              setExpandedPostIds((current) => {
+                const next = new Set(current);
+                if (next.has(post.id)) next.delete(post.id);
+                else next.add(post.id);
+                return next;
+              })
+            }
+            style={styles.expandContentButton}
+          >
+            <Text
+              style={[styles.reviewAction, { color: colors.primary }]}
+            >
+              {expanded ? "عرض أقل" : "عرض النص كاملاً"}
+            </Text>
+          </Pressable>
+        ) : null}
+        {reviewReason &&
+        (post.status === "review" || post.status === "failed") ? (
+          <Text
+            accessibilityRole="text"
+            style={[
+              styles.sourceText,
+              { color: colors.mutedForeground },
+            ]}
+          >
+            {post.status === "review"
+              ? "سبب المراجعة: "
+              : "سبب الفشل: "}
+            {publishReasonLabel(reviewReason) ??
+              (post.status === "failed"
+                ? "تعذّر النشر. راجع اتصال الحساب وصلاحياته ثم أعد المحاولة."
+                : reviewReason)}
+          </Text>
+        ) : null}
+        {post.status === "failed" &&
+        publishChannelResults.length > 0 ? (
+          <View style={{ gap: 5 }}>
+            {publishedChannels.length > 0 ? (
+              <Text
+                style={[styles.sourceText, { color: colors.green }]}
+              >
+                تم النشر بنجاح على {publishedChannels.join(" و")}.
+              </Text>
+            ) : null}
+            {failedChannels.map((result) => (
+              <Text
+                key={result.channel}
+                style={[
+                  styles.sourceText,
+                  { color: colors.destructive },
+                ]}
+              >
+                {result.status === "unknown"
+                  ? `لم يتأكد النشر على ${platformLabel(result.channel)}: `
+                  : `تعذّر النشر على ${platformLabel(result.channel)}: `}
+                {publishReasonLabel(result.reason) ??
+                  (result.status === "unknown"
+                    ? "تحقق من المنصة قبل إعادة المحاولة لتجنب نشر نسخة مكررة."
+                    : "تعذّر النشر على هذه المنصة. راجع إعدادات الحساب ثم أعد المحاولة.")}
+              </Text>
+            ))}
+          </View>
+        ) : null}
+        {readinessMessage &&
+        post.status !== "published" &&
+        post.status !== "publishing" ? (
+          <Text
+            accessibilityRole="text"
+            style={[styles.sourceText, { color: colors.destructive }]}
+          >
+            {readinessMessage}
+          </Text>
+        ) : null}
+        {facebookStatus === "unknown" ? (
+          <View style={{ gap: 6 }}>
             <Pressable
               accessibilityRole="button"
-              onPress={onClearFilters}
+              disabled={verifyingPostId === post.id}
+              onPress={() => void onVerifyFacebookStatus(post.id)}
+            >
+              <Text
+                style={[
+                  styles.reviewAction,
+                  { color: colors.primary },
+                ]}
+              >
+                {verifyingPostId === post.id
+                  ? "جارٍ التحقق من فيسبوك…"
+                  : "تحقق من حالة النشر على فيسبوك"}
+              </Text>
+            </Pressable>
+            {verificationFeedback[post.id] ? (
+              <Text
+                accessibilityRole="text"
+                style={[
+                  styles.publishMessage,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                {verificationFeedback[post.id]}
+              </Text>
+            ) : null}
+            {facebookResult &&
+            typeof facebookResult === "object" &&
+            typeof (facebookResult as Record<string, unknown>)
+              .reason === "string" ? (
+              <Text
+                accessibilityRole="text"
+                style={[
+                  styles.publishMessage,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                {publishReasonLabel(
+                  (facebookResult as Record<string, unknown>).reason,
+                )}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        <View style={styles.postFooter}>
+          {post.channels.length > 0 ? (
+            <View style={styles.postChannels}>
+              {post.channels.map((channel) => (
+                <View
+                  key={channel}
+                  accessibilityLabel={`منصة ${platformLabel(channel)}`}
+                  style={[
+                    styles.postChannelBadge,
+                    { borderColor: colors.border },
+                  ]}
+                >
+                  <SocialPlatformIcon platform={channel} size={16} />
+                  <Text
+                    style={[
+                      styles.postChannel,
+                      {
+                        color:
+                          channel === "facebook"
+                            ? colors.facebook
+                            : channel === "instagram"
+                              ? colors.instagram
+                              : colors.green,
+                      },
+                    ]}
+                  >
+                    {platformLabel(channel)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          <View style={styles.postActions}>
+            {primaryAction ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  primaryAction === "preview"
+                    ? "معاينة ومراجعة المنشور"
+                    : primaryAction === "submit"
+                      ? "إرسال المنشور للمراجعة"
+                      : post.status === "failed"
+                        ? "إعادة محاولة النشر"
+                        : "نشر المنشور"
+                }
+                disabled={
+                  primaryAction === "publish" &&
+                  Boolean(readinessMessage)
+                }
+                accessibilityState={{
+                  disabled:
+                    primaryAction === "publish" &&
+                    Boolean(readinessMessage),
+                }}
+                style={[
+                  styles.primaryPostAction,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity:
+                      primaryAction === "publish" && readinessMessage
+                        ? 0.5
+                        : 1,
+                  },
+                ]}
+                onPress={() => {
+                  if (primaryAction === "preview") {
+                    setPreviewChannel(
+                      previewChannels(post)[0] ?? "facebook",
+                    );
+                    setPreviewPost(post);
+                  } else if (primaryAction === "submit") {
+                    void updatePostStatus(post.id, "review").catch(
+                      (error) =>
+                        showAppNotice({
+                          title: "تعذر إرسال المنشور للمراجعة",
+                          message:
+                            error instanceof Error
+                              ? error.message
+                              : "تعذر تحديث حالة المنشور.",
+                          tone: "error",
+                        }),
+                    );
+                  } else {
+                    onPublish(post);
+                  }
+                }}
+              >
+                <Text
+                  style={[
+                    styles.reviewAction,
+                    { color: colors.primaryForeground },
+                  ]}
+                >
+                  {primaryAction === "preview"
+                    ? "مراجعة المنشور"
+                    : primaryAction === "submit"
+                      ? "إرسال للمراجعة"
+                      : post.status === "failed"
+                        ? "إعادة المحاولة"
+                        : "نشر الآن"}
+                </Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ expanded: actionsExpanded }}
+              onPress={() =>
+                setExpandedActionPostIds((current) => {
+                  const next = new Set(current);
+                  if (next.has(post.id)) next.delete(post.id);
+                  else next.add(post.id);
+                  return next;
+                })
+              }
               style={[
-                styles.clearFiltersButton,
+                styles.morePostActionsButton,
                 { borderColor: colors.border },
               ]}
             >
-              <Text style={[styles.reviewAction, { color: colors.primary }]}>
-                مسح المرشحات
-              </Text>
-            </Pressable>
-          ) : filter === "all" ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="إنشاء منشور جديد"
-              onPress={onCreatePost}
-              style={({ pressed }) => [
-                styles.emptyStatePrimaryAction,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: pressed ? 0.84 : 1,
-                  transform: [{ scale: pressed ? 0.98 : 1 }],
-                },
-              ]}
-            >
-              <Icon name="plus" size={17} color={colors.primaryForeground} />
               <Text
                 style={[
-                  styles.createPostLabel,
-                  { color: colors.primaryForeground },
+                  styles.reviewAction,
+                  { color: colors.foreground },
                 ]}
               >
-                إنشاء منشور
+                المزيد
               </Text>
+              <Icon
+                name={actionsExpanded ? "chevron-up" : "chevron-down"}
+                size={15}
+                color={colors.mutedForeground}
+              />
             </Pressable>
-          ) : null}
-        </>
-      ) : visiblePosts.length > 0 ? (
-        groupedPosts.map((group) => (
-          <View key={group.key} style={styles.postGroup}>
-            <Text style={[styles.postGroupTitle, { color: colors.foreground }]}>
-              {group.title}
-            </Text>
-            {group.posts.map((post) => {
-              const status = statusInfo(post.status);
-              const displayTitle = displayPostTitle(post);
-              const readinessMessage = postReadinessMessage(post);
-              const expanded = expandedPostIds.has(post.id);
-              const actionsExpanded = expandedActionPostIds.has(post.id);
-              const publishChannelResults = post.channels.flatMap((channel) => {
-                if (channel !== "facebook" && channel !== "instagram")
-                  return [];
-                const result = post.publishResults?.[channel];
-                if (!result || typeof result !== "object") return [];
-                const resultRecord = result as Record<string, unknown>;
-                return typeof resultRecord.status === "string"
-                  ? [
-                      {
-                        channel,
-                        status: resultRecord.status,
-                        reason: resultRecord.reason,
-                      },
-                    ]
-                  : [];
-              });
-              const publishedChannels = publishChannelResults
-                .filter((result) => result.status === "published")
-                .map((result) => platformLabel(result.channel));
-              const failedChannels = publishChannelResults.filter(
-                (result) => result.status !== "published",
-              );
-              const partiallyPublished =
-                post.status === "failed" &&
-                publishedChannels.length > 0 &&
-                failedChannels.length > 0;
-              const allChannelsPublished =
-                post.status === "failed" &&
-                publishChannelResults.length > 0 &&
-                publishChannelResults.every(
-                  (result) => result.status === "published",
-                );
-              const displayedStatus = partiallyPublished
-                ? { label: "نجح جزئيًا", tone: "amber" as const }
-                : allChannelsPublished
-                  ? { label: "تم النشر", tone: "green" as const }
-                  : status;
-              const primaryAction =
-                post.status === "review"
-                  ? "preview"
-                  : post.status === "draft"
-                    ? "submit"
-                    : ["approved", "scheduled", "failed"].includes(post.status)
-                      ? "publish"
-                      : null;
-              const sourceText = post.sourceText ?? "";
-              const isMetaImported = post.sourceType === "meta_import";
-              const importedPlatform =
-                post.metadata?.externalPlatform === "facebook" ||
-                post.metadata?.externalPlatform === "instagram"
-                  ? post.metadata.externalPlatform
-                  : null;
-              const importedPermalink =
-                typeof post.metadata?.permalinkUrl === "string" &&
-                post.metadata.permalinkUrl.startsWith("https://")
-                  ? post.metadata.permalinkUrl
-                  : null;
-              const canExpand =
-                post.body.length > 240 || sourceText.length > 160;
-              const reviewReason =
-                (publishChannelResults.length === 0 ? post.error : null) ||
-                (typeof post.metadata?.reviewReason === "string"
-                  ? post.metadata.reviewReason
-                  : null);
-              const facebookResult = post.publishResults?.facebook;
-              const facebookStatus =
-                facebookResult && typeof facebookResult === "object"
-                  ? (facebookResult as Record<string, unknown>).status
-                  : null;
-              return (
-                <View
-                  key={post.id}
-                  style={[styles.postCard, { borderColor: colors.border }]}
+            {actionsExpanded ? (
+              <View
+                style={[
+                  styles.secondaryPostActions,
+                  { borderTopColor: colors.border },
+                ]}
+              >
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => onEdit(post)}
+                  style={[
+                    styles.postActionButton,
+                    { borderColor: colors.border },
+                  ]}
                 >
-                  <View style={styles.postHeader}>
-                    <StatusPill
-                      label={displayedStatus.label}
-                      tone={displayedStatus.tone}
-                    />
-                    <View style={styles.postTitleWrap}>
-                      <Text
-                        style={[styles.postTitle, { color: colors.foreground }]}
-                        numberOfLines={2}
-                      >
-                        {displayTitle}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.postDate,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        {formatArabicDate(
-                          post.sourceMessageDate ?? post.createdAt,
-                        ) ?? "غير محدد"}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {isMetaImported ? (
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        gap: 8,
-                      }}
+                  <Text
+                    style={[
+                      styles.reviewAction,
+                      { color: colors.primary },
+                    ]}
+                  >
+                    تعديل
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="معاينة المنشور والنتيجة"
+                  onPress={() => {
+                    setPreviewChannel(
+                      previewChannels(post)[0] ?? "facebook",
+                    );
+                    setPreviewPost(post);
+                  }}
+                  style={[
+                    styles.postActionButton,
+                    { borderColor: colors.border },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.reviewAction,
+                      { color: colors.primary },
+                    ]}
+                  >
+                    المعاينة
+                  </Text>
+                </Pressable>
+                {post.status !== "published" &&
+                post.status !== "publishing" &&
+                post.status !== "failed" ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={Boolean(readinessMessage)}
+                    accessibilityState={{
+                      disabled: Boolean(readinessMessage),
+                    }}
+                    onPress={() => onPublish(post)}
+                    style={[
+                      styles.postActionButton,
+                      {
+                        borderColor: colors.border,
+                        opacity: readinessMessage ? 0.5 : 1,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.reviewAction,
+                        { color: colors.green },
+                      ]}
                     >
-                      {importedPlatform ? (
-                        <SocialPlatformIcon
-                          platform={importedPlatform}
-                          size={18}
-                        />
-                      ) : null}
-                      <Text
-                        style={[
-                          styles.postDate,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        منشور مستورد من{" "}
-                        {importedPlatform
-                          ? platformLabel(importedPlatform)
-                          : "منصة Meta"}{" "}
-                        · لا يُعاد نشره من هنا
-                      </Text>
-                      {importedPermalink ? (
-                        <Pressable
-                          accessibilityRole="link"
-                          accessibilityLabel="فتح المنشور الأصلي على المنصة"
-                          onPress={() => {
-                            void Linking.openURL(importedPermalink).catch(() =>
+                      نشر يدوي
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {post.status === "review" ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={
+                      Boolean(readinessMessage) ||
+                      approvingPostId === post.id
+                    }
+                    accessibilityLabel={`اعتماد ${post.title || "المنشور"} للنشر التلقائي`}
+                    accessibilityState={{
+                      disabled: Boolean(readinessMessage),
+                      busy: approvingPostId === post.id,
+                    }}
+                    onPress={async () => {
+                      setApprovingPostId(post.id);
+                      try {
+                        await onApprove(post);
+                      } finally {
+                        setApprovingPostId(null);
+                      }
+                    }}
+                    style={[
+                      styles.postActionButton,
+                      {
+                        borderColor: colors.border,
+                        opacity: readinessMessage ? 0.5 : 1,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.reviewAction,
+                        { color: colors.green },
+                      ]}
+                    >
+                      {approvingPostId === post.id
+                        ? "جارٍ الاعتماد…"
+                        : "اعتماد"}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {post.status !== "draft" &&
+                post.status !== "published" &&
+                post.status !== "publishing" ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() =>
+                      void updatePostStatus(post.id, "draft").catch(
+                        (error) =>
+                          showAppNotice({
+                            title: "تعذر حفظ المسودة",
+                            message:
+                              error instanceof Error
+                                ? error.message
+                                : "تعذر تحديث حالة المنشور.",
+                            tone: "error",
+                          }),
+                      )
+                    }
+                    style={[
+                      styles.postActionButton,
+                      { borderColor: colors.border },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.reviewAction,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      حفظ كمسودة
+                    </Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="حذف المنشور"
+                  style={styles.deleteActionButton}
+                  onPress={() =>
+                    Alert.alert(
+                      "حذف المنشور؟",
+                      post.status === "published"
+                        ? "سيُحذف سجل المنشور من مساحة العمل والخادم فقط؛ وسيبقى المنشور على المنصة."
+                        : "سيُحذف هذا المنشور نهائياً من مساحة العمل والخادم.",
+                      [
+                        { text: "إلغاء", style: "cancel" },
+                        {
+                          text: "حذف",
+                          style: "destructive",
+                          onPress: () =>
+                            void deletePost(post.id).catch((error) =>
                               showAppNotice({
-                                title: "تعذر فتح المنشور",
-                                message: "تحقق من اتصال الجهاز ثم أعد المحاولة.",
+                                title: "تعذر حذف المنشور",
+                                message:
+                                  error instanceof Error
+                                    ? error.message
+                                    : "تعذر حذف المنشور من مساحة العمل.",
                                 tone: "error",
                               }),
-                            );
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.reviewAction,
-                              { color: colors.primary },
-                            ]}
-                          >
-                            عرض على المنصة
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  ) : null}
-
-                  {post.mediaUrls && post.mediaUrls.length > 0 && (
-                    <View style={styles.mediaPreview}>
-                      <View style={styles.mediaImages}>
-                        {post.mediaUrls.slice(0, 3).map((mediaUrl, index) => {
-                          const mediaType = postMediaType(post, mediaUrl);
-                          const previewUrl = mediaPreviewUrl(
-                            mediaUrl,
-                            post.mediaPreviewUrls?.[index],
-                            mediaPreviewUrls,
-                          );
-                          return mediaType === "video" ? (
-                            <View
-                              key={`${mediaUrl}-${index}`}
-                              style={[
-                                styles.mediaVideo,
-                                { backgroundColor: colors.accent },
-                              ]}
-                            >
-                              <Icon
-                                name="play"
-                                size={22}
-                                color={colors.primary}
-                              />
-                              <Text
-                                style={[
-                                  styles.mediaVideoLabel,
-                                  { color: colors.primary },
-                                ]}
-                              >
-                                فيديو
-                              </Text>
-                            </View>
-                          ) : mediaType === "image" ? (
-                            failedMediaUrls.has(previewUrl) ? (
-                              <View
-                                key={`${mediaUrl}-${index}`}
-                                accessibilityLabel="تعذر تحميل الوسيط"
-                                style={[
-                                  styles.mediaVideo,
-                                  { backgroundColor: colors.accent },
-                                ]}
-                              >
-                                <Icon
-                                  name="alert-circle"
-                                  size={20}
-                                  color={colors.destructive}
-                                />
-                                <Text
-                                  style={[
-                                    styles.mediaVideoLabel,
-                                    { color: colors.destructive },
-                                  ]}
-                                >
-                                  تعذر التحميل
-                                </Text>
-                              </View>
-                            ) : (
-                              <Image
-                                key={`${mediaUrl}-${index}`}
-                                source={{ uri: previewUrl }}
-                                style={styles.mediaImage}
-                                contentFit="cover"
-                                cachePolicy="disk"
-                                priority="low"
-                                accessibilityLabel={`وسيط ${index + 1} للمنشور`}
-                                onError={() => markMediaFailed(previewUrl)}
-                              />
-                            )
-                          ) : (
-                            <View
-                              key={`${mediaUrl}-${index}`}
-                              style={[
-                                styles.mediaVideo,
-                                { backgroundColor: colors.accent },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.mediaVideoLabel,
-                                  { color: colors.primary },
-                                ]}
-                              >
-                                مستند
-                              </Text>
-                            </View>
-                          );
-                        })}
-                      </View>
-                      <Text
-                        style={[styles.mediaLabel, { color: colors.primary }]}
-                      >
-                        {post.mediaUrls.length} وسائط مرتبطة
-                      </Text>
-                    </View>
-                  )}
-                  {!post.mediaUrls || post.mediaUrls.length === 0 ? (
-                    <Text
-                      style={[
-                        styles.missingMedia,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      لا توجد وسائط مرفقة
-                    </Text>
-                  ) : null}
-
-                  <Text
-                    style={[styles.postBody, { color: colors.mutedForeground }]}
-                    numberOfLines={expanded ? undefined : 4}
-                  >
-                    {post.body || "لا يوجد نص للمنشور"}
-                  </Text>
-
-                  {post.sourceGroupName ? (
-                    <Text
-                      style={[styles.sourceText, { color: colors.primary }]}
-                    >
-                      مجموعة واتساب: {post.sourceGroupName}
-                    </Text>
-                  ) : null}
-                  {post.sourceText?.trim() &&
-                  post.sourceText.trim() !== post.body.trim() ? (
-                    <Text
-                      style={[
-                        styles.sourceText,
-                        { color: colors.mutedForeground },
-                      ]}
-                      numberOfLines={expanded ? 8 : 2}
-                    >
-                      {post.sourceType === "whatsapp"
-                        ? "مصدر واتساب: "
-                        : "المصدر: "}
-                      {post.sourceText}
-                    </Text>
-                  ) : null}
-                  {canExpand ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityState={{ expanded }}
-                      onPress={() =>
-                        setExpandedPostIds((current) => {
-                          const next = new Set(current);
-                          if (next.has(post.id)) next.delete(post.id);
-                          else next.add(post.id);
-                          return next;
-                        })
-                      }
-                      style={styles.expandContentButton}
-                    >
-                      <Text
-                        style={[styles.reviewAction, { color: colors.primary }]}
-                      >
-                        {expanded ? "عرض أقل" : "عرض النص كاملاً"}
-                      </Text>
-                    </Pressable>
-                  ) : null}
-                  {reviewReason &&
-                  (post.status === "review" || post.status === "failed") ? (
-                    <Text
-                      accessibilityRole="text"
-                      style={[
-                        styles.sourceText,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      {post.status === "review"
-                        ? "سبب المراجعة: "
-                        : "سبب الفشل: "}
-                      {publishReasonLabel(reviewReason) ??
-                        (post.status === "failed"
-                          ? "تعذّر النشر. راجع اتصال الحساب وصلاحياته ثم أعد المحاولة."
-                          : reviewReason)}
-                    </Text>
-                  ) : null}
-                  {post.status === "failed" &&
-                  publishChannelResults.length > 0 ? (
-                    <View style={{ gap: 5 }}>
-                      {publishedChannels.length > 0 ? (
-                        <Text
-                          style={[styles.sourceText, { color: colors.green }]}
-                        >
-                          تم النشر بنجاح على {publishedChannels.join(" و")}.
-                        </Text>
-                      ) : null}
-                      {failedChannels.map((result) => (
-                        <Text
-                          key={result.channel}
-                          style={[
-                            styles.sourceText,
-                            { color: colors.destructive },
-                          ]}
-                        >
-                          {result.status === "unknown"
-                            ? `لم يتأكد النشر على ${platformLabel(result.channel)}: `
-                            : `تعذّر النشر على ${platformLabel(result.channel)}: `}
-                          {publishReasonLabel(result.reason) ??
-                            (result.status === "unknown"
-                              ? "تحقق من المنصة قبل إعادة المحاولة لتجنب نشر نسخة مكررة."
-                              : "تعذّر النشر على هذه المنصة. راجع إعدادات الحساب ثم أعد المحاولة.")}
-                        </Text>
-                      ))}
-                    </View>
-                  ) : null}
-                  {readinessMessage &&
-                  post.status !== "published" &&
-                  post.status !== "publishing" ? (
-                    <Text
-                      accessibilityRole="text"
-                      style={[styles.sourceText, { color: colors.destructive }]}
-                    >
-                      {readinessMessage}
-                    </Text>
-                  ) : null}
-                  {facebookStatus === "unknown" ? (
-                    <View style={{ gap: 6 }}>
-                      <Pressable
-                        accessibilityRole="button"
-                        disabled={verifyingPostId === post.id}
-                        onPress={() => void onVerifyFacebookStatus(post.id)}
-                      >
-                        <Text
-                          style={[
-                            styles.reviewAction,
-                            { color: colors.primary },
-                          ]}
-                        >
-                          {verifyingPostId === post.id
-                            ? "جارٍ التحقق من فيسبوك…"
-                            : "تحقق من حالة النشر على فيسبوك"}
-                        </Text>
-                      </Pressable>
-                      {verificationFeedback[post.id] ? (
-                        <Text
-                          accessibilityRole="text"
-                          style={[
-                            styles.publishMessage,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          {verificationFeedback[post.id]}
-                        </Text>
-                      ) : null}
-                      {facebookResult &&
-                      typeof facebookResult === "object" &&
-                      typeof (facebookResult as Record<string, unknown>)
-                        .reason === "string" ? (
-                        <Text
-                          accessibilityRole="text"
-                          style={[
-                            styles.publishMessage,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          {publishReasonLabel(
-                            (facebookResult as Record<string, unknown>).reason,
-                          )}
-                        </Text>
-                      ) : null}
-                    </View>
-                  ) : null}
-
-                  <View style={styles.postFooter}>
-                    {post.channels.length > 0 ? (
-                      <View style={styles.postChannels}>
-                        {post.channels.map((channel) => (
-                          <View
-                            key={channel}
-                            accessibilityLabel={`منصة ${platformLabel(channel)}`}
-                            style={[
-                              styles.postChannelBadge,
-                              { borderColor: colors.border },
-                            ]}
-                          >
-                            <SocialPlatformIcon platform={channel} size={16} />
-                            <Text
-                              style={[
-                                styles.postChannel,
-                                {
-                                  color:
-                                    channel === "facebook"
-                                      ? colors.facebook
-                                      : channel === "instagram"
-                                        ? colors.instagram
-                                        : colors.green,
-                                },
-                              ]}
-                            >
-                              {platformLabel(channel)}
-                            </Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-
-                    <View style={styles.postActions}>
-                      {primaryAction ? (
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel={
-                            primaryAction === "preview"
-                              ? "معاينة ومراجعة المنشور"
-                              : primaryAction === "submit"
-                                ? "إرسال المنشور للمراجعة"
-                                : post.status === "failed"
-                                  ? "إعادة محاولة النشر"
-                                  : "نشر المنشور"
-                          }
-                          disabled={
-                            primaryAction === "publish" &&
-                            Boolean(readinessMessage)
-                          }
-                          accessibilityState={{
-                            disabled:
-                              primaryAction === "publish" &&
-                              Boolean(readinessMessage),
-                          }}
-                          style={[
-                            styles.primaryPostAction,
-                            {
-                              backgroundColor: colors.primary,
-                              opacity:
-                                primaryAction === "publish" && readinessMessage
-                                  ? 0.5
-                                  : 1,
-                            },
-                          ]}
-                          onPress={() => {
-                            if (primaryAction === "preview") {
-                              setPreviewChannel(
-                                previewChannels(post)[0] ?? "facebook",
-                              );
-                              setPreviewPost(post);
-                            } else if (primaryAction === "submit") {
-                              void updatePostStatus(post.id, "review").catch(
-                                (error) =>
-                                  showAppNotice({
-                                    title: "تعذر إرسال المنشور للمراجعة",
-                                    message:
-                                      error instanceof Error
-                                        ? error.message
-                                        : "تعذر تحديث حالة المنشور.",
-                                    tone: "error",
-                                  }),
-                              );
-                            } else {
-                              onPublish(post);
-                            }
-                          }}
-                        >
-                          <Text
-                            style={[
-                              styles.reviewAction,
-                              { color: colors.primaryForeground },
-                            ]}
-                          >
-                            {primaryAction === "preview"
-                              ? "مراجعة المنشور"
-                              : primaryAction === "submit"
-                                ? "إرسال للمراجعة"
-                                : post.status === "failed"
-                                  ? "إعادة المحاولة"
-                                  : "نشر الآن"}
-                          </Text>
-                        </Pressable>
-                      ) : null}
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityState={{ expanded: actionsExpanded }}
-                        onPress={() =>
-                          setExpandedActionPostIds((current) => {
-                            const next = new Set(current);
-                            if (next.has(post.id)) next.delete(post.id);
-                            else next.add(post.id);
-                            return next;
-                          })
-                        }
-                        style={[
-                          styles.morePostActionsButton,
-                          { borderColor: colors.border },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.reviewAction,
-                            { color: colors.foreground },
-                          ]}
-                        >
-                          المزيد
-                        </Text>
-                        <Icon
-                          name={actionsExpanded ? "chevron-up" : "chevron-down"}
-                          size={15}
-                          color={colors.mutedForeground}
-                        />
-                      </Pressable>
-                      {actionsExpanded ? (
-                        <View
-                          style={[
-                            styles.secondaryPostActions,
-                            { borderTopColor: colors.border },
-                          ]}
-                        >
-                          <Pressable
-                            accessibilityRole="button"
-                            onPress={() => onEdit(post)}
-                            style={[
-                              styles.postActionButton,
-                              { borderColor: colors.border },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.reviewAction,
-                                { color: colors.primary },
-                              ]}
-                            >
-                              تعديل
-                            </Text>
-                          </Pressable>
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel="معاينة المنشور والنتيجة"
-                            onPress={() => {
-                              setPreviewChannel(
-                                previewChannels(post)[0] ?? "facebook",
-                              );
-                              setPreviewPost(post);
-                            }}
-                            style={[
-                              styles.postActionButton,
-                              { borderColor: colors.border },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.reviewAction,
-                                { color: colors.primary },
-                              ]}
-                            >
-                              المعاينة
-                            </Text>
-                          </Pressable>
-                          {post.status !== "published" &&
-                          post.status !== "publishing" &&
-                          post.status !== "failed" ? (
-                            <Pressable
-                              accessibilityRole="button"
-                              disabled={Boolean(readinessMessage)}
-                              accessibilityState={{
-                                disabled: Boolean(readinessMessage),
-                              }}
-                              onPress={() => onPublish(post)}
-                              style={[
-                                styles.postActionButton,
-                                {
-                                  borderColor: colors.border,
-                                  opacity: readinessMessage ? 0.5 : 1,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.reviewAction,
-                                  { color: colors.green },
-                                ]}
-                              >
-                                نشر يدوي
-                              </Text>
-                            </Pressable>
-                          ) : null}
-                          {post.status === "review" ? (
-                            <Pressable
-                              accessibilityRole="button"
-                              disabled={
-                                Boolean(readinessMessage) ||
-                                approvingPostId === post.id
-                              }
-                              accessibilityLabel={`اعتماد ${post.title || "المنشور"} للنشر التلقائي`}
-                              accessibilityState={{
-                                disabled: Boolean(readinessMessage),
-                                busy: approvingPostId === post.id,
-                              }}
-                              onPress={async () => {
-                                setApprovingPostId(post.id);
-                                try {
-                                  await onApprove(post);
-                                } finally {
-                                  setApprovingPostId(null);
-                                }
-                              }}
-                              style={[
-                                styles.postActionButton,
-                                {
-                                  borderColor: colors.border,
-                                  opacity: readinessMessage ? 0.5 : 1,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.reviewAction,
-                                  { color: colors.green },
-                                ]}
-                              >
-                                {approvingPostId === post.id
-                                  ? "جارٍ الاعتماد…"
-                                  : "اعتماد"}
-                              </Text>
-                            </Pressable>
-                          ) : null}
-                          {post.status !== "draft" &&
-                          post.status !== "published" &&
-                          post.status !== "publishing" ? (
-                            <Pressable
-                              accessibilityRole="button"
-                              onPress={() =>
-                                void updatePostStatus(post.id, "draft").catch(
-                                  (error) =>
-                                    showAppNotice({
-                                      title: "تعذر حفظ المسودة",
-                                      message:
-                                        error instanceof Error
-                                          ? error.message
-                                          : "تعذر تحديث حالة المنشور.",
-                                      tone: "error",
-                                    }),
-                                )
-                              }
-                              style={[
-                                styles.postActionButton,
-                                { borderColor: colors.border },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.reviewAction,
-                                  { color: colors.mutedForeground },
-                                ]}
-                              >
-                                حفظ كمسودة
-                              </Text>
-                            </Pressable>
-                          ) : null}
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel="حذف المنشور"
-                            style={styles.deleteActionButton}
-                            onPress={() =>
-                              Alert.alert(
-                                "حذف المنشور؟",
-                                post.status === "published"
-                                  ? "سيُحذف سجل المنشور من مساحة العمل والخادم فقط؛ وسيبقى المنشور على المنصة."
-                                  : "سيُحذف هذا المنشور نهائياً من مساحة العمل والخادم.",
-                                [
-                                  { text: "إلغاء", style: "cancel" },
-                                  {
-                                    text: "حذف",
-                                    style: "destructive",
-                                    onPress: () =>
-                                      void deletePost(post.id).catch((error) =>
-                                        showAppNotice({
-                                          title: "تعذر حذف المنشور",
-                                          message:
-                                            error instanceof Error
-                                              ? error.message
-                                              : "تعذر حذف المنشور من مساحة العمل.",
-                                          tone: "error",
-                                        }),
-                                      ),
-                                  },
-                                ],
-                              )
-                            }
-                          >
-                            <Icon
-                              name="trash-2"
-                              size={16}
-                              color={colors.destructive}
-                            />
-                          </Pressable>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
+                            ),
+                        },
+                      ],
+                    )
+                  }
+                >
+                  <Icon
+                    name="trash-2"
+                    size={16}
+                    color={colors.destructive}
+                  />
+                </Pressable>
+              </View>
+            ) : null}
           </View>
-        ))
-      ) : null}
-      {loadingMorePosts ? (
-        <Text
-          style={[
-            styles.intro,
-            { color: colors.mutedForeground, textAlign: "left" },
-          ]}
-        >
-          جارٍ تحميل المزيد…
-        </Text>
-      ) : null}
-      {loadMoreError ? (
-        <View
-          style={[
-            styles.connectionLoadError,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.destructive,
-              borderWidth: 1,
-            },
-          ]}
-        >
-          <Text
-            accessibilityRole="alert"
-            style={[styles.intro, { color: colors.destructive }]}
-          >
-            {loadMoreError}
-          </Text>
-          <ActionButton
-            label={loadingMorePosts ? "جارٍ التحميل…" : "إعادة المحاولة"}
-            icon={loadingMorePosts ? "clock" : "refresh-cw"}
-            secondary
-            disabled={loadingMorePosts}
-            onPress={onRetryLoadMore}
-          />
         </View>
-      ) : null}
+      </View>
+    );
+  };
+
+  return (
+    <>
+      <FlatList
+        data={listItems}
+        keyExtractor={(item) =>
+          item.kind === "group"
+            ? `group-${item.group.key}`
+            : `post-${item.post.id}`
+        }
+        renderItem={({ item }) =>
+          item.kind === "group" ? (
+            <Text style={[styles.postGroupTitle, { color: colors.foreground }]}>
+              {item.group.title}
+            </Text>
+          ) : (
+            renderPostCard(item.post)
+          )
+        }
+        ListHeaderComponent={header ? <>{header}</> : undefined}
+        ListEmptyComponent={
+          ready && visiblePosts.length === 0 && !loadingMorePosts ? (
+      <>
+        <EmptyState
+          icon="file-plus"
+          title={
+            !hasActiveFilters && filter === "all"
+              ? "لا توجد منشورات بعد"
+              : hasActiveFilters
+                ? "لا توجد نتائج"
+                : "لا توجد عناصر في هذا القسم"
+          }
+          body={
+            !hasActiveFilters
+              ? "أنشئ منشوراً جديداً أو قم بتحويل رسالة واتساب إلى محتوى تسويقي."
+              : "لا توجد منشورات تطابق البحث والمرشحات الحالية."
+          }
+        />
+        {hasActiveFilters ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClearFilters}
+            style={[
+              styles.clearFiltersButton,
+              { borderColor: colors.border },
+            ]}
+          >
+            <Text style={[styles.reviewAction, { color: colors.primary }]}>
+              مسح المرشحات
+            </Text>
+          </Pressable>
+        ) : filter === "all" ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="إنشاء منشور جديد"
+            onPress={onCreatePost}
+            style={({ pressed }) => [
+              styles.emptyStatePrimaryAction,
+              {
+                backgroundColor: colors.primary,
+                opacity: pressed ? 0.84 : 1,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
+              },
+            ]}
+          >
+            <Icon name="plus" size={17} color={colors.primaryForeground} />
+            <Text
+              style={[
+                styles.createPostLabel,
+                { color: colors.primaryForeground },
+              ]}
+            >
+              إنشاء منشور
+            </Text>
+          </Pressable>
+        ) : null}
+      </>
+          ) : undefined
+        }
+        ListFooterComponent={
+          <>
+    {loadingMorePosts ? (
+      <Text
+        style={[
+          styles.intro,
+          { color: colors.mutedForeground, textAlign: "left" },
+        ]}
+      >
+        جارٍ تحميل المزيد…
+      </Text>
+    ) : null}
+    {loadMoreError ? (
+      <View
+        style={[
+          styles.connectionLoadError,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.destructive,
+            borderWidth: 1,
+          },
+        ]}
+      >
+        <Text
+          accessibilityRole="alert"
+          style={[styles.intro, { color: colors.destructive }]}
+        >
+          {loadMoreError}
+        </Text>
+        <ActionButton
+          label={loadingMorePosts ? "جارٍ التحميل…" : "إعادة المحاولة"}
+          icon={loadingMorePosts ? "clock" : "refresh-cw"}
+          secondary
+          disabled={loadingMorePosts}
+          onPress={onRetryLoadMore}
+        />
+      </View>
+    ) : null}
+          </>
+        }
+        style={styles.postListFill}
+        contentContainerStyle={[
+          styles.postListContent,
+          { paddingBottom: 112 + insets.bottom },
+        ]}
+        refreshControl={refreshControl}
+        onScroll={onScroll}
+        scrollEventThrottle={onScroll ? 250 : undefined}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      />
       <Modal
         visible={previewPost !== null}
         transparent

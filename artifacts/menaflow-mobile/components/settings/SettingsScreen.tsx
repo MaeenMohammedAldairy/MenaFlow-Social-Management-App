@@ -937,7 +937,7 @@ const styles = StyleSheet.create({
   settingRowLast: { borderBottomWidth: 0 },
   settingCopy: { flex: 1, minWidth: 0, alignItems: "flex-start", gap: 4 },
   settingTitle: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  settingSubtitle: { fontSize: 10, lineHeight: 16, textAlign: "right" },
+  settingSubtitle: { fontSize: 12, lineHeight: 16, textAlign: "right" },
   settingIcon: {
     width: 38,
     height: 38,
@@ -945,7 +945,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  version: { textAlign: "center", fontSize: 11 },
+  version: { textAlign: "center", fontSize: 12 },
   appearanceOptions: {
     gap: 2,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -986,7 +986,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   plansHeading: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
     textAlign: "right",
     paddingTop: 4,
@@ -1000,6 +1000,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginTop: 7,
   },
-  subscriptionNotice: { fontSize: 10, lineHeight: 16, paddingTop: 8 },
+  subscriptionNotice: { fontSize: 12, lineHeight: 16, paddingTop: 8 },
   subscriptionLink: { fontSize: 12, fontWeight: "700" },
 });

@@ -847,7 +847,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   body: { fontSize: 13, lineHeight: 21, textAlign: "left" },
-  bodySmall: { fontSize: 11, lineHeight: 18, textAlign: "left" },
+  bodySmall: { fontSize: 12, lineHeight: 18, textAlign: "left" },
   connectedPanel: { gap: 12 },
   connectedHeader: {
     flexDirection: "row",

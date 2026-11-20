@@ -31,24 +31,27 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { useColors } from "@/hooks/useColors";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isLocalAuthDisabled } from "@/constants/auth";
 
 const slides = [
   {
-    title: "كل حساباتك الاجتماعية في مكان واحد",
-    description: "تابع حساباتك واجمع أعمالك اليومية في مساحة عمل واحدة.",
+    title: "قنواتك ومحادثاتك في مساحة واحدة",
+    description:
+      "فيسبوك وإنستغرام وواتساب: المحتوى والرسائل والطلبات تُدار من مكان واحد.",
     artwork: "dashboard",
   },
   {
-    title: "حوّل فكرتك إلى محتوى جاهز",
+    title: "رسالة عميل… تصبح محتوى جاهزًا",
     description:
-      "استعن بالمساعد الذكي لإنشاء أفكار ومسودات تناسب علامتك.",
+      "حوّل رسالة أو تعليقًا إلى مسودة منشور، واستعن بالمساعد الذكي لصياغتها.",
     artwork: "assistant",
   },
   {
-    title: "استعد لإدارة محتواك بسهولة",
-    description: "أنشئ محتواك وأدر حساباتك الاجتماعية من لوحة موحّدة.",
+    title: "خطوة واحدة تفصلك عن البدء",
+    description:
+      "اربط صفحتك أو واتساب أعمال، وسنحوّل أول رسالة إلى مسودة جاهزة للمراجعة.",
     artwork: "publishing",
   },
 ] as const;
@@ -78,9 +81,16 @@ function AuthenticatedOnboarding() {
     },
   });
   const compact = height < 760 || width < 380;
-  const slide = status.data?.currentStep ?? 0;
-  const currentSlide = slides[Math.min(slide, slides.length - 1)];
-  const slideNumber = ["١", "٢", "٣"][Math.min(slide, slides.length - 1)];
+  const offline = useNetworkStatus();
+  // The intro is static content, so it advances locally and syncs in the
+  // background; a flaky connection must never trap the user on slide one.
+  const [localStep, setLocalStep] = React.useState<number | null>(null);
+  const [pendingAction, setPendingAction] =
+    React.useState<OnboardingAction | null>(null);
+  const statusUnavailable = status.isError || !status.data;
+  const serverStep = status.data?.currentStep ?? 0;
+  const slide = Math.min(localStep ?? serverStep, slides.length - 1);
+  const currentSlide = slides[slide];
   const background = colors.background;
   const completed = status.data?.completed === true;
   const continueToWorkspace = (socialSetupComplete: boolean) => {
@@ -88,52 +98,64 @@ function AuthenticatedOnboarding() {
       socialSetupComplete ? "/(tabs)" : "/connect-accounts",
     );
   };
-  const submitProgress = async (action: OnboardingAction) => {
-    if (progress.isPending) return;
+  const syncProgress = async (action: OnboardingAction) => {
+    setPendingAction(action);
     try {
       const next = await progress.mutateAsync(action);
-      if (next.completed) continueToWorkspace(next.socialAccountsCompleted);
+      setPendingAction(null);
+      if (next.completed) {
+        continueToWorkspace(next.socialAccountsCompleted);
+        return;
+      }
+      setLocalStep(next.currentStep);
     } catch {
-      // The mutation state exposes a localized retry message below.
+      // Keep the local step and retry once connectivity returns.
     }
   };
+  const goToStep = (nextStep: number) => {
+    setLocalStep(Math.max(0, Math.min(nextStep, slides.length - 1)));
+  };
+  // The API only accepts deltas, so presses are queued: two fast taps must
+  // reach the server in order instead of racing and skipping a slide.
+  const syncChain = React.useRef<Promise<void>>(Promise.resolve());
+  const queueSync = (action: OnboardingAction) => {
+    syncChain.current = syncChain.current.then(() => syncProgress(action));
+  };
+  const handleAdvance = () => {
+    if (slide < slides.length - 1) goToStep(slide + 1);
+    queueSync("advance");
+  };
+  const handleBack = () => {
+    goToStep(slide - 1);
+    queueSync("back");
+  };
+  const handleSkip = () => {
+    continueToWorkspace(status.data?.socialAccountsCompleted ?? false);
+    queueSync("skip");
+  };
+  React.useEffect(() => {
+    if (offline || !pendingAction) return;
+    queueSync(pendingAction);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offline]);
 
   if (!isLoaded) return <LoadingScreen />;
   if (status.isLoading) return <LoadingScreen />;
-  if (status.isError || !status.data) {
-    return (
-      <MessageScreen
-        title="تعذر تحميل الإعداد الأولي"
-        description="تعذّر الاتصال بخادم التطبيق لاستعادة تقدمك. تأكد من تشغيل خادم API واتصالك بالشبكة، ثم أعد المحاولة."
-        actionLabel="إعادة المحاولة"
-        onPress={() => void status.refetch()}
-        busy={status.isFetching}
-      />
-    );
-  }
   if (completed) {
     return (
-      <MessageScreen
-        title="اكتمل الإعداد الأولي"
-        description={
-          status.data.socialAccountsCompleted
-            ? "أصبحت مساحة العمل جاهزة. انتقل إلى لوحة التحكم للبدء."
-            : "خطوة أخيرة: اربط حساباتك الاجتماعية لإكمال إعداد مساحة العمل."
+      <Redirect
+        href={
+          status.data?.socialAccountsCompleted ? "/(tabs)" : "/connect-accounts"
         }
-        actionLabel={
-          status.data.socialAccountsCompleted
-            ? "الانتقال إلى لوحة التحكم"
-            : "ربط الحسابات الاجتماعية"
-        }
-        onPress={() => continueToWorkspace(status.data.socialAccountsCompleted)}
-        busy={false}
       />
     );
   }
 
-  const errorMessage = progress.isError
-    ? "تعذر حفظ تقدمك. تحقق من اتصال الإنترنت وحاول مرة أخرى."
-    : null;
+  const errorMessage = statusUnavailable
+    ? "تعذّر تحميل تقدّمك من الخادم. يمكنك متابعة المقدمة الآن وستُزامَن لاحقًا."
+    : pendingAction
+      ? "لم يُحفظ تقدّمك على الخادم بعد؛ سنعيد المحاولة عند عودة الاتصال."
+      : null;
 
   return (
     <View style={[styles.root, { backgroundColor: background }]}>
@@ -185,23 +207,6 @@ function AuthenticatedOnboarding() {
               />
               <Text style={[styles.brandName, { color: colors.foreground }]}>
                 MenaFlow
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.stepBadge,
-                { backgroundColor: colors.accent, borderColor: colors.border },
-              ]}
-              accessibilityLabel={`الشريحة ${slide + 1} من ${slides.length}`}
-            >
-              <Text style={[styles.stepNumber, { color: colors.primary }]}>
-                {slideNumber}
-              </Text>
-              <View
-                style={[styles.stepDivider, { backgroundColor: colors.border }]}
-              />
-              <Text style={[styles.stepTotal, { color: colors.mutedForeground }]}>
-                ٣
               </Text>
             </View>
           </View>
@@ -260,39 +265,28 @@ function AuthenticatedOnboarding() {
 
           <Pressable
             accessibilityRole="button"
-            accessibilityState={{
-              disabled: progress.isPending,
-              busy: progress.isPending,
-            }}
-            disabled={progress.isPending}
-            onPress={() => submitProgress("advance")}
+            onPress={handleAdvance}
             style={({ pressed }) => [
               styles.primaryButton,
               {
                 backgroundColor: colors.primary,
-                opacity: progress.isPending ? 0.7 : pressed ? 0.85 : 1,
+                opacity: pressed ? 0.85 : 1,
               },
             ]}
           >
-            {progress.isPending ? (
-              <ActivityIndicator color={colors.primaryForeground} />
-            ) : (
-              <>
-                <Text
-                  style={[
-                    styles.primaryButtonText,
-                    { color: colors.primaryForeground },
-                  ]}
-                >
-                  {slide === slides.length - 1
-                    ? status.data.socialAccountsCompleted
-                      ? "ابدأ الآن"
-                      : "ربط حساباتك"
-                    : "التالي"}
-                </Text>
-                <ArrowLeft size={18} color={colors.primaryForeground} />
-              </>
-            )}
+            <Text
+              style={[
+                styles.primaryButtonText,
+                { color: colors.primaryForeground },
+              ]}
+            >
+              {slide === slides.length - 1
+                ? status.data?.socialAccountsCompleted
+                  ? "ابدأ الآن"
+                  : "ربط حساباتك"
+                : "التالي"}
+            </Text>
+            <ArrowLeft size={18} color={colors.primaryForeground} />
           </Pressable>
 
           <View style={styles.secondaryActions}>
@@ -300,8 +294,7 @@ function AuthenticatedOnboarding() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="الخطوة السابقة"
-                disabled={progress.isPending}
-                onPress={() => submitProgress("back")}
+                onPress={handleBack}
                 style={({ pressed }) => [
                   styles.backButton,
                   {
@@ -323,8 +316,7 @@ function AuthenticatedOnboarding() {
             )}
             <Pressable
               accessibilityRole="button"
-              disabled={progress.isPending}
-              onPress={() => submitProgress("skip")}
+              onPress={handleSkip}
               style={styles.skipButton}
             >
               <Text
@@ -582,62 +574,24 @@ function RobotIllustration() {
 function LoadingScreen() {
   const colors = useColors();
   return (
-    <View style={[styles.messageRoot, { backgroundColor: colors.background }]}>
+    <View style={[styles.loadingRoot, { backgroundColor: colors.background }]}>
       <ActivityIndicator color={colors.primary} size="large" />
-      <Text
-        style={[styles.messageDescription, { color: colors.mutedForeground }]}
-      >
+      <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
         جارٍ استعادة تقدم الإعداد…
       </Text>
     </View>
   );
 }
 
-function MessageScreen({
-  title,
-  description,
-  actionLabel,
-  onPress,
-  busy,
-}: {
-  title: string;
-  description: string;
-  actionLabel: string;
-  onPress: () => void;
-  busy: boolean;
-}) {
-  const colors = useColors();
-  return (
-    <View style={[styles.messageRoot, { backgroundColor: colors.background }]}>
-      <Text style={[styles.messageTitle, { color: colors.foreground }]}>
-        {title}
-      </Text>
-      <Text
-        style={[styles.messageDescription, { color: colors.mutedForeground }]}
-      >
-        {description}
-      </Text>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ disabled: busy, busy }}
-        disabled={busy}
-        onPress={onPress}
-        style={[
-          styles.primaryButton,
-          { backgroundColor: colors.primary, opacity: busy ? 0.7 : 1 },
-        ]}
-      >
-        {busy ? (
-          <ActivityIndicator color="#FFFFFF" />
-        ) : (
-          <Text style={styles.primaryButtonText}>{actionLabel}</Text>
-        )}
-      </Pressable>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
+  loadingRoot: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    padding: 24,
+  },
+  loadingText: { fontSize: 15, lineHeight: 24, textAlign: "center" },
   root: { flex: 1, overflow: "hidden" },
   glow: {
     position: "absolute",
@@ -681,20 +635,6 @@ const styles = StyleSheet.create({
   brandIdentity: { flexDirection: "row", alignItems: "center", gap: 7 },
   logo: { width: 43, height: 38 },
   brandName: { fontSize: 18, fontWeight: "900" },
-  stepBadge: {
-    minWidth: 58,
-    height: 32,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  stepNumber: { fontSize: 12, fontWeight: "900" },
-  stepDivider: { width: 1, height: 13 },
-  stepTotal: { fontSize: 11, fontWeight: "700" },
   artwork: {
     width: "100%",
     minHeight: 245,
@@ -885,7 +825,7 @@ const styles = StyleSheet.create({
   },
   clockText: {
     color: "#FFFFFF",
-    fontSize: 9,
+    fontSize: 12,
     fontWeight: "900",
     marginTop: -3,
   },
@@ -967,7 +907,7 @@ const styles = StyleSheet.create({
     gap: 5,
     marginTop: 2,
   },
-  postActionText: { color: "#FFFFFF", fontSize: 9, fontWeight: "800" },
+  postActionText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
   phoneFacebook: { top: 44, left: 3 },
   phoneInstagram: { top: 6, right: 28 },
   phoneWhatsapp: { bottom: 20, right: 7 },
@@ -1040,13 +980,4 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   skipText: { fontSize: 13, fontWeight: "600" },
-  messageRoot: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 28,
-    gap: 15,
-  },
-  messageTitle: { fontSize: 21, fontWeight: "900", textAlign: "center" },
-  messageDescription: { fontSize: 13, lineHeight: 21, textAlign: "left" },
 });
