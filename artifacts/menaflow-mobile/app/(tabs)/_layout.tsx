@@ -158,18 +158,6 @@ function ClassicTabLayout({ hidden }: { hidden: boolean }) {
           ),
         }}
       />
-      <Tabs.Screen
-        name="reports"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{ href: null }}
-      />
-      <Tabs.Screen
-        name="sources"
-        options={{ href: null }}
-      />
     </Tabs>
   );
 }

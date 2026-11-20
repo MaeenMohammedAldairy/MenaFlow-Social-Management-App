@@ -548,39 +548,6 @@ function SettingsContent({
             showChevron
           />
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() =>
-            router.push({
-              pathname: "/(tabs)/more/accounts",
-              params: { returnTo: "settings" },
-            })
-          }
-        >
-          <SettingRow
-            icon="link-2"
-            title="حسابات النشر"
-            subtitle="إدارة حسابات فيسبوك وإنستغرام"
-            showChevron
-          />
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() =>
-            router.push({
-              pathname: "/product-catalog",
-              params: { returnTo: "settings" },
-            })
-          }
-        >
-          <SettingRow
-            icon="file-text"
-            title="كتالوج المنتجات"
-            subtitle="إدارة المنتجات ومعلوماتها المعتمدة للرد الآلي"
-            showChevron
-            last
-          />
-        </Pressable>
       </Panel>
       {onSignOut ? (
         <Panel style={styles.settingsPanel}>
