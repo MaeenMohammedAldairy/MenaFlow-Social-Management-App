@@ -190,10 +190,15 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
     );
   };
 
+  const manageAccountsHref =
+    platform === "whatsapp"
+      ? ("/(tabs)/more/sources" as const)
+      : ("/(tabs)/more/accounts" as const);
+
   const relinkAccount = () => {
     if (!platform) return;
     router.push({
-      pathname: "/(tabs)/more/sources",
+      pathname: manageAccountsHref,
       params: { connect: platform, reconnect: "true" },
     });
   };
@@ -206,7 +211,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
       if (platform === "whatsapp") await deleteWhatsAppConnection();
       else await deleteMetaConnectionForPlatform(platform);
       await queryClient.invalidateQueries();
-      router.replace("/(tabs)/more/sources");
+      router.replace(manageAccountsHref);
     } catch (error) {
       setActionError(
         accountErrorMessage(error, "تعذّر فصل الحساب. أعد المحاولة أو أدر الحساب من صفحة المصادر."),
@@ -229,7 +234,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
           label="العودة إلى الحسابات"
           icon="chevron-right"
           secondary
-          onPress={() => router.replace("/(tabs)/more/sources")}
+          onPress={() => router.replace(manageAccountsHref)}
         />
       </Page>
     );
@@ -253,8 +258,11 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
         title={`تفاصيل حساب ${platformInfo.name}`}
         subtitle="بيانات الحساب وإحصاءاته من المنصة ومزامنة مساحة العمل."
         back={{
-          href: "/(tabs)/more/sources",
-          label: "العودة إلى الحسابات والمصادر",
+          href: manageAccountsHref,
+          label:
+            platform === "whatsapp"
+              ? "العودة إلى المصادر"
+              : "العودة إلى حسابات النشر",
         }}
       />
 
@@ -283,7 +291,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
             <ActionButton
               label="إدارة الحسابات"
               icon="settings"
-              onPress={() => router.push("/(tabs)/more/sources")}
+              onPress={() => router.push(manageAccountsHref)}
             />
           </View>
         </Panel>

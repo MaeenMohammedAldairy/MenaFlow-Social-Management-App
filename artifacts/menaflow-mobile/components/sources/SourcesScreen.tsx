@@ -37,6 +37,7 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -47,10 +48,12 @@ import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   ActionButton,
   BrandHeader,
+  EmptyState,
   Page,
   PageTitle,
   Panel,
   StatusPill,
+  StepBadge,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { useStudio } from "@/context/StudioContext";
@@ -65,6 +68,10 @@ import {
   metaOAuthErrorMessage,
 } from "@/constants/meta-oauth";
 import { groupWhatsAppMessages } from "@/lib/source-message-groups";
+import {
+  formatArabicDateTime,
+  formatArabicNumber,
+} from "@/lib/formatting";
 import { analyzeWhatsAppProductMessages } from "@/lib/product-catalog-api";
 import {
   CountryPickerModal,
@@ -76,7 +83,6 @@ import {
   WhatsAppPairingModal,
   WhatsAppSetupModal,
   WhatsAppSyncStatusPanel,
-  CsvProductImportCard,
   type SourceKey,
   type WhatsAppSyncSettingKey,
 } from "@/components/sources";
@@ -238,11 +244,13 @@ function SourcesContent({
     reconnect: requestedReconnect,
     returnTo,
     view,
+    section,
   } = useLocalSearchParams<{
     connect?: string;
     reconnect?: string;
     returnTo?: string;
     view?: string;
+    section?: string;
   }>();
   const isPublishingAccounts =
     forcePublishing ||
@@ -903,6 +911,7 @@ function SourcesContent({
           queryKey: whatsappSyncStatusQueryKey,
         }),
       ]);
+      setActiveSection("sync");
       showAppNotice({
         title: "تم حفظ الإعدادات",
         message: "حُفظت مجموعات واتساب. لم تبدأ مزامنة الرسائل السابقة؛ فعّل خيار مزامنتها ثم اضغط «مزامنة الآن حسب الخيارات» عند الحاجة.",
@@ -964,6 +973,49 @@ function SourcesContent({
       group.importedCount > 0 ||
       group.status !== "idle",
   );
+  const hasSyncGroups = (syncStatusQuery.data?.groups ?? []).length > 0;
+  const syncNeedsAttention =
+    syncStatusQuery.isError ||
+    visibleSyncGroups.some(
+      (group) => group.status === "failed" || group.status === "partial",
+    );
+
+  const [activeSection, setActiveSection] = useState<"connections" | "sync">(
+    section === "sync" ? "sync" : "connections",
+  );
+  useEffect(() => {
+    if (section === "sync") setActiveSection("sync");
+  }, [section]);
+  const latestSyncAt = useMemo(() => {
+    const groups = syncStatusQuery.data?.groups ?? [];
+    return groups.reduce<string | null>((latest, group) => {
+      if (
+        !group.lastSyncedAt ||
+        !Number.isFinite(Date.parse(group.lastSyncedAt))
+      ) {
+        return latest;
+      }
+      return !latest || Date.parse(group.lastSyncedAt) > Date.parse(latest)
+        ? group.lastSyncedAt
+        : latest;
+    }, null);
+  }, [syncStatusQuery.data]);
+
+  // Manual refresh only — automatic polling must not flip the refresh button
+  // into a disabled "جارٍ التحديث…" state.
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshSources = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await connectionsQuery.refetch();
+      if (connections?.whatsapp) {
+        await syncStatusQuery.refetch();
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const runWhatsAppSync = async () => {
     if (syncRequestInFlightRef.current || syncRunningOnServer) return;
@@ -1336,54 +1388,80 @@ function SourcesContent({
     return false;
   };
 
+  const connectedSourceCount = isConnected("whatsapp") ? 1 : 0;
+  const attentionSourceCount =
+    Boolean(connections?.whatsapp) && !isConnected("whatsapp") ? 1 : 0;
+
+  const metaReauthorizationReason = (
+    platform: "facebook" | "instagram",
+  ): string => {
+    const reason = connections?.[platform]?.authorizationReason;
+    if (reason === "token_invalid") return "رمز Meta غير صالح أو مرفوض.";
+    if (reason === "token_expired") return "انتهت صلاحية رمز Meta.";
+    return "صلاحيات Meta تحتاج إلى تحقق.";
+  };
+
   const sourceStatus = (key: SourceKey): string => {
     if (connectionsQuery.isLoading) return "جارٍ التحقق…";
-    if (key === "facebook") {
-      if (!connections?.facebook) return "غير مربوط";
-      if (
-        connections.facebook.authorizationStatus === "needs_reauthorization"
-      ) {
-        return connections.facebook.authorizationReason === "token_invalid"
-          ? "رمز Meta غير صالح أو مرفوض · أعد التفويض"
-          : connections.facebook.authorizationReason === "token_expired"
-            ? "انتهت صلاحية الرمز · أعد التفويض"
-            : "صلاحيات Meta تحتاج إلى تحقق · أعد التفويض";
-      }
-      return `متصل: ${connections.facebook.accountName}`;
-    }
-    if (key === "instagram") {
-      if (connections?.instagram) {
-        if (
-          connections.instagram.authorizationStatus === "needs_reauthorization"
-        ) {
-          return connections.instagram.authorizationReason === "token_invalid"
-            ? "رمز Meta غير صالح أو مرفوض · أعد التفويض"
-            : connections.instagram.authorizationReason === "token_expired"
-              ? "انتهت صلاحية الرمز · أعد التفويض"
-              : "صلاحيات Meta تحتاج إلى تحقق · أعد التفويض";
-        }
-        return `متصل: @${connections.instagram.accountName}`;
-      }
-      return "غير مربوط";
+    if (key === "facebook" || key === "instagram") {
+      const connection = connections?.[key];
+      if (!connection) return "غير مربوط";
+      return connection.authorizationStatus === "needs_reauthorization"
+        ? "يحتاج إعادة تفويض"
+        : "متصل";
     }
     if (key === "whatsapp") {
       if (!connections?.whatsapp) return "غير مربوط";
-      if (isConnected("whatsapp"))
-        return `متصل: ${connections.whatsapp.accountName}`;
+      if (isConnected("whatsapp")) return "متصل";
       if (connections.whatsapp.connectionState === "connecting") {
-        return "جارٍ استعادة اتصال واتساب…";
+        return "جارٍ الاتصال…";
       }
       if (connections.whatsapp.connectionState === "unavailable") {
-        return "الحساب محفوظ · تعذّر التحقق من الاتصال الآن";
+        return "غير متاح";
       }
       if (connections.whatsapp.connectionState === "failed") {
-        return "تعذر إعداد الاتصال · أعد محاولة الربط";
+        return "فشل الاتصال";
       }
       return connections.whatsapp.connectionState === "missing"
-        ? "الحساب محفوظ · نسخة الخادم غير موجودة"
-        : "الحساب محفوظ · يحتاج إلى إعادة الاتصال";
+        ? "غير متاح"
+        : "يحتاج إعادة ربط";
     }
     return "غير مربوط";
+  };
+
+  // Secondary line shown under the source name: account identity or the
+  // reason a connection needs attention. Keeps the status pill short.
+  const sourceDetail = (key: SourceKey): string | null => {
+    if (connectionsQuery.isLoading) return null;
+    if (key === "facebook" || key === "instagram") {
+      const connection = connections?.[key];
+      if (!connection) return null;
+      if (connection.authorizationStatus === "needs_reauthorization") {
+        return metaReauthorizationReason(key);
+      }
+      return key === "facebook"
+        ? `صفحة: ${connection.accountName}`
+        : `@${connection.accountName}`;
+    }
+    if (key === "whatsapp") {
+      if (!connections?.whatsapp) return null;
+      if (isConnected("whatsapp")) {
+        return `الحساب: ${connections.whatsapp.accountName}`;
+      }
+      if (connections.whatsapp.connectionState === "connecting") {
+        return "يتم التحقق من الاتصال تلقائيًا.";
+      }
+      if (connections.whatsapp.connectionState === "unavailable") {
+        return "الحساب محفوظ · تعذّر التحقق من الاتصال الآن.";
+      }
+      if (connections.whatsapp.connectionState === "failed") {
+        return "تعذر إعداد الاتصال · أعد محاولة الربط.";
+      }
+      return connections.whatsapp.connectionState === "missing"
+        ? "الحساب محفوظ · نسخة الخادم غير موجودة."
+        : "الحساب محفوظ · يحتاج إلى إعادة الاتصال.";
+    }
+    return null;
   };
 
   const handlePress = (key: SourceKey) => {
@@ -1489,6 +1567,14 @@ function SourcesContent({
 
   return (
     <Page
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void refreshSources()}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
+        />
+      }
       bottomPadding={
         socialSetupPending && !hasConnectedSocialAccount ? 24 : undefined
       }
@@ -1516,7 +1602,7 @@ function SourcesContent({
             ? "اختر منصة واحدة للبدء. يمكنك إضافة البقية لاحقًا."
             : isPublishingAccounts
               ? "اربط وأدر حسابات فيسبوك وإنستغرام المستخدمة للنشر."
-              : "اربط واتساب لاستيراد الرسائل، أو استورد بيانات المنتجات من ملف CSV."
+              : "اربط واتساب لاستيراد رسائل المجموعات ومتابعة مزامنتها."
         }
       />
 
@@ -1681,72 +1767,296 @@ function SourcesContent({
         </Panel>
       )}
 
-      <SourcesConnectionsPanel
-        compactLayout={compactLayout}
-        sourceKeys={
-          isPublishingAccounts
-            ? ["facebook", "instagram", "whatsapp"]
-            : ["whatsapp"]
-        }
-        sectionTitle={
-          includeWhatsApp
-            ? "المنصات"
-            : isPublishingAccounts
-              ? "حسابات النشر"
-              : "مصادر البيانات"
-        }
-        refreshLabel={
-          isPublishingAccounts ? "تحديث حالة الحسابات" : "تحديث حالة المصادر"
-        }
-        isRefreshing={connectionsQuery.isFetching}
-        connections={connections}
-        busySources={busySources}
-        disconnectingSource={disconnectingSource}
-        connectionError={
-          connectionsQuery.isError
-            ? connectionsQuery.error instanceof Error
-              ? connectionsQuery.error.message
-              : "تعذر تحميل حالة المصادر. تحقق من تشغيل الخادم وحاول التحديث."
-            : null
-        }
-        isConnected={isConnected}
-        sourceStatus={sourceStatus}
-        buttonLabel={buttonLabel}
-        onSourceCardPress={handleSourceCardPress}
-        onSourceAction={handlePress}
-        onOpenWhatsAppSetup={openWhatsAppSetup}
-        onConnectWhatsApp={connectWhatsApp}
-        onDisconnectWhatsApp={disconnectWhatsApp}
-        onRefresh={() => void connectionsQuery.refetch()}
-      />
+      {!isPublishingAccounts && !socialSetupPending ? (
+        <View
+          accessibilityLabel="ملخص حالة المصادر"
+          style={styles.summaryRow}
+        >
+          <View
+            accessible
+            accessibilityLabel={
+              connectionsQuery.isLoading
+                ? "المصادر المتصلة: جارٍ التحقق"
+                : `المصادر المتصلة: ${formatArabicNumber(connectedSourceCount)}`
+            }
+            style={[
+              styles.summaryCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Icon name="link-2" size={16} color={colors.primary} />
+            <Text style={[styles.summaryValue, { color: colors.foreground }]}>
+              {connectionsQuery.isLoading
+                ? "…"
+                : formatArabicNumber(connectedSourceCount)}
+            </Text>
+            <Text
+              style={[styles.summaryLabel, { color: colors.mutedForeground }]}
+            >
+              متصل
+            </Text>
+          </View>
+          <View
+            accessible
+            accessibilityLabel={
+              connectionsQuery.isLoading
+                ? "مصادر تحتاج إلى تدخل: جارٍ التحقق"
+                : `مصادر تحتاج إلى تدخل: ${formatArabicNumber(attentionSourceCount)}`
+            }
+            style={[
+              styles.summaryCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Icon
+              name="alert-circle"
+              size={16}
+              color={
+                attentionSourceCount ? colors.warning : colors.mutedForeground
+              }
+            />
+            <Text
+              style={[
+                styles.summaryValue,
+                {
+                  color: attentionSourceCount
+                    ? colors.warning
+                    : colors.foreground,
+                },
+              ]}
+            >
+              {connectionsQuery.isLoading
+                ? "…"
+                : formatArabicNumber(attentionSourceCount)}
+            </Text>
+            <Text
+              style={[styles.summaryLabel, { color: colors.mutedForeground }]}
+            >
+              تحتاج تدخل
+            </Text>
+          </View>
+          <View
+            accessible
+            accessibilityLabel={
+              !connections?.whatsapp || !isConnected("whatsapp")
+                ? "آخر مزامنة: لا يوجد اتصال"
+                : syncStatusQuery.isLoading
+                  ? "آخر مزامنة: جارٍ التحميل"
+                  : `آخر مزامنة: ${formatArabicDateTime(latestSyncAt) ?? "لم تتم"}`
+            }
+            style={[
+              styles.summaryCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Icon name="refresh-cw" size={16} color={colors.primary} />
+            <Text
+              numberOfLines={2}
+              style={[styles.summaryRecent, { color: colors.foreground }]}
+            >
+              {!connections?.whatsapp || !isConnected("whatsapp")
+                ? "—"
+                : syncStatusQuery.isLoading
+                  ? "…"
+                  : (formatArabicDateTime(latestSyncAt) ?? "لم تتم")}
+            </Text>
+            <Text
+              style={[styles.summaryLabel, { color: colors.mutedForeground }]}
+            >
+              آخر مزامنة
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
-      {!isPublishingAccounts ? <CsvProductImportCard userId={userId} /> : null}
+      {!isPublishingAccounts ? (
+        <View
+          accessibilityRole="tablist"
+          style={[
+            styles.tabBar,
+            { backgroundColor: colors.secondary, borderColor: colors.border },
+          ]}
+        >
+          <Pressable
+            accessibilityRole="tab"
+            accessibilityLabel="الاتصالات"
+            accessibilityState={{ selected: activeSection === "connections" }}
+            onPress={() => setActiveSection("connections")}
+            style={[
+              styles.tab,
+              activeSection === "connections" && {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Icon
+              name="share-2"
+              size={15}
+              color={
+                activeSection === "connections"
+                  ? colors.primary
+                  : colors.mutedForeground
+              }
+            />
+            <Text
+              style={[
+                styles.tabLabel,
+                {
+                  color:
+                    activeSection === "connections"
+                      ? colors.primary
+                      : colors.mutedForeground,
+                },
+              ]}
+            >
+              الاتصالات
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="tab"
+            accessibilityLabel={
+              syncNeedsAttention ? "المزامنة، تحتاج إلى مراجعة" : "المزامنة"
+            }
+            accessibilityState={{ selected: activeSection === "sync" }}
+            onPress={() => setActiveSection("sync")}
+            style={[
+              styles.tab,
+              activeSection === "sync" && {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Icon
+              name="refresh-cw"
+              size={15}
+              color={
+                activeSection === "sync"
+                  ? colors.primary
+                  : colors.mutedForeground
+              }
+            />
+            <Text
+              style={[
+                styles.tabLabel,
+                {
+                  color:
+                    activeSection === "sync"
+                      ? colors.primary
+                      : colors.mutedForeground,
+                },
+              ]}
+            >
+              المزامنة
+            </Text>
+            {syncNeedsAttention ? (
+              <View
+                style={[styles.tabDot, { backgroundColor: colors.warning }]}
+              />
+            ) : null}
+          </Pressable>
+        </View>
+      ) : null}
 
-      {!isPublishingAccounts &&
-      connections?.whatsapp &&
-      isConnected("whatsapp") ? (
-        <WhatsAppSyncStatusPanel
-          status={syncStatusQuery.data}
-          groups={visibleSyncGroups}
-          loading={syncStatusQuery.isLoading}
-          hasError={syncStatusQuery.isError}
-          autoSyncSaving={autoSyncSaving}
-          syncing={syncInProgress}
-          syncNotice={syncNotice}
-          syncPreviousMessages={syncPreviousMessages}
-          onSyncPreviousMessagesChange={setSyncPreviousMessages}
-          historyMessageLimit={historyMessageLimit}
-          onHistoryMessageLimitChange={setHistoryMessageLimit}
-          onUpdateSetting={(setting, enabled) =>
-            void updateSyncSetting(setting, enabled)
+      {isPublishingAccounts || activeSection === "connections" ? (
+        <SourcesConnectionsPanel
+          compactLayout={compactLayout}
+          sourceKeys={
+            isPublishingAccounts
+              ? ["facebook", "instagram", "whatsapp"]
+              : ["whatsapp"]
           }
-          onManageGroups={openWhatsAppSetup}
-          onRefresh={() => void syncStatusQuery.refetch()}
-          onOpenGroupMessages={(groupJid, groupName) =>
-            void openGroupMessages(groupJid, groupName)
+          sectionTitle={
+            includeWhatsApp
+              ? "المنصات"
+              : isPublishingAccounts
+                ? "حسابات النشر"
+                : "حساب واتساب"
           }
-          onRunSync={() => void runWhatsAppSync()}
+          refreshLabel={
+            isPublishingAccounts
+              ? "تحديث حالة الحسابات"
+              : "تحديث حالة المصادر"
+          }
+          isRefreshing={refreshing}
+          connections={connections}
+          busySources={busySources}
+          disconnectingSource={disconnectingSource}
+          connectionError={
+            connectionsQuery.isError
+              ? connectionsQuery.error instanceof Error
+                ? connectionsQuery.error.message
+                : "تعذر تحميل حالة المصادر. تحقق من تشغيل الخادم وحاول التحديث."
+              : null
+          }
+          isConnected={isConnected}
+          sourceStatus={sourceStatus}
+          sourceDetail={sourceDetail}
+          buttonLabel={buttonLabel}
+          onSourceCardPress={handleSourceCardPress}
+          onSourceAction={handlePress}
+          onOpenWhatsAppSetup={openWhatsAppSetup}
+          onConnectWhatsApp={connectWhatsApp}
+          onDisconnectWhatsApp={disconnectWhatsApp}
+          onRefresh={() => void refreshSources()}
         />
+      ) : null}
+
+      {!isPublishingAccounts && activeSection === "sync" ? (
+        connections?.whatsapp && isConnected("whatsapp") ? (
+          <>
+            {latestSyncAt ? null : (
+              <StepBadge step={3} total={3} label="تشغيل المزامنة" />
+            )}
+            <WhatsAppSyncStatusPanel
+              status={syncStatusQuery.data}
+              groups={visibleSyncGroups}
+              hasGroups={hasSyncGroups}
+              loading={syncStatusQuery.isLoading}
+              hasError={syncStatusQuery.isError}
+              autoSyncSaving={autoSyncSaving}
+              syncing={syncInProgress}
+              syncNotice={syncNotice}
+              syncPreviousMessages={syncPreviousMessages}
+              onSyncPreviousMessagesChange={setSyncPreviousMessages}
+              historyMessageLimit={historyMessageLimit}
+              onHistoryMessageLimitChange={setHistoryMessageLimit}
+              onUpdateSetting={(setting, enabled) =>
+                void updateSyncSetting(setting, enabled)
+              }
+              onManageGroups={openWhatsAppSetup}
+              onRefresh={() => void syncStatusQuery.refetch()}
+              onOpenGroupMessages={(groupJid, groupName) =>
+                void openGroupMessages(groupJid, groupName)
+              }
+              onRunSync={() => void runWhatsAppSync()}
+            />
+          </>
+        ) : (
+          <Panel style={styles.syncEmptyPanel}>
+            <EmptyState
+              icon="refresh-cw"
+              title={
+                connections?.whatsapp
+                  ? "واتساب غير متصل"
+                  : "لم يتم ربط واتساب بعد"
+              }
+              body={
+                connections?.whatsapp
+                  ? "أعد ربط واتساب لعرض حالة المزامنة والمجموعات."
+                  : "اربط واتساب أولًا لبدء استيراد الرسائل ومزامنتها."
+              }
+            />
+            <ActionButton
+              label={
+                connections?.whatsapp ? "إعادة ربط واتساب" : "ربط واتساب"
+              }
+              icon="link"
+              onPress={connectWhatsApp}
+            />
+          </Panel>
+        )
       ) : null}
 
       <WhatsAppPairingModal
@@ -1900,10 +2210,17 @@ export default function SourcesRoute() {
     view?: string;
   }>();
 
+  const isPublishingTarget =
+    view === "publishing" ||
+    connect === "facebook" ||
+    connect === "instagram";
+
   return (
     <Redirect
       href={{
-        pathname: "/(tabs)/more/sources",
+        pathname: isPublishingTarget
+          ? "/(tabs)/more/accounts"
+          : "/(tabs)/more/sources",
         params: {
           ...(connect ? { connect } : {}),
           ...(reconnect ? { reconnect } : {}),
@@ -1952,6 +2269,42 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "left",
   },
+  summaryRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
+  summaryCard: {
+    flex: 1,
+    minWidth: 96,
+    minHeight: 84,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 10,
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 2,
+  },
+  summaryValue: { fontSize: 17, fontWeight: "800" },
+  summaryRecent: { fontSize: 10, fontWeight: "700", textAlign: "right" },
+  summaryLabel: { fontSize: 10, fontWeight: "600" },
+  tabBar: {
+    flexDirection: "row",
+    gap: 4,
+    borderWidth: 1,
+    borderRadius: 15,
+    padding: 4,
+  },
+  tab: {
+    flex: 1,
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: "transparent",
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  tabLabel: { fontSize: 13, fontWeight: "800" },
+  tabDot: { width: 7, height: 7, borderRadius: 4 },
+  syncEmptyPanel: { gap: 12, alignItems: "stretch" },
   onboardingActions: { alignItems: "stretch", gap: 12, paddingTop: 2 },
   onboardingContinue: {
     minHeight: 46,

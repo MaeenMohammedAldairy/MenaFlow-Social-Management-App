@@ -358,6 +358,7 @@ function AuthenticatedAppNavigator() {
     const allowedDuringSocialSetup =
       pathname.endsWith("/connect-accounts") ||
       pathname.endsWith("/more/sources") ||
+      pathname.endsWith("/more/accounts") ||
       pathname.endsWith("/whatsapp-setup");
 
     if (!onboarding.data.completed && !onOnboarding) {

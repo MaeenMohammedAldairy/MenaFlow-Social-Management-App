@@ -431,6 +431,25 @@ export function StatusPill({
   );
 }
 
+export function StepBadge({
+  step,
+  total,
+  label,
+}: {
+  step: number;
+  total: number;
+  label: string;
+}) {
+  const colors = useColors();
+  return (
+    <View style={[styles.stepBadge, { backgroundColor: colors.accent }]}>
+      <Text style={[styles.stepBadgeText, { color: colors.accentForeground }]}>
+        {`الخطوة ${step} من ${total} · ${label}`}
+      </Text>
+    </View>
+  );
+}
+
 export function IconButton({ icon, onPress, label, color }: { icon: LucideIconName; onPress: () => void; label: string; color?: string }) {
   const colors = useColors();
   return (
@@ -498,4 +517,11 @@ const styles = StyleSheet.create({
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' },
   pillDot: { width: 6, height: 6, borderRadius: 3 },
   pillText: { fontSize: 12, fontWeight: '700' },
+  stepBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  stepBadgeText: { fontSize: 11, fontWeight: '800', textAlign: 'right' },
 });

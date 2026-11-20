@@ -34,6 +34,7 @@ import {
   Panel,
   SectionTitle,
   StatusPill,
+  StepBadge,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { isLocalAuthDisabled } from "@/constants/auth";
@@ -147,6 +148,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
   const [selectedGroupJids, setSelectedGroupJids] = useState<string[]>([]);
   const [groupsInitialized, setGroupsInitialized] = useState(false);
   const [groupsError, setGroupsError] = useState("");
+  const [groupsNotice, setGroupsNotice] = useState("");
   const [savingGroups, setSavingGroups] = useState(false);
 
   useEffect(() => {
@@ -238,27 +240,44 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
     }
   };
 
-  const saveGroups = async () => {
-    if (savingGroups) return;
+  const saveGroups = async (): Promise<boolean> => {
+    if (savingGroups) return false;
     setSavingGroups(true);
     setGroupsError("");
+    setGroupsNotice("");
     try {
       const saved = await saveWhatsAppGroupSelections({
         groupJids: selectedGroupJids,
       });
       setSelectedGroupJids(saved.groups.map((group) => group.groupJid));
       queryClient.setQueryData(selectionQueryKey, saved);
-      setGroupsError("");
+      setGroupsNotice("تم حفظ مجموعات واتساب.");
+      return true;
     } catch (error) {
       setGroupsError(
         errorMessage(error, "تعذّر حفظ مجموعات واتساب. حاول مرة أخرى."),
       );
+      return false;
     } finally {
       setSavingGroups(false);
     }
   };
 
+  const continueAfterGroups = async () => {
+    if (savingGroups || selectedGroupJids.length === 0) return;
+    if (!(await saveGroups())) return;
+    if (returnTo === "connect-accounts") {
+      router.replace("/connect-accounts");
+      return;
+    }
+    router.replace({
+      pathname: "/(tabs)/more/sources",
+      params: { section: "sync" },
+    });
+  };
+
   const toggleGroup = (groupJid: string) => {
+    setGroupsNotice("");
     setSelectedGroupJids((current) =>
       current.includes(groupJid)
         ? current.filter((jid) => jid !== groupJid)
@@ -328,6 +347,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
         </Panel>
       ) : (
         <>
+          <StepBadge step={2} total={3} label="المجموعات والردود" />
           <Panel style={styles.connectedPanel}>
             <View style={styles.connectedHeader}>
               <View style={[styles.whatsappIcon, { backgroundColor: colors.accent }]}>
@@ -360,7 +380,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
           </Panel>
 
           <Panel>
-            <SectionTitle title="إعداد الردود التلقائية" />
+            <SectionTitle title="إعداد الردود التلقائية (اختياري)" />
             <Text style={[styles.body, { color: colors.mutedForeground }]}>
               اضبط أسلوب الرد على رسائل العملاء في المحادثات الفردية. لا تُرسل الردود تلقائيًا إلا بعد اختبارها ثم تفعيلها يدويًا.
             </Text>
@@ -745,6 +765,11 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
                 {groupsError}
               </Text>
             ) : null}
+            {groupsNotice ? (
+              <Text style={[styles.notice, { color: colors.primary }]}>
+                {groupsNotice}
+              </Text>
+            ) : null}
             <ActionButton
               label={savingGroups ? "جارٍ حفظ المجموعات…" : "حفظ إعدادات المجموعات"}
               icon={savingGroups ? "refresh-cw" : "save"}
@@ -755,6 +780,25 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
                 groupSelectionsQuery.isLoading
               }
               onPress={() => void saveGroups()}
+            />
+            {selectedGroupJids.length === 0 ? (
+              <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+                اختر مجموعة واحدة على الأقل لبدء مزامنة رسائلها.
+              </Text>
+            ) : null}
+            <ActionButton
+              label={
+                returnTo === "connect-accounts"
+                  ? "متابعة إلى إتمام الإعداد"
+                  : "متابعة إلى المزامنة"
+              }
+              icon="chevron-left"
+              disabled={
+                savingGroups ||
+                selectedGroupJids.length === 0 ||
+                !groupsInitialized
+              }
+              onPress={() => void continueAfterGroups()}
             />
           </Panel>
 

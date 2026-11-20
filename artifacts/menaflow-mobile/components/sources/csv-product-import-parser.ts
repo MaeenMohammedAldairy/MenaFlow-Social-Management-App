@@ -100,6 +100,7 @@ function normalizedHeader(value: string): string {
     sku: "sku",
     "رمز المنتج": "sku",
     "رقم المنتج": "sku",
+    "الرمز": "sku",
     name: "name",
     "اسم المنتج": "name",
     الاسم: "name",

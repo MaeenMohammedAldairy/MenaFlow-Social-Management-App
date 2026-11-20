@@ -13,6 +13,7 @@ import {
 import { CairoText as Text, CairoTextInput } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
+import { StepBadge } from "@/components/Ui";
 import { getCountryCallingCode, type CountryCode } from "libphonenumber-js";
 
 export type WhatsAppInputState = {
@@ -79,6 +80,7 @@ export function WhatsAppPairingModal({
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.dialogContent}
           >
+            <StepBadge step={1} total={3} label="ربط الرقم" />
             <Text style={[styles.dialogTitle, { color: colors.foreground }]}>
               {input.pairingCode || input.qrCodeBase64
                 ? "تأكيد الربط"

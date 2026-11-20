@@ -75,10 +75,7 @@ export default function MetaOAuthResultScreen() {
             }
             router.replace(
               returnContext === 'publishing'
-                ? {
-                    pathname: '/(tabs)/more/sources',
-                    params: { view: 'publishing' },
-                  }
+                ? '/(tabs)/more/accounts'
                 : returnContext === 'sources'
                   ? '/(tabs)/more/sources'
                   : '/connect-accounts',
