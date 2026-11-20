@@ -29,9 +29,6 @@ import {
   BrandHeader,
   EmptyState,
   Page,
-  PageTitle,
-  Panel,
-  SectionTitle,
 } from "@/components/Ui";
 import {
   getGetSocialConnectionsQueryKey,
@@ -41,7 +38,6 @@ import { isLocalAuthDisabled } from "@/constants/auth";
 import { ContentPostDialogs } from "@/components/content/ContentPostDialogs";
 import { ContentPostList } from "@/components/content/ContentPostList";
 import { styles } from "@/components/content/content-styles";
-import { platformLabel } from "@/lib/content-utils";
 import {
   useContentPublishingWorkflow,
   type MetaChannel,
@@ -361,117 +357,66 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
 
   return (
     <Page scroll={false}>
-      <FilterBar
-        activeCount={activeFilterCount}
-        onOpenFilters={() => setFiltersOpen(true)}
-      >
-        <TextInput
-          accessibilityLabel="ابحث في المنشورات"
-          value={search}
-          onChangeText={setSearch}
-          placeholder="ابحث في المنشورات"
-          placeholderTextColor={colors.mutedForeground}
-          style={[styles.searchInput, { color: colors.foreground }]}
-          textAlign="right"
-          returnKeyType="search"
-        />
-        {search ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="مسح البحث"
-            onPress={() => setSearch("")}
-            style={styles.clearSearchButton}
-            hitSlop={8}
-          >
-            <Icon name="x" size={16} color={colors.mutedForeground} />
-          </Pressable>
-        ) : null}
-      </FilterBar>
       <ContentPostList
         ready={ready}
         header={
           <>
             <View style={styles.listHeaderStack}>
-      <BrandHeader />
-      <Panel style={styles.contentIntro}>
-        <PageTitle
-          title="المحتوى"
-          subtitle={
-            visiblePosts.length === 0
-              ? "أنشئ المسودات وراجعها وقم بالتسويق والنشر على المنصات المختارة."
-              : undefined
-          }
-          action={
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="إنشاء منشور"
-              onPress={() => router.push("/compose")}
-              style={({ pressed }) => [
-                styles.addButton,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: pressed ? 0.84 : 1,
-                  transform: [{ scale: pressed ? 0.98 : 1 }],
-                },
-              ]}
-            >
-              <Icon name="plus" size={19} color={colors.primaryForeground} />
-              <Text
-                style={[
-                  styles.createPostLabel,
-                  { color: colors.primaryForeground },
-                ]}
-              >
-                منشور جديد
-              </Text>
-            </Pressable>
-          }
-        />
-      </Panel>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`النشر التلقائي، ${
-          autoPublish ? "مفعّل" : "متوقف"
-        } — إدارة إعدادات النشر`}
-        onPress={() => router.push("/publishing-settings")}
-        style={({ pressed }) => [
-          styles.autoPublishCompact,
-          {
-            backgroundColor: colors.card,
-            borderColor: colors.border,
-            opacity: pressed ? 0.85 : 1,
-          },
-        ]}
-      >
-        <View
-          style={[styles.autoPublishIcon, { backgroundColor: colors.accent }]}
-        >
-          <Icon name="zap" size={16} color={colors.primary} />
-        </View>
-        <View style={styles.autoPublishCompactCopy}>
-          <Text style={[styles.autoLabel, { color: colors.foreground }]}>
-            النشر التلقائي
-          </Text>
-          <Text
-            numberOfLines={1}
-            style={[
-              styles.autoPublishDescription,
-              { color: colors.mutedForeground },
+      <BrandHeader
+        title="المنشورات"
+        action={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="إنشاء منشور"
+            onPress={() => router.push("/compose")}
+            style={({ pressed }) => [
+              styles.addButton,
+              {
+                backgroundColor: colors.primary,
+                opacity: pressed ? 0.84 : 1,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
+              },
             ]}
           >
-            {autoPublish
-              ? `مفعّل على ${
-                  autoPublishChannels.map(platformLabel).join(" و") ||
-                  "المنصات المختارة"
-                }`
-              : "متوقف"}
-          </Text>
-        </View>
-        <Text style={[styles.filterLabel, { color: colors.primary }]}>
-          إدارة
-        </Text>
-      </Pressable>
+            <Icon name="plus" size={18} color={colors.primaryForeground} />
+            <Text
+              style={[
+                styles.createPostLabel,
+                { color: colors.primaryForeground },
+              ]}
+            >
+              منشور جديد
+            </Text>
+          </Pressable>
+        }
+      />
+
+        <FilterBar
+          activeCount={activeFilterCount}
+          onOpenFilters={() => setFiltersOpen(true)}
+        >
+          <TextInput
+            accessibilityLabel="ابحث في المنشورات"
+            value={search}
+            onChangeText={setSearch}
+            placeholder="ابحث في المنشورات"
+            placeholderTextColor={colors.mutedForeground}
+            style={[styles.searchInput, { color: colors.foreground }]}
+            textAlign="right"
+            returnKeyType="search"
+          />
+          {search ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="مسح البحث"
+              onPress={() => setSearch("")}
+              style={styles.clearSearchButton}
+              hitSlop={8}
+            >
+              <Icon name="x" size={16} color={colors.mutedForeground} />
+            </Pressable>
+          ) : null}
+        </FilterBar>
 
       {connectionLoadError ? (
         <View
@@ -502,44 +447,75 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
         </View>
       ) : null}
 
-      <Panel style={styles.postWorkspace}>
-        <SectionTitle title="مساحة النشر وإدارة المنشورات" />
-        {visiblePosts.length === 0 ? (
-          <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-            الرسائل والوسائط المزامنة تُحوّل إلى منشورات متاحة للمراجعة والنشر
-            اليدوي أو التلقائي.
+      {visiblePosts.length === 0 ? (
+        <Text style={[styles.intro, { color: colors.mutedForeground }]}>
+          الرسائل والوسائط المزامنة تُحوّل إلى منشورات متاحة للمراجعة والنشر
+          اليدوي أو التلقائي.
+        </Text>
+      ) : null}
+      {syncError ? (
+        <View
+          style={[
+            styles.connectionLoadError,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.destructive,
+              borderWidth: 1,
+            },
+          ]}
+        >
+          <Text
+            accessibilityRole="alert"
+            style={[styles.intro, { color: colors.destructive }]}
+          >
+            {syncError}
           </Text>
-        ) : null}
-        {syncError ? (
-          <View
-            style={[
-              styles.connectionLoadError,
+          <ActionButton
+            label={syncing ? "جارٍ إعادة المزامنة…" : "إعادة المزامنة"}
+            icon={syncing ? "clock" : "refresh-cw"}
+            secondary
+            disabled={syncing}
+            onPress={() => void refreshPosts()}
+          />
+        </View>
+      ) : null}
+      <View style={styles.resultsSummary}>
+        <Text style={[styles.intro, { color: colors.mutedForeground }]}>
+          المنشورات المطابقة المحمّلة: {visiblePosts.length}
+        </Text>
+        <View style={styles.resultsSummaryActions}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`النشر التلقائي، ${autoPublish ? "مفعّل" : "متوقف"}. افتح الإعدادات`}
+            onPress={() => router.push("/publishing-settings")}
+            style={({ pressed }) => [
+              styles.autoPublishChip,
               {
-                backgroundColor: colors.card,
-                borderColor: colors.destructive,
-                borderWidth: 1,
+                backgroundColor: autoPublish ? colors.accent : "transparent",
+                borderColor: colors.border,
+                opacity: pressed ? 0.8 : 1,
               },
             ]}
           >
-            <Text
-              accessibilityRole="alert"
-              style={[styles.intro, { color: colors.destructive }]}
-            >
-              {syncError}
-            </Text>
-            <ActionButton
-              label={syncing ? "جارٍ إعادة المزامنة…" : "إعادة المزامنة"}
-              icon={syncing ? "clock" : "refresh-cw"}
-              secondary
-              disabled={syncing}
-              onPress={() => void refreshPosts()}
+            <Icon
+              name="zap"
+              size={13}
+              color={autoPublish ? colors.primary : colors.mutedForeground}
             />
-          </View>
-        ) : null}
-        <View style={styles.resultsSummary}>
-          <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-            المنشورات المطابقة المحمّلة: {visiblePosts.length}
-          </Text>
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.autoPublishChipText,
+                {
+                  color: autoPublish
+                    ? colors.primary
+                    : colors.mutedForeground,
+                },
+              ]}
+            >
+              {autoPublish ? "النشر التلقائي مفعّل" : "النشر التلقائي متوقف"}
+            </Text>
+          </Pressable>
           {hasActiveFilters ? (
             <Pressable accessibilityRole="button" onPress={clearContentFilters}>
               <Text style={[styles.reviewAction, { color: colors.primary }]}>
@@ -548,7 +524,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             </Pressable>
           ) : null}
         </View>
-          </Panel>
+      </View>
           {!ready ? (
           storageError ? (
             <EmptyState

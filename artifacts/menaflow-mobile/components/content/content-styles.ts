@@ -1,7 +1,6 @@
 import { StyleSheet } from "react-native";
 
 export const styles = StyleSheet.create({
-  contentIntro: { padding: 18, gap: 12 },
   addButton: {
     minHeight: 42,
     flexDirection: "row",
@@ -48,17 +47,6 @@ export const styles = StyleSheet.create({
   },
   autoPublishTitleCopy: { flex: 1, gap: 2 },
   autoPublishDescription: { fontSize: 12, lineHeight: 15, textAlign: "right" },
-  autoPublishCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  autoPublishCompactCopy: { flex: 1, gap: 2 },
-  postWorkspace: { gap: 10 },
   connectionLoadError: {
     alignItems: "flex-start",
     gap: 8,
@@ -119,6 +107,24 @@ export const styles = StyleSheet.create({
   },
   filterLabel: { fontSize: 12, fontWeight: "700" },
   filterGroup: { gap: 6 },
+  resultsSummaryActions: {
+    flexShrink: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+  },
+  autoPublishChip: {
+    maxWidth: 190,
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+  },
+  autoPublishChipText: { flexShrink: 1, fontSize: 12, fontWeight: "700" },
   resultsSummary: {
     flexDirection: "row",
     alignItems: "center",

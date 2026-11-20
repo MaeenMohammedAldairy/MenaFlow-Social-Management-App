@@ -96,25 +96,62 @@ export function Page({
   );
 }
 
-export function BrandHeader({ showBell = false }: { showBell?: boolean }) {
+type BrandHeaderProps = {
+  showBell?: boolean;
+  /**
+   * Turns the brand card into a compact page header: mark + screen title on
+   * one row, so a screen does not stack a brand card above its own title.
+   */
+  title?: string;
+  action?: React.ReactNode;
+  back?: { href: Href; label: string };
+};
+
+export function BrandHeader({
+  showBell = false,
+  title,
+  action,
+  back,
+}: BrandHeaderProps) {
   if (!showBell || isLocalAuthDisabled) {
-    return <BrandHeaderContent showBell={showBell} userId={null} />;
+    return (
+      <BrandHeaderContent
+        showBell={showBell}
+        userId={null}
+        title={title}
+        action={action}
+        back={back}
+      />
+    );
   }
-  return <AuthenticatedBrandHeader />;
+  return (
+    <AuthenticatedBrandHeader title={title} action={action} back={back} />
+  );
 }
 
-function AuthenticatedBrandHeader() {
+function AuthenticatedBrandHeader({ title, action, back }: BrandHeaderProps) {
   const { userId } = useAuth();
-  return <BrandHeaderContent showBell userId={userId ?? null} />;
+  return (
+    <BrandHeaderContent
+      showBell
+      userId={userId ?? null}
+      title={title}
+      action={action}
+      back={back}
+    />
+  );
 }
 
 function BrandHeaderContent({
   showBell,
   userId,
+  title,
+  action,
+  back,
 }: {
   showBell: boolean;
   userId: string | null;
-}) {
+} & BrandHeaderProps) {
   const colors = useColors();
   const { posts } = useStudio();
   const pendingReview = posts.filter((post) => post.status === 'review').length;
@@ -141,15 +178,20 @@ function BrandHeaderContent({
     router.push('/(tabs)/more/orders');
   };
 
+  const compact = Boolean(title);
+
   return (
     <>
       <View
         style={[
-          styles.brandHeader,
-          { backgroundColor: colors.card, borderColor: colors.border },
+          compact ? styles.pageHeader : styles.brandHeader,
+          compact
+            ? null
+            : { backgroundColor: colors.card, borderColor: colors.border },
         ]}
       >
         <View style={styles.headerActions}>
+          {action}
           {showBell ? (
             <Pressable
               accessibilityRole="button"
@@ -191,8 +233,37 @@ function BrandHeaderContent({
           </Pressable>
         </View>
         <View style={styles.brandLockup}>
-          <Image source={require('../assets/images/icon.png')} style={styles.brandMark} />
-          <Text style={[styles.brandName, { color: colors.foreground }]}>MenaFlow</Text>
+          {back ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={back.label}
+              testID="page-back-button"
+              onPress={() => navigateBack(back.href)}
+              style={({ pressed }) => [
+                styles.compactBackButton,
+                {
+                  backgroundColor: pressed ? colors.secondary : colors.accent,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Icon name="chevron-right" size={18} color={colors.primary} />
+            </Pressable>
+          ) : (
+            <Image
+              source={require('../assets/images/icon.png')}
+              style={compact ? styles.brandMarkSmall : styles.brandMark}
+            />
+          )}
+          <Text
+            numberOfLines={1}
+            style={[
+              compact ? styles.pageHeaderTitle : styles.brandName,
+              { color: colors.foreground },
+            ]}
+          >
+            {title ?? 'MenaFlow'}
+          </Text>
         </View>
       </View>
       <Modal
@@ -473,6 +544,10 @@ const styles = StyleSheet.create({
   pageContentFill: { flex: 1 },
   constrainedContent: { width: '100%', alignSelf: 'center' },
   brandHeader: { width: '100%', alignSelf: 'stretch', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', minHeight: 58, paddingHorizontal: 10, borderWidth: 1, borderRadius: 17 },
+  pageHeader: { width: '100%', alignSelf: 'stretch', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', minHeight: 50, gap: 10 },
+  pageHeaderTitle: { flexShrink: 1, fontSize: 20, fontWeight: '800', textAlign: 'right' },
+  brandMarkSmall: { width: 30, height: 30, borderRadius: 10 },
+  compactBackButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 12 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandMark: { width: 34, height: 34, borderRadius: 11 },

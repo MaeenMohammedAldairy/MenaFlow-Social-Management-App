@@ -17,6 +17,11 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { useStudio, type Post } from "@/context/StudioContext";
 import {
+  consumeSetupCompleted,
+  dismissSetupChecklist,
+  isSetupChecklistDismissed,
+} from "@/lib/setup-reminders";
+import {
   ActionButton,
   BrandHeader,
   EmptyState,
@@ -95,8 +100,23 @@ function ActivityMediaThumbnail({ uri }: { uri: string }) {
 
 function HomeScreenContent({ userId }: { userId: string | null }) {
   const colors = useColors();
-  const { posts, refreshPosts, syncing, ready, storageError } = useStudio();
+  const { posts, refreshPosts, syncing, ready, storageError, autoPublishSettings } =
+    useStudio();
   const [refreshing, setRefreshing] = useState(false);
+  const [showSetupBanner, setShowSetupBanner] = useState(false);
+  const [setupChecklistDismissed, setSetupChecklistDismissed] = useState(true);
+  React.useEffect(() => {
+    let active = true;
+    void consumeSetupCompleted().then((completed) => {
+      if (active && completed) setShowSetupBanner(true);
+    });
+    void isSetupChecklistDismissed().then((dismissed) => {
+      if (active) setSetupChecklistDismissed(dismissed);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   const [retryingHeroConnections, setRetryingHeroConnections] = useState(false);
   const [retryingConnectionsFor, setRetryingConnectionsFor] = useState<
     Partial<Record<"facebook" | "instagram" | "whatsapp", boolean>>
@@ -287,6 +307,40 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       },
     });
   const createContent = () => router.push("/compose");
+  const setupSteps = [
+    {
+      key: "accounts",
+      label: "اربط حساب نشر",
+      done: hasAnyConnection,
+      onPress: openPublishing,
+    },
+    {
+      key: "first-post",
+      label: "أنشئ أول منشور",
+      done: posts.length > 0,
+      onPress: createContent,
+    },
+    {
+      key: "auto-publish",
+      label: "شغّل النشر التلقائي (اختياري)",
+      done:
+        Boolean(autoPublishSettings?.enabled) &&
+        (autoPublishSettings?.channels?.length ?? 0) > 0,
+      onPress: () => router.push("/publishing-settings"),
+    },
+  ];
+  // Auto-publish is a recommendation, not a requirement, so it never keeps the
+  // card alive on its own.
+  const requiredSetupSteps = setupSteps.filter(
+    (step) => step.key !== "auto-publish",
+  );
+  const completedSetupSteps = requiredSetupSteps.filter(
+    (step) => step.done,
+  ).length;
+  const showSetupChecklist =
+    ready &&
+    !setupChecklistDismissed &&
+    completedSetupSteps < requiredSetupSteps.length;
 
   let heroEyebrow = "خطوتك التالية";
   let heroTitle = "تابع محتواك";
@@ -430,6 +484,117 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       contentMaxWidth={1280}
     >
       <BrandHeader showBell />
+      {showSetupBanner ? (
+        <View
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          style={[
+            styles.setupBanner,
+            { backgroundColor: colors.accent, borderColor: colors.primary },
+          ]}
+        >
+          <Icon name="check" size={18} color={colors.primary} />
+          <View style={styles.setupBannerCopy}>
+            <Text style={[styles.setupBannerTitle, { color: colors.foreground }]}>
+              مساحة عملك جاهزة
+            </Text>
+            <Text
+              style={[
+                styles.setupBannerBody,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              يمكنك البدء بأول منشور الآن، أو استكشاف باقي الأقسام.
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="إنشاء أول منشور"
+            onPress={() => {
+              setShowSetupBanner(false);
+              createContent();
+            }}
+            style={[styles.setupBannerAction, { backgroundColor: colors.primary }]}
+          >
+            <Text
+              style={[
+                styles.setupBannerActionText,
+                { color: colors.primaryForeground },
+              ]}
+            >
+              ابدأ
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="إغلاق رسالة الإعداد"
+            onPress={() => setShowSetupBanner(false)}
+            hitSlop={8}
+            style={styles.setupBannerDismiss}
+          >
+            <Icon name="x" size={16} color={colors.mutedForeground} />
+          </Pressable>
+        </View>
+      ) : null}
+      {showSetupChecklist ? (
+        <Panel style={styles.setupCard}>
+          <View style={styles.setupCardHeader}>
+            <View style={styles.setupCardTitleGroup}>
+              <Text style={[styles.setupCardTitle, { color: colors.foreground }]}>
+                خطوات البدء
+              </Text>
+              <Text
+                style={[
+                  styles.setupCardProgress,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                {`${completedSetupSteps} من ${requiredSetupSteps.length}`}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إخفاء خطوات البدء"
+              onPress={() => {
+                setSetupChecklistDismissed(true);
+                void dismissSetupChecklist();
+              }}
+              hitSlop={8}
+            >
+              <Icon name="x" size={16} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+          {setupSteps.map((step) => (
+            <Pressable
+              key={step.key}
+              accessibilityRole="button"
+              accessibilityLabel={
+                step.done ? `${step.label}: مكتمل` : step.label
+              }
+              accessibilityState={{ disabled: step.done }}
+              disabled={step.done}
+              onPress={step.onPress}
+              style={styles.setupStepRow}
+            >
+              <Icon
+                name={step.done ? "check" : "chevron-left"}
+                size={16}
+                color={step.done ? colors.primary : colors.mutedForeground}
+              />
+              <Text
+                style={[
+                  styles.setupStepLabel,
+                  {
+                    color: step.done ? colors.mutedForeground : colors.foreground,
+                  },
+                ]}
+              >
+                {step.label}
+              </Text>
+            </Pressable>
+          ))}
+        </Panel>
+      ) : null}
       {orderSummaryQuery.data?.metaDrafts ? (
         <Pressable
           accessibilityRole="button"
@@ -1366,6 +1531,42 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
 }
 
 const styles = StyleSheet.create({
+  setupBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+  },
+  setupBannerCopy: { flex: 1, gap: 2 },
+  setupBannerTitle: { fontSize: 14, fontWeight: "800" },
+  setupBannerBody: { fontSize: 12, lineHeight: 18 },
+  setupBannerAction: {
+    minHeight: 34,
+    justifyContent: "center",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+  },
+  setupBannerActionText: { fontSize: 13, fontWeight: "700" },
+  setupBannerDismiss: { padding: 4 },
+  setupCard: { gap: 10 },
+  setupCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  setupCardTitleGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
+  setupCardTitle: { fontSize: 15, fontWeight: "800" },
+  setupCardProgress: { fontSize: 12, fontWeight: "700" },
+  setupStepRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 6,
+  },
+  setupStepLabel: { fontSize: 13, fontWeight: "600" },
   orderNotification: {
     minHeight: 72,
     flexDirection: "row",

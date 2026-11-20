@@ -24,7 +24,6 @@ import {
   BrandHeader,
   EmptyState,
   Page,
-  PageTitle,
   Panel,
 } from "@/components/Ui";
 import {
@@ -489,18 +488,6 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
 
   return (
     <Page scroll={false}>
-      <FilterBar
-        activeCount={statusFilter === "all" ? 0 : 1}
-        onOpenFilters={() => setFiltersOpen(true)}
-      >
-        <CairoTextInput
-          accessibilityLabel="ابحث بالعميل أو رقم الطلب"
-          value={search}
-          onChangeText={setSearch}
-          placeholder="ابحث بالعميل أو رقم الطلب"
-          style={[styles.searchInput, { color: colors.foreground }]}
-        />
-      </FilterBar>
       <Modal
         visible={Boolean(deliveryEditOrder)}
         transparent
@@ -760,10 +747,8 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
         ItemSeparatorComponent={() => <View style={styles.orderSeparator} />}
         ListHeaderComponent={
           <View style={styles.orderHeaderStack}>
-      <BrandHeader />
-      <PageTitle
+      <BrandHeader
         title="الطلبات"
-        subtitle="سجّل الطلبات وتابع حجز المخزون وتجهيز الشحنات والتحصيل."
         back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
         action={
           <Pressable
@@ -793,6 +778,19 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           </Pressable>
         }
       />
+
+      <FilterBar
+        activeCount={statusFilter === "all" ? 0 : 1}
+        onOpenFilters={() => setFiltersOpen(true)}
+      >
+        <CairoTextInput
+          accessibilityLabel="ابحث بالعميل أو رقم الطلب"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="ابحث بالعميل أو رقم الطلب"
+          style={[styles.searchInput, { color: colors.foreground }]}
+        />
+      </FilterBar>
 
       {successMessage ? (
         <Panel style={[styles.noticePanel, { backgroundColor: colors.accent }]}>
@@ -1709,7 +1707,7 @@ const styles = StyleSheet.create({
   countText: { fontSize: 12, fontWeight: "800" },
   orderList: { gap: 10 },
   orderSeparator: { height: 10 },
-  orderHeaderStack: { gap: 18, marginBottom: 10 },
+  orderHeaderStack: { gap: 12, marginBottom: 10 },
   orderListContent: { paddingBottom: 8 },
   orderListFill: { flex: 1 },
   orderListFooter: { gap: 10, paddingTop: 10 },
