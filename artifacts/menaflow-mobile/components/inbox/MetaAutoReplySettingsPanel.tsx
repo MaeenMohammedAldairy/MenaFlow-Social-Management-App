@@ -114,8 +114,11 @@ function readinessMessage(
 
 export function MetaAutoReplySettingsPanel({
   userId,
+  platform,
 }: {
   userId: string | null;
+  /** Each card owns a single Meta platform, so the editor is scoped to it. */
+  platform: MetaInboxPlatform;
 }) {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -130,8 +133,7 @@ export function MetaAutoReplySettingsPanel({
   const [isHistoricalModalOpen, setIsHistoricalModalOpen] = useState(false);
   const [isHistoricalConfirmationOpen, setIsHistoricalConfirmationOpen] =
     useState(false);
-  const [historicalPlatform, setHistoricalPlatform] =
-    useState<MetaInboxPlatform>("facebook");
+  const historicalPlatform = platform;
   const [historicalSelectionMode, setHistoricalSelectionMode] = useState<
     "selected" | "all"
   >("selected");
@@ -140,7 +142,7 @@ export function MetaAutoReplySettingsPanel({
   >(new Set());
   const [error, setError] = useState("");
   const [testMessage, setTestMessage] = useState("");
-  const [testPlatform, setTestPlatform] = useState<MetaInboxPlatform>("facebook");
+  const testPlatform = platform;
   const [testKind, setTestKind] = useState<MetaInboxKind>("message");
   const [testReply, setTestReply] = useState("");
   const [testMatchedProduct, setTestMatchedProduct] = useState<string | null>(null);
@@ -329,8 +331,8 @@ export function MetaAutoReplySettingsPanel({
       <Panel style={styles.panel}>
         <View style={styles.editorBody}>
           <Text style={[styles.body, { color: colors.mutedForeground }]}>
-            اختر أنواع الردود التي تريد تفعيلها لكل منصة. تُحفظ الاختيارات
-            عند الضغط على «حفظ»، وإيقاف جميعها يوقف الرد الآلي.
+            اختر أنواع الردود التي تريد تفعيلها على هذه القناة. تُحفظ
+            الاختيارات عند الضغط على «حفظ»، وإيقاف جميعها يوقف الرد الآلي.
           </Text>
 
           {query.isError ? (
@@ -343,85 +345,52 @@ export function MetaAutoReplySettingsPanel({
 
           {query.data ? (
             <>
-              {platforms.map((platform) => {
-                const readiness = query.data.readiness[platform.key];
-                const messageBlock = readinessMessage(readiness, "message");
-                const commentBlock = readinessMessage(readiness, "comment");
-                return (
-                  <View
-                    key={platform.key}
-                    style={[
-                      styles.platform,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: colors.background,
-                      },
-                    ]}
-                  >
+              {platforms
+                .filter((candidate) => candidate.key === platform)
+                .map((candidate) => {
+                  const readiness = query.data.readiness[candidate.key];
+                  const messageBlock = readinessMessage(readiness, "message");
+                  const commentBlock = readinessMessage(readiness, "comment");
+                  return (
                     <View
+                      key={candidate.key}
                       style={[
-                        styles.platformHeader,
-                        { borderBottomColor: colors.border },
+                        styles.platform,
+                        {
+                          borderColor: colors.border,
+                          backgroundColor: colors.background,
+                        },
                       ]}
                     >
-                      <View style={styles.platformHeading}>
-                        <PlatformIcon platform={platform.key} />
-                        <Text
-                          style={[
-                            styles.platformTitle,
-                            { color: colors.foreground },
-                          ]}
-                        >
-                          {platform.label}
-                        </Text>
-                      </View>
-                      <Text
-                        style={[
-                          styles.platformState,
-                          {
-                            color:
-                              settings[platform.messagesKey] ||
-                                settings[platform.commentsKey]
-                                ? colors.primary
-                                : colors.mutedForeground,
-                          },
-                        ]}
-                      >
-                        {settings[platform.messagesKey] ||
-                          settings[platform.commentsKey]
-                          ? "مفعّل"
-                          : "متوقف"}
-                      </Text>
+                      <SettingSwitch
+                        label="الرد تلقائيًا على الرسائل الخاصة"
+                        enabled={settings[candidate.messagesKey]}
+                        busy={save.isPending}
+                        disabled={
+                          !settings[candidate.messagesKey] &&
+                          Boolean(messageBlock)
+                        }
+                        reason={messageBlock}
+                        onChange={(value) =>
+                          update({ [candidate.messagesKey]: value })
+                        }
+                      />
+                      <SettingSwitch
+                        label="الرد علنًا على التعليقات"
+                        enabled={settings[candidate.commentsKey]}
+                        busy={save.isPending}
+                        disabled={
+                          !settings[candidate.commentsKey] &&
+                          Boolean(commentBlock)
+                        }
+                        reason={commentBlock}
+                        onChange={(value) =>
+                          update({ [candidate.commentsKey]: value })
+                        }
+                      />
                     </View>
-                    <SettingSwitch
-                      label="الرد تلقائيًا على الرسائل الخاصة"
-                      enabled={settings[platform.messagesKey]}
-                      busy={save.isPending}
-                      disabled={
-                        !settings[platform.messagesKey] &&
-                        Boolean(messageBlock)
-                      }
-                      reason={messageBlock}
-                      onChange={(value) =>
-                        update({ [platform.messagesKey]: value })
-                      }
-                    />
-                    <SettingSwitch
-                      label="الرد علنًا على التعليقات"
-                      enabled={settings[platform.commentsKey]}
-                      busy={save.isPending}
-                      disabled={
-                        !settings[platform.commentsKey] &&
-                        Boolean(commentBlock)
-                      }
-                      reason={commentBlock}
-                      onChange={(value) =>
-                        update({ [platform.commentsKey]: value })
-                      }
-                    />
-                  </View>
-                );
-              })}
+                  );
+                })}
 
               <View style={styles.field}>
                 <Text style={[styles.label, { color: colors.foreground }]}>
@@ -538,49 +507,8 @@ export function MetaAutoReplySettingsPanel({
                   <Text
                     style={[styles.bodySmall, { color: colors.foreground }]}
                   >
-                    القناة ونوع التفاعل للاختبار
+                    نوع التفاعل للاختبار
                   </Text>
-                  <View style={styles.choiceRow}>
-                    {platforms.map(({ key, label }) => {
-                      const selected = testPlatform === key;
-                      return (
-                        <Pressable
-                          key={key}
-                          accessibilityRole="radio"
-                          accessibilityLabel={`اختبار ${label}`}
-                          accessibilityState={{ checked: selected }}
-                          onPress={() => {
-                            setTestPlatform(key);
-                            setTestReply("");
-                            setTestError("");
-                          }}
-                          style={[
-                            styles.testTargetOption,
-                            {
-                              backgroundColor: selected
-                                ? colors.primary
-                                : colors.card,
-                              borderColor: selected
-                                ? colors.primary
-                                : colors.border,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={{
-                              color: selected
-                                ? colors.primaryForeground
-                                : colors.foreground,
-                              fontSize: 12,
-                              fontWeight: "700",
-                            }}
-                          >
-                            {label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
                   <View style={styles.choiceRow}>
                     {(
                       [
@@ -780,14 +708,13 @@ export function MetaAutoReplySettingsPanel({
           enabled={isHistoricalModalOpen}
           busy={queueHistoricalComments.isPending}
           disabled={query.isPending || query.isError}
-          reason="عند التفعيل، اختر المنصة والمنشورات ثم أكد جدولة الردود."
+          reason="عند التفعيل، اختر المنشورات ثم أكد جدولة الردود."
           onChange={(enabled) => {
             if (!enabled) return;
             setError("");
             setHistoricalQueueMessage("");
             setSelectedHistoricalPostIds(new Set());
             setHistoricalSelectionMode("selected");
-            setHistoricalPlatform("facebook");
             setIsHistoricalModalOpen(true);
           }}
         />
@@ -852,79 +779,6 @@ export function MetaAutoReplySettingsPanel({
                 ضمن نافذة الرد الحالية (24 ساعة). لا يجلب هذا الإجراء تعليقات
                 قديمة غير محفوظة.
               </Text>
-              <View style={styles.choiceRow}>
-                {platforms.map(({ key, label }) => {
-                  const data = historicalPosts.data?.platforms[key];
-                  const selected = historicalPlatform === key;
-                  const accountName =
-                    connections.data?.[key]?.accountName ?? "الحساب غير متاح";
-                  return (
-                    <Pressable
-                      key={key}
-                      accessibilityRole="radio"
-                      accessibilityState={{
-                        checked: selected,
-                        disabled: !data?.ready,
-                      }}
-                      disabled={
-                        !data?.ready || queueHistoricalComments.isPending
-                      }
-                      onPress={() => {
-                        setHistoricalPlatform(key);
-                        setSelectedHistoricalPostIds(new Set());
-                        setError("");
-                      }}
-                      style={[
-                        styles.platformOption,
-                        {
-                          backgroundColor: selected
-                            ? colors.primary
-                            : colors.background,
-                          borderColor: colors.border,
-                          opacity: data?.ready ? 1 : 0.55,
-                        },
-                      ]}
-                    >
-                      <SocialPlatformIcon platform={key} size={22} />
-                      <View style={styles.platformChoiceCopy}>
-                        <Text
-                          style={[
-                            styles.platformChoiceLabel,
-                            {
-                              color: selected
-                                ? colors.primaryForeground
-                                : colors.foreground,
-                            },
-                          ]}
-                        >
-                          {label}
-                        </Text>
-                        <Text
-                          numberOfLines={1}
-                          style={[
-                            styles.bodySmall,
-                            {
-                              color: selected
-                                ? colors.primaryForeground
-                                : colors.mutedForeground,
-                            },
-                          ]}
-                        >
-                          {accountName}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-                {connections.isError ? (
-                  <Text
-                    accessibilityRole="alert"
-                    style={[styles.bodySmall, { color: colors.destructive }]}
-                  >
-                    تعذر تحميل اسم الحساب المتصل.
-                  </Text>
-                ) : null}
-              </View>
               <View style={styles.choiceRow}>
                 {(
                   [
@@ -1415,10 +1269,6 @@ function SettingSwitch({
   );
 }
 
-function PlatformIcon({ platform }: { platform: MetaInboxPlatform }) {
-  return <SocialPlatformIcon platform={platform} size={28} />;
-}
-
 const styles = StyleSheet.create({
   panel: { gap: 14 },
   editorBody: { gap: 16 },
@@ -1485,23 +1335,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 14,
   },
-  platformHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    paddingBottom: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  platformHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
   platformChoiceCopy: { flex: 1, gap: 2, alignItems: "flex-start" },
   platformChoiceLabel: { fontSize: 13, fontWeight: "600" },
-  platformTitle: { fontSize: 15, fontWeight: "700", textAlign: "right" },
-  platformState: { fontSize: 12, fontWeight: "600" },
   switchBlock: { gap: 3 },
   switchRow: {
     flexDirection: "row",
@@ -1541,17 +1376,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 11,
-  },
-  platformOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    flex: 1,
-    minWidth: 140,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
   },
   historicalPost: {
     flexDirection: "row",
