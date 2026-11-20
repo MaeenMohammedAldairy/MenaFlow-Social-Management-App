@@ -24,7 +24,13 @@ type ImportReport = {
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
-export function CsvProductImportCard({ userId }: { userId: string | null }) {
+export function CsvProductImportCard({
+  userId,
+  onImported,
+}: {
+  userId: string | null;
+  onImported?: (imported: number) => void;
+}) {
   const colors = useColors();
   const queryClient = useQueryClient();
   const [fileName, setFileName] = useState("");
@@ -104,6 +110,7 @@ export function CsvProductImportCard({ userId }: { userId: string | null }) {
       setReport({ imported, failed });
       setRows(null);
       setFileName("");
+      if (imported > 0) onImported?.(imported);
     } finally {
       setBusy(false);
     }

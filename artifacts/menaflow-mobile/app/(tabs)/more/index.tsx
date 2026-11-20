@@ -70,7 +70,7 @@ const destinationGroups: Array<{
       },
       {
         title: "مصادر البيانات",
-        description: "مزامنة رسائل واتساب واستيراد بيانات المنتجات من ملفات CSV",
+        description: "ربط واتساب ومتابعة مزامنة الرسائل والمجموعات",
         icon: "share-2",
         accent: "blue",
         path: "/(tabs)/more/sources",

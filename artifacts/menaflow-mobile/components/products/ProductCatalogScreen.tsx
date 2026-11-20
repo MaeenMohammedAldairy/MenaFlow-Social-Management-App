@@ -41,6 +41,7 @@ import {
   Panel,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
+import { CsvProductImportCard } from "@/components/sources/CsvProductImportCard";
 import {
   formatArabicCurrency,
   formatArabicDate,
@@ -299,6 +300,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     new Set(),
   );
   const [publishModalVisible, setPublishModalVisible] = useState(false);
+  const [csvImportVisible, setCsvImportVisible] = useState(false);
   const [selectedTargetKeys, setSelectedTargetKeys] = useState<Set<string>>(
     new Set(),
   );
@@ -961,31 +963,53 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 : undefined
             }
             action={
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="إضافة منتج"
-                onPress={() =>
-                  openEditor({ id: null, value: emptyDraft, mediaPreviews: [] })
-                }
-                style={({ pressed }) => [
-                  styles.addButton,
-                  {
-                    backgroundColor: colors.primary,
-                    opacity: pressed ? 0.84 : 1,
-                    transform: [{ scale: pressed ? 0.98 : 1 }],
-                  },
-                ]}
-              >
-                <Icon name="plus" size={17} color={colors.primaryForeground} />
-                <Text
-                  style={{
-                    color: colors.primaryForeground,
-                    fontWeight: "700",
-                  }}
+              <View style={styles.headerActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="إضافة منتج"
+                  onPress={() =>
+                    openEditor({ id: null, value: emptyDraft, mediaPreviews: [] })
+                  }
+                  style={({ pressed }) => [
+                    styles.addButton,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: pressed ? 0.84 : 1,
+                      transform: [{ scale: pressed ? 0.98 : 1 }],
+                    },
+                  ]}
                 >
-                  إضافة منتج
-                </Text>
-              </Pressable>
+                  <Icon name="plus" size={17} color={colors.primaryForeground} />
+                  <Text
+                    style={{
+                      color: colors.primaryForeground,
+                      fontWeight: "700",
+                    }}
+                  >
+                    إضافة منتج
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="استيراد المنتجات من ملف CSV"
+                  accessibilityHint="يفتح نافذة استيراد منتجات متعددة كمسودات للمراجعة"
+                  onPress={() => setCsvImportVisible(true)}
+                  style={({ pressed }) => [
+                    styles.addButton,
+                    {
+                      backgroundColor: colors.card,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      opacity: pressed ? 0.84 : 1,
+                    },
+                  ]}
+                >
+                  <Icon name="file-text" size={16} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontWeight: "700" }}>
+                    CSV
+                  </Text>
+                </Pressable>
+              </View>
             }
           />
         </View>
@@ -2010,6 +2034,43 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           />
         </Panel>
       ) : null}
+      <Modal
+        visible={csvImportVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCsvImportVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.dialog,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                استيراد CSV
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إغلاق استيراد CSV"
+                onPress={() => setCsvImportVisible(false)}
+              >
+                <Icon name="x" size={20} color={colors.foreground} />
+              </Pressable>
+            </View>
+            <ScrollView
+              contentContainerStyle={styles.form}
+              keyboardShouldPersistTaps="handled"
+            >
+              <CsvProductImportCard
+                userId={userId}
+                onImported={() => selectCatalogTab("drafts")}
+              />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
       <Modal
         visible={editor !== null}
         transparent
@@ -3669,6 +3730,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexWrap: "wrap",
     gap: 8,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 8,
+    flexWrap: "wrap",
   },
   addButton: {
     minHeight: 44,
