@@ -147,7 +147,12 @@ function ReplySettingsContent({ userId }: { userId: string | null }) {
     <Page>
       <BrandHeader
         title="الرد الآلي"
-        back={{ href: "/(tabs)/inbox", label: "العودة إلى المحادثات" }}
+        back={
+          // Arriving from the connect-accounts flow must not drop the user in the inbox.
+          params.returnTo === "connect-accounts"
+            ? { href: "/connect-accounts", label: "العودة إلى الإعداد الأولي" }
+            : { href: "/(tabs)/inbox", label: "العودة إلى المحادثات" }
+        }
       />
 
       {channelOrder.map((channel) => {
