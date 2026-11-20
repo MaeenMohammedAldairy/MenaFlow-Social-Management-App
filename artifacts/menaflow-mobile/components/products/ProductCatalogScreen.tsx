@@ -1553,100 +1553,74 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         {activeTab !== "extractions" ? (
           <View style={styles.section}>
             <Panel style={styles.catalogToolbar}>
-              <View style={styles.sectionHeading}>
-                <View style={styles.productSectionTitle}>
+              <View style={styles.selectionActions}>
+                {selectedProducts.length ? (
                   <Text
-                    style={[styles.sectionTitle, { color: colors.foreground }]}
+                    style={[styles.helper, { color: colors.mutedForeground }]}
                   >
-                    المنتجات
+                    المحدد: {formatArabicNumber(selectedProducts.length)}
                   </Text>
-                  {catalog.data ? (
-                    <View
-                      style={[
-                        styles.productCount,
-                        { backgroundColor: colors.accent },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.productCountText,
-                          { color: colors.primary },
-                        ]}
-                      >
-                        {formatArabicNumber(visibleProducts.length)}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-                <View style={styles.selectionActions}>
-                  {selectedProducts.length ? (
-                    <Text
-                      style={[styles.helper, { color: colors.mutedForeground }]}
-                    >
-                      المحدد: {formatArabicNumber(selectedProducts.length)}
-                    </Text>
-                  ) : null}
-                  {selectedProductIds.size ? (
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="إلغاء تحديد المنتجات"
-                      onPress={() => {
-                        setSelectedProductIds(new Set());
-                        setError("");
-                      }}
-                    >
-                      <Text style={[styles.link, { color: colors.primary }]}>
-                        إلغاء التحديد
-                      </Text>
-                    </Pressable>
-                  ) : null}
+                ) : null}
+                {selectedProductIds.size ? (
                   <Pressable
-                    accessibilityRole="checkbox"
-                    accessibilityLabel="تحديد جميع المنتجات المعتمدة المعروضة"
-                    accessibilityState={{
-                      checked: selectedAllVisible,
-                      disabled: selectableVisibleProducts.length === 0,
+                    accessibilityRole="button"
+                    accessibilityLabel="إلغاء تحديد المنتجات"
+                    onPress={() => {
+                      setSelectedProductIds(new Set());
+                      setError("");
                     }}
-                    disabled={selectableVisibleProducts.length === 0}
-                    onPress={toggleAllVisibleProducts}
-                    style={({ pressed }) => [
-                      styles.selectAll,
+                  >
+                    <Text style={[styles.link, { color: colors.primary }]}>
+                      إلغاء التحديد
+                    </Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  accessibilityRole="checkbox"
+                  accessibilityLabel="تحديد جميع المنتجات المعتمدة المعروضة"
+                  accessibilityState={{
+                    checked: selectedAllVisible,
+                    disabled: selectableVisibleProducts.length === 0,
+                  }}
+                  disabled={selectableVisibleProducts.length === 0}
+                  onPress={toggleAllVisibleProducts}
+                  style={({ pressed }) => [
+                    styles.selectAll,
+                    {
+                      opacity:
+                        selectableVisibleProducts.length === 0
+                          ? 0.45
+                          : pressed
+                            ? 0.7
+                            : 1,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.checkbox,
                       {
-                        opacity:
-                          selectableVisibleProducts.length === 0
-                            ? 0.45
-                            : pressed
-                              ? 0.7
-                              : 1,
+                        borderColor: selectedAllVisible
+                          ? colors.primary
+                          : colors.border,
+                        backgroundColor: selectedAllVisible
+                          ? colors.primary
+                          : "transparent",
                       },
                     ]}
                   >
-                    <View
-                      style={[
-                        styles.checkbox,
-                        {
-                          borderColor: selectedAllVisible
-                            ? colors.primary
-                            : colors.border,
-                          backgroundColor: selectedAllVisible
-                            ? colors.primary
-                            : "transparent",
-                        },
-                      ]}
-                    >
-                      {selectedAllVisible ? (
-                        <Icon
-                          name="check"
-                          size={13}
-                          color={colors.primaryForeground}
-                        />
-                      ) : null}
-                    </View>
-                    <Text style={[styles.link, { color: colors.primary }]}>
-                      تحديد الكل
-                    </Text>
-                  </Pressable>
-                </View>
+                    {selectedAllVisible ? (
+                      <Icon
+                        name="check"
+                        size={13}
+                        color={colors.primaryForeground}
+                      />
+                    ) : null}
+                  </View>
+                  <Text style={[styles.link, { color: colors.primary }]}>
+                    تحديد الكل
+                  </Text>
+                </Pressable>
               </View>
               <View
                 style={[
@@ -3769,26 +3743,6 @@ const styles = StyleSheet.create({
     textAlign: "right",
     writingDirection: "rtl",
   },
-  sectionHeading: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 8,
-  },
-  productSectionTitle: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 8,
-  },
-  productCount: {
-    minWidth: 24,
-    height: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 12,
-    paddingHorizontal: 6,
-  },
-  productCountText: { fontSize: 12, fontWeight: "700" },
   catalogToolbar: { gap: 12, padding: 14 },
   catalogError: {
     alignItems: "center",
@@ -3814,7 +3768,7 @@ const styles = StyleSheet.create({
   selectionActions: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "flex-start",
     flexWrap: "wrap",
     gap: 10,
   },
