@@ -489,18 +489,6 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
 
   return (
     <Page scroll={false}>
-      <FilterBar
-        activeCount={statusFilter === "all" ? 0 : 1}
-        onOpenFilters={() => setFiltersOpen(true)}
-      >
-        <CairoTextInput
-          accessibilityLabel="ابحث بالعميل أو رقم الطلب"
-          value={search}
-          onChangeText={setSearch}
-          placeholder="ابحث بالعميل أو رقم الطلب"
-          style={[styles.searchInput, { color: colors.foreground }]}
-        />
-      </FilterBar>
       <Modal
         visible={Boolean(deliveryEditOrder)}
         transparent
@@ -793,6 +781,19 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           </Pressable>
         }
       />
+
+        <FilterBar
+          activeCount={statusFilter === "all" ? 0 : 1}
+          onOpenFilters={() => setFiltersOpen(true)}
+        >
+          <CairoTextInput
+            accessibilityLabel="ابحث بالعميل أو رقم الطلب"
+            value={search}
+            onChangeText={setSearch}
+            placeholder="ابحث بالعميل أو رقم الطلب"
+            style={[styles.searchInput, { color: colors.foreground }]}
+          />
+        </FilterBar>
 
       {successMessage ? (
         <Panel style={[styles.noticePanel, { backgroundColor: colors.accent }]}>

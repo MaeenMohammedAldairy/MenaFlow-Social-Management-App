@@ -361,32 +361,6 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
 
   return (
     <Page scroll={false}>
-      <FilterBar
-        activeCount={activeFilterCount}
-        onOpenFilters={() => setFiltersOpen(true)}
-      >
-        <TextInput
-          accessibilityLabel="ابحث في المنشورات"
-          value={search}
-          onChangeText={setSearch}
-          placeholder="ابحث في المنشورات"
-          placeholderTextColor={colors.mutedForeground}
-          style={[styles.searchInput, { color: colors.foreground }]}
-          textAlign="right"
-          returnKeyType="search"
-        />
-        {search ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="مسح البحث"
-            onPress={() => setSearch("")}
-            style={styles.clearSearchButton}
-            hitSlop={8}
-          >
-            <Icon name="x" size={16} color={colors.mutedForeground} />
-          </Pressable>
-        ) : null}
-      </FilterBar>
       <ContentPostList
         ready={ready}
         header={
@@ -428,6 +402,33 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
           }
         />
       </Panel>
+
+        <FilterBar
+          activeCount={activeFilterCount}
+          onOpenFilters={() => setFiltersOpen(true)}
+        >
+          <TextInput
+            accessibilityLabel="ابحث في المنشورات"
+            value={search}
+            onChangeText={setSearch}
+            placeholder="ابحث في المنشورات"
+            placeholderTextColor={colors.mutedForeground}
+            style={[styles.searchInput, { color: colors.foreground }]}
+            textAlign="right"
+            returnKeyType="search"
+          />
+          {search ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="مسح البحث"
+              onPress={() => setSearch("")}
+              style={styles.clearSearchButton}
+              hitSlop={8}
+            >
+              <Icon name="x" size={16} color={colors.mutedForeground} />
+            </Pressable>
+          ) : null}
+        </FilterBar>
 
       <Pressable
         accessibilityRole="button"

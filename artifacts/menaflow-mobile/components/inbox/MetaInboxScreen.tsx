@@ -526,30 +526,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
 
   return (
     <Page scroll={false}>
-      <FilterBar
-        activeCount={activeFilterCount}
-        onOpenFilters={() => setFiltersOpen(true)}
-      >
-        <TextInput
-          accessibilityLabel="ابحث في الرسائل والتعليقات"
-          value={search}
-          onChangeText={setSearch}
-          placeholder="ابحث بالاسم أو نص الرسالة"
-          placeholderTextColor={colors.mutedForeground}
-          returnKeyType="search"
-          style={[styles.searchInput, { color: colors.foreground }]}
-        />
-        {search ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="مسح البحث"
-            onPress={() => setSearch("")}
-            hitSlop={8}
-          >
-            <Icon name="x" size={17} color={colors.mutedForeground} />
-          </Pressable>
-        ) : null}
-      </FilterBar>
       <FlatList
         data={rows}
         keyExtractor={(row) => row.key}
@@ -570,6 +546,31 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
             />
           }
         />
+        <FilterBar
+          activeCount={activeFilterCount}
+          onOpenFilters={() => setFiltersOpen(true)}
+        >
+          <TextInput
+            accessibilityLabel="ابحث في الرسائل والتعليقات"
+            value={search}
+            onChangeText={setSearch}
+            placeholder="ابحث بالاسم أو نص الرسالة"
+            placeholderTextColor={colors.mutedForeground}
+            returnKeyType="search"
+            style={[styles.searchInput, { color: colors.foreground }]}
+          />
+          {search ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="مسح البحث"
+              onPress={() => setSearch("")}
+              hitSlop={8}
+            >
+              <Icon name="x" size={17} color={colors.mutedForeground} />
+            </Pressable>
+          ) : null}
+        </FilterBar>
+
         <Panel style={styles.automationSummary}>
           <View style={styles.automationHeading}>
             <Icon name="zap" size={15} color={colors.primary} />
