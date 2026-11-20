@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
-import { StatusPill } from "@/components/Ui";
+import { StatusPill, StepBadge } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import type { WhatsAppGroupOption } from "@workspace/api-client-react";
 
@@ -60,6 +60,7 @@ export function WhatsAppSetupModal({
             { backgroundColor: colors.card, borderColor: colors.border },
           ]}
         >
+          <StepBadge step={2} total={3} label="اختيار المجموعات" />
           <Text style={[styles.dialogTitle, { color: colors.foreground }]}>
             إكمال إعداد واتساب
           </Text>

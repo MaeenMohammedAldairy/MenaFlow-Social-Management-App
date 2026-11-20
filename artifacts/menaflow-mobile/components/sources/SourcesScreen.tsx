@@ -53,6 +53,7 @@ import {
   PageTitle,
   Panel,
   StatusPill,
+  StepBadge,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { useStudio } from "@/context/StudioContext";
@@ -243,11 +244,13 @@ function SourcesContent({
     reconnect: requestedReconnect,
     returnTo,
     view,
+    section,
   } = useLocalSearchParams<{
     connect?: string;
     reconnect?: string;
     returnTo?: string;
     view?: string;
+    section?: string;
   }>();
   const isPublishingAccounts =
     forcePublishing ||
@@ -908,6 +911,7 @@ function SourcesContent({
           queryKey: whatsappSyncStatusQueryKey,
         }),
       ]);
+      setActiveSection("sync");
       showAppNotice({
         title: "تم حفظ الإعدادات",
         message: "حُفظت مجموعات واتساب. لم تبدأ مزامنة الرسائل السابقة؛ فعّل خيار مزامنتها ثم اضغط «مزامنة الآن حسب الخيارات» عند الحاجة.",
@@ -976,8 +980,11 @@ function SourcesContent({
     );
 
   const [activeSection, setActiveSection] = useState<"connections" | "sync">(
-    "connections",
+    section === "sync" ? "sync" : "connections",
   );
+  useEffect(() => {
+    if (section === "sync") setActiveSection("sync");
+  }, [section]);
   const latestSyncAt = useMemo(() => {
     const groups = syncStatusQuery.data?.groups ?? [];
     return groups.reduce<string | null>((latest, group) => {
@@ -1977,28 +1984,33 @@ function SourcesContent({
 
       {!isPublishingAccounts && activeSection === "sync" ? (
         connections?.whatsapp && isConnected("whatsapp") ? (
-          <WhatsAppSyncStatusPanel
-            status={syncStatusQuery.data}
-            groups={visibleSyncGroups}
-            loading={syncStatusQuery.isLoading}
-            hasError={syncStatusQuery.isError}
-            autoSyncSaving={autoSyncSaving}
-            syncing={syncInProgress}
-            syncNotice={syncNotice}
-            syncPreviousMessages={syncPreviousMessages}
-            onSyncPreviousMessagesChange={setSyncPreviousMessages}
-            historyMessageLimit={historyMessageLimit}
-            onHistoryMessageLimitChange={setHistoryMessageLimit}
-            onUpdateSetting={(setting, enabled) =>
-              void updateSyncSetting(setting, enabled)
-            }
-            onManageGroups={openWhatsAppSetup}
-            onRefresh={() => void syncStatusQuery.refetch()}
-            onOpenGroupMessages={(groupJid, groupName) =>
-              void openGroupMessages(groupJid, groupName)
-            }
-            onRunSync={() => void runWhatsAppSync()}
-          />
+          <>
+            {latestSyncAt ? null : (
+              <StepBadge step={3} total={3} label="تشغيل المزامنة" />
+            )}
+            <WhatsAppSyncStatusPanel
+              status={syncStatusQuery.data}
+              groups={visibleSyncGroups}
+              loading={syncStatusQuery.isLoading}
+              hasError={syncStatusQuery.isError}
+              autoSyncSaving={autoSyncSaving}
+              syncing={syncInProgress}
+              syncNotice={syncNotice}
+              syncPreviousMessages={syncPreviousMessages}
+              onSyncPreviousMessagesChange={setSyncPreviousMessages}
+              historyMessageLimit={historyMessageLimit}
+              onHistoryMessageLimitChange={setHistoryMessageLimit}
+              onUpdateSetting={(setting, enabled) =>
+                void updateSyncSetting(setting, enabled)
+              }
+              onManageGroups={openWhatsAppSetup}
+              onRefresh={() => void syncStatusQuery.refetch()}
+              onOpenGroupMessages={(groupJid, groupName) =>
+                void openGroupMessages(groupJid, groupName)
+              }
+              onRunSync={() => void runWhatsAppSync()}
+            />
+          </>
         ) : (
           <Panel style={styles.syncEmptyPanel}>
             <EmptyState
