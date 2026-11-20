@@ -10,7 +10,6 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
-import { getWhatsAppAutoReplySettings } from "@workspace/api-client-react";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { Skeleton } from "@/components/Skeleton";
@@ -26,7 +25,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
-import type { InboxPlatform } from "@/components/inbox/InboxPlatformTabs";
 import {
   FilterBar,
   FilterChipGroup,
@@ -34,10 +32,9 @@ import {
 } from "@/components/FilterBar";
 import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 import {
-  getMetaAutoReplySettings,
   getMetaInbox,
   metaInboxPersonId,
-  type MetaAutoReplySettingsResponse,
+  type InboxPlatform,
   type MetaInboxItem,
   type MetaInboxKind,
   type MetaInboxPlatform,
@@ -119,30 +116,6 @@ function inboxErrorMessage(error: unknown): string {
   return error.message;
 }
 
-function metaReplyStatus(
-  response: MetaAutoReplySettingsResponse,
-  platform: MetaInboxPlatform,
-): string {
-  const { settings, readiness } = response;
-  const platformReadiness = readiness[platform];
-  if (!platformReadiness.connected) return "الحساب غير متصل";
-  if (!platformReadiness.tokenReady) return "يحتاج إعدادًا";
-
-  const enabledKinds =
-    platform === "facebook"
-      ? [settings.facebookMessagesEnabled, settings.facebookCommentsEnabled]
-      : [settings.instagramMessagesEnabled, settings.instagramCommentsEnabled];
-  if (!settings.enabled || !enabledKinds.some(Boolean)) return "متوقف";
-
-  const kindReadiness = [
-    platformReadiness.messagesReady,
-    platformReadiness.commentsReady,
-  ].filter((_, index) => enabledKinds[index]);
-  if (kindReadiness.every(Boolean)) return "مفعّل وجاهز";
-  if (kindReadiness.some(Boolean)) return "جاهز جزئيًا";
-  return "يحتاج إعدادًا";
-}
-
 export function MetaInboxScreen() {
   return isLocalAuthDisabled ? (
     <MetaInboxContent userId={null} />
@@ -160,16 +133,19 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { platform: routePlatform } = useLocalSearchParams<{ platform?: string }>();
-  const initialPlatform: Exclude<InboxPlatform, "whatsapp"> =
-    routePlatform === "facebook" || routePlatform === "instagram"
+  const initialPlatform: InboxPlatform =
+    routePlatform === "whatsapp" ||
+    routePlatform === "facebook" ||
+    routePlatform === "instagram"
       ? routePlatform
       : "all";
-  const [platform, setPlatform] = useState<Exclude<InboxPlatform, "whatsapp">>(initialPlatform);
+  const [platform, setPlatform] = useState<InboxPlatform>(initialPlatform);
   const [filter, setFilter] = useState<InboxFilter>("all");
   useEffect(() => {
     setPlatform(initialPlatform);
     setFilter("all");
   }, [initialPlatform]);
+  const showsWhatsApp = platform === "all" || platform === "whatsapp";
   const [search, setSearch] = useState("");
   const [olderPages, setOlderPages] = useState<
     Awaited<ReturnType<typeof getMetaInbox>>[]
@@ -177,19 +153,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState<string | null>(null);
   const queryKey = ["meta-inbox", userId ?? "local"] as const;
-  const canLoadAccountSettings = isLocalAuthDisabled || Boolean(userId);
-  const metaReplySettings = useQuery({
-    queryKey: ["meta-auto-reply-settings", userId ?? "local"],
-    queryFn: getMetaAutoReplySettings,
-    enabled: canLoadAccountSettings,
-    retry: false,
-  });
-  const whatsAppReplySettings = useQuery({
-    queryKey: ["whatsappAutoReplySettings", userId ?? "local"],
-    queryFn: getWhatsAppAutoReplySettings,
-    enabled: platform === "all" && canLoadAccountSettings,
-    retry: false,
-  });
   const inbox = useQuery({
     queryKey,
     queryFn: () => getMetaInbox(),
@@ -199,8 +162,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
   const whatsappInbox = useQuery({
     queryKey: ["whatsapp-direct-inbox", userId ?? "local"],
     queryFn: getWhatsAppDirectConversations,
-    enabled:
-      platform === "all" && (isLocalAuthDisabled || Boolean(userId)),
+    enabled: showsWhatsApp && (isLocalAuthDisabled || Boolean(userId)),
     refetchInterval: 15_000,
     refetchOnWindowFocus: true,
   });
@@ -242,9 +204,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
     setOlderPages([]);
     setOlderError(null);
     void inbox.refetch();
-    void metaReplySettings.refetch();
-    if (platform === "all") void whatsAppReplySettings.refetch();
-    if (platform === "all") void whatsappInbox.refetch();
+    if (showsWhatsApp) void whatsappInbox.refetch();
   };
   const filteredItems =
     loadedItems.filter((item) => {
@@ -264,7 +224,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
     : filteredItems;
   const groups = groupInboxItems(visibleItems);
   const visibleWhatsAppConversations =
-    platform === "all" && filter !== "comment"
+    showsWhatsApp && filter !== "comment"
       ? whatsappConversations.filter((conversation) =>
           normalizedSearch
             ? [conversation.customerNumber, conversation.preview].some((value) =>
@@ -288,10 +248,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
     })),
   ].sort((first, second) => second.latestAt - first.latestAt);
   const selectPlatform = (nextPlatform: InboxPlatform) => {
-    if (nextPlatform === "whatsapp") {
-      router.push("/inbox/whatsapp");
-      return;
-    }
     setPlatform(nextPlatform);
     setFilter("all");
     router.setParams({ platform: nextPlatform });
@@ -304,15 +260,13 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           (platform === "all" || item.platform === platform) &&
           (option.key === "all" || item.kind === option.key),
       ).length +
-      (platform === "all" && option.key !== "comment"
+      (showsWhatsApp && option.key !== "comment"
         ? whatsappConversations.length
         : 0);
     return counts;
   }, {});
   const activeFilterCount =
     (filter !== "all" ? 1 : 0) + (platform !== "all" ? 1 : 0);
-  const visibleMetaPlatforms: MetaInboxPlatform[] =
-    platform === "all" ? ["facebook", "instagram"] : [platform];
 
   const renderRow = (row: InboxListRow) => {
     if (row.kind === "whatsapp") {
@@ -564,96 +518,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
         ) : null}
       </FilterBar>
 
-      <Panel style={styles.automationSummary}>
-        <View style={styles.automationHeading}>
-          <Icon name="zap" size={15} color={colors.primary} />
-          <Text style={[styles.automationHeadingText, { color: colors.foreground }]}>
-            حالة الرد الآلي
-          </Text>
-        </View>
-        <View style={styles.automationStatuses}>
-          {metaReplySettings.data ? (
-            visibleMetaPlatforms.map((channel) => (
-              <View
-                key={channel}
-                style={[
-                  styles.automationStatusChip,
-                  { backgroundColor: colors.secondary },
-                ]}
-              >
-                <SocialPlatformIcon platform={channel} size={14} />
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.automationStatus,
-                    { color: colors.foreground },
-                  ]}
-                >
-                  {channel === "facebook" ? "فيسبوك" : "إنستغرام"} ·{" "}
-                  {metaReplyStatus(metaReplySettings.data, channel)}
-                </Text>
-              </View>
-            ))
-          ) : (
-            <Text
-              style={[
-                styles.automationMessage,
-                {
-                  color: metaReplySettings.isPending
-                    ? colors.mutedForeground
-                    : colors.destructive,
-                },
-              ]}
-            >
-              {metaReplySettings.isPending
-                ? "جارٍ التحقق من حالة Meta..."
-                : "تعذر التحقق من إعدادات الرد الآلي لـ Meta."}
-            </Text>
-          )}
-          {platform === "all" ? (
-            whatsAppReplySettings.data ? (
-              <View
-                style={[
-                  styles.automationStatusChip,
-                  { backgroundColor: colors.secondary },
-                ]}
-              >
-                <SocialPlatformIcon platform="whatsapp" size={14} />
-                <Text
-                  numberOfLines={1}
-                  style={[
-                    styles.automationStatus,
-                    { color: colors.foreground },
-                  ]}
-                >
-                  واتساب ·{" "}
-                  {!whatsAppReplySettings.data.connected
-                    ? "الحساب غير متصل"
-                    : whatsAppReplySettings.data.settings.enabled
-                      ? "مفعّل"
-                      : "متوقف"}
-                </Text>
-              </View>
-            ) : (
-              <Text
-                style={[
-                  styles.automationMessage,
-                  {
-                    color: whatsAppReplySettings.isPending
-                      ? colors.mutedForeground
-                      : colors.destructive,
-                  },
-                ]}
-              >
-                {whatsAppReplySettings.isPending
-                  ? "جارٍ التحقق من حالة WhatsApp..."
-                  : "تعذر التحقق من إعدادات الرد الآلي لـ WhatsApp."}
-              </Text>
-            )
-          ) : null}
-        </View>
-      </Panel>
-
       <View style={styles.inboxMeta}>
         <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>
           {formatArabicNumber(rows.length)} محادثة
@@ -782,12 +646,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
         ]}
         refreshControl={
           <RefreshControl
-            refreshing={
-              inbox.isRefetching ||
-              whatsappInbox.isRefetching ||
-              metaReplySettings.isRefetching ||
-              whatsAppReplySettings.isRefetching
-            }
+            refreshing={inbox.isRefetching || whatsappInbox.isRefetching}
             onRefresh={refreshInbox}
             tintColor={colors.primary}
           />
@@ -823,6 +682,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
             { key: "all", label: "كل المنصات" },
             { key: "facebook", label: "فيسبوك" },
             { key: "instagram", label: "إنستغرام" },
+            { key: "whatsapp", label: "واتساب" },
           ]}
         />
       </FilterSheet>
@@ -835,35 +695,6 @@ const styles = StyleSheet.create({
   listContent: { gap: 10 },
   listHeaderStack: { gap: 18 },
   rowSeparator: { height: 10 },
-  automationSummary: { gap: 8, padding: 10, borderRadius: 14 },
-  automationHeading: {
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 6,
-  },
-  automationHeadingText: { fontSize: 12, fontWeight: "800" },
-  automationStatuses: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  automationStatusChip: {
-    minHeight: 28,
-    maxWidth: "100%",
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 5,
-    borderRadius: 9,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  automationStatus: {
-    flexShrink: 1,
-    fontSize: 12,
-    fontWeight: "700",
-    textAlign: "right",
-  },
-  automationMessage: { fontSize: 12, lineHeight: 16, textAlign: "right" },
   loadError: { alignItems: "center", gap: 10, paddingVertical: 20 },
   loadErrorIcon: {
     width: 52,

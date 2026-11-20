@@ -864,7 +864,7 @@ function SourcesContent({
     router.push({
       pathname: "/inbox/reply-settings",
       params: {
-        tab: "whatsapp",
+        channel: "whatsapp",
         ...(includeWhatsApp ? { returnTo: "connect-accounts" } : {}),
       },
     });

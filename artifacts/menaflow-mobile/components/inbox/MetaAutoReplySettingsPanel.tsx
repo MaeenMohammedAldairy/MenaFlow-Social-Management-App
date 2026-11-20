@@ -11,16 +11,14 @@ import {
   Switch,
   View,
 } from "react-native";
-import { router } from "expo-router";
 import { Image } from "expo-image";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getWhatsAppAutoReplySettings } from "@workspace/api-client-react";
 import {
   CairoText as Text,
   CairoTextInput,
 } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
-import { ActionButton, Panel, SectionTitle } from "@/components/Ui";
+import { ActionButton, Panel } from "@/components/Ui";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 import { useColors } from "@/hooks/useColors";
@@ -116,11 +114,8 @@ function readinessMessage(
 
 export function MetaAutoReplySettingsPanel({
   userId,
-  onOpenWhatsApp,
 }: {
   userId: string | null;
-  /** When the panel sits inside the tabbed settings screen, switch tabs instead of navigating. */
-  onOpenWhatsApp?: () => void;
 }) {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -132,13 +127,6 @@ export function MetaAutoReplySettingsPanel({
   });
   const [settings, setSettings] =
     useState<MetaAutoReplySettings>(initialSettings);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const whatsappSettingsQuery = useQuery({
-    queryKey: ["whatsappAutoReplySettings", userId ?? "local"],
-    queryFn: getWhatsAppAutoReplySettings,
-    enabled: isModalOpen,
-    retry: false,
-  });
   const [isHistoricalModalOpen, setIsHistoricalModalOpen] = useState(false);
   const [isHistoricalConfirmationOpen, setIsHistoricalConfirmationOpen] =
     useState(false);
@@ -195,7 +183,6 @@ export function MetaAutoReplySettingsPanel({
     onSuccess: async (saved) => {
       setSettings(saved);
       setError("");
-      setIsModalOpen(false);
       await queryClient.invalidateQueries({ queryKey });
     },
     onError: (cause) => {
@@ -269,15 +256,6 @@ export function MetaAutoReplySettingsPanel({
     }
   };
 
-  const closeModal = () => {
-    if (query.data) setSettings(query.data.settings);
-    setError("");
-    setTestMessage("");
-    setTestReply("");
-    setTestMatchedProduct(null);
-    setTestError("");
-    setIsModalOpen(false);
-  };
   const historicalPlatformData =
     historicalPosts.data?.platforms[historicalPlatform];
   const allEligibleHistoricalPosts =
@@ -345,68 +323,444 @@ export function MetaAutoReplySettingsPanel({
     setError("");
     setIsHistoricalConfirmationOpen(true);
   };
-  const openWhatsAppSettings = () => {
-    if (
-      query.data &&
-      JSON.stringify(settings) !== JSON.stringify(query.data.settings)
-    ) {
-      setError("احفظ تغييرات فيسبوك وإنستغرام أولًا قبل فتح إعدادات واتساب.");
-      return;
-    }
-    setError("");
-    setIsModalOpen(false);
-    if (onOpenWhatsApp) {
-      onOpenWhatsApp();
-      return;
-    }
-    router.push({
-      pathname: "/inbox/reply-settings",
-      params: { tab: "whatsapp" },
-    });
-  };
 
   return (
     <>
       <Panel style={styles.panel}>
-        <View style={styles.summary}>
-          <SectionTitle title="الرد الآلي بالذكاء الاصطناعي" />
-          <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-            {query.isPending
-              ? "جارٍ تحميل الإعدادات..."
-              : settings.enabled
-                ? "الرد الآلي مفعّل."
-                : "الرد الآلي متوقف."}
+        <View style={styles.editorBody}>
+          <Text style={[styles.body, { color: colors.mutedForeground }]}>
+            اختر أنواع الردود التي تريد تفعيلها لكل منصة. تُحفظ الاختيارات
+            عند الضغط على «حفظ»، وإيقاف جميعها يوقف الرد الآلي.
           </Text>
-          <ActionButton
-            label={
-              query.isPending ? "جارٍ تحميل الإعدادات..." : "إعداد الرد الآلي"
-            }
-            icon="settings"
-            disabled={query.isPending || save.isPending}
-            onPress={() => setIsModalOpen(true)}
-          />
-          <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-            يمكنك جدولة الرد على التعليقات السابقة المحفوظة في صندوق الوارد ضمن
-            نافذة الرد المسموحة.
-          </Text>
-          <SettingSwitch
-            label="الرد على التعليقات السابقة"
-            enabled={isHistoricalModalOpen}
-            busy={queueHistoricalComments.isPending}
-            disabled={query.isPending || query.isError}
-            reason="عند التفعيل، اختر المنصة والمنشورات ثم أكد جدولة الردود."
-            onChange={(enabled) => {
-              if (!enabled) return;
-              setError("");
-              setHistoricalQueueMessage("");
-              setSelectedHistoricalPostIds(new Set());
-              setHistoricalSelectionMode("selected");
-              setHistoricalPlatform("facebook");
-              setIsHistoricalModalOpen(true);
-            }}
-          />
+
+          {query.isError ? (
+            <Text style={[styles.body, { color: colors.destructive }]}>
+              {query.error instanceof Error
+                ? query.error.message
+                : "تعذر تحميل إعدادات الرد الآلي."}
+            </Text>
+          ) : null}
+
+          {query.data ? (
+            <>
+              {platforms.map((platform) => {
+                const readiness = query.data.readiness[platform.key];
+                const messageBlock = readinessMessage(readiness, "message");
+                const commentBlock = readinessMessage(readiness, "comment");
+                return (
+                  <View
+                    key={platform.key}
+                    style={[
+                      styles.platform,
+                      {
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.platformHeader,
+                        { borderBottomColor: colors.border },
+                      ]}
+                    >
+                      <View style={styles.platformHeading}>
+                        <PlatformIcon platform={platform.key} />
+                        <Text
+                          style={[
+                            styles.platformTitle,
+                            { color: colors.foreground },
+                          ]}
+                        >
+                          {platform.label}
+                        </Text>
+                      </View>
+                      <Text
+                        style={[
+                          styles.platformState,
+                          {
+                            color:
+                              settings[platform.messagesKey] ||
+                                settings[platform.commentsKey]
+                                ? colors.primary
+                                : colors.mutedForeground,
+                          },
+                        ]}
+                      >
+                        {settings[platform.messagesKey] ||
+                          settings[platform.commentsKey]
+                          ? "مفعّل"
+                          : "متوقف"}
+                      </Text>
+                    </View>
+                    <SettingSwitch
+                      label="الرد تلقائيًا على الرسائل الخاصة"
+                      enabled={settings[platform.messagesKey]}
+                      busy={save.isPending}
+                      disabled={
+                        !settings[platform.messagesKey] &&
+                        Boolean(messageBlock)
+                      }
+                      reason={messageBlock}
+                      onChange={(value) =>
+                        update({ [platform.messagesKey]: value })
+                      }
+                    />
+                    <SettingSwitch
+                      label="الرد علنًا على التعليقات"
+                      enabled={settings[platform.commentsKey]}
+                      busy={save.isPending}
+                      disabled={
+                        !settings[platform.commentsKey] &&
+                        Boolean(commentBlock)
+                      }
+                      reason={commentBlock}
+                      onChange={(value) =>
+                        update({ [platform.commentsKey]: value })
+                      }
+                    />
+                  </View>
+                );
+              })}
+
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: colors.foreground }]}>
+                  معلومات النشاط والمنتجات
+                </Text>
+                <Text
+                  style={[
+                    styles.bodySmall,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  أضف معلومات مؤكدة فقط، مثل أسماء المنتجات وأسعارها وتوفرها
+                  وسياسة التوصيل وبيانات التواصل. لن يخمّن الرد الآلي
+                  المعلومات غير المذكورة.
+                </Text>
+                <CairoTextInput
+                  accessibilityLabel="معلومات النشاط والمنتجات"
+                  value={settings.instructions}
+                  onChangeText={(instructions) => update({ instructions })}
+                  placeholder="مثال: ساعات رجالية متوفرة، السعر 150 ريال. التوصيل خلال يومين..."
+                  placeholderTextColor={colors.mutedForeground}
+                  maxLength={2000}
+                  multiline
+                  textAlign="right"
+                  textAlignVertical="top"
+                  editable={!save.isPending}
+                  style={[
+                    styles.instructionsInput,
+                    {
+                      color: colors.foreground,
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.bodySmall,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {settings.instructions.length}/2000
+                </Text>
+              </View>
+
+              <View style={styles.field}>
+                <Text style={[styles.label, { color: colors.foreground }]}>
+                  لغة الرد
+                </Text>
+                <View style={styles.choiceRow}>
+                  {[
+                    { value: "ar" as const, label: "العربية" },
+                    {
+                      value: "match_customer" as const,
+                      label: "لغة العميل",
+                    },
+                  ].map((option) => (
+                    <Text
+                      key={option.value}
+                      accessibilityRole="button"
+                      onPress={() => update({ language: option.value })}
+                      style={[
+                        styles.choice,
+                        {
+                          color:
+                            settings.language === option.value
+                              ? colors.primaryForeground
+                              : colors.foreground,
+                          backgroundColor:
+                            settings.language === option.value
+                              ? colors.primary
+                              : colors.background,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+
+              <View
+                style={[
+                  styles.testSimulatorBlock,
+                  {
+                    backgroundColor: colors.muted,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <View style={styles.testSimulatorHeader}>
+                  <Icon name="zap" size={18} color={colors.primary} />
+                  <Text
+                    style={[
+                      styles.testSimulatorTitle,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    تجربة الرد الذكي المباشر (Simulator)
+                  </Text>
+                </View>
+                <Text
+                  style={[
+                    styles.bodySmall,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  أدخل رسالة أو استفسار عميل لاختبار أسلوب الرد والتعليمات
+                  المعينة قبل الحفظ.
+                </Text>
+
+                <View style={styles.testTargetGroup}>
+                  <Text
+                    style={[styles.bodySmall, { color: colors.foreground }]}
+                  >
+                    القناة ونوع التفاعل للاختبار
+                  </Text>
+                  <View style={styles.choiceRow}>
+                    {platforms.map(({ key, label }) => {
+                      const selected = testPlatform === key;
+                      return (
+                        <Pressable
+                          key={key}
+                          accessibilityRole="radio"
+                          accessibilityLabel={`اختبار ${label}`}
+                          accessibilityState={{ checked: selected }}
+                          onPress={() => {
+                            setTestPlatform(key);
+                            setTestReply("");
+                            setTestError("");
+                          }}
+                          style={[
+                            styles.testTargetOption,
+                            {
+                              backgroundColor: selected
+                                ? colors.primary
+                                : colors.card,
+                              borderColor: selected
+                                ? colors.primary
+                                : colors.border,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color: selected
+                                ? colors.primaryForeground
+                                : colors.foreground,
+                              fontSize: 12,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                  <View style={styles.choiceRow}>
+                    {(
+                      [
+                        ["message", "رسالة خاصة"],
+                        ["comment", "تعليق عام"],
+                      ] as const
+                    ).map(([kind, label]) => {
+                      const selected = testKind === kind;
+                      return (
+                        <Pressable
+                          key={kind}
+                          accessibilityRole="radio"
+                          accessibilityLabel={`اختبار ${label}`}
+                          accessibilityState={{ checked: selected }}
+                          onPress={() => {
+                            setTestKind(kind);
+                            setTestReply("");
+                            setTestError("");
+                          }}
+                          style={[
+                            styles.testTargetOption,
+                            {
+                              backgroundColor: selected
+                                ? colors.primary
+                                : colors.card,
+                              borderColor: selected
+                                ? colors.primary
+                                : colors.border,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={{
+                              color: selected
+                                ? colors.primaryForeground
+                                : colors.foreground,
+                              fontSize: 12,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.presetChipsRow}>
+                  {[
+                    { label: "سعر وتوفر", text: "كم سعر هذا المنتج وهل متوفر الآن؟" },
+                    { label: "مواصفات وألوان", text: "هل يتوفر منه ألوان أو مقاسات ثانية؟" },
+                    { label: "طلب وشراء", text: "أريد طلب حبة، كيف طريقة الدفع والتوصيل؟" },
+                    { label: "أوقات وعنوان", text: "أين موقعكم ومتى أوقات دوامكم؟" },
+                  ].map((preset) => (
+                    <Text
+                      key={preset.label}
+                      accessibilityRole="button"
+                      onPress={() => setTestMessage(preset.text)}
+                      style={[
+                        styles.presetChip,
+                        {
+                          backgroundColor: colors.card,
+                          borderColor: colors.border,
+                          color: colors.foreground,
+                        },
+                      ]}
+                    >
+                      {preset.label}
+                    </Text>
+                  ))}
+                </View>
+
+                <CairoTextInput
+                  value={testMessage}
+                  onChangeText={setTestMessage}
+                  placeholder="مثال: مرحباً، كم سعر هذا المنتج وهل متوفر لديكم؟"
+                  placeholderTextColor={colors.mutedForeground}
+                  style={[
+                    styles.testInput,
+                    {
+                      backgroundColor: colors.background,
+                      color: colors.foreground,
+                      borderColor: colors.border,
+                    },
+                  ]}
+                  maxLength={1000}
+                />
+
+                <View style={{ alignItems: "flex-start" }}>
+                  <ActionButton
+                    label={
+                      testing ? "جارٍ توليد الرد التجريبي..." : "اختبار الرد"
+                    }
+                    icon={testing ? "refresh-cw" : "send"}
+                    disabled={testing || !testMessage.trim()}
+                    onPress={runTest}
+                  />
+                </View>
+
+                {testError ? (
+                  <Text
+                    accessibilityRole="alert"
+                    style={[styles.bodySmall, { color: colors.destructive }]}
+                  >
+                    {testError}
+                  </Text>
+                ) : null}
+
+                {testReply ? (
+                  <View
+                    style={[
+                      styles.testReplyPreview,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <View style={styles.testReplyHeader}>
+                      <Icon name="zap" size={16} color={colors.primary} />
+                      <Text
+                        style={[
+                          styles.testReplyLabel,
+                          { color: colors.primary },
+                        ]}
+                      >
+                        الرد المقترح من المساعد الذكي:
+                      </Text>
+                      {testMatchedProduct ? (
+                        <Text
+                          style={[
+                            styles.bodySmall,
+                            {
+                              color: colors.mutedForeground,
+                              fontSize: 12,
+                            },
+                          ]}
+                        >
+                          (تمت مطابقة منتج: {testMatchedProduct})
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Text
+                      style={[
+                        styles.body,
+                        { color: colors.foreground, lineHeight: 22 },
+                      ]}
+                    >
+                      {testReply}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              {error ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={{ color: colors.destructive }}
+                >
+                  {error}
+                </Text>
+              ) : null}
+            </>
+          ) : null}
+          <View style={styles.editorFooter}>
+            <ActionButton
+              label={
+                save.isPending ? "جارٍ الحفظ..." : "حفظ إعدادات الرد الآلي"
+              }
+              icon={save.isPending ? "refresh-cw" : "save"}
+              disabled={
+                save.isPending || query.isPending || query.isError || !canSave
+              }
+              onPress={() => save.mutate(settings)}
+            />
+          </View>
         </View>
       </Panel>
+
       {historicalQueueMessage ? (
         <Text
           accessibilityRole="alert"
@@ -415,6 +769,29 @@ export function MetaAutoReplySettingsPanel({
           {historicalQueueMessage}
         </Text>
       ) : null}
+
+      <Panel style={styles.panel}>
+        <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+          يمكنك جدولة الرد على التعليقات السابقة المحفوظة في صندوق الوارد ضمن
+          نافذة الرد المسموحة.
+        </Text>
+        <SettingSwitch
+          label="الرد على التعليقات السابقة"
+          enabled={isHistoricalModalOpen}
+          busy={queueHistoricalComments.isPending}
+          disabled={query.isPending || query.isError}
+          reason="عند التفعيل، اختر المنصة والمنشورات ثم أكد جدولة الردود."
+          onChange={(enabled) => {
+            if (!enabled) return;
+            setError("");
+            setHistoricalQueueMessage("");
+            setSelectedHistoricalPostIds(new Set());
+            setHistoricalSelectionMode("selected");
+            setHistoricalPlatform("facebook");
+            setIsHistoricalModalOpen(true);
+          }}
+        />
+      </Panel>
 
       <Modal
         visible={isHistoricalModalOpen}
@@ -992,568 +1369,6 @@ export function MetaAutoReplySettingsPanel({
         </View>
       </Modal>
 
-      <Modal
-        visible={isModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={closeModal}
-      >
-        <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.dialog,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View
-              style={[styles.modalHeader, { borderBottomColor: colors.border }]}
-            >
-              <View style={styles.modalHeading}>
-                <Text style={[styles.modalTitle, { color: colors.foreground }]}>
-                  إعداد الرد الآلي بالذكاء الاصطناعي
-                </Text>
-                <Text
-                  style={[styles.bodySmall, { color: colors.mutedForeground }]}
-                >
-                  اختر القنوات وطريقة الرد المناسبة.
-                </Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="إغلاق إعدادات الرد الآلي"
-                disabled={save.isPending}
-                onPress={closeModal}
-                style={[
-                  styles.closeButton,
-                  { backgroundColor: colors.background },
-                ]}
-              >
-                <Icon name="x" size={18} color={colors.foreground} />
-              </Pressable>
-            </View>
-
-            <ScrollView
-              style={styles.modalScroll}
-              contentContainerStyle={styles.modalContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator
-            >
-              <Text style={[styles.body, { color: colors.mutedForeground }]}>
-                اختر أنواع الردود التي تريد تفعيلها لكل منصة. تُحفظ الاختيارات
-                عند الضغط على «حفظ»، وإيقاف جميعها يوقف الرد الآلي.
-              </Text>
-
-              {query.isError ? (
-                <Text style={[styles.body, { color: colors.destructive }]}>
-                  {query.error instanceof Error
-                    ? query.error.message
-                    : "تعذر تحميل إعدادات الرد الآلي."}
-                </Text>
-              ) : null}
-
-              {query.data ? (
-                <>
-                  {platforms.map((platform) => {
-                    const readiness = query.data.readiness[platform.key];
-                    const messageBlock = readinessMessage(readiness, "message");
-                    const commentBlock = readinessMessage(readiness, "comment");
-                    return (
-                      <View
-                        key={platform.key}
-                        style={[
-                          styles.platform,
-                          {
-                            borderColor: colors.border,
-                            backgroundColor: colors.background,
-                          },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.platformHeader,
-                            { borderBottomColor: colors.border },
-                          ]}
-                        >
-                          <View style={styles.platformHeading}>
-                            <PlatformIcon platform={platform.key} />
-                            <Text
-                              style={[
-                                styles.platformTitle,
-                                { color: colors.foreground },
-                              ]}
-                            >
-                              {platform.label}
-                            </Text>
-                          </View>
-                          <Text
-                            style={[
-                              styles.platformState,
-                              {
-                                color:
-                                  settings[platform.messagesKey] ||
-                                    settings[platform.commentsKey]
-                                    ? colors.primary
-                                    : colors.mutedForeground,
-                              },
-                            ]}
-                          >
-                            {settings[platform.messagesKey] ||
-                              settings[platform.commentsKey]
-                              ? "مفعّل"
-                              : "متوقف"}
-                          </Text>
-                        </View>
-                        <SettingSwitch
-                          label="الرد تلقائيًا على الرسائل الخاصة"
-                          enabled={settings[platform.messagesKey]}
-                          busy={save.isPending}
-                          disabled={
-                            !settings[platform.messagesKey] &&
-                            Boolean(messageBlock)
-                          }
-                          reason={messageBlock}
-                          onChange={(value) =>
-                            update({ [platform.messagesKey]: value })
-                          }
-                        />
-                        <SettingSwitch
-                          label="الرد علنًا على التعليقات"
-                          enabled={settings[platform.commentsKey]}
-                          busy={save.isPending}
-                          disabled={
-                            !settings[platform.commentsKey] &&
-                            Boolean(commentBlock)
-                          }
-                          reason={commentBlock}
-                          onChange={(value) =>
-                            update({ [platform.commentsKey]: value })
-                          }
-                        />
-                      </View>
-                    );
-                  })}
-
-                  <View
-                    style={[
-                      styles.platform,
-                      {
-                        borderColor: colors.border,
-                        backgroundColor: colors.background,
-                      },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.platformHeader,
-                        { borderBottomColor: colors.border },
-                      ]}
-                    >
-                      <View style={styles.platformHeading}>
-                        <SocialPlatformIcon platform="whatsapp" size={28} />
-                        <Text
-                          style={[
-                            styles.platformTitle,
-                            { color: colors.foreground },
-                          ]}
-                        >
-                          واتساب
-                        </Text>
-                      </View>
-                      <Text
-                        style={[
-                          styles.platformState,
-                          {
-                            color: whatsappSettingsQuery.isError
-                              ? colors.destructive
-                              : whatsappSettingsQuery.data?.connected &&
-                                whatsappSettingsQuery.data.settings.enabled
-                                ? colors.primary
-                                : colors.mutedForeground,
-                          },
-                        ]}
-                      >
-                        {whatsappSettingsQuery.isPending
-                          ? "جارٍ التحقق"
-                          : whatsappSettingsQuery.isError
-                            ? "تعذر التحقق"
-                            : !whatsappSettingsQuery.data.connected
-                              ? "غير متصل"
-                              : whatsappSettingsQuery.data.settings.enabled
-                                ? "مفعّل"
-                                : "متوقف"}
-                      </Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.bodySmall,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      {whatsappSettingsQuery.isError
-                        ? whatsappSettingsQuery.error instanceof Error
-                          ? whatsappSettingsQuery.error.message
-                          : "تعذر التحقق من إعدادات واتساب."
-                        : !whatsappSettingsQuery.data?.connected
-                          ? "اربط حساب واتساب من صفحة المصادر قبل إعداد الردود."
-                          : "اضبط أسلوب الرد واختبره قبل تفعيل الرد الآلي على الرسائل الفردية."}
-                    </Text>
-                    <ActionButton
-                      label="إعداد ردود واتساب"
-                      icon="settings"
-                      secondary
-                      onPress={openWhatsAppSettings}
-                    />
-                  </View>
-
-                  <View style={styles.field}>
-                    <Text style={[styles.label, { color: colors.foreground }]}>
-                      معلومات النشاط والمنتجات
-                    </Text>
-                    <Text
-                      style={[
-                        styles.bodySmall,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      أضف معلومات مؤكدة فقط، مثل أسماء المنتجات وأسعارها وتوفرها
-                      وسياسة التوصيل وبيانات التواصل. لن يخمّن الرد الآلي
-                      المعلومات غير المذكورة.
-                    </Text>
-                    <CairoTextInput
-                      accessibilityLabel="معلومات النشاط والمنتجات"
-                      value={settings.instructions}
-                      onChangeText={(instructions) => update({ instructions })}
-                      placeholder="مثال: ساعات رجالية متوفرة، السعر 150 ريال. التوصيل خلال يومين..."
-                      placeholderTextColor={colors.mutedForeground}
-                      maxLength={2000}
-                      multiline
-                      textAlign="right"
-                      textAlignVertical="top"
-                      editable={!save.isPending}
-                      style={[
-                        styles.instructionsInput,
-                        {
-                          color: colors.foreground,
-                          backgroundColor: colors.background,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.bodySmall,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      {settings.instructions.length}/2000
-                    </Text>
-                  </View>
-
-                  <View style={styles.field}>
-                    <Text style={[styles.label, { color: colors.foreground }]}>
-                      لغة الرد
-                    </Text>
-                    <View style={styles.choiceRow}>
-                      {[
-                        { value: "ar" as const, label: "العربية" },
-                        {
-                          value: "match_customer" as const,
-                          label: "لغة العميل",
-                        },
-                      ].map((option) => (
-                        <Text
-                          key={option.value}
-                          accessibilityRole="button"
-                          onPress={() => update({ language: option.value })}
-                          style={[
-                            styles.choice,
-                            {
-                              color:
-                                settings.language === option.value
-                                  ? colors.primaryForeground
-                                  : colors.foreground,
-                              backgroundColor:
-                                settings.language === option.value
-                                  ? colors.primary
-                                  : colors.background,
-                              borderColor: colors.border,
-                            },
-                          ]}
-                        >
-                          {option.label}
-                        </Text>
-                      ))}
-                    </View>
-                  </View>
-
-                  <View
-                    style={[
-                      styles.testSimulatorBlock,
-                      {
-                        backgroundColor: colors.muted,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  >
-                    <View style={styles.testSimulatorHeader}>
-                      <Icon name="zap" size={18} color={colors.primary} />
-                      <Text
-                        style={[
-                          styles.testSimulatorTitle,
-                          { color: colors.foreground },
-                        ]}
-                      >
-                        تجربة الرد الذكي المباشر (Simulator)
-                      </Text>
-                    </View>
-                    <Text
-                      style={[
-                        styles.bodySmall,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      أدخل رسالة أو استفسار عميل لاختبار أسلوب الرد والتعليمات
-                      المعينة قبل الحفظ.
-                    </Text>
-
-                    <View style={styles.testTargetGroup}>
-                      <Text
-                        style={[styles.bodySmall, { color: colors.foreground }]}
-                      >
-                        القناة ونوع التفاعل للاختبار
-                      </Text>
-                      <View style={styles.choiceRow}>
-                        {platforms.map(({ key, label }) => {
-                          const selected = testPlatform === key;
-                          return (
-                            <Pressable
-                              key={key}
-                              accessibilityRole="radio"
-                              accessibilityLabel={`اختبار ${label}`}
-                              accessibilityState={{ checked: selected }}
-                              onPress={() => {
-                                setTestPlatform(key);
-                                setTestReply("");
-                                setTestError("");
-                              }}
-                              style={[
-                                styles.testTargetOption,
-                                {
-                                  backgroundColor: selected
-                                    ? colors.primary
-                                    : colors.card,
-                                  borderColor: selected
-                                    ? colors.primary
-                                    : colors.border,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={{
-                                  color: selected
-                                    ? colors.primaryForeground
-                                    : colors.foreground,
-                                  fontSize: 12,
-                                  fontWeight: "700",
-                                }}
-                              >
-                                {label}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                      <View style={styles.choiceRow}>
-                        {(
-                          [
-                            ["message", "رسالة خاصة"],
-                            ["comment", "تعليق عام"],
-                          ] as const
-                        ).map(([kind, label]) => {
-                          const selected = testKind === kind;
-                          return (
-                            <Pressable
-                              key={kind}
-                              accessibilityRole="radio"
-                              accessibilityLabel={`اختبار ${label}`}
-                              accessibilityState={{ checked: selected }}
-                              onPress={() => {
-                                setTestKind(kind);
-                                setTestReply("");
-                                setTestError("");
-                              }}
-                              style={[
-                                styles.testTargetOption,
-                                {
-                                  backgroundColor: selected
-                                    ? colors.primary
-                                    : colors.card,
-                                  borderColor: selected
-                                    ? colors.primary
-                                    : colors.border,
-                                },
-                              ]}
-                            >
-                              <Text
-                                style={{
-                                  color: selected
-                                    ? colors.primaryForeground
-                                    : colors.foreground,
-                                  fontSize: 12,
-                                  fontWeight: "700",
-                                }}
-                              >
-                                {label}
-                              </Text>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </View>
-
-                    <View style={styles.presetChipsRow}>
-                      {[
-                        { label: "سعر وتوفر", text: "كم سعر هذا المنتج وهل متوفر الآن؟" },
-                        { label: "مواصفات وألوان", text: "هل يتوفر منه ألوان أو مقاسات ثانية؟" },
-                        { label: "طلب وشراء", text: "أريد طلب حبة، كيف طريقة الدفع والتوصيل؟" },
-                        { label: "أوقات وعنوان", text: "أين موقعكم ومتى أوقات دوامكم؟" },
-                      ].map((preset) => (
-                        <Text
-                          key={preset.label}
-                          accessibilityRole="button"
-                          onPress={() => setTestMessage(preset.text)}
-                          style={[
-                            styles.presetChip,
-                            {
-                              backgroundColor: colors.card,
-                              borderColor: colors.border,
-                              color: colors.foreground,
-                            },
-                          ]}
-                        >
-                          {preset.label}
-                        </Text>
-                      ))}
-                    </View>
-
-                    <CairoTextInput
-                      value={testMessage}
-                      onChangeText={setTestMessage}
-                      placeholder="مثال: مرحباً، كم سعر هذا المنتج وهل متوفر لديكم؟"
-                      placeholderTextColor={colors.mutedForeground}
-                      style={[
-                        styles.testInput,
-                        {
-                          backgroundColor: colors.background,
-                          color: colors.foreground,
-                          borderColor: colors.border,
-                        },
-                      ]}
-                      maxLength={1000}
-                    />
-
-                    <View style={{ alignItems: "flex-start" }}>
-                      <ActionButton
-                        label={
-                          testing ? "جارٍ توليد الرد التجريبي..." : "اختبار الرد"
-                        }
-                        icon={testing ? "refresh-cw" : "send"}
-                        disabled={testing || !testMessage.trim()}
-                        onPress={runTest}
-                      />
-                    </View>
-
-                    {testError ? (
-                      <Text
-                        accessibilityRole="alert"
-                        style={[styles.bodySmall, { color: colors.destructive }]}
-                      >
-                        {testError}
-                      </Text>
-                    ) : null}
-
-                    {testReply ? (
-                      <View
-                        style={[
-                          styles.testReplyPreview,
-                          {
-                            backgroundColor: colors.card,
-                            borderColor: colors.border,
-                          },
-                        ]}
-                      >
-                        <View style={styles.testReplyHeader}>
-                          <Icon name="zap" size={16} color={colors.primary} />
-                          <Text
-                            style={[
-                              styles.testReplyLabel,
-                              { color: colors.primary },
-                            ]}
-                          >
-                            الرد المقترح من المساعد الذكي:
-                          </Text>
-                          {testMatchedProduct ? (
-                            <Text
-                              style={[
-                                styles.bodySmall,
-                                {
-                                  color: colors.mutedForeground,
-                                  fontSize: 12,
-                                },
-                              ]}
-                            >
-                              (تمت مطابقة منتج: {testMatchedProduct})
-                            </Text>
-                          ) : null}
-                        </View>
-                        <Text
-                          style={[
-                            styles.body,
-                            { color: colors.foreground, lineHeight: 22 },
-                          ]}
-                        >
-                          {testReply}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  {error ? (
-                    <Text
-                      accessibilityRole="alert"
-                      style={{ color: colors.destructive }}
-                    >
-                      {error}
-                    </Text>
-                  ) : null}
-                </>
-              ) : null}
-            </ScrollView>
-
-            <View
-              style={[styles.modalFooter, { borderTopColor: colors.border }]}
-            >
-              <ActionButton
-                label="إلغاء"
-                icon="x"
-                secondary
-                disabled={save.isPending}
-                onPress={closeModal}
-              />
-              <ActionButton
-                label={
-                  save.isPending ? "جارٍ الحفظ..." : "حفظ إعدادات الرد الآلي"
-                }
-                icon={save.isPending ? "refresh-cw" : "save"}
-                disabled={
-                  save.isPending || query.isPending || query.isError || !canSave
-                }
-                onPress={() => save.mutate(settings)}
-              />
-            </View>
-          </View>
-        </View>
-      </Modal>
     </>
   );
 }
@@ -1606,7 +1421,8 @@ function PlatformIcon({ platform }: { platform: MetaInboxPlatform }) {
 
 const styles = StyleSheet.create({
   panel: { gap: 14 },
-  summary: { gap: 10 },
+  editorBody: { gap: 16 },
+  editorFooter: { gap: 10 },
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
