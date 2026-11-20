@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  FlatList,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -23,6 +24,7 @@ import {
   PageTitle,
   Panel,
 } from "@/components/Ui";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { InboxPlatformTabs, type InboxPlatform } from "@/components/inbox/InboxPlatformTabs";
@@ -152,6 +154,7 @@ function AuthenticatedMetaInbox() {
 
 function MetaInboxContent({ userId }: { userId: string | null }) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const { platform: routePlatform } = useLocalSearchParams<{ platform?: string }>();
   const initialPlatform: Exclude<InboxPlatform, "whatsapp"> =
     routePlatform === "facebook" || routePlatform === "instagram"
@@ -292,21 +295,224 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
   const visibleMetaPlatforms: MetaInboxPlatform[] =
     platform === "all" ? ["facebook", "instagram"] : [platform];
 
-  return (
-    <Page
-      refreshControl={
-        <RefreshControl
-          refreshing={
-            inbox.isRefetching ||
-            whatsappInbox.isRefetching ||
-            metaReplySettings.isRefetching ||
-            whatsAppReplySettings.isRefetching
+  const renderRow = (row: InboxListRow) => {
+    if (row.kind === "whatsapp") {
+      const { conversation } = row;
+      return (
+        <Pressable
+          key={row.key}
+          accessibilityRole="button"
+          accessibilityLabel={`فتح محادثة WhatsApp مع ${conversation.customerNumber}`}
+          onPress={() =>
+            router.push({
+              pathname: "/inbox/whatsapp",
+              params: { remoteJid: conversation.remoteJid },
+            })
           }
-          onRefresh={refreshInbox}
-          tintColor={colors.primary}
+          style={[
+            styles.conversationCard,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <View
+            style={[styles.conversationAvatar, { backgroundColor: colors.accent }]}
+          >
+            <Icon name="whatsapp" size={21} color={colors.primary} />
+          </View>
+          <View style={styles.conversationHeading}>
+            <View style={styles.conversationTopLine}>
+              <Text
+                style={[styles.conversationTitle, { color: colors.foreground }]}
+                numberOfLines={1}
+              >
+                {conversation.customerNumber}
+              </Text>
+              <Text style={[styles.conversationDate, { color: colors.mutedForeground }]}>
+                {formatArabicDateTime(conversation.lastMessageAt) ?? "غير محدد"}
+              </Text>
+            </View>
+            <View style={styles.conversationPreviewRow}>
+              <Icon name="message-circle" size={15} color={colors.mutedForeground} />
+              <Text
+                style={[styles.conversationPreview, { color: colors.mutedForeground }]}
+                numberOfLines={1}
+              >
+                {conversation.preview || "رسالة بدون نص"}
+              </Text>
+            </View>
+            {platform === "all" ? (
+              <View style={styles.conversationBottomLine}>
+                <View style={[styles.platformBadge, { backgroundColor: colors.accent }]}>
+                  <Text style={[styles.platformLabel, { color: colors.primary }]}>WhatsApp</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+          <Icon name="chevron-left" size={19} color={colors.primary} />
+        </Pressable>
+      );
+    }
+    const { group } = row;
+    const latestItem = latestInboxItem(group);
+    const messageCount = group.items.filter(
+      (item) => item.kind === "message",
+    ).length;
+    const commentCount = group.items.length - messageCount;
+    return (
+      <Pressable
+        key={group.key}
+        accessibilityRole="button"
+        accessibilityLabel={`فتح محادثة ${group.title}، ${messageCount} رسالة محمّلة و${commentCount} تعليق محمّل`}
+        onPress={() =>
+          router.push({
+            pathname: "/inbox/[conversationId]",
+            params: {
+              conversationId: metaInboxPersonId(group.items[0]),
+              platform: group.platform,
+            },
+          })
+        }
+        style={[
+          styles.conversationCard,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.conversationAvatar,
+            { backgroundColor: colors.accent },
+          ]}
+        >
+          <SocialPlatformIcon platform={group.platform} size={25} />
+        </View>
+        <View style={styles.conversationHeading}>
+          <View style={styles.conversationTopLine}>
+            <Text
+              style={[
+                styles.conversationTitle,
+                { color: colors.foreground },
+              ]}
+              numberOfLines={1}
+            >
+              {group.title}
+            </Text>
+            <Text
+              style={[
+                styles.conversationDate,
+                { color: colors.mutedForeground },
+              ]}
+            >
+              {formatArabicDateTime(latestItem.occurredAt) ??
+                "غير محدد"}
+            </Text>
+          </View>
+          <View style={styles.conversationPreviewRow}>
+            <Icon
+              name={
+                latestItem.kind === "comment"
+                  ? "message-square"
+                  : "message-circle"
+              }
+              size={15}
+              color={colors.mutedForeground}
+            />
+            <Text
+              style={[
+                styles.conversationPreview,
+                { color: colors.mutedForeground },
+              ]}
+              numberOfLines={1}
+            >
+              {latestItem.text ||
+                (latestItem.media.length > 0
+                  ? "رسالة تحتوي على مرفق"
+                  : latestItem.kind === "comment"
+                    ? "تعليق بدون نص"
+                    : "رسالة بدون نص")}
+            </Text>
+          </View>
+          <View style={styles.conversationBottomLine}>
+            {platform === "all" ? (
+              <View
+                style={[
+                  styles.platformBadge,
+                  { backgroundColor: colors.accent },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.platformLabel,
+                    {
+                      color:
+                        group.platform === "instagram"
+                          ? colors.instagram
+                          : colors.facebook,
+                    },
+                  ]}
+                >
+                  {group.platform === "facebook" ? "فيسبوك" : "إنستغرام"}
+                </Text>
+              </View>
+            ) : null}
+            <View style={styles.conversationCounts}>
+              <View style={styles.countItem}>
+                <Icon
+                  name="message-circle"
+                  size={13}
+                  color={colors.mutedForeground}
+                />
+                <Text
+                  style={[
+                    styles.conversationMeta,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {messageCount}
+                </Text>
+              </View>
+              <View style={styles.countItem}>
+                <Icon
+                  name="message-square"
+                  size={13}
+                  color={colors.mutedForeground}
+                />
+                <Text
+                  style={[
+                    styles.conversationMeta,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  {commentCount}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        <Icon
+          name="chevron-left"
+          size={19}
+          color={
+            group.platform === "instagram"
+              ? colors.instagram
+              : colors.facebook
+          }
         />
-      }
-    >
+      </Pressable>
+    );
+  };
+
+  return (
+    <Page scroll={false}>
+      <FlatList
+        data={rows}
+        keyExtractor={(row) => row.key}
+        renderItem={({ item }) => renderRow(item)}
+        ItemSeparatorComponent={() => <View style={styles.rowSeparator} />}
+        ListHeaderComponent={
+          <View style={styles.listHeaderStack}>
       <View style={styles.inboxHeader}>
         <BrandHeader />
         <PageTitle
@@ -560,7 +766,10 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           ) : null}
         </View>
       </Panel>
-
+          </View>
+        }
+        ListEmptyComponent={
+          <>
       {rows.length === 0 &&
       (inbox.isPending || (platform === "all" && whatsappInbox.isPending)) ? (
         <View
@@ -606,218 +815,11 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
               : "ستظهر هنا الرسائل والتعليقات الواردة إلى حساباتك المتصلة."
           }
         />
-      ) : rows.length > 0 ? (
-        <View style={styles.groups}>
-          {rows.map((row) => {
-            if (row.kind === "whatsapp") {
-              const { conversation } = row;
-              return (
-                <Pressable
-                  key={row.key}
-                  accessibilityRole="button"
-                  accessibilityLabel={`فتح محادثة WhatsApp مع ${conversation.customerNumber}`}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/inbox/whatsapp",
-                      params: { remoteJid: conversation.remoteJid },
-                    })
-                  }
-                  style={[
-                    styles.conversationCard,
-                    { backgroundColor: colors.card, borderColor: colors.border },
-                  ]}
-                >
-                  <View
-                    style={[styles.conversationAvatar, { backgroundColor: colors.accent }]}
-                  >
-                    <Icon name="whatsapp" size={21} color={colors.primary} />
-                  </View>
-                  <View style={styles.conversationHeading}>
-                    <View style={styles.conversationTopLine}>
-                      <Text
-                        style={[styles.conversationTitle, { color: colors.foreground }]}
-                        numberOfLines={1}
-                      >
-                        {conversation.customerNumber}
-                      </Text>
-                      <Text style={[styles.conversationDate, { color: colors.mutedForeground }]}>
-                        {formatArabicDateTime(conversation.lastMessageAt) ?? "غير محدد"}
-                      </Text>
-                    </View>
-                    <View style={styles.conversationPreviewRow}>
-                      <Icon name="message-circle" size={15} color={colors.mutedForeground} />
-                      <Text
-                        style={[styles.conversationPreview, { color: colors.mutedForeground }]}
-                        numberOfLines={1}
-                      >
-                        {conversation.preview || "رسالة بدون نص"}
-                      </Text>
-                    </View>
-                    {platform === "all" ? (
-                      <View style={styles.conversationBottomLine}>
-                        <View style={[styles.platformBadge, { backgroundColor: colors.accent }]}>
-                          <Text style={[styles.platformLabel, { color: colors.primary }]}>WhatsApp</Text>
-                        </View>
-                      </View>
-                    ) : null}
-                  </View>
-                  <Icon name="chevron-left" size={19} color={colors.primary} />
-                </Pressable>
-              );
-            }
-            const { group } = row;
-            const latestItem = latestInboxItem(group);
-            const messageCount = group.items.filter(
-              (item) => item.kind === "message",
-            ).length;
-            const commentCount = group.items.length - messageCount;
-            return (
-              <Pressable
-                key={group.key}
-                accessibilityRole="button"
-                accessibilityLabel={`فتح محادثة ${group.title}، ${messageCount} رسالة محمّلة و${commentCount} تعليق محمّل`}
-                onPress={() =>
-                  router.push({
-                    pathname: "/inbox/[conversationId]",
-                    params: {
-                      conversationId: metaInboxPersonId(group.items[0]),
-                      platform: group.platform,
-                    },
-                  })
-                }
-                style={[
-                  styles.conversationCard,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.conversationAvatar,
-                    { backgroundColor: colors.accent },
-                  ]}
-                >
-                  <SocialPlatformIcon platform={group.platform} size={25} />
-                </View>
-                <View style={styles.conversationHeading}>
-                  <View style={styles.conversationTopLine}>
-                    <Text
-                      style={[
-                        styles.conversationTitle,
-                        { color: colors.foreground },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {group.title}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.conversationDate,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      {formatArabicDateTime(latestItem.occurredAt) ??
-                        "غير محدد"}
-                    </Text>
-                  </View>
-                  <View style={styles.conversationPreviewRow}>
-                    <Icon
-                      name={
-                        latestItem.kind === "comment"
-                          ? "message-square"
-                          : "message-circle"
-                      }
-                      size={15}
-                      color={colors.mutedForeground}
-                    />
-                    <Text
-                      style={[
-                        styles.conversationPreview,
-                        { color: colors.mutedForeground },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {latestItem.text ||
-                        (latestItem.media.length > 0
-                          ? "رسالة تحتوي على مرفق"
-                          : latestItem.kind === "comment"
-                            ? "تعليق بدون نص"
-                            : "رسالة بدون نص")}
-                    </Text>
-                  </View>
-                  <View style={styles.conversationBottomLine}>
-                    {platform === "all" ? (
-                      <View
-                        style={[
-                          styles.platformBadge,
-                          { backgroundColor: colors.accent },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.platformLabel,
-                            {
-                              color:
-                                group.platform === "instagram"
-                                  ? colors.instagram
-                                  : colors.facebook,
-                            },
-                          ]}
-                        >
-                          {group.platform === "facebook" ? "فيسبوك" : "إنستغرام"}
-                        </Text>
-                      </View>
-                    ) : null}
-                    <View style={styles.conversationCounts}>
-                      <View style={styles.countItem}>
-                        <Icon
-                          name="message-circle"
-                          size={13}
-                          color={colors.mutedForeground}
-                        />
-                        <Text
-                          style={[
-                            styles.conversationMeta,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          {messageCount}
-                        </Text>
-                      </View>
-                      <View style={styles.countItem}>
-                        <Icon
-                          name="message-square"
-                          size={13}
-                          color={colors.mutedForeground}
-                        />
-                        <Text
-                          style={[
-                            styles.conversationMeta,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          {commentCount}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </View>
-                <Icon
-                  name="chevron-left"
-                  size={19}
-                  color={
-                    group.platform === "instagram"
-                      ? colors.instagram
-                      : colors.facebook
-                  }
-                />
-              </Pressable>
-            );
-          })}
-        </View>
       ) : null}
+          </>
+        }
+        ListFooterComponent={
+          <>
       {olderError ? (
         <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
           {olderError}
@@ -831,11 +833,39 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           onPress={() => void loadOlder()}
         />
       ) : null}
+          </>
+        }
+        style={styles.listFill}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: 112 + insets.bottom },
+        ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={
+              inbox.isRefetching ||
+              whatsappInbox.isRefetching ||
+              metaReplySettings.isRefetching ||
+              whatsAppReplySettings.isRefetching
+            }
+            onRefresh={refreshInbox}
+            tintColor={colors.primary}
+          />
+        }
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+      />
     </Page>
   );
 }
 
 const styles = StyleSheet.create({
+  listFill: { flex: 1 },
+  listContent: { gap: 10 },
+  listHeaderStack: { gap: 18 },
+  rowSeparator: { height: 10 },
   inboxHeader: { gap: 10 },
   automationSummary: { gap: 8, padding: 10, borderRadius: 14 },
   automationHeading: {
