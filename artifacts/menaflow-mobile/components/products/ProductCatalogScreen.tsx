@@ -138,7 +138,16 @@ function catalogLoadErrorMessage(error: unknown): string {
   return error.message;
 }
 
-function ProductMediaThumbnail({ uri, label }: { uri: string; label: string }) {
+function ProductMediaThumbnail({
+  uri,
+  label,
+  compact = false,
+}: {
+  uri: string;
+  label: string;
+  /** Small preview used inside a card header. */
+  compact?: boolean;
+}) {
   const colors = useColors();
   const queryClient = useQueryClient();
   const resolvedUri = mediaUrlForApp(uri);
@@ -166,7 +175,7 @@ function ProductMediaThumbnail({ uri, label }: { uri: string; label: string }) {
       <View
         accessibilityLabel="تعذر تحميل الصورة"
         style={[
-          styles.productMediaThumbnail,
+          compact ? styles.productHeadingThumb : styles.productMediaThumbnail,
           styles.productVideoPlaceholder,
           { backgroundColor: colors.secondary },
         ]}
@@ -187,7 +196,9 @@ function ProductMediaThumbnail({ uri, label }: { uri: string; label: string }) {
   return (
     <Image
       source={{ uri: resolvedUri }}
-      style={styles.productMediaThumbnail}
+      style={
+        compact ? styles.productHeadingThumb : styles.productMediaThumbnail
+      }
       contentFit="cover"
       cachePolicy="disk"
       accessibilityLabel={label}
@@ -3145,32 +3156,57 @@ function ProductCard({
               <Icon name="check" size={13} color={colors.primaryForeground} />
             ) : null}
           </Pressable>
-          <Text style={[styles.productName, { color: colors.foreground }]}>
-            {product.name.trim() || "اسم المنتج يحتاج إلى مراجعة"}
-          </Text>
-          <Text
-            style={[
-              styles.badge,
-              {
-                color:
-                  product.status === "active" ? colors.primary : colors.warning,
-                backgroundColor: colors.accent,
-              },
-            ]}
-          >
-            {statusLabel}
-          </Text>
+          {product.mediaPreviews.length ? (
+            product.mediaPreviews[0].mediaType === "image" ? (
+              <ProductMediaThumbnail
+                uri={product.mediaPreviews[0].url}
+                label="معاينة وسيط المنتج"
+                compact
+              />
+            ) : (
+              <View
+                style={[
+                  styles.productHeadingThumb,
+                  { backgroundColor: colors.accent },
+                ]}
+              >
+                <Icon name="play" size={18} color={colors.primary} />
+              </View>
+            )
+          ) : null}
+          <View style={styles.productHeadingCopy}>
+            <Text style={[styles.productName, { color: colors.foreground }]}>
+              {product.name.trim() || "اسم المنتج يحتاج إلى مراجعة"}
+            </Text>
+            <View style={styles.productMetaRow}>
+              <Text
+                style={[
+                  styles.badge,
+                  {
+                    color:
+                      product.status === "active"
+                        ? colors.primary
+                        : colors.warning,
+                    backgroundColor: colors.accent,
+                  },
+                ]}
+              >
+                {statusLabel}
+              </Text>
+              {product.sku ? (
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.productSku,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  SKU: {product.sku}
+                </Text>
+              ) : null}
+            </View>
+          </View>
         </View>
-        {product.sku ? (
-          <Text
-            style={[
-              styles.description,
-              { color: colors.mutedForeground, writingDirection: "ltr" },
-            ]}
-          >
-            SKU: {product.sku}
-          </Text>
-        ) : null}
         <Text style={[styles.description, { color: colors.mutedForeground }]}>
           {availabilityLabel}
           {product.price !== null
@@ -3211,33 +3247,6 @@ function ProductCard({
             {product.description}
           </Text>
         ) : null}
-        {product.mediaPreviews.length ? (
-          <View
-            accessibilityLabel={`وسائط المنتج، ${product.mediaPreviews.length} عنصر`}
-            style={styles.productMediaList}
-          >
-            {product.mediaPreviews.slice(0, 4).map((media) =>
-              media.mediaType === "image" ? (
-                <ProductMediaThumbnail
-                  key={media.id}
-                  uri={media.url}
-                  label="معاينة وسيط المنتج"
-                />
-              ) : (
-                <View
-                  key={media.id}
-                  style={[
-                    styles.productMediaThumbnail,
-                    styles.productVideoPlaceholder,
-                    { backgroundColor: colors.accent },
-                  ]}
-                >
-                  <Icon name="play" size={22} color={colors.primary} />
-                </View>
-              ),
-            )}
-          </View>
-        ) : null}
         {product.postIds.length ? (
           <Text style={[styles.description, { color: colors.mutedForeground }]}>
             مرتبط بـ {product.postIds.length} منشور سابق
@@ -3257,7 +3266,6 @@ function ProductCard({
         <View
           style={[styles.productCardAction, { borderTopColor: colors.border }]}
         >
-          <Icon name="edit-3" size={15} color={colors.primary} />
           <Text
             style={[styles.productCardActionText, { color: colors.primary }]}
           >
@@ -3929,10 +3937,24 @@ const styles = StyleSheet.create({
   productHeading: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 10,
+  },
+  productHeadingCopy: { flex: 1, gap: 6, alignItems: "flex-start" },
+  productMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
     gap: 8,
   },
-  productName: { flex: 1, fontSize: 15, fontWeight: "700", textAlign: "right" },
+  productHeadingThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  productSku: { flexShrink: 1, fontSize: 12 },
+  productName: { fontSize: 15, fontWeight: "700", textAlign: "right" },
   badge: {
     overflow: "hidden",
     borderRadius: 10,

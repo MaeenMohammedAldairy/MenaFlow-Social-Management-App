@@ -189,9 +189,9 @@ export const styles = StyleSheet.create({
   },
   mediaVideoLabel: { fontSize: 12, fontWeight: "700" },
   mediaLabel: { fontSize: 12, fontWeight: "700" },
-  missingMedia: { textAlign: "left", fontSize: 12 },
-  postBody: { textAlign: "left", fontSize: 12, lineHeight: 19 },
-  sourceText: { textAlign: "left", fontSize: 12, lineHeight: 16 },
+  missingMedia: { textAlign: "right", fontSize: 12 },
+  postBody: { textAlign: "right", fontSize: 12, lineHeight: 19 },
+  sourceText: { textAlign: "right", fontSize: 12, lineHeight: 16 },
   postFooter: {
     flexDirection: "row",
     alignItems: "center",

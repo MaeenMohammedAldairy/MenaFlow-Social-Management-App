@@ -17,7 +17,11 @@ import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { ActionButton, EmptyState, StatusPill } from "@/components/Ui";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
-import { formatArabicDate, formatArabicDateTime } from "@/lib/formatting";
+import {
+  formatArabicDate,
+  formatArabicDateTime,
+  formatArabicNumber,
+} from "@/lib/formatting";
 import type { Post, PostStatus } from "@/context/StudioContext";
 import {
   mediaPreviewUrl,
@@ -102,16 +106,20 @@ function previewTextLines(text: string) {
     });
 }
 
-function displayPostTitle(post: Post): string {
+// Titles the sync pipeline invents when a message has no headline of its own.
+const GENERIC_POST_TITLES = [
+  "محتوى يحتاج إلى مراجعة",
+  "محتوى من واتساب",
+  "منشور بدون عنوان",
+];
+
+function hasPostTitle(post: Post): boolean {
   const title = post.title.trim();
-  if (
-    title &&
-    !["محتوى يحتاج إلى مراجعة", "محتوى من واتساب", "منشور بدون عنوان"].includes(
-      title,
-    )
-  ) {
-    return title;
-  }
+  return Boolean(title) && !GENERIC_POST_TITLES.includes(title);
+}
+
+function displayPostTitle(post: Post): string {
+  if (hasPostTitle(post)) return post.title.trim();
   return (
     (post.body || post.sourceText || "")
       .trim()
@@ -280,6 +288,9 @@ export function ContentPostList({
   const renderPostCard = (post: Post) => {
     const status = statusInfo(post.status);
     const displayTitle = displayPostTitle(post);
+    // Without a title the helper returns the body's first line, which the card
+    // already renders below - showing it twice is what made cards confusing.
+    const hasOwnTitle = hasPostTitle(post);
     const readinessMessage = postReadinessMessage(post);
     const expanded = expandedPostIds.has(post.id);
     const actionsExpanded = expandedActionPostIds.has(post.id);
@@ -363,12 +374,14 @@ export function ContentPostList({
             tone={displayedStatus.tone}
           />
           <View style={styles.postTitleWrap}>
-            <Text
-              style={[styles.postTitle, { color: colors.foreground }]}
-              numberOfLines={2}
-            >
-              {displayTitle}
-            </Text>
+            {hasOwnTitle ? (
+              <Text
+                style={[styles.postTitle, { color: colors.foreground }]}
+                numberOfLines={2}
+              >
+                {displayTitle}
+              </Text>
+            ) : null}
             <Text
               style={[
                 styles.postDate,
@@ -381,6 +394,25 @@ export function ContentPostList({
             </Text>
           </View>
         </View>
+
+        {reviewReason &&
+        (post.status === "review" || post.status === "failed") ? (
+          <Text
+            accessibilityRole="text"
+            style={[
+              styles.sourceText,
+              { color: colors.mutedForeground },
+            ]}
+          >
+            {post.status === "review"
+              ? "سبب المراجعة: "
+              : "سبب الفشل: "}
+            {publishReasonLabel(reviewReason) ??
+              (post.status === "failed"
+                ? "تعذّر النشر. راجع اتصال الحساب وصلاحياته ثم أعد المحاولة."
+                : reviewReason)}
+          </Text>
+        ) : null}
 
         {isMetaImported ? (
           <View
@@ -524,11 +556,13 @@ export function ContentPostList({
                 );
               })}
             </View>
-            <Text
-              style={[styles.mediaLabel, { color: colors.primary }]}
-            >
-              {post.mediaUrls.length} وسائط مرتبطة
-            </Text>
+            {post.mediaUrls.length > 3 ? (
+              <Text
+                style={[styles.mediaLabel, { color: colors.mutedForeground }]}
+              >
+                {`+${formatArabicNumber(post.mediaUrls.length - 3)} أخرى`}
+              </Text>
+            ) : null}
           </View>
         )}
         {!post.mediaUrls || post.mediaUrls.length === 0 ? (
@@ -591,24 +625,6 @@ export function ContentPostList({
               {expanded ? "عرض أقل" : "عرض النص كاملاً"}
             </Text>
           </Pressable>
-        ) : null}
-        {reviewReason &&
-        (post.status === "review" || post.status === "failed") ? (
-          <Text
-            accessibilityRole="text"
-            style={[
-              styles.sourceText,
-              { color: colors.mutedForeground },
-            ]}
-          >
-            {post.status === "review"
-              ? "سبب المراجعة: "
-              : "سبب الفشل: "}
-            {publishReasonLabel(reviewReason) ??
-              (post.status === "failed"
-                ? "تعذّر النشر. راجع اتصال الحساب وصلاحياته ثم أعد المحاولة."
-                : reviewReason)}
-          </Text>
         ) : null}
         {post.status === "failed" &&
         publishChannelResults.length > 0 ? (
@@ -823,7 +839,7 @@ export function ContentPostList({
                   { color: colors.foreground },
                 ]}
               >
-                المزيد
+                خيارات أخرى
               </Text>
               <Icon
                 name={actionsExpanded ? "chevron-up" : "chevron-down"}
