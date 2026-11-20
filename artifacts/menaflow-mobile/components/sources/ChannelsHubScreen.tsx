@@ -152,7 +152,16 @@ function ChannelsHubContent({ userId }: { userId: string | null }) {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="الانتقال إلى مصدر واتساب والمزامنة"
-            onPress={() => open("/(tabs)/more/sources")}
+            onPress={() =>
+              open(
+                whatsAppConnected
+                  ? "/(tabs)/more/sources"
+                  : {
+                      pathname: "/(tabs)/more/sources",
+                      params: { section: "connections" },
+                    },
+              )
+            }
             style={[
               styles.secondaryButton,
               { borderColor: colors.border, backgroundColor: colors.card },
@@ -163,6 +172,26 @@ function ChannelsHubContent({ userId }: { userId: string | null }) {
             </Text>
             <Icon name="chevron-left" size={15} color={colors.primary} />
           </Pressable>
+          {whatsAppConnected ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إدارة حساب واتساب"
+              onPress={() =>
+                open({
+                  pathname: "/(tabs)/more/sources",
+                  params: { section: "connections" },
+                })
+              }
+              style={[
+                styles.secondaryButton,
+                { borderColor: colors.border, backgroundColor: colors.card },
+              ]}
+            >
+              <Text style={[styles.secondaryLabel, { color: colors.primary }]}>
+                إدارة الحساب
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </Panel>
 
@@ -313,7 +342,12 @@ const styles = StyleSheet.create({
   },
   cardTitle: { flexShrink: 1, fontSize: 15, fontWeight: "800" },
   cardBody: { fontSize: 12, lineHeight: 19, textAlign: "right" },
-  cardActions: { flexDirection: "row", justifyContent: "flex-start" },
+  cardActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
+    gap: 8,
+  },
   link: { fontSize: 13, fontWeight: "700" },
   channelRow: {
     flexDirection: "row",
