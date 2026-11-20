@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { randomUUID } from "expo-crypto";
 import {
+  FlatList,
   Modal,
   Pressable,
   RefreshControl,
@@ -479,49 +480,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
   };
 
   return (
-    <Page
-      refreshControl={
-        <RefreshControl
-          refreshing={orders.isRefetching}
-          onRefresh={() => void orders.refetch()}
-          tintColor={colors.primary}
-        />
-      }
-    >
-      <BrandHeader />
-      <PageTitle
-        title="الطلبات"
-        subtitle="سجّل الطلبات وتابع حجز المخزون وتجهيز الشحنات والتحصيل."
-        back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
-        action={
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={showForm ? "إغلاق نموذج الطلب" : "إنشاء طلب"}
-            onPress={() => {
-              setShowForm((current) => !current);
-              setFormError(null);
-              setSuccessMessage(null);
-            }}
-            style={[styles.addButton, { backgroundColor: colors.primary }]}
-          >
-            <Icon
-              name={showForm ? "x" : "plus"}
-              size={17}
-              color={colors.primaryForeground}
-            />
-            <Text
-              style={{
-                color: colors.primaryForeground,
-                fontWeight: "800",
-                fontSize: 12,
-              }}
-            >
-              {showForm ? "إغلاق" : "طلب جديد"}
-            </Text>
-          </Pressable>
-        }
-      />
-
+    <Page scroll={false}>
       <Modal
         visible={Boolean(deliveryEditOrder)}
         transparent
@@ -757,6 +716,63 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           </ScrollView>
         </View>
       </Modal>
+
+      <FlatList
+        data={loadedOrders}
+        keyExtractor={(order) => order.id}
+        renderItem={({ item }) => (
+          <OrderCard
+            order={item}
+            isUpdating={
+              statusMutation.isPending &&
+              statusMutation.variables?.id === item.id
+            }
+            onStatusChange={(status) =>
+              statusMutation.mutate({ id: item.id, status })
+            }
+            onDeliveryEdit={() => openDeliveryEditor(item)}
+            deliveryPending={
+              deliveryMutation.isPending &&
+              deliveryMutation.variables?.orderId === item.id
+            }
+          />
+        )}
+        ItemSeparatorComponent={() => <View style={styles.orderSeparator} />}
+        ListHeaderComponent={
+          <View style={styles.orderHeaderStack}>
+      <BrandHeader />
+      <PageTitle
+        title="الطلبات"
+        subtitle="سجّل الطلبات وتابع حجز المخزون وتجهيز الشحنات والتحصيل."
+        back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
+        action={
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={showForm ? "إغلاق نموذج الطلب" : "إنشاء طلب"}
+            onPress={() => {
+              setShowForm((current) => !current);
+              setFormError(null);
+              setSuccessMessage(null);
+            }}
+            style={[styles.addButton, { backgroundColor: colors.primary }]}
+          >
+            <Icon
+              name={showForm ? "x" : "plus"}
+              size={17}
+              color={colors.primaryForeground}
+            />
+            <Text
+              style={{
+                color: colors.primaryForeground,
+                fontWeight: "800",
+                fontSize: 12,
+              }}
+            >
+              {showForm ? "إغلاق" : "طلب جديد"}
+            </Text>
+          </Pressable>
+        }
+      />
 
       {successMessage ? (
         <Panel style={[styles.noticePanel, { backgroundColor: colors.accent }]}>
@@ -1163,100 +1179,103 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
             );
           })}
         </ScrollView>
-        {orders.isPending ? (
-          <View
-            accessible
-            accessibilityLabel="جارٍ تحميل الطلبات"
-            style={styles.orderList}
-          >
-            {[0, 1, 2].map((index) => (
-              <Panel
-                key={`order-skeleton-${index}`}
-                style={[styles.orderCard, { borderColor: colors.border }]}
-              >
-                <View style={styles.orderTop}>
-                  <View style={styles.orderHeading}>
-                    <Skeleton width={110} height={15} radius={6} />
-                    <Skeleton width={150} height={11} radius={5} />
-                  </View>
-                  <Skeleton width={72} height={22} radius={10} />
-                </View>
-                <Skeleton width={120} height={10} radius={5} />
-                <Skeleton width="70%" height={10} radius={5} />
-              </Panel>
-            ))}
+      </Panel>
           </View>
-        ) : orders.isError && !orders.data ? (
-          <View style={styles.errorInline}>
-            <Text style={{ color: colors.destructive, textAlign: "right" }}>
-              {orderErrorMessage(orders.error)}
-            </Text>
-            <ActionButton
-              label="إعادة المحاولة"
-              icon="refresh-cw"
-              onPress={() => void orders.refetch()}
-            />
-          </View>
-        ) : loadedOrders.length ? (
-          <View style={styles.orderList}>
-            {loadedOrders.map((order) => (
-              <OrderCard
-                key={order.id}
-                order={order}
-                isUpdating={
-                  statusMutation.isPending &&
-                  statusMutation.variables?.id === order.id
-                }
-                onStatusChange={(status) =>
-                  statusMutation.mutate({ id: order.id, status })
-                }
-                onDeliveryEdit={() => openDeliveryEditor(order)}
-                deliveryPending={
-                  deliveryMutation.isPending &&
-                  deliveryMutation.variables?.orderId === order.id
-                }
-              />
-            ))}
-            {orders.hasNextPage ? (
-              <ActionButton
-                label={
-                  orders.isFetchingNextPage
-                    ? "جارٍ تحميل المزيد..."
-                    : "تحميل طلبات أقدم"
-                }
-                icon={orders.isFetchingNextPage ? "clock" : "chevron-down"}
-                disabled={orders.isFetchingNextPage}
-                onPress={() => void orders.fetchNextPage()}
-              />
-            ) : null}
-            {orders.isError ? (
-              <View style={styles.errorInline}>
-                <Text
-                  accessibilityRole="alert"
-                  style={{ color: colors.destructive, textAlign: "right" }}
+        }
+        ListEmptyComponent={
+          orders.isPending ? (
+            <View
+              accessible
+              accessibilityLabel="جارٍ تحميل الطلبات"
+              style={styles.orderList}
+            >
+              {[0, 1, 2].map((index) => (
+                <Panel
+                  key={`order-skeleton-${index}`}
+                  style={[styles.orderCard, { borderColor: colors.border }]}
                 >
-                  {orderErrorMessage(orders.error)}
-                </Text>
+                  <View style={styles.orderTop}>
+                    <View style={styles.orderHeading}>
+                      <Skeleton width={110} height={15} radius={6} />
+                      <Skeleton width={150} height={11} radius={5} />
+                    </View>
+                    <Skeleton width={72} height={22} radius={10} />
+                  </View>
+                  <Skeleton width={120} height={10} radius={5} />
+                  <Skeleton width="70%" height={10} radius={5} />
+                </Panel>
+              ))}
+            </View>
+          ) : orders.isError && !orders.data ? (
+            <View style={styles.errorInline}>
+              <Text style={{ color: colors.destructive, textAlign: "right" }}>
+                {orderErrorMessage(orders.error)}
+              </Text>
+              <ActionButton
+                label="إعادة المحاولة"
+                icon="refresh-cw"
+                onPress={() => void orders.refetch()}
+              />
+            </View>
+          ) : (
+            <EmptyState
+              icon="shopping-bag"
+              title={search ? "لا توجد نتائج" : "لا توجد طلبات بعد"}
+              body={
+                search
+                  ? "جرّب كلمة بحث مختلفة."
+                  : "ابدأ بتسجيل أول طلب من زر «طلب جديد»."
+              }
+            />
+          )
+        }
+        ListFooterComponent={
+          loadedOrders.length ? (
+            <View style={styles.orderListFooter}>
+              {orders.hasNextPage ? (
                 <ActionButton
-                  label="إعادة المحاولة"
-                  icon="refresh-cw"
+                  label={
+                    orders.isFetchingNextPage
+                      ? "جارٍ تحميل المزيد..."
+                      : "تحميل طلبات أقدم"
+                  }
+                  icon={orders.isFetchingNextPage ? "clock" : "chevron-down"}
+                  disabled={orders.isFetchingNextPage}
                   onPress={() => void orders.fetchNextPage()}
                 />
-              </View>
-            ) : null}
-          </View>
-        ) : (
-          <EmptyState
-            icon="shopping-bag"
-            title={search ? "لا توجد نتائج" : "لا توجد طلبات بعد"}
-            body={
-              search
-                ? "جرّب كلمة بحث مختلفة."
-                : "ابدأ بتسجيل أول طلب من زر «طلب جديد»."
-            }
+              ) : null}
+              {orders.isError ? (
+                <View style={styles.errorInline}>
+                  <Text
+                    accessibilityRole="alert"
+                    style={{ color: colors.destructive, textAlign: "right" }}
+                  >
+                    {orderErrorMessage(orders.error)}
+                  </Text>
+                  <ActionButton
+                    label="إعادة المحاولة"
+                    icon="refresh-cw"
+                    onPress={() => void orders.fetchNextPage()}
+                  />
+                </View>
+              ) : null}
+            </View>
+          ) : undefined
+        }
+        style={styles.orderListFill}
+        contentContainerStyle={styles.orderListContent}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={orders.isRefetching}
+            onRefresh={() => void orders.refetch()}
+            tintColor={colors.primary}
           />
-        )}
-      </Panel>
+        }
+      />
     </Page>
   );
 
@@ -1712,6 +1731,11 @@ const styles = StyleSheet.create({
   },
   countText: { fontSize: 11, fontWeight: "800" },
   orderList: { gap: 10 },
+  orderSeparator: { height: 10 },
+  orderHeaderStack: { gap: 18, marginBottom: 10 },
+  orderListContent: { paddingBottom: 8 },
+  orderListFill: { flex: 1 },
+  orderListFooter: { gap: 10, paddingTop: 10 },
   orderCard: { gap: 10, padding: 13 },
   orderTop: {
     flexDirection: "row",

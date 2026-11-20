@@ -48,6 +48,7 @@ export function Page({
     <View
       style={[
         styles.pageContent,
+        scroll ? null : styles.pageContentFill,
         contentMaxWidth ? styles.constrainedContent : null,
         contentMaxWidth ? { maxWidth: contentMaxWidth } : null,
         {
@@ -465,6 +466,7 @@ const styles = StyleSheet.create({
   page: { flex: 1 },
   scrollContent: { flexGrow: 1 },
   pageContent: { paddingHorizontal: 18, gap: 18 },
+  pageContentFill: { flex: 1 },
   constrainedContent: { width: '100%', alignSelf: 'center' },
   brandHeader: { width: '100%', alignSelf: 'stretch', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', minHeight: 58, paddingHorizontal: 10, borderWidth: 1, borderRadius: 17 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
