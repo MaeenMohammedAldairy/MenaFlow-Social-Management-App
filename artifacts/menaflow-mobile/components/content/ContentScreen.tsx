@@ -354,17 +354,13 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             <View style={styles.listHeaderStack}>
       <BrandHeader />
       <Panel style={styles.contentIntro}>
-        <View
-          style={[styles.contentEyebrow, { backgroundColor: colors.accent }]}
-        >
-          <Icon name="file-text" size={15} color={colors.primary} />
-          <Text style={[styles.contentEyebrowText, { color: colors.primary }]}>
-            استوديو المحتوى
-          </Text>
-        </View>
         <PageTitle
           title="المحتوى"
-          subtitle="أنشئ المسودات وراجعها وقم بالتسويق والنشر على المنصات المختارة."
+          subtitle={
+            visiblePosts.length === 0
+              ? "أنشئ المسودات وراجعها وقم بالتسويق والنشر على المنصات المختارة."
+              : undefined
+          }
           action={
             <Pressable
               accessibilityRole="button"
@@ -393,68 +389,78 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
         />
       </Panel>
 
-      <Panel style={styles.autoPublishPanel}>
-        <View style={styles.autoPublishTitleGroup}>
-          <View
-            style={[
-              styles.autoPublishIcon,
-              { backgroundColor: colors.accent },
-            ]}
-          >
-            <Icon name="zap" size={17} color={colors.primary} />
-          </View>
-          <View style={styles.autoPublishTitleCopy}>
-            <Text style={[styles.autoLabel, { color: colors.foreground }]}>
-              النشر التلقائي
-            </Text>
-            <Text
-              style={[
-                styles.autoPublishDescription,
-                { color: colors.mutedForeground },
-              ]}
-            >
-              {autoPublish
-                ? `مفعّل على ${
-                    autoPublishChannels.map(platformLabel).join(" و") ||
-                    "المنصات المختارة"
-                  }`
-                : "متوقف"}
-            </Text>
-          </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`النشر التلقائي، ${
+          autoPublish ? "مفعّل" : "متوقف"
+        } — إدارة إعدادات النشر`}
+        onPress={() => router.push("/publishing-settings")}
+        style={({ pressed }) => [
+          styles.autoPublishCompact,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            opacity: pressed ? 0.85 : 1,
+          },
+        ]}
+      >
+        <View
+          style={[styles.autoPublishIcon, { backgroundColor: colors.accent }]}
+        >
+          <Icon name="zap" size={16} color={colors.primary} />
         </View>
-        {connectionLoadError ? (
-          <View
+        <View style={styles.autoPublishCompactCopy}>
+          <Text style={[styles.autoLabel, { color: colors.foreground }]}>
+            النشر التلقائي
+          </Text>
+          <Text
+            numberOfLines={1}
             style={[
-              styles.connectionLoadError,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.destructive,
-                borderWidth: 1,
-              },
+              styles.autoPublishDescription,
+              { color: colors.mutedForeground },
             ]}
           >
-            <Text
-              accessibilityRole="alert"
-              style={[styles.intro, { color: colors.destructive }]}
-            >
-              {connectionLoadError}
-            </Text>
-            <ActionButton
-              label={connectionsQuery.isFetching ? "جارٍ التحقق…" : "إعادة المحاولة"}
-              icon={connectionsQuery.isFetching ? "clock" : "refresh-cw"}
-              secondary
-              disabled={connectionsQuery.isFetching}
-              onPress={() => void connectionsQuery.refetch()}
-            />
-          </View>
-        ) : null}
-        <ActionButton
-          label="إدارة إعدادات النشر"
-          icon="settings"
-          secondary
-          onPress={() => router.push("/publishing-settings")}
-        />
-      </Panel>
+            {autoPublish
+              ? `مفعّل على ${
+                  autoPublishChannels.map(platformLabel).join(" و") ||
+                  "المنصات المختارة"
+                }`
+              : "متوقف"}
+          </Text>
+        </View>
+        <Text style={[styles.filterLabel, { color: colors.primary }]}>
+          إدارة
+        </Text>
+      </Pressable>
+
+      {connectionLoadError ? (
+        <View
+          style={[
+            styles.connectionLoadError,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.destructive,
+              borderWidth: 1,
+            },
+          ]}
+        >
+          <Text
+            accessibilityRole="alert"
+            style={[styles.intro, { color: colors.destructive }]}
+          >
+            {connectionLoadError}
+          </Text>
+          <ActionButton
+            label={
+              connectionsQuery.isFetching ? "جارٍ التحقق…" : "إعادة المحاولة"
+            }
+            icon={connectionsQuery.isFetching ? "clock" : "refresh-cw"}
+            secondary
+            disabled={connectionsQuery.isFetching}
+            onPress={() => void connectionsQuery.refetch()}
+          />
+        </View>
+      ) : null}
 
       <Panel style={styles.postWorkspace}>
         <SectionTitle title="مساحة النشر وإدارة المنشورات" />

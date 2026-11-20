@@ -2,16 +2,6 @@ import { StyleSheet } from "react-native";
 
 export const styles = StyleSheet.create({
   contentIntro: { padding: 18, gap: 12 },
-  contentEyebrow: {
-    alignSelf: "flex-start",
-    minHeight: 28,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    gap: 6,
-    borderRadius: 10,
-    paddingHorizontal: 9,
-  },
-  contentEyebrowText: { fontSize: 12, fontWeight: "700" },
   addButton: {
     minHeight: 42,
     flexDirection: "row",
@@ -58,6 +48,16 @@ export const styles = StyleSheet.create({
   },
   autoPublishTitleCopy: { flex: 1, gap: 2 },
   autoPublishDescription: { fontSize: 12, lineHeight: 15, textAlign: "right" },
+  autoPublishCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  autoPublishCompactCopy: { flex: 1, gap: 2 },
   postWorkspace: { gap: 10 },
   prioritySectionHeading: {
     flexDirection: "row",
