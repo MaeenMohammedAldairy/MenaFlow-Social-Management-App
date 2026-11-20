@@ -10,6 +10,7 @@ import {
 import { useAuth } from "@clerk/expo";
 import { useQuery } from "@tanstack/react-query";
 import { CairoText as Text } from "@/components/CairoTypography";
+import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
 import {
@@ -902,13 +903,38 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
         </View>
 
         {!ready ? (
-          <EmptyState
-            icon={storageError ? "alert-circle" : "clock"}
-            title={
-              storageError ? "تعذّر تحميل المنشورات" : "جارٍ تحميل المنشورات"
-            }
-            body={storageError || "نحمّل بيانات مساحة العمل قبل عرض المنشورات."}
-          />
+          storageError ? (
+            <EmptyState
+              icon="alert-circle"
+              title="تعذّر تحميل المنشورات"
+              body={storageError}
+            />
+          ) : (
+            <View
+              accessible
+              accessibilityLabel="جارٍ تحميل المنشورات"
+              style={styles.postGroup}
+            >
+              {[0, 1].map((index) => (
+                <View
+                  key={`post-skeleton-${index}`}
+                  style={[styles.postCard, { borderColor: colors.border }]}
+                >
+                  <View style={styles.skeletonHeader}>
+                    <Skeleton width={72} height={20} radius={10} />
+                    <Skeleton width={150} height={14} radius={6} />
+                  </View>
+                  <Skeleton width="100%" height={10} radius={5} />
+                  <Skeleton width="92%" height={10} radius={5} />
+                  <Skeleton width="58%" height={10} radius={5} />
+                  <View style={styles.skeletonActions}>
+                    <Skeleton width={96} height={30} radius={10} />
+                    <Skeleton width={64} height={30} radius={10} />
+                  </View>
+                </View>
+              ))}
+            </View>
+          )
         ) : (
           <ContentPostList
             visiblePosts={visiblePosts}

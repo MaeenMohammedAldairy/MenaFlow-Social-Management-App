@@ -31,6 +31,7 @@ import {
   CairoText as Text,
   CairoTextInput,
 } from "@/components/CairoTypography";
+import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   ActionButton,
@@ -1805,11 +1806,27 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 />
               </Panel>
             ) : catalog.isPending ? (
-              <EmptyState
-                icon="clock"
-                title="جارٍ تجهيز كتالوجك"
-                body="نحمّل بيانات المنتجات المعتمدة."
-              />
+              <View
+                accessible
+                accessibilityLabel="جارٍ تجهيز كتالوجك"
+                style={styles.productSkeletonList}
+              >
+                {[0, 1].map((index) => (
+                  <Panel
+                    key={`product-skeleton-${index}`}
+                    style={styles.productCard}
+                  >
+                    <View style={styles.productHeading}>
+                      <Skeleton width={22} height={22} radius={7} />
+                      <Skeleton width="55%" height={14} radius={6} />
+                      <Skeleton width={54} height={18} radius={9} />
+                    </View>
+                    <Skeleton width="100%" height={10} radius={5} />
+                    <Skeleton width="72%" height={10} radius={5} />
+                    <Skeleton width={92} height={26} radius={9} />
+                  </Panel>
+                ))}
+              </View>
             ) : visibleProducts.length ? (
               visibleProducts.map((product) => (
                 <ProductCard
@@ -2062,6 +2079,8 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
             <ScrollView
               contentContainerStyle={styles.form}
               keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
+              keyboardDismissMode="on-drag"
             >
               <CsvProductImportCard
                 userId={userId}
@@ -2106,6 +2125,8 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
             <ScrollView
               contentContainerStyle={styles.form}
               keyboardShouldPersistTaps="handled"
+              automaticallyAdjustKeyboardInsets
+              keyboardDismissMode="on-drag"
             >
               {error ? (
                 <Text
@@ -3914,6 +3935,7 @@ const styles = StyleSheet.create({
   publishBarCount: { fontSize: 13, fontWeight: "800", textAlign: "right" },
   publishBarHint: { fontSize: 11, lineHeight: 16, textAlign: "right" },
   productCard: { gap: 7 },
+  productSkeletonList: { gap: 10 },
   productCardAction: {
     flexDirection: "row-reverse",
     alignItems: "center",

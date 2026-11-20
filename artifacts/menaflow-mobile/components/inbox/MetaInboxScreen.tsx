@@ -12,6 +12,7 @@ import { useAuth } from "@clerk/expo";
 import { getWhatsAppAutoReplySettings } from "@workspace/api-client-react";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { CairoText as Text } from "@/components/CairoTypography";
+import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   ActionButton,
@@ -562,12 +563,34 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
 
       {rows.length === 0 &&
       (inbox.isPending || (platform === "all" && whatsappInbox.isPending)) ? (
-        <Panel style={styles.loadingPanel}>
-          <Icon name="clock" size={18} color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
-            جارٍ تحميل الرسائل والتعليقات...
-          </Text>
-        </Panel>
+        <View
+          accessible
+          accessibilityLabel="جارٍ تحميل الرسائل والتعليقات"
+          style={styles.groups}
+        >
+          {[0, 1, 2].map((index) => (
+            <View
+              key={`inbox-skeleton-${index}`}
+              style={[
+                styles.conversationCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Skeleton width={46} height={46} radius={16} />
+              <View style={styles.conversationHeading}>
+                <View style={styles.conversationTopLine}>
+                  <Skeleton width="42%" height={12} radius={6} />
+                  <Skeleton width={54} height={10} radius={5} />
+                </View>
+                <Skeleton width="86%" height={10} radius={5} />
+                <Skeleton width="60%" height={10} radius={5} />
+              </View>
+            </View>
+          ))}
+        </View>
       ) : rows.length === 0 &&
       (inbox.isError || (platform === "all" && whatsappInbox.isError)) ? null : rows.length === 0 ? (
         <EmptyState
@@ -885,14 +908,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   resultCount: { fontSize: 11, fontWeight: "700" },
-  loadingPanel: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 9,
-  },
-  loadingText: { fontSize: 12, textAlign: "center" },
   searchRow: {
     minHeight: 48,
     flexDirection: "row",

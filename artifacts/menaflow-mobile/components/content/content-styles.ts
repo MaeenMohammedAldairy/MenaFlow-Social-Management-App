@@ -193,6 +193,13 @@ export const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   postCard: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10 },
+  skeletonHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  skeletonActions: { flexDirection: "row", gap: 8, marginTop: 2 },
   postGroup: { gap: 10 },
   postGroupTitle: {
     textAlign: "right",

@@ -98,6 +98,8 @@ export function CountryPickerModal({
           />
           <ScrollView
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            keyboardDismissMode="on-drag"
             style={styles.countryList}
             contentContainerStyle={styles.countryListContent}
           >

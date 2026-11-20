@@ -79,6 +79,8 @@ export function Page({
           onScroll={onScroll}
           scrollEventThrottle={onScroll ? 250 : undefined}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >

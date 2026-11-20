@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Image } from "expo-image";
 import { CairoText as Text } from "@/components/CairoTypography";
+import { Skeleton } from "@/components/Skeleton";
 import {
   LucideIcon as Icon,
   type LucideIconName,
@@ -573,6 +574,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                   ? "—"
                   : "…"
                 : conversationCount,
+            loading: conversationCount === null && !inboxQuery.isError,
             href: "/(tabs)/inbox" as const,
             disabled: false,
           },
@@ -581,6 +583,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
             description: ready ? "ضمن المحتوى المتاح" : "جارٍ تحميل المحتوى",
             icon: "file-text" as const,
             value: ready ? posts.length : "…",
+            loading: !ready,
             href: "/(tabs)/content" as const,
             disabled: false,
           },
@@ -598,6 +601,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                   ? "—"
                   : "…"
                 : activeProductCount,
+            loading: activeProductCount === null && !catalogQuery.isError,
             href: "/(tabs)/products" as const,
             disabled: false,
           },
@@ -614,6 +618,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
               : orderSummaryQuery.isError
                 ? "—"
                 : (orderSummaryQuery.data?.total ?? 0),
+            loading: orderSummaryQuery.isLoading,
             href: "/(tabs)/more/orders" as const,
             disabled: false,
           },
@@ -655,18 +660,32 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                   <Icon name={metric.icon} size={17} color={colors.primary} />
                 </View>
               </View>
-              <Text style={[styles.metricNumber, { color: colors.foreground }]}>
-                {metric.value}
-              </Text>
-              <Text
-                numberOfLines={2}
-                style={[
-                  styles.metricDescription,
-                  { color: colors.mutedForeground },
-                ]}
-              >
-                {metric.description}
-              </Text>
+              {metric.loading ? (
+                <>
+                  <Skeleton width={64} height={26} radius={9} />
+                  <Skeleton width="82%" height={10} radius={5} />
+                </>
+              ) : (
+                <>
+                  <Text
+                    style={[
+                      styles.metricNumber,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    {metric.value}
+                  </Text>
+                  <Text
+                    numberOfLines={2}
+                    style={[
+                      styles.metricDescription,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {metric.description}
+                  </Text>
+                </>
+              )}
             </View>
           </Pressable>
         ))}
@@ -1007,11 +1026,31 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
             ) : recentActivities.length === 0 &&
               ((catalogQuery.isPending && !catalogQuery.isFetched) ||
                 (inboxQuery.isPending && !inboxQuery.isFetched)) ? (
-              <EmptyState
-                icon="clock"
-                title="جارٍ تحميل الأنشطة"
-                body="نحمّل أحدث الرسائل والمنشورات والمنتجات في مساحة العمل."
-              />
+              <View
+                accessible
+                accessibilityLabel="جارٍ تحميل الأنشطة"
+                style={styles.activityList}
+              >
+                {[0, 1, 2].map((index) => (
+                  <View
+                    key={`activity-skeleton-${index}`}
+                    style={[
+                      styles.activityRow,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <Skeleton width={38} height={38} radius={13} />
+                    <View style={styles.activityCopy}>
+                      <Skeleton width="45%" height={11} radius={6} />
+                      <Skeleton width="80%" height={10} radius={5} />
+                      <Skeleton width="35%" height={9} radius={5} />
+                    </View>
+                  </View>
+                ))}
+              </View>
             ) : recentActivities.length === 0 ? (
               <EmptyState
                 icon={

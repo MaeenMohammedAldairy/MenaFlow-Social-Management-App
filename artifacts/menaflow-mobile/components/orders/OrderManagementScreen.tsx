@@ -29,6 +29,7 @@ import {
   CairoText as Text,
   CairoTextInput,
 } from "@/components/CairoTypography";
+import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { useColors } from "@/hooks/useColors";
@@ -533,6 +534,8 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           <ScrollView
             contentContainerStyle={styles.modalScrollContent}
             keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+            keyboardDismissMode="on-drag"
           >
             <Panel style={styles.deliveryModal}>
               <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
@@ -1161,11 +1164,28 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           })}
         </ScrollView>
         {orders.isPending ? (
-          <Text
-            style={[styles.inlineNotice, { color: colors.mutedForeground }]}
+          <View
+            accessible
+            accessibilityLabel="جارٍ تحميل الطلبات"
+            style={styles.orderList}
           >
-            جارٍ تحميل الطلبات...
-          </Text>
+            {[0, 1, 2].map((index) => (
+              <Panel
+                key={`order-skeleton-${index}`}
+                style={[styles.orderCard, { borderColor: colors.border }]}
+              >
+                <View style={styles.orderTop}>
+                  <View style={styles.orderHeading}>
+                    <Skeleton width={110} height={15} radius={6} />
+                    <Skeleton width={150} height={11} radius={5} />
+                  </View>
+                  <Skeleton width={72} height={22} radius={10} />
+                </View>
+                <Skeleton width={120} height={10} radius={5} />
+                <Skeleton width="70%" height={10} radius={5} />
+              </Panel>
+            ))}
+          </View>
         ) : orders.isError && !orders.data ? (
           <View style={styles.errorInline}>
             <Text style={{ color: colors.destructive, textAlign: "right" }}>
