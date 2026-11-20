@@ -351,6 +351,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
         ready={ready}
         header={
           <>
+            <View style={styles.listHeaderStack}>
       <BrandHeader />
       <Panel style={styles.contentIntro}>
         <View
@@ -457,10 +458,12 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
 
       <Panel style={styles.postWorkspace}>
         <SectionTitle title="مساحة النشر وإدارة المنشورات" />
-        <Text style={[styles.intro, { color: colors.mutedForeground }]}>
-          الرسائل والوسائط المزامنة تُحوّل إلى منشورات متاحة للمراجعة والنشر
-          اليدوي أو التلقائي.
-        </Text>
+        {visiblePosts.length === 0 ? (
+          <Text style={[styles.intro, { color: colors.mutedForeground }]}>
+            الرسائل والوسائط المزامنة تُحوّل إلى منشورات متاحة للمراجعة والنشر
+            اليدوي أو التلقائي.
+          </Text>
+        ) : null}
         {syncError ? (
           <View
             style={[
@@ -743,7 +746,11 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             >
               المنصة
             </Text>
-            <View style={styles.filterRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRowContent}
+            >
               {[
                 { value: "all" as const, label: "كل المنصات" },
                 { value: "facebook" as const, label: "فيسبوك" },
@@ -782,7 +789,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
                   </Text>
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
             <Text
               style={[
                 styles.filterGroupLabel,
@@ -791,7 +798,11 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             >
               الفترة
             </Text>
-            <View style={styles.filterRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRowContent}
+            >
               {[
                 { value: "all" as const, label: "كل التواريخ" },
                 { value: "7" as const, label: "7 أيام" },
@@ -828,7 +839,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
                   </Text>
                 </Pressable>
               ))}
-            </View>
+            </ScrollView>
           </View>
         ) : null}
         <View style={styles.sortRow}>
@@ -923,6 +934,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             </View>
           )
           ) : null}
+            </View>
           </>
         }
         refreshControl={

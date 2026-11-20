@@ -58,7 +58,7 @@ export const styles = StyleSheet.create({
   },
   autoPublishTitleCopy: { flex: 1, gap: 2 },
   autoPublishDescription: { fontSize: 12, lineHeight: 15, textAlign: "right" },
-  postWorkspace: { gap: 12 },
+  postWorkspace: { gap: 10 },
   prioritySectionHeading: {
     flexDirection: "row",
     alignItems: "center",
@@ -123,6 +123,7 @@ export const styles = StyleSheet.create({
   },
   autoLabel: { fontSize: 13, fontWeight: "700" },
   filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  filterRowContent: { flexDirection: "row", gap: 6, paddingHorizontal: 2 },
   priorityHeading: { fontSize: 13, fontWeight: "800", textAlign: "right" },
   priorityFilters: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   priorityFilter: {
@@ -150,14 +151,14 @@ export const styles = StyleSheet.create({
   statusFilterScroll: { flexGrow: 0, marginBottom: 2 },
   statusFilterContent: { flexDirection: "row", gap: 7, paddingVertical: 2 },
   filterChip: {
-    minHeight: 34,
+    minHeight: 30,
     justifyContent: "center",
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderRadius: 12,
   },
   filterLabel: { fontSize: 12, fontWeight: "700" },
   advancedFilterToggle: {
-    minHeight: 46,
+    minHeight: 40,
     borderWidth: 1,
     borderRadius: 13,
     paddingHorizontal: 12,
@@ -174,7 +175,7 @@ export const styles = StyleSheet.create({
     marginStart: "auto",
   },
   activeFilterBadgeText: { fontSize: 12, fontWeight: "800" },
-  advancedFilters: { gap: 8 },
+  advancedFilters: { gap: 6 },
   sortRow: { gap: 6 },
   filterGroupLabel: { fontSize: 12, fontWeight: "700", textAlign: "right" },
   resultsSummary: {
@@ -193,6 +194,7 @@ export const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   postCard: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10 },
+  listHeaderStack: { gap: 12 },
   postListFill: { flex: 1 },
   postListContent: { gap: 10, paddingBottom: 8 },
   skeletonHeader: {
@@ -407,18 +409,18 @@ export const styles = StyleSheet.create({
     marginBottom: 12,
   },
   searchRow: {
-    minHeight: 48,
+    minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 10,
-    marginVertical: 4,
+    marginVertical: 2,
   },
   searchInput: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 40,
     paddingHorizontal: 12,
     textAlign: "right",
     writingDirection: "rtl",
