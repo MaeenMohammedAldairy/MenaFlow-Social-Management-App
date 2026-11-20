@@ -55,9 +55,11 @@ export function Page({
           paddingTop: insets.top + 8,
           paddingBottom:
             bottomPadding === undefined
-              ? Platform.OS === 'web'
-                ? 112
-                : 112 + insets.bottom
+              ? scroll
+                ? Platform.OS === 'web'
+                  ? 112
+                  : 112 + insets.bottom
+                : 0
               : bottomPadding + insets.bottom,
         },
       ]}

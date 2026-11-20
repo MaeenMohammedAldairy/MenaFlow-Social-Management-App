@@ -193,6 +193,8 @@ export const styles = StyleSheet.create({
     alignSelf: "flex-end",
   },
   postCard: { borderWidth: 1, borderRadius: 16, padding: 12, gap: 10 },
+  postListFill: { flex: 1 },
+  postListContent: { gap: 10, paddingBottom: 8 },
   skeletonHeader: {
     flexDirection: "row",
     alignItems: "center",

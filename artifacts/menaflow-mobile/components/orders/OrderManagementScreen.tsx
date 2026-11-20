@@ -9,6 +9,7 @@ import {
   StyleSheet,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppAlert as Alert } from "@/components/AppFeedback";
 import { useLocalSearchParams } from "expo-router";
 import { useAuth } from "@clerk/expo";
@@ -204,6 +205,7 @@ function AuthenticatedOrders() {
 
 function OrderManagementContent({ userId }: { userId: string | null }) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const params = useLocalSearchParams<{
     sourceMetaInboxItemId?: string | string[];
@@ -1263,7 +1265,10 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           ) : undefined
         }
         style={styles.orderListFill}
-        contentContainerStyle={styles.orderListContent}
+        contentContainerStyle={[
+          styles.orderListContent,
+          { paddingBottom: 112 + insets.bottom },
+        ]}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="on-drag"

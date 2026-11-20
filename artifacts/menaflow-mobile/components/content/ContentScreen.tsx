@@ -346,24 +346,11 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
   }, [routeDate]);
 
   return (
-    <Page
-      onScroll={({ nativeEvent }) => {
-        const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
-        if (
-          contentOffset.y + layoutMeasurement.height >=
-          contentSize.height - 900
-        ) {
-          void loadMoreContent();
-        }
-      }}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing || syncing}
-          onRefresh={onRefresh}
-          tintColor={colors.primary}
-        />
-      }
-    >
+    <Page scroll={false}>
+      <ContentPostList
+        ready={ready}
+        header={
+          <>
       <BrandHeader />
       <Panel style={styles.contentIntro}>
         <View
@@ -901,8 +888,8 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             </Pressable>
           ) : null}
         </View>
-
-        {!ready ? (
+          </Panel>
+          {!ready ? (
           storageError ? (
             <EmptyState
               icon="alert-circle"
@@ -935,8 +922,25 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
               ))}
             </View>
           )
-        ) : (
-          <ContentPostList
+          ) : null}
+          </>
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing || syncing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+        onScroll={({ nativeEvent }) => {
+          const { contentOffset, contentSize, layoutMeasurement } = nativeEvent;
+          if (
+            contentOffset.y + layoutMeasurement.height >=
+            contentSize.height - 900
+          ) {
+            void loadMoreContent();
+          }
+        }}
             visiblePosts={visiblePosts}
             groupedPosts={groupedPosts}
             filter={filter}
@@ -956,9 +960,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             onApprove={onApprove}
             updatePostStatus={updatePostStatus}
             deletePost={deletePost}
-          />
-        )}
-      </Panel>
+      />
       <ContentPostDialogs
         posts={posts}
         mediaPreviewUrls={mediaPreviewUrls}
