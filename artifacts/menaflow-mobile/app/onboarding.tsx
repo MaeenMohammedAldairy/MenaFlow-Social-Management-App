@@ -80,7 +80,7 @@ function AuthenticatedOnboarding() {
   const compact = height < 760 || width < 380;
   const slide = status.data?.currentStep ?? 0;
   const currentSlide = slides[Math.min(slide, slides.length - 1)];
-  const slideNumber = ["١", "٢", "٣"][Math.min(slide, slides.length - 1)];
+  const slideNumber = ["1", "2", "3"][Math.min(slide, slides.length - 1)];
   const background = colors.background;
   const completed = status.data?.completed === true;
   const continueToWorkspace = (socialSetupComplete: boolean) => {
@@ -201,7 +201,7 @@ function AuthenticatedOnboarding() {
                 style={[styles.stepDivider, { backgroundColor: colors.border }]}
               />
               <Text style={[styles.stepTotal, { color: colors.mutedForeground }]}>
-                ٣
+                3
               </Text>
             </View>
           </View>

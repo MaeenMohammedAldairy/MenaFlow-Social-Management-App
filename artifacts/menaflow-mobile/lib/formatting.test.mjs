@@ -18,16 +18,23 @@ test("normalizes Arabic and Persian digits and the Arabic decimal separator", ()
 });
 
 test("formats numbers and supported product currencies in Arabic", () => {
-  assert.equal(formatArabicNumber(1234), "١٬٢٣٤");
-  assert.equal(formatArabicCurrency("1234.5", "YER"), "١٬٢٣٤٫٥ ريال يمني");
-  assert.equal(formatArabicCurrency("1234.5", "SAR"), "١٬٢٣٤٫٥٠ ريال سعودي");
-  assert.equal(formatArabicCurrency("12.5", "USD"), "١٢٫٥٠ دولار أمريكي");
+  assert.equal(formatArabicNumber(1234), "1,234");
+  assert.equal(formatArabicCurrency("1234.5", "YER"), "1,234.5 ريال يمني");
+  assert.equal(formatArabicCurrency("1234.5", "SAR"), "1,234.50 ريال سعودي");
+  assert.equal(formatArabicCurrency("12.5", "USD"), "12.50 دولار أمريكي");
+});
+
+test("keeps Western digits so they match what users type", () => {
+  assert.doesNotMatch(formatArabicNumber(1234), /[٠-٩]/);
+  assert.equal(formatArabicCurrency("١٬٢٣٤٫٥", "YER"), "1,234.5 ريال يمني");
+  assert.equal(formatArabicCurrency("1,234.5", "YER"), "1,234.5 ريال يمني");
+  assert.doesNotMatch(formatArabicDate("2026-11-03T12:30:00.000Z"), /[٠-٩]/);
 });
 
 test("formats valid dates consistently and ignores invalid values", () => {
   const date = "2026-11-03T12:30:00.000Z";
-  assert.match(formatArabicDate(date), /٢٠٢٦/);
-  assert.match(formatArabicDateTime(date), /٢٠٢٦/);
+  assert.match(formatArabicDate(date), /2026/);
+  assert.match(formatArabicDateTime(date), /2026/);
   assert.equal(formatArabicDate("not-a-date"), null);
   assert.equal(formatArabicDateTime(null), null);
 });
