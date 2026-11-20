@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 12, fontWeight: '800', textAlign: 'right', marginTop: 2 },
   optionHeading: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 2 },
   optionHint: { fontSize: 12, textAlign: 'right' },
-  characterCount: { fontSize: 12, textAlign: 'left' },
+  characterCount: { fontSize: 12, textAlign: 'right' },
   channelsHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   mediaSection: { gap: 9 },
   addMediaButton: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderStyle: 'dashed', borderRadius: 12, paddingHorizontal: 12 },

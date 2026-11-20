@@ -38,7 +38,6 @@ import {
   BrandHeader,
   EmptyState,
   Page,
-  PageTitle,
   Panel,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
@@ -139,7 +138,16 @@ function catalogLoadErrorMessage(error: unknown): string {
   return error.message;
 }
 
-function ProductMediaThumbnail({ uri, label }: { uri: string; label: string }) {
+function ProductMediaThumbnail({
+  uri,
+  label,
+  compact = false,
+}: {
+  uri: string;
+  label: string;
+  /** Small preview used inside a card header. */
+  compact?: boolean;
+}) {
   const colors = useColors();
   const queryClient = useQueryClient();
   const resolvedUri = mediaUrlForApp(uri);
@@ -167,7 +175,7 @@ function ProductMediaThumbnail({ uri, label }: { uri: string; label: string }) {
       <View
         accessibilityLabel="تعذر تحميل الصورة"
         style={[
-          styles.productMediaThumbnail,
+          compact ? styles.productHeadingThumb : styles.productMediaThumbnail,
           styles.productVideoPlaceholder,
           { backgroundColor: colors.secondary },
         ]}
@@ -188,7 +196,9 @@ function ProductMediaThumbnail({ uri, label }: { uri: string; label: string }) {
   return (
     <Image
       source={{ uri: resolvedUri }}
-      style={styles.productMediaThumbnail}
+      style={
+        compact ? styles.productHeadingThumb : styles.productMediaThumbnail
+      }
       contentFit="cover"
       cachePolicy="disk"
       accessibilityLabel={label}
@@ -950,142 +960,62 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           />
         }
       >
-        <BrandHeader />
-        <View style={styles.catalogIntro}>
-          <PageTitle
-            title="كتالوج المنتجات"
-            subtitle="إدارة منتجاتك ومسوداتك"
-            back={
-              returnTo === "settings"
-                ? {
-                    href: "/(tabs)/more/settings",
-                    label: "العودة إلى الإعدادات",
-                  }
-                : undefined
-            }
-            action={
-              <View style={styles.headerActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="إضافة منتج"
-                  onPress={() =>
-                    openEditor({ id: null, value: emptyDraft, mediaPreviews: [] })
-                  }
-                  style={({ pressed }) => [
-                    styles.addButton,
-                    {
-                      backgroundColor: colors.primary,
-                      opacity: pressed ? 0.84 : 1,
-                      transform: [{ scale: pressed ? 0.98 : 1 }],
-                    },
-                  ]}
-                >
-                  <Icon name="plus" size={17} color={colors.primaryForeground} />
-                  <Text
-                    style={{
-                      color: colors.primaryForeground,
-                      fontWeight: "700",
-                    }}
-                  >
-                    إضافة منتج
-                  </Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="استيراد المنتجات من ملف CSV"
-                  accessibilityHint="يفتح نافذة استيراد منتجات متعددة كمسودات للمراجعة"
-                  onPress={() => setCsvImportVisible(true)}
-                  style={({ pressed }) => [
-                    styles.addButton,
-                    {
-                      backgroundColor: colors.card,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      opacity: pressed ? 0.84 : 1,
-                    },
-                  ]}
-                >
-                  <Icon name="file-text" size={16} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                    CSV
-                  </Text>
-                </Pressable>
-              </View>
-            }
-          />
-        </View>
-        <View
-          accessibilityLabel="ملخص حالة كتالوج المنتجات"
-          style={styles.catalogOverview}
-        >
-          {(
-            [
-              {
-                tab: "active" as const,
-                label: "مفعّلة",
-                count: tabCounts.active,
-                icon: "check-circle" as const,
-              },
-              {
-                tab: "drafts" as const,
-                label: "مسودات",
-                count: tabCounts.drafts,
-                icon: "file-text" as const,
-              },
-              {
-                tab: "extractions" as const,
-                label: "تحتاج مراجعة",
-                count: tabCounts.extractions,
-                icon: "alert-circle" as const,
-              },
-            ] as const
-          ).map((item) => (
-            <Pressable
-              key={item.tab}
-              accessibilityRole="button"
-              accessibilityLabel={`${item.label}: ${item.count === null ? "جارٍ التحميل" : formatArabicNumber(item.count)}`}
-              accessibilityHint="يفتح قائمة المنتجات المرتبطة بهذه الحالة"
-              onPress={() => selectCatalogTab(item.tab)}
-              style={({ pressed }) => [
-                styles.catalogOverviewItem,
-                {
-                  backgroundColor:
-                    activeTab === item.tab ? colors.accent : colors.card,
-                  borderColor:
-                    activeTab === item.tab ? colors.primary : colors.border,
-                  opacity: pressed ? 0.76 : 1,
-                },
-              ]}
-            >
-              <Icon
-                name={item.icon}
-                size={17}
-                color={
-                  item.tab === "extractions" && item.count
-                    ? colors.warning
-                    : colors.primary
+        <BrandHeader
+          title="المنتجات"
+          back={
+            returnTo === "settings"
+              ? {
+                  href: "/(tabs)/more/settings",
+                  label: "العودة إلى الإعدادات",
                 }
-              />
-              <Text
-                style={[
-                  styles.catalogOverviewCount,
-                  { color: colors.foreground },
+              : undefined
+          }
+          action={
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إضافة منتج"
+                onPress={() =>
+                  openEditor({ id: null, value: emptyDraft, mediaPreviews: [] })
+                }
+                style={({ pressed }) => [
+                  styles.addButton,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed ? 0.84 : 1,
+                  },
                 ]}
               >
-                {item.count === null ? "…" : formatArabicNumber(item.count)}
-              </Text>
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.catalogOverviewLabel,
-                  { color: colors.mutedForeground },
+                <Icon name="plus" size={16} color={colors.primaryForeground} />
+                <Text
+                  style={{
+                    color: colors.primaryForeground,
+                    fontWeight: "700",
+                    fontSize: 12,
+                  }}
+                >
+                  إضافة منتج
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="استيراد المنتجات من ملف CSV"
+                accessibilityHint="يفتح نافذة استيراد منتجات متعددة كمسودات للمراجعة"
+                onPress={() => setCsvImportVisible(true)}
+                style={({ pressed }) => [
+                  styles.headerIconAction,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    opacity: pressed ? 0.84 : 1,
+                  },
                 ]}
               >
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+                <Icon name="file-text" size={17} color={colors.primary} />
+              </Pressable>
+            </>
+          }
+        />
         <CatalogTabs
           activeTab={activeTab}
           counts={tabCounts}
@@ -1934,14 +1864,14 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               منشورات سابقة — استخراج بيانات المنتجات
             </Text>
             {candidates.isError ? (
-              <Text style={{ color: colors.destructive, textAlign: "left" }}>
+              <Text style={{ color: colors.destructive, textAlign: "right" }}>
                 {candidates.error instanceof Error
                   ? candidates.error.message
                   : "تعذر تحميل المنشورات المرشحة."}
               </Text>
             ) : candidates.isPending ? (
               <Text
-                style={{ color: colors.mutedForeground, textAlign: "left" }}
+                style={{ color: colors.mutedForeground, textAlign: "right" }}
               >
                 جارٍ تحميل المنشورات...
               </Text>
@@ -2009,7 +1939,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               ))
             ) : (
               <Text
-                style={{ color: colors.mutedForeground, textAlign: "left" }}
+                style={{ color: colors.mutedForeground, textAlign: "right" }}
               >
                 لا توجد منشورات منشورة غير مرتبطة بمنتج.
               </Text>
@@ -3226,32 +3156,57 @@ function ProductCard({
               <Icon name="check" size={13} color={colors.primaryForeground} />
             ) : null}
           </Pressable>
-          <Text style={[styles.productName, { color: colors.foreground }]}>
-            {product.name.trim() || "اسم المنتج يحتاج إلى مراجعة"}
-          </Text>
-          <Text
-            style={[
-              styles.badge,
-              {
-                color:
-                  product.status === "active" ? colors.primary : colors.warning,
-                backgroundColor: colors.accent,
-              },
-            ]}
-          >
-            {statusLabel}
-          </Text>
+          {product.mediaPreviews.length ? (
+            product.mediaPreviews[0].mediaType === "image" ? (
+              <ProductMediaThumbnail
+                uri={product.mediaPreviews[0].url}
+                label="معاينة وسيط المنتج"
+                compact
+              />
+            ) : (
+              <View
+                style={[
+                  styles.productHeadingThumb,
+                  { backgroundColor: colors.accent },
+                ]}
+              >
+                <Icon name="play" size={18} color={colors.primary} />
+              </View>
+            )
+          ) : null}
+          <View style={styles.productHeadingCopy}>
+            <Text style={[styles.productName, { color: colors.foreground }]}>
+              {product.name.trim() || "اسم المنتج يحتاج إلى مراجعة"}
+            </Text>
+            <View style={styles.productMetaRow}>
+              <Text
+                style={[
+                  styles.badge,
+                  {
+                    color:
+                      product.status === "active"
+                        ? colors.primary
+                        : colors.warning,
+                    backgroundColor: colors.accent,
+                  },
+                ]}
+              >
+                {statusLabel}
+              </Text>
+              {product.sku ? (
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.productSku,
+                    { color: colors.mutedForeground },
+                  ]}
+                >
+                  SKU: {product.sku}
+                </Text>
+              ) : null}
+            </View>
+          </View>
         </View>
-        {product.sku ? (
-          <Text
-            style={[
-              styles.description,
-              { color: colors.mutedForeground, writingDirection: "ltr" },
-            ]}
-          >
-            SKU: {product.sku}
-          </Text>
-        ) : null}
         <Text style={[styles.description, { color: colors.mutedForeground }]}>
           {availabilityLabel}
           {product.price !== null
@@ -3292,33 +3247,6 @@ function ProductCard({
             {product.description}
           </Text>
         ) : null}
-        {product.mediaPreviews.length ? (
-          <View
-            accessibilityLabel={`وسائط المنتج، ${product.mediaPreviews.length} عنصر`}
-            style={styles.productMediaList}
-          >
-            {product.mediaPreviews.slice(0, 4).map((media) =>
-              media.mediaType === "image" ? (
-                <ProductMediaThumbnail
-                  key={media.id}
-                  uri={media.url}
-                  label="معاينة وسيط المنتج"
-                />
-              ) : (
-                <View
-                  key={media.id}
-                  style={[
-                    styles.productMediaThumbnail,
-                    styles.productVideoPlaceholder,
-                    { backgroundColor: colors.accent },
-                  ]}
-                >
-                  <Icon name="play" size={22} color={colors.primary} />
-                </View>
-              ),
-            )}
-          </View>
-        ) : null}
         {product.postIds.length ? (
           <Text style={[styles.description, { color: colors.mutedForeground }]}>
             مرتبط بـ {product.postIds.length} منشور سابق
@@ -3338,7 +3266,6 @@ function ProductCard({
         <View
           style={[styles.productCardAction, { borderTopColor: colors.border }]}
         >
-          <Icon name="edit-3" size={15} color={colors.primary} />
           <Text
             style={[styles.productCardActionText, { color: colors.primary }]}
           >
@@ -3709,29 +3636,6 @@ function DropdownField({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  catalogIntro: { gap: 0, padding: 0 },
-  catalogOverview: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  catalogOverviewItem: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 68,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 5,
-    paddingVertical: 8,
-  },
-  catalogOverviewCount: { fontSize: 16, fontWeight: "800" },
-  catalogOverviewLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    textAlign: "center",
-  },
   reviewGuidance: {
     flexDirection: "row-reverse",
     alignItems: "center",
@@ -3758,6 +3662,14 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     gap: 8,
     flexWrap: "wrap",
+  },
+  headerIconAction: {
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: 12,
   },
   addButton: {
     minHeight: 44,
@@ -4025,10 +3937,24 @@ const styles = StyleSheet.create({
   productHeading: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: 10,
+  },
+  productHeadingCopy: { flex: 1, gap: 6, alignItems: "flex-start" },
+  productMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
     gap: 8,
   },
-  productName: { flex: 1, fontSize: 15, fontWeight: "700", textAlign: "right" },
+  productHeadingThumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  productSku: { flexShrink: 1, fontSize: 12 },
+  productName: { fontSize: 15, fontWeight: "700", textAlign: "right" },
   badge: {
     overflow: "hidden",
     borderRadius: 10,
@@ -4036,7 +3962,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     fontSize: 12,
   },
-  description: { fontSize: 12, lineHeight: 19, textAlign: "left" },
+  description: { fontSize: 12, lineHeight: 19, textAlign: "right" },
   candidate: { gap: 9 },
   extractionCard: { gap: 9 },
   fieldReview: {
@@ -4052,7 +3978,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   extractionField: { gap: 2 },
-  evidence: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  evidence: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   sourceMessage: {
     gap: 3,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -4148,7 +4074,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 7,
   },
-  helper: { fontSize: 12, lineHeight: 20, textAlign: "left" },
+  helper: { fontSize: 12, lineHeight: 20, textAlign: "right" },
   footer: {
     flexDirection: "row",
     flexWrap: "wrap",

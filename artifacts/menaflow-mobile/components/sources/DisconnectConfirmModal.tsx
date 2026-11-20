@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "left" },
+  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
   loadingRow: {
     flexDirection: "row",
     alignItems: "center",

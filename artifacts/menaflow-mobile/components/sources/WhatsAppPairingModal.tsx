@@ -416,7 +416,7 @@ const styles = StyleSheet.create({
   dialogContent: { gap: 12, padding: 20 },
   fieldLabel: { fontSize: 12, fontWeight: "700", textAlign: "right" },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "left" },
+  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
   pairingCode: {
     paddingVertical: 16,
     paddingHorizontal: 20,
@@ -457,11 +457,11 @@ const styles = StyleSheet.create({
     textAlign: "right",
     fontSize: 14,
   },
-  phoneInput: { flex: 1, textAlign: "left", writingDirection: "ltr" },
-  phoneNumberHint: { fontSize: 12, lineHeight: 17, textAlign: "left" },
+  phoneInput: { flex: 1, textAlign: "right", writingDirection: "ltr" },
+  phoneNumberHint: { fontSize: 12, lineHeight: 17, textAlign: "right" },
   existingNumberNote: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   existingNumberNoteText: { fontSize: 12, lineHeight: 17, textAlign: "right" },
-  dialogError: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  dialogError: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   dialogActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   dialogButton: {
     flex: 1,

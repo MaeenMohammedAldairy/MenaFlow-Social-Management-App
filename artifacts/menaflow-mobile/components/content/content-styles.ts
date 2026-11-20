@@ -53,7 +53,7 @@ export const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
-  intro: { textAlign: "left", lineHeight: 19, fontSize: 12 },
+  intro: { textAlign: "right", lineHeight: 19, fontSize: 12 },
   historyButton: {
     minHeight: 40,
     paddingVertical: 10,
@@ -116,11 +116,10 @@ export const styles = StyleSheet.create({
   },
   autoPublishChip: {
     maxWidth: 190,
-    minHeight: 28,
+    minHeight: 30,
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 8,
   },
@@ -128,8 +127,10 @@ export const styles = StyleSheet.create({
   resultsSummary: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    minHeight: 36,
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
+    gap: 10,
+    minHeight: 32,
   },
   clearFiltersButton: {
     minHeight: 40,
@@ -188,9 +189,9 @@ export const styles = StyleSheet.create({
   },
   mediaVideoLabel: { fontSize: 12, fontWeight: "700" },
   mediaLabel: { fontSize: 12, fontWeight: "700" },
-  missingMedia: { textAlign: "left", fontSize: 12 },
-  postBody: { textAlign: "left", fontSize: 12, lineHeight: 19 },
-  sourceText: { textAlign: "left", fontSize: 12, lineHeight: 16 },
+  missingMedia: { textAlign: "right", fontSize: 12 },
+  postBody: { textAlign: "right", fontSize: 12, lineHeight: 19 },
+  sourceText: { textAlign: "right", fontSize: 12, lineHeight: 16 },
   postFooter: {
     flexDirection: "row",
     alignItems: "center",
@@ -314,7 +315,7 @@ export const styles = StyleSheet.create({
   },
   previewLine: { alignSelf: "stretch" },
   previewSectionHeading: { paddingTop: 6 },
-  previewBody: { fontSize: 14, lineHeight: 24, textAlign: "left" },
+  previewBody: { fontSize: 14, lineHeight: 24, textAlign: "right" },
   previewHeadingText: { fontSize: 14, fontWeight: "700" },
   previewBulletRow: {
     flexDirection: "row",
@@ -460,7 +461,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     fontSize: 12,
-    textAlign: "left",
+    textAlign: "right",
     writingDirection: "ltr",
   },
   publishLinkButton: {
@@ -470,7 +471,7 @@ export const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 4,
   },
-  publishMessage: { textAlign: "left", lineHeight: 22, fontSize: 13 },
+  publishMessage: { textAlign: "right", lineHeight: 22, fontSize: 13 },
   publishOptions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   publishOption: {
     minWidth: 132,

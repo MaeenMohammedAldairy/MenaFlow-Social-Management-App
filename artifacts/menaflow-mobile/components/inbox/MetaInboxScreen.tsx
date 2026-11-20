@@ -658,60 +658,58 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
         </View>
       </Panel>
 
-      <Panel style={styles.inboxToolbar}>
+      <View style={styles.inboxMeta}>
         <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>
           {formatArabicNumber(rows.length)} محادثة
         </Text>
-        {inbox.isError ? (
-          <Panel style={[styles.loadError, { borderColor: colors.border }]}>
-            <View
-              style={[
-                styles.loadErrorIcon,
-                { backgroundColor: colors.secondary },
-              ]}
-            >
-              <Icon name="alert-circle" size={22} color={colors.destructive} />
-            </View>
-            <Text style={[styles.loadErrorTitle, { color: colors.foreground }]}>
-              تعذر تحميل صندوق الوارد
-            </Text>
-            <Text
-              accessibilityRole="alert"
-              style={[styles.loadErrorText, { color: colors.mutedForeground }]}
-            >
-              {inboxErrorMessage(inbox.error)}
-            </Text>
-            <ActionButton
-              label={inbox.isFetching ? "جارٍ التحقق..." : "إعادة المحاولة"}
-              icon={inbox.isFetching ? "clock" : "refresh-cw"}
-              disabled={inbox.isFetching}
-              onPress={() => void inbox.refetch()}
-            />
-          </Panel>
+        {inbox.data?.webhook.lastEventAt ? (
+          <Text style={[styles.lastEvent, { color: colors.mutedForeground }]}>
+            {`آخر نشاط: ${formatArabicDateTime(inbox.data.webhook.lastEventAt) ?? "غير محدد"}`}
+          </Text>
         ) : null}
-        {platform === "all" && whatsappInbox.isError ? (
-          <View style={{ gap: 8 }}>
-            <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
-              تعذر تحميل محادثات WhatsApp: {whatsappInbox.error instanceof Error
-                ? whatsappInbox.error.message
-                : "تحقق من اتصالك ثم أعد المحاولة."}
-            </Text>
-            <ActionButton
-              label={whatsappInbox.isFetching ? "جارٍ التحقق..." : "إعادة تحميل WhatsApp"}
-              icon={whatsappInbox.isFetching ? "clock" : "refresh-cw"}
-              disabled={whatsappInbox.isFetching}
-              onPress={() => void whatsappInbox.refetch()}
-            />
+      </View>
+      {inbox.isError ? (
+        <Panel style={[styles.loadError, { borderColor: colors.border }]}>
+          <View
+            style={[
+              styles.loadErrorIcon,
+              { backgroundColor: colors.secondary },
+            ]}
+          >
+            <Icon name="alert-circle" size={22} color={colors.destructive} />
           </View>
-        ) : null}
-        <View style={styles.toolbarFooter}>
-          {inbox.data?.webhook.lastEventAt ? (
-            <Text style={[styles.lastEvent, { color: colors.mutedForeground }]}>
-              {`آخر نشاط: ${formatArabicDateTime(inbox.data.webhook.lastEventAt) ?? "غير محدد"}`}
-            </Text>
-          ) : null}
+          <Text style={[styles.loadErrorTitle, { color: colors.foreground }]}>
+            تعذر تحميل صندوق الوارد
+          </Text>
+          <Text
+            accessibilityRole="alert"
+            style={[styles.loadErrorText, { color: colors.mutedForeground }]}
+          >
+            {inboxErrorMessage(inbox.error)}
+          </Text>
+          <ActionButton
+            label={inbox.isFetching ? "جارٍ التحقق..." : "إعادة المحاولة"}
+            icon={inbox.isFetching ? "clock" : "refresh-cw"}
+            disabled={inbox.isFetching}
+            onPress={() => void inbox.refetch()}
+          />
+        </Panel>
+      ) : null}
+      {platform === "all" && whatsappInbox.isError ? (
+        <View style={{ gap: 8 }}>
+          <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
+            تعذر تحميل محادثات WhatsApp: {whatsappInbox.error instanceof Error
+              ? whatsappInbox.error.message
+              : "تحقق من اتصالك ثم أعد المحاولة."}
+          </Text>
+          <ActionButton
+            label={whatsappInbox.isFetching ? "جارٍ التحقق..." : "إعادة تحميل WhatsApp"}
+            icon={whatsappInbox.isFetching ? "clock" : "refresh-cw"}
+            disabled={whatsappInbox.isFetching}
+            onPress={() => void whatsappInbox.refetch()}
+          />
         </View>
-      </Panel>
+      ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -885,12 +883,12 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: "center",
   },
-  inboxToolbar: { gap: 10, padding: 12 },
-  toolbarFooter: {
+  inboxMeta: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-start",
-    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: 10,
   },
   resultCount: { fontSize: 12, fontWeight: "700" },
   searchInput: {
@@ -931,7 +929,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "right",
   },
-  conversationDate: { fontSize: 12, textAlign: "left" },
+  conversationDate: { fontSize: 12, textAlign: "right" },
   conversationPreviewRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -956,5 +954,5 @@ const styles = StyleSheet.create({
   conversationCounts: { flexDirection: "row", alignItems: "center", gap: 10 },
   countItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   conversationMeta: { fontSize: 12 },
-  lastEvent: { fontSize: 12, textAlign: "left" },
+  lastEvent: { fontSize: 12, textAlign: "right" },
 });

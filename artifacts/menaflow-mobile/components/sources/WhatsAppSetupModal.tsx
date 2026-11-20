@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "left" },
+  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
   setupSectionTitle: { fontSize: 15, fontWeight: "800", textAlign: "right" },
   loadingRow: {
     flexDirection: "row",
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   primaryActionLabel: { fontSize: 14, fontWeight: "800" },
-  dialogError: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  dialogError: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   dialogActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   dialogButton: {
     flex: 1,

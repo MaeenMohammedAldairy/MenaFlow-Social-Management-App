@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   sourceName: { fontSize: 14, fontWeight: "800" },
-  sourceDescription: { fontSize: 12, lineHeight: 17, textAlign: "left" },
+  sourceDescription: { fontSize: 12, lineHeight: 17, textAlign: "right" },
   cardActions: {
     gap: 7,
     alignItems: "stretch",

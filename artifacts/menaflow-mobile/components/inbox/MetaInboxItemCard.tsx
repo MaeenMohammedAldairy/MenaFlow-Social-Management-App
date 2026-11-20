@@ -99,7 +99,7 @@ export function MetaInboxItemCard({
                 item.autoReplyStatus === "unknown"
                   ? colors.warning
                   : colors.mutedForeground,
-              textAlign: "left",
+              textAlign: "right",
             }}
           >
             {item.autoReplyStatus === "queued" ||
@@ -154,7 +154,7 @@ export function MetaInboxItemCard({
                 item.replyStatus === "unknown"
                   ? colors.warning
                   : colors.mutedForeground,
-              textAlign: "left",
+              textAlign: "right",
             }}
           >
             {item.replyStatus === "unknown"
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   replyDate: { marginLeft: "auto", fontSize: 12 },
-  publicReplyHint: { fontSize: 12, textAlign: "left" },
+  publicReplyHint: { fontSize: 12, textAlign: "right" },
   confirmRetryButton: {
     borderRadius: 10,
     paddingHorizontal: 12,

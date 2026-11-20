@@ -611,7 +611,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   secondaryActionLabel: { fontSize: 12, fontWeight: "800" },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   syncStatusLine: {
     flexDirection: "row",
     alignItems: "center",
@@ -619,7 +619,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 8,
   },
-  syncStatusText: { fontSize: 12, lineHeight: 17, textAlign: "left" },
+  syncStatusText: { fontSize: 12, lineHeight: 17, textAlign: "right" },
   syncStatusList: { gap: 8 },
   syncStatusItem: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 6 },
   groupRow: {
@@ -640,5 +640,5 @@ const styles = StyleSheet.create({
     textAlign: "right",
     flexShrink: 1,
   },
-  syncStatusError: { fontSize: 12, lineHeight: 15, textAlign: "left" },
+  syncStatusError: { fontSize: 12, lineHeight: 15, textAlign: "right" },
 });
