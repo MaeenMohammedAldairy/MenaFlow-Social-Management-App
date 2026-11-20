@@ -973,6 +973,7 @@ function SourcesContent({
       group.importedCount > 0 ||
       group.status !== "idle",
   );
+  const hasSyncGroups = (syncStatusQuery.data?.groups ?? []).length > 0;
   const syncNeedsAttention =
     syncStatusQuery.isError ||
     visibleSyncGroups.some(
@@ -1772,6 +1773,12 @@ function SourcesContent({
           style={styles.summaryRow}
         >
           <View
+            accessible
+            accessibilityLabel={
+              connectionsQuery.isLoading
+                ? "المصادر المتصلة: جارٍ التحقق"
+                : `المصادر المتصلة: ${formatArabicNumber(connectedSourceCount)}`
+            }
             style={[
               styles.summaryCard,
               { backgroundColor: colors.card, borderColor: colors.border },
@@ -1790,6 +1797,12 @@ function SourcesContent({
             </Text>
           </View>
           <View
+            accessible
+            accessibilityLabel={
+              connectionsQuery.isLoading
+                ? "مصادر تحتاج إلى تدخل: جارٍ التحقق"
+                : `مصادر تحتاج إلى تدخل: ${formatArabicNumber(attentionSourceCount)}`
+            }
             style={[
               styles.summaryCard,
               { backgroundColor: colors.card, borderColor: colors.border },
@@ -1823,6 +1836,14 @@ function SourcesContent({
             </Text>
           </View>
           <View
+            accessible
+            accessibilityLabel={
+              !connections?.whatsapp || !isConnected("whatsapp")
+                ? "آخر مزامنة: لا يوجد اتصال"
+                : syncStatusQuery.isLoading
+                  ? "آخر مزامنة: جارٍ التحميل"
+                  : `آخر مزامنة: ${formatArabicDateTime(latestSyncAt) ?? "لم تتم"}`
+            }
             style={[
               styles.summaryCard,
               { backgroundColor: colors.card, borderColor: colors.border },
@@ -1991,6 +2012,7 @@ function SourcesContent({
             <WhatsAppSyncStatusPanel
               status={syncStatusQuery.data}
               groups={visibleSyncGroups}
+              hasGroups={hasSyncGroups}
               loading={syncStatusQuery.isLoading}
               hasError={syncStatusQuery.isError}
               autoSyncSaving={autoSyncSaving}

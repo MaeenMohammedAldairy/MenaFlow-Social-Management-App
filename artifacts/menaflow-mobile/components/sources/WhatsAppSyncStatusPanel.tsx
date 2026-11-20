@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -36,6 +36,7 @@ export type WhatsAppSyncSettingKey =
 interface WhatsAppSyncStatusPanelProps {
   status?: WhatsAppSyncStatusResponse;
   groups: WhatsAppSyncStatusEntry[];
+  hasGroups: boolean;
   loading: boolean;
   hasError: boolean;
   autoSyncSaving: Record<WhatsAppSyncSettingKey, boolean>;
@@ -61,6 +62,7 @@ const syncSettings = [
 export function WhatsAppSyncStatusPanel({
   status,
   groups,
+  hasGroups,
   loading,
   hasError,
   autoSyncSaving,
@@ -77,6 +79,7 @@ export function WhatsAppSyncStatusPanel({
   onRunSync,
 }: WhatsAppSyncStatusPanelProps) {
   const colors = useColors();
+  const [historyOptionsOpen, setHistoryOptionsOpen] = useState(false);
   const savedMessageCount = groups.reduce(
     (total, group) => total + group.savedMessageCount,
     0,
@@ -99,20 +102,21 @@ export function WhatsAppSyncStatusPanel({
     const unavailable = value === undefined;
     const disabled =
       loading || hasError || unavailable || syncing || autoSyncSaving[setting];
+    const stateLabel = loading
+      ? "جارٍ التحميل"
+      : hasError || unavailable
+        ? "غير متاح"
+        : null;
     return (
       <View key={setting} style={styles.autoSyncToggleRow}>
         <Text style={[styles.autoSyncToggleLabel, { color: colors.foreground }]}>
           {label}
         </Text>
-        <Text style={[styles.settingState, { color: colors.mutedForeground }]}>
-          {loading
-            ? "جارٍ التحميل"
-            : hasError || unavailable
-              ? "غير متاح"
-              : value
-                ? "مفعّلة"
-                : "متوقفة"}
-        </Text>
+        {stateLabel ? (
+          <Text style={[styles.settingState, { color: colors.mutedForeground }]}>
+            {stateLabel}
+          </Text>
+        ) : null}
         <View style={styles.autoSyncSwitch}>
           <Switch
             accessibilityLabel={label}
@@ -153,258 +157,7 @@ export function WhatsAppSyncStatusPanel({
           </Pressable>
         }
       />
-      {!loading && !hasError ? (
-        <View style={styles.summaryRow}>
-          <View
-            style={[
-              styles.summaryCard,
-              { backgroundColor: colors.background, borderColor: colors.border },
-            ]}
-          >
-            <Icon name="user" size={16} color={colors.primary} />
-            <Text style={[styles.summaryValue, { color: colors.foreground }]}>
-              {formatArabicNumber(groups.length)}
-            </Text>
-            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>
-              مجموعات بسجل
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.summaryCard,
-              { backgroundColor: colors.background, borderColor: colors.border },
-            ]}
-          >
-            <Icon name="message-circle" size={16} color={colors.primary} />
-            <Text style={[styles.summaryValue, { color: colors.foreground }]}>
-              {formatArabicNumber(savedMessageCount)}
-            </Text>
-            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>
-              رسائل محفوظة
-            </Text>
-          </View>
-          <View
-            style={[
-              styles.summaryCard,
-              { backgroundColor: colors.background, borderColor: colors.border },
-            ]}
-          >
-            <Icon name="refresh-cw" size={16} color={colors.primary} />
-            <Text style={[styles.summaryRecent, { color: colors.foreground }]}>
-              {formatArabicDateTime(latestSyncAt) ?? "لا يوجد"}
-            </Text>
-            <Text style={[styles.summaryLabel, { color: colors.mutedForeground }]}>
-              آخر مزامنة
-            </Text>
-          </View>
-        </View>
-      ) : null}
-      <Text style={[styles.sectionCaption, { color: colors.mutedForeground }]}>
-        خيارات استيراد الرسائل والوسائط
-      </Text>
-      {renderSetting(
-        "autoSyncEnabled",
-        "المزامنة التلقائية",
-        status?.autoSyncEnabled,
-      )}
-      {syncSettings.map(([setting, label]) =>
-        renderSetting(setting, label, status?.[setting]),
-      )}
-      <View style={styles.autoSyncToggleRow}>
-        <Text
-          style={[styles.autoSyncToggleLabel, { color: colors.foreground }]}
-        >
-          مزامنة الرسائل السابقة
-        </Text>
-        <View style={styles.autoSyncSwitch}>
-          <Switch
-            accessibilityLabel="مزامنة الرسائل السابقة"
-            value={syncPreviousMessages}
-            disabled={syncing}
-            onValueChange={onSyncPreviousMessagesChange}
-            trackColor={{
-              false: colors.border,
-              true: colors.primary,
-            }}
-            thumbColor={colors.card}
-          />
-        </View>
-      </View>
-      {syncPreviousMessages ? (
-        <View style={styles.historyLimitContainer}>
-          <Text style={[styles.autoSyncToggleLabel, { color: colors.foreground }]}>
-            الحد الأقصى للرسائل السابقة لكل مجموعة
-          </Text>
-          <TextInput
-            accessibilityLabel="عدد الرسائل السابقة لكل مجموعة"
-            accessibilityHint="أدخل عدداً من 1 إلى 10000"
-            editable={!syncing}
-            keyboardType="number-pad"
-            maxLength={5}
-            onChangeText={(value) =>
-              onHistoryMessageLimitChange(
-                normalizeArabicDigits(value).replace(/\D/g, ""),
-              )
-            }
-            selectTextOnFocus
-            style={[
-              styles.historyLimitInput,
-              {
-                color: colors.foreground,
-                borderColor: colors.border,
-                backgroundColor: colors.card,
-              },
-            ]}
-            value={historyMessageLimit}
-          />
-          <Text style={[styles.syncStatusText, { color: colors.mutedForeground }]}>
-            العدد حد أقصى لكل مجموعة. القيمة الافتراضية 500، ويمكن إدخال 1 إلى 10000.
-          </Text>
-        </View>
-      ) : null}
-      <Text style={[styles.sectionCaption, { color: colors.mutedForeground }]}>
-        استيراد السجل السابق
-      </Text>
-      <Text style={[styles.syncStatusText, { color: colors.mutedForeground }]}>
-        {syncPreviousMessages
-          ? "عند التفعيل، تستورد الرسائل السابقة من المجموعات المحددة حسب خيارات الرسائل والوسائط أعلاه."
-          : "عند الإيقاف، تُزامَن الرسائل الجديدة فقط؛ لن تظهر الرسائل الأقدم إلا عند تفعيل هذا الخيار."}
-      </Text>
-      <Text style={[styles.syncStatusText, { color: colors.mutedForeground }]}>
-        الرسائل النصية تشمل النصوص والتعليقات؛ تُحفظ الصور والفيديوهات وفق
-        اختياراتهما.
-      </Text>
-      {loading ? (
-        <View style={styles.syncStatusLine}>
-          <ActivityIndicator size="small" color={colors.primary} />
-          <Text
-            style={[styles.syncStatusText, { color: colors.mutedForeground }]}
-          >
-            جارٍ تحميل حالة المزامنة…
-          </Text>
-        </View>
-      ) : hasError ? (
-        <View style={styles.errorState}>
-          <Text style={[styles.error, { color: colors.destructive }]}>
-            تعذّر تحميل حالة المزامنة من الخادم.
-          </Text>
-          <ActionButton
-            label="إعادة تحميل الحالة"
-            icon="refresh-cw"
-            secondary
-            onPress={onRefresh}
-          />
-        </View>
-      ) : groups.length === 0 ? (
-        <View style={styles.emptySyncState}>
-          <EmptyState
-            icon="whatsapp"
-            title="لم تبدأ المزامنة بعد"
-            body="اختر مجموعات واتساب، ثم ابدأ المزامنة لعرض الرسائل وحالتها هنا."
-          />
-          <ActionButton
-            label="اختيار المجموعات"
-            icon="user"
-            onPress={onManageGroups}
-          />
-        </View>
-      ) : (
-        <View style={styles.syncStatusList}>
-          <Text style={[styles.sectionCaption, { color: colors.mutedForeground }]}>
-            سجل المجموعات
-          </Text>
-          {groups.map((group) => {
-            const groupName = group.groupName || group.groupJid;
-            return (
-              <View
-                key={group.groupJid}
-                style={[styles.syncStatusItem, { borderColor: colors.border }]}
-              >
-                <View style={styles.syncStatusHeader}>
-                  <Text
-                    style={[
-                      styles.syncStatusGroup,
-                      { color: colors.foreground },
-                    ]}
-                  >
-                    {groupName}
-                  </Text>
-                  <StatusPill
-                    label={syncGroupStatusLabel(group.status)}
-                    tone={syncGroupStatusTone(group.status)}
-                  />
-                </View>
-                <Text
-                  style={[
-                    styles.syncStatusText,
-                    { color: colors.mutedForeground },
-                  ]}
-                >
-                  المحفوظة: {group.savedMessageCount} • آخر مزامنة:{" "}
-                  {formatArabicDateTime(group.lastSyncedAt) ?? "لا توجد"}
-                </Text>
-                {group.lastError ? (
-                  <Text
-                    style={[
-                      styles.syncStatusError,
-                      { color: colors.destructive },
-                    ]}
-                  >
-                    {syncGroupErrorMessage(group.lastError)}
-                  </Text>
-                ) : null}
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => onOpenGroupMessages(group.groupJid, groupName)}
-                  style={[
-                    styles.secondaryAction,
-                    { borderColor: colors.border, alignSelf: "flex-end" },
-                  ]}
-                >
-                  <Icon
-                    name="message-circle"
-                    size={15}
-                    color={colors.primary}
-                  />
-                  <Text
-                    style={[
-                      styles.secondaryActionLabel,
-                      { color: colors.primary },
-                    ]}
-                  >
-                    عرض الرسائل
-                  </Text>
-                </Pressable>
-              </View>
-            );
-          })}
-        </View>
-      )}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{
-          busy: syncing,
-          disabled: syncing || loading || hasError,
-        }}
-        disabled={syncing || loading || hasError}
-        onPress={onRunSync}
-        style={[
-          styles.secondaryAction,
-          {
-            borderColor: colors.border,
-            opacity: syncing || loading || hasError ? 0.6 : 1,
-          },
-        ]}
-      >
-        {syncing ? (
-          <ActivityIndicator size="small" color={colors.primary} />
-        ) : (
-          <Icon name="refresh-cw" size={15} color={colors.primary} />
-        )}
-        <Text style={[styles.secondaryActionLabel, { color: colors.primary }]}>
-          {syncing ? "جارٍ المزامنة…" : "مزامنة الآن حسب الخيارات"}
-        </Text>
-      </Pressable>
+
       {syncNotice ? (
         <View
           style={[
@@ -421,6 +174,307 @@ export function WhatsAppSyncStatusPanel({
           </Text>
         </View>
       ) : null}
+
+      {hasError ? (
+        <View style={styles.errorState}>
+          <Text style={[styles.error, { color: colors.destructive }]}>
+            تعذّر تحميل حالة المزامنة من الخادم.
+          </Text>
+          <ActionButton
+            label="إعادة تحميل الحالة"
+            icon="refresh-cw"
+            secondary
+            onPress={onRefresh}
+          />
+        </View>
+      ) : (
+        <>
+          {loading ? (
+            <View style={styles.syncStatusLine}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text
+                style={[styles.syncStatusText, { color: colors.mutedForeground }]}
+              >
+                جارٍ تحميل حالة المزامنة…
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.summaryRow}>
+              <View
+                style={[
+                  styles.summaryCard,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Icon name="user" size={16} color={colors.primary} />
+                <Text style={[styles.summaryValue, { color: colors.foreground }]}>
+                  {formatArabicNumber(groups.length)}
+                </Text>
+                <Text
+                  style={[styles.summaryLabel, { color: colors.mutedForeground }]}
+                >
+                  مجموعات بسجل
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.summaryCard,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Icon name="message-circle" size={16} color={colors.primary} />
+                <Text style={[styles.summaryValue, { color: colors.foreground }]}>
+                  {formatArabicNumber(savedMessageCount)}
+                </Text>
+                <Text
+                  style={[styles.summaryLabel, { color: colors.mutedForeground }]}
+                >
+                  رسائل محفوظة
+                </Text>
+              </View>
+              <View
+                style={[
+                  styles.summaryCard,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Icon name="refresh-cw" size={16} color={colors.primary} />
+                <Text style={[styles.summaryRecent, { color: colors.foreground }]}>
+                  {formatArabicDateTime(latestSyncAt) ?? "لا يوجد"}
+                </Text>
+                <Text
+                  style={[styles.summaryLabel, { color: colors.mutedForeground }]}
+                >
+                  آخر مزامنة
+                </Text>
+              </View>
+            </View>
+          )}
+
+          <Text style={[styles.sectionCaption, { color: colors.mutedForeground }]}>
+            خيارات الاستيراد
+          </Text>
+          {renderSetting(
+            "autoSyncEnabled",
+            "المزامنة التلقائية",
+            status?.autoSyncEnabled,
+          )}
+          {syncSettings.map(([setting, label]) =>
+            renderSetting(setting, label, status?.[setting]),
+          )}
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{
+              expanded: historyOptionsOpen,
+              disabled: loading || syncing,
+            }}
+            disabled={loading || syncing}
+            onPress={() => setHistoryOptionsOpen((current) => !current)}
+            style={[
+              styles.collapsibleHeader,
+              { borderColor: colors.border, opacity: loading || syncing ? 0.6 : 1 },
+            ]}
+          >
+            <View style={styles.collapsibleCopy}>
+              <Text
+                style={[styles.autoSyncToggleLabel, { color: colors.foreground }]}
+              >
+                استيراد السجل السابق
+              </Text>
+              <Text
+                style={[styles.syncStatusText, { color: colors.mutedForeground }]}
+              >
+                {syncPreviousMessages
+                  ? "مفعّل — يستورد رسائل أقدم حتى الحد المحدد."
+                  : "متوقف — تُزامَن الرسائل الجديدة فقط."}
+              </Text>
+            </View>
+            <Icon
+              name={historyOptionsOpen ? "chevron-up" : "chevron-down"}
+              size={18}
+              color={colors.mutedForeground}
+            />
+          </Pressable>
+          {historyOptionsOpen ? (
+            <View style={styles.historyOptions}>
+              <View style={styles.autoSyncToggleRow}>
+                <Text
+                  style={[
+                    styles.autoSyncToggleLabel,
+                    { color: colors.foreground },
+                  ]}
+                >
+                  مزامنة الرسائل السابقة
+                </Text>
+                <View style={styles.autoSyncSwitch}>
+                  <Switch
+                    accessibilityLabel="مزامنة الرسائل السابقة"
+                    value={syncPreviousMessages}
+                    disabled={syncing}
+                    onValueChange={onSyncPreviousMessagesChange}
+                    trackColor={{
+                      false: colors.border,
+                      true: colors.primary,
+                    }}
+                    thumbColor={colors.card}
+                  />
+                </View>
+              </View>
+              {syncPreviousMessages ? (
+                <View style={styles.historyLimitContainer}>
+                  <Text
+                    style={[
+                      styles.autoSyncToggleLabel,
+                      { color: colors.foreground },
+                    ]}
+                  >
+                    الحد الأقصى للرسائل السابقة لكل مجموعة
+                  </Text>
+                  <TextInput
+                    accessibilityLabel="عدد الرسائل السابقة لكل مجموعة"
+                    accessibilityHint="أدخل عدداً من 1 إلى 10000"
+                    editable={!syncing}
+                    keyboardType="number-pad"
+                    maxLength={5}
+                    onChangeText={(value) =>
+                      onHistoryMessageLimitChange(
+                        normalizeArabicDigits(value).replace(/\D/g, ""),
+                      )
+                    }
+                    selectTextOnFocus
+                    style={[
+                      styles.historyLimitInput,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.card,
+                      },
+                    ]}
+                    value={historyMessageLimit}
+                  />
+                  <Text
+                    style={[
+                      styles.syncStatusText,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    القيمة الافتراضية 500، والحد الأقصى 10000 لكل مجموعة.
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+
+          <ActionButton
+            label={syncing ? "جارٍ المزامنة…" : "مزامنة الآن"}
+            icon={syncing ? "clock" : "refresh-cw"}
+            disabled={syncing || loading || !hasGroups}
+            onPress={onRunSync}
+          />
+          {!loading && !hasGroups ? (
+            <Text style={[styles.syncStatusText, { color: colors.mutedForeground }]}>
+              اختر مجموعة واحدة على الأقل لبدء المزامنة.
+            </Text>
+          ) : null}
+
+          {loading ? null : groups.length === 0 ? (
+            <View style={styles.emptySyncState}>
+              <EmptyState
+                icon="whatsapp"
+                title="لم تبدأ المزامنة بعد"
+                body={
+                  hasGroups
+                    ? "المجموعات محددة. ابدأ المزامنة لاستيراد رسائلها وعرض حالتها هنا."
+                    : "اختر مجموعات واتساب أولًا، ثم ابدأ المزامنة لعرض الرسائل وحالتها هنا."
+                }
+              />
+              {hasGroups ? null : (
+                <ActionButton
+                  label="اختيار المجموعات"
+                  icon="user"
+                  onPress={onManageGroups}
+                />
+              )}
+            </View>
+          ) : (
+            <View style={styles.syncStatusList}>
+              <Text
+                style={[styles.sectionCaption, { color: colors.mutedForeground }]}
+              >
+                سجل المجموعات
+              </Text>
+              {groups.map((group) => {
+                const groupName = group.groupName || group.groupJid;
+                return (
+                  <Pressable
+                    key={group.groupJid}
+                    accessibilityRole="button"
+                    accessibilityLabel={`عرض رسائل ${groupName}`}
+                    accessibilityHint="يفتح الرسائل المحفوظة لهذه المجموعة"
+                    onPress={() => onOpenGroupMessages(group.groupJid, groupName)}
+                    style={[
+                      styles.syncStatusItem,
+                      styles.groupRow,
+                      { borderColor: colors.border },
+                    ]}
+                  >
+                    <View style={styles.groupRowMain}>
+                      <View style={styles.syncStatusHeader}>
+                        <Text
+                          style={[
+                            styles.syncStatusGroup,
+                            { color: colors.foreground },
+                          ]}
+                        >
+                          {groupName}
+                        </Text>
+                        <StatusPill
+                          label={syncGroupStatusLabel(group.status)}
+                          tone={syncGroupStatusTone(group.status)}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.syncStatusText,
+                          { color: colors.mutedForeground },
+                        ]}
+                      >
+                        المحفوظة: {group.savedMessageCount} • آخر مزامنة:{" "}
+                        {formatArabicDateTime(group.lastSyncedAt) ?? "لا توجد"}
+                      </Text>
+                      {group.lastError ? (
+                        <Text
+                          style={[
+                            styles.syncStatusError,
+                            { color: colors.destructive },
+                          ]}
+                        >
+                          {syncGroupErrorMessage(group.lastError)}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <Icon
+                      name="chevron-left"
+                      size={16}
+                      color={colors.mutedForeground}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </>
+      )}
     </Panel>
   );
 }
@@ -524,6 +578,18 @@ const styles = StyleSheet.create({
   },
   noticeText: { flex: 1, fontSize: 11, lineHeight: 17, textAlign: "right" },
   historyLimitContainer: { gap: 7 },
+  collapsibleHeader: {
+    minHeight: 52,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  collapsibleCopy: { flex: 1, alignItems: "flex-start", gap: 2 },
+  historyOptions: { gap: 8 },
   historyLimitInput: {
     minHeight: 42,
     borderWidth: 1,
@@ -544,16 +610,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  secondaryAction: {
-    minHeight: 40,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-  },
   secondaryActionLabel: { fontSize: 11, fontWeight: "800" },
   error: { fontSize: 12, lineHeight: 18, textAlign: "left" },
   syncStatusLine: {
@@ -566,6 +622,12 @@ const styles = StyleSheet.create({
   syncStatusText: { fontSize: 11, lineHeight: 17, textAlign: "left" },
   syncStatusList: { gap: 8 },
   syncStatusItem: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 6 },
+  groupRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  groupRowMain: { flex: 1, gap: 4 },
   syncStatusHeader: {
     flexDirection: "row",
     alignItems: "center",
