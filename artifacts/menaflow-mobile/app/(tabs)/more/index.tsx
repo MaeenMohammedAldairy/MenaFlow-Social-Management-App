@@ -24,6 +24,7 @@ const destinationGroups: Array<{
     | "/(tabs)/more/orders"
     | "/(tabs)/more/sources"
     | "/(tabs)/more/accounts"
+    | "/(tabs)/more/channels"
     | "/(tabs)/more/reports"
     | "/(tabs)/more/settings"
     | "/inbox/reply-settings"
@@ -58,29 +59,16 @@ const destinationGroups: Array<{
     ],
   },
   {
-    title: "الاتصالات والمصادر",
+    title: "القنوات والإعداد",
     icon: "share-2",
     destinations: [
       {
-        title: "حسابات النشر",
-        description: "ربط وإدارة حسابات النشر والقنوات المرتبطة بالمساحة",
+        title: "القنوات",
+        description:
+          "حسابات النشر وواتساب والنشر التلقائي والرد الآلي في شاشة واحدة",
         icon: "share-2",
         accent: "primary",
-        path: "/(tabs)/more/accounts",
-      },
-      {
-        title: "مصادر البيانات",
-        description: "ربط واتساب ومتابعة مزامنة الرسائل والمجموعات",
-        icon: "share-2",
-        accent: "blue",
-        path: "/(tabs)/more/sources",
-      },
-      {
-        title: "إعدادات الرد الآلي",
-        description: "إدارة الردود على رسائل وتعليقات القنوات المرتبطة",
-        icon: "message-square",
-        accent: "primary",
-        path: "/inbox/reply-settings",
+        path: "/(tabs)/more/channels",
       },
     ],
   },
