@@ -95,7 +95,7 @@ export default function MetaOAuthResultScreen() {
 const styles = StyleSheet.create({
   panel: { alignItems: 'center', gap: 14, marginTop: 36 },
   title: { fontSize: 19, fontWeight: '800', textAlign: 'center' },
-  body: { alignSelf: 'stretch', fontSize: 13, lineHeight: 20, textAlign: 'left' },
+  body: { alignSelf: 'stretch', fontSize: 13, lineHeight: 20, textAlign: 'right' },
   button: { borderRadius: 15, paddingVertical: 12, paddingHorizontal: 20 },
   buttonText: { fontSize: 13, fontWeight: '800' },
 });

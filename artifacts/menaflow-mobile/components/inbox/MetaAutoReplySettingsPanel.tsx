@@ -1651,8 +1651,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderTopWidth: 1,
   },
-  body: { fontSize: 13, lineHeight: 21, textAlign: "left" },
-  bodySmall: { fontSize: 12, lineHeight: 19, textAlign: "left" },
+  body: { fontSize: 13, lineHeight: 21, textAlign: "right" },
+  bodySmall: { fontSize: 12, lineHeight: 19, textAlign: "right" },
   platform: {
     gap: 10,
     borderWidth: 1,

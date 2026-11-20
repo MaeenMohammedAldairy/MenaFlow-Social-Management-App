@@ -1124,7 +1124,7 @@ export function ContentPostList({
       <Text
         style={[
           styles.intro,
-          { color: colors.mutedForeground, textAlign: "left" },
+          { color: colors.mutedForeground, textAlign: "right" },
         ]}
       >
         جارٍ تحميل المزيد…

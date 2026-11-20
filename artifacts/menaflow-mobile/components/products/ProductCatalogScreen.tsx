@@ -1864,14 +1864,14 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               منشورات سابقة — استخراج بيانات المنتجات
             </Text>
             {candidates.isError ? (
-              <Text style={{ color: colors.destructive, textAlign: "left" }}>
+              <Text style={{ color: colors.destructive, textAlign: "right" }}>
                 {candidates.error instanceof Error
                   ? candidates.error.message
                   : "تعذر تحميل المنشورات المرشحة."}
               </Text>
             ) : candidates.isPending ? (
               <Text
-                style={{ color: colors.mutedForeground, textAlign: "left" }}
+                style={{ color: colors.mutedForeground, textAlign: "right" }}
               >
                 جارٍ تحميل المنشورات...
               </Text>
@@ -1939,7 +1939,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               ))
             ) : (
               <Text
-                style={{ color: colors.mutedForeground, textAlign: "left" }}
+                style={{ color: colors.mutedForeground, textAlign: "right" }}
               >
                 لا توجد منشورات منشورة غير مرتبطة بمنتج.
               </Text>
@@ -3962,7 +3962,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     fontSize: 12,
   },
-  description: { fontSize: 12, lineHeight: 19, textAlign: "left" },
+  description: { fontSize: 12, lineHeight: 19, textAlign: "right" },
   candidate: { gap: 9 },
   extractionCard: { gap: 9 },
   fieldReview: {
@@ -3978,7 +3978,7 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
   },
   extractionField: { gap: 2 },
-  evidence: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  evidence: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   sourceMessage: {
     gap: 3,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -4074,7 +4074,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 7,
   },
-  helper: { fontSize: 12, lineHeight: 20, textAlign: "left" },
+  helper: { fontSize: 12, lineHeight: 20, textAlign: "right" },
   footer: {
     flexDirection: "row",
     flexWrap: "wrap",

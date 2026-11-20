@@ -374,7 +374,7 @@ function AutoPublishSettingsContent({ userId }: { userId: string | null }) {
             <Text
               style={[
                 styles.intro,
-                { color: colors.mutedForeground, textAlign: "left" },
+                { color: colors.mutedForeground, textAlign: "right" },
               ]}
             >
               سيتم إرسال المنشورات المعتمدة إلى{" "}

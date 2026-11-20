@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
     minWidth: 48,
     fontSize: 13,
     fontWeight: "800",
-    textAlign: "left",
+    textAlign: "right",
     writingDirection: "ltr",
   },
   phoneNumberHint: { fontSize: 12, lineHeight: 17, textAlign: "right" },

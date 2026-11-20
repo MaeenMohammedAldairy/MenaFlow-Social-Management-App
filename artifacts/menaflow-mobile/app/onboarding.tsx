@@ -940,7 +940,7 @@ const styles = StyleSheet.create({
   },
   dot: { width: 9, height: 9, borderRadius: 5 },
   activeDot: { width: 11, height: 11 },
-  error: { fontSize: 12, lineHeight: 19, textAlign: "left", marginBottom: 8 },
+  error: { fontSize: 12, lineHeight: 19, textAlign: "right", marginBottom: 8 },
   primaryButton: {
     width: "100%",
     minHeight: 48,

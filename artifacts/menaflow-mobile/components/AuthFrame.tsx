@@ -152,7 +152,7 @@ export const authStyles = StyleSheet.create({
     outlineStyle: 'none',
   } as never,
   ltrInput: {
-    textAlign: 'left',
+    textAlign: 'right',
     writingDirection: 'ltr',
   },
   button: {
@@ -182,7 +182,7 @@ export const authStyles = StyleSheet.create({
     gap: 8,
   },
   secondaryText: { fontSize: 14, fontWeight: '700' },
-  error: { fontSize: 14, lineHeight: 21, textAlign: 'left' },
+  error: { fontSize: 14, lineHeight: 21, textAlign: 'right' },
   linkRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -191,7 +191,7 @@ export const authStyles = StyleSheet.create({
     marginTop: 3,
   },
   linkText: { fontSize: 14, fontWeight: '700' },
-  hint: { fontSize: 14, lineHeight: 21, textAlign: 'left' },
+  hint: { fontSize: 14, lineHeight: 21, textAlign: 'right' },
 });
 
 const styles = StyleSheet.create({
@@ -269,9 +269,9 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     fontSize: 14,
     lineHeight: 19,
-    textAlign: 'left',
+    textAlign: 'right',
     maxWidth: 300,
   },
   signInTitle: { alignSelf: 'stretch', textAlign: 'right' },
-  signInSubtitle: { alignSelf: 'stretch', textAlign: 'left' },
+  signInSubtitle: { alignSelf: 'stretch', textAlign: 'right' },
 });

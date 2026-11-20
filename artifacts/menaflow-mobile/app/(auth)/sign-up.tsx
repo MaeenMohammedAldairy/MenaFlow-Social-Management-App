@@ -423,7 +423,7 @@ const styles = StyleSheet.create({
   },
   emailCopy: { flex: 1, gap: 2 },
   emailCaption: { fontSize: 14, lineHeight: 21 },
-  emailAddress: { fontSize: 14, fontWeight: '700', textAlign: 'left', writingDirection: 'ltr' },
+  emailAddress: { fontSize: 14, fontWeight: '700', textAlign: 'right', writingDirection: 'ltr' },
   termsRow: {
     flexDirection: 'row',
     alignItems: 'center',

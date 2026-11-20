@@ -846,8 +846,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 14,
   },
-  body: { fontSize: 13, lineHeight: 21, textAlign: "left" },
-  bodySmall: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  body: { fontSize: 13, lineHeight: 21, textAlign: "right" },
+  bodySmall: { fontSize: 12, lineHeight: 18, textAlign: "right" },
   connectedPanel: { gap: 12 },
   connectedHeader: {
     flexDirection: "row",
@@ -909,7 +909,7 @@ const styles = StyleSheet.create({
   },
   testMessageInput: { minHeight: 70 },
   previewCard: { borderRadius: 14, padding: 13, gap: 7 },
-  notice: { fontSize: 12, lineHeight: 19, textAlign: "left" },
+  notice: { fontSize: 12, lineHeight: 19, textAlign: "right" },
   loadingRow: {
     flexDirection: "row",
     alignItems: "center",

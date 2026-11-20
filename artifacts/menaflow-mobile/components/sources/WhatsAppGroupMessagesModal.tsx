@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "left" },
+  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
   disconnectButton: {
     minHeight: 36,
     borderWidth: 1,

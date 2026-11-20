@@ -53,7 +53,7 @@ export const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
   },
-  intro: { textAlign: "left", lineHeight: 19, fontSize: 12 },
+  intro: { textAlign: "right", lineHeight: 19, fontSize: 12 },
   historyButton: {
     minHeight: 40,
     paddingVertical: 10,
@@ -315,7 +315,7 @@ export const styles = StyleSheet.create({
   },
   previewLine: { alignSelf: "stretch" },
   previewSectionHeading: { paddingTop: 6 },
-  previewBody: { fontSize: 14, lineHeight: 24, textAlign: "left" },
+  previewBody: { fontSize: 14, lineHeight: 24, textAlign: "right" },
   previewHeadingText: { fontSize: 14, fontWeight: "700" },
   previewBulletRow: {
     flexDirection: "row",
@@ -461,7 +461,7 @@ export const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     fontSize: 12,
-    textAlign: "left",
+    textAlign: "right",
     writingDirection: "ltr",
   },
   publishLinkButton: {
@@ -471,7 +471,7 @@ export const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 4,
   },
-  publishMessage: { textAlign: "left", lineHeight: 22, fontSize: 13 },
+  publishMessage: { textAlign: "right", lineHeight: 22, fontSize: 13 },
   publishOptions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   publishOption: {
     minWidth: 132,

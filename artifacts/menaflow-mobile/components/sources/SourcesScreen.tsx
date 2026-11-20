@@ -2277,13 +2277,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
     fontWeight: "700",
-    textAlign: "left",
+    textAlign: "right",
   },
   requirementHint: {
     width: "100%",
     fontSize: 13,
     lineHeight: 20,
-    textAlign: "left",
+    textAlign: "right",
   },
   summaryRow: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   summaryCard: {
@@ -2332,5 +2332,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   onboardingContinueText: { fontSize: 13, fontWeight: "800" },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "left" },
+  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
 });

@@ -929,7 +929,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     textAlign: "right",
   },
-  conversationDate: { fontSize: 12, textAlign: "left" },
+  conversationDate: { fontSize: 12, textAlign: "right" },
   conversationPreviewRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -954,5 +954,5 @@ const styles = StyleSheet.create({
   conversationCounts: { flexDirection: "row", alignItems: "center", gap: 10 },
   countItem: { flexDirection: "row", alignItems: "center", gap: 4 },
   conversationMeta: { fontSize: 12 },
-  lastEvent: { fontSize: 12, textAlign: "left" },
+  lastEvent: { fontSize: 12, textAlign: "right" },
 });
