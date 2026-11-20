@@ -12,7 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
-import { router, type Href, useLocalSearchParams } from "expo-router";
+import { Redirect, router, type Href, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,15 +26,11 @@ import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   ActionButton,
-  BrandHeader,
   EmptyState,
   navigateBack,
-  Page,
-  PageTitle,
   Panel,
   SectionTitle,
   StatusPill,
-  StepBadge,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { isLocalAuthDisabled } from "@/constants/auth";
@@ -64,20 +60,38 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+/** Kept so older links keep working; the WhatsApp settings live beside Meta now. */
 export default function WhatsAppSetupScreen() {
-  if (isLocalAuthDisabled) return <WhatsAppSetupContent userId={null} />;
-  return <AuthenticatedWhatsAppSetup />;
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
+  return (
+    <Redirect
+      href={{
+        pathname: "/inbox/reply-settings",
+        params: { tab: "whatsapp", ...(returnTo ? { returnTo } : {}) },
+      }}
+    />
+  );
 }
 
-function AuthenticatedWhatsAppSetup() {
+export function WhatsAppReplyPanel({ returnTo }: { returnTo?: string }) {
+  if (isLocalAuthDisabled) return <WhatsAppReplyContent userId={null} returnTo={returnTo} />;
+  return <AuthenticatedWhatsAppReply returnTo={returnTo} />;
+}
+
+function AuthenticatedWhatsAppReply({ returnTo }: { returnTo?: string }) {
   const { userId } = useAuth();
-  return <WhatsAppSetupContent userId={userId ?? null} />;
+  return <WhatsAppReplyContent userId={userId ?? null} returnTo={returnTo} />;
 }
 
-function WhatsAppSetupContent({ userId }: { userId: string | null }) {
+function WhatsAppReplyContent({
+  userId,
+  returnTo,
+}: {
+  userId: string | null;
+  returnTo?: string;
+}) {
   const colors = useColors();
   const queryClient = useQueryClient();
-  const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const queryKey = ["whatsappAutoReplySettings", userId ?? "local"];
   const connectionsQueryKey = [
     ...getGetSocialConnectionsQueryKey(),
@@ -301,16 +315,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
   const returnToPreviousScreen = () => navigateBack(returnHref);
 
   return (
-    <Page>
-      <BrandHeader />
-      <PageTitle
-        title="إعداد حساب واتساب"
-        subtitle="أكمل إعدادات حسابك لتبدأ إدارة الرسائل عبر MenaFlow."
-        back={{
-          href: returnHref,
-          label: returnLabel,
-        }}
-      />
+    <>
       {settingsQuery.isLoading ? (
         <Panel>
           <View style={styles.loadingRow}>
@@ -347,7 +352,6 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
         </Panel>
       ) : (
         <>
-          <StepBadge step={2} total={3} label="المجموعات والردود" />
           <Panel style={styles.connectedPanel}>
             <View style={styles.connectedHeader}>
               <View style={[styles.whatsappIcon, { backgroundColor: colors.accent }]}>
@@ -804,7 +808,7 @@ function WhatsAppSetupContent({ userId }: { userId: string | null }) {
 
         </>
       )}
-    </Page>
+    </>
   );
 }
 

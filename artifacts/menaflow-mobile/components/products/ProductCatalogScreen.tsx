@@ -1194,7 +1194,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     label="إدارة الحسابات المتصلة"
                     icon="link"
                     secondary
-                    onPress={() => router.push("/(tabs)/sources")}
+                    onPress={() => router.push("/(tabs)/more/accounts")}
                   />
                 </View>
               )}

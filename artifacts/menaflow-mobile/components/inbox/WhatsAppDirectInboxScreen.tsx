@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
@@ -21,7 +22,11 @@ import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, BrandHeader, EmptyState, IconButton, Page, PageTitle, Panel } from "@/components/Ui";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { useColors } from "@/hooks/useColors";
-import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
+import {
+  formatArabicDate,
+  formatArabicDateTime,
+  formatArabicNumber,
+} from "@/lib/formatting";
 import { InboxPlatformTabs } from "@/components/inbox/InboxPlatformTabs";
 import {
   confirmWhatsAppDirectReplyNotSent,
@@ -194,6 +199,8 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
 
   return (
     <Page
+      scroll={!selectedRemoteJid}
+      bottomPadding={selectedRemoteJid ? 84 : undefined}
       refreshControl={
         <RefreshControl
           refreshing={conversations.isRefetching || messages.isRefetching}
@@ -205,35 +212,21 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
         />
       }
     >
-      <View style={styles.inboxHeader}>
-        <BrandHeader />
-        <PageTitle
-          title="المحادثات"
-          action={
-            <IconButton
-              icon="settings"
-              label="إعدادات الرد الآلي"
-              color={colors.primary}
-              onPress={() => router.push("/inbox/reply-settings")}
-            />
-          }
-        />
-        <InboxPlatformTabs
-          activePlatform="whatsapp"
-          onSelect={(platform) => {
-            if (platform === "whatsapp") return;
-            router.replace({
-              pathname: "/(tabs)/inbox",
-              params: { platform },
-            });
-          }}
-        />
-      </View>
-
       {selectedRemoteJid ? (
         <>
-          <Panel style={styles.conversationPanel}>
+          <View style={[styles.chatHeader, { borderColor: colors.border }]}>
             <View style={styles.conversationHeading}>
+              <IconButton
+                icon="chevron-right"
+                label="العودة إلى قائمة المحادثات"
+                color={colors.primary}
+                onPress={() => {
+                  setSelectedRemoteJid(null);
+                  router.setParams({ remoteJid: undefined });
+                  setDraft("");
+                  setRequestId(null);
+                }}
+              />
               <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
                 <Icon name="whatsapp" size={18} color={colors.primary} />
               </View>
@@ -246,175 +239,210 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
                 </Text>
               </View>
               <IconButton
-                icon="chevron-right"
-                label="العودة إلى قائمة المحادثات"
+                icon="settings"
+                label="إعدادات الرد الآلي"
                 color={colors.primary}
-                onPress={() => {
-                  setSelectedRemoteJid(null);
-                  router.setParams({ remoteJid: undefined });
-                  setDraft("");
-                  setRequestId(null);
-                }}
+                onPress={() => router.push("/inbox/reply-settings")}
               />
             </View>
-          </Panel>
-          {messages.isError ? (
-            <View style={styles.loadError}>
+          </View>
+          <ScrollView
+            style={styles.chatScroll}
+            contentContainerStyle={styles.chatMessages}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl
+                refreshing={messages.isRefetching}
+                onRefresh={() => void messages.refetch()}
+                tintColor={colors.primary}
+              />
+            }
+          >
+            {messages.isError ? (
+              <View style={styles.loadError}>
+                <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
+                  {messages.error instanceof Error
+                    ? messages.error.message
+                    : "تعذر تحميل المحادثة."}
+                </Text>
+                <ActionButton
+                  label={messages.isFetching ? "جارٍ التحقق..." : "إعادة المحاولة"}
+                  icon={messages.isFetching ? "clock" : "refresh-cw"}
+                  secondary
+                  compact
+                  disabled={messages.isFetching}
+                  onPress={() => void messages.refetch()}
+                />
+              </View>
+            ) : null}
+            {messages.isPending && orderedMessages.length === 0 ? (
+              <View
+                accessible
+                accessibilityLabel="جارٍ تحميل رسائل المحادثة"
+                style={styles.messageList}
+              >
+                {[0, 1, 2].map((index) => (
+                  <Panel
+                    key={`message-skeleton-${index}`}
+                    style={[
+                      styles.messageBubble,
+                      {
+                        alignSelf: index % 2 === 0 ? "flex-end" : "flex-start",
+                        borderColor: colors.border,
+                      },
+                    ]}
+                  >
+                    <View style={styles.messageHeader}>
+                      <Skeleton width={64} height={9} radius={5} />
+                      <Skeleton width={88} height={9} radius={5} />
+                    </View>
+                    <Skeleton width="100%" height={10} radius={5} />
+                    <Skeleton width="64%" height={10} radius={5} />
+                  </Panel>
+                ))}
+              </View>
+            ) : orderedMessages.length > 0 ? (
+              <View style={styles.messageList}>
+                {messages.hasNextPage ? (
+                  <ActionButton
+                    label={
+                      messages.isFetchingNextPage
+                        ? "جارٍ تحميل الرسائل الأقدم..."
+                        : "تحميل رسائل أقدم"
+                    }
+                    icon={messages.isFetchingNextPage ? "clock" : "chevron-up"}
+                    secondary
+                    compact
+                    disabled={messages.isFetchingNextPage}
+                    onPress={() => void messages.fetchNextPage()}
+                  />
+                ) : null}
+                {orderedMessages.map((message) => (
+                  <DirectMessageBubble
+                    key={message.id}
+                    message={message}
+                    onConfirmNotSent={() => confirmNotSent.mutate(message.id)}
+                    confirming={
+                      confirmNotSent.isPending &&
+                      confirmNotSent.variables === message.id
+                    }
+                  />
+                ))}
+              </View>
+            ) : messages.isError ? null : (
+              <EmptyState
+                icon="whatsapp"
+                title="لا توجد رسائل محفوظة"
+                body="ستظهر هنا الرسائل الواردة بعد وصولها إلى الحساب المرتبط."
+              />
+            )}
+          </ScrollView>
+          <View style={[styles.chatDock, { borderTopColor: colors.border }]}>
+            {reply.error ? (
               <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
-                {messages.error instanceof Error
-                  ? messages.error.message
-                  : "تعذر تحميل المحادثة."}
+                {reply.error instanceof Error ? reply.error.message : "تعذر إرسال الرد."}
               </Text>
-              <ActionButton
-                label={messages.isFetching ? "جارٍ التحقق..." : "إعادة المحاولة"}
-                icon={messages.isFetching ? "clock" : "refresh-cw"}
-                secondary
-                compact
-                disabled={messages.isFetching}
-                onPress={() => void messages.refetch()}
-              />
-            </View>
-          ) : null}
-          {messages.isPending && orderedMessages.length === 0 ? (
-            <View
-              accessible
-              accessibilityLabel="جارٍ تحميل رسائل المحادثة"
-              style={styles.messageList}
-            >
-              {[0, 1, 2].map((index) => (
-                <Panel
-                  key={`message-skeleton-${index}`}
+            ) : null}
+            {confirmNotSent.error ? (
+              <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
+                {confirmNotSent.error instanceof Error
+                  ? confirmNotSent.error.message
+                  : "تعذر تحديث حالة الإرسال."}
+              </Text>
+            ) : null}
+            {hasUnknownSend ? (
+              <Text accessibilityRole="alert" style={{ color: colors.warning }}>
+                تحقق من WhatsApp قبل إرسال رد جديد؛ توجد محاولة لم تتأكد نتيجتها.
+              </Text>
+            ) : null}
+            {hasPendingAutoReply ? (
+              <Text style={{ color: colors.mutedForeground, textAlign: "right" }}>
+                جارٍ تجهيز الرد الآلي أو إرساله؛ انتظر تحديث الحالة قبل الرد اليدوي.
+              </Text>
+            ) : null}
+            {canReply ? (
+              <View style={styles.composer}>
+                <TextInput
+                  accessibilityLabel="اكتب ردًا خاصًا على WhatsApp"
+                  value={draft}
+                  onChangeText={(text) => {
+                    setDraft(text.slice(0, 2000));
+                    setRequestId(null);
+                  }}
+                  editable={!hasUnknownSend && !hasPendingAutoReply && !reply.isPending}
+                  maxLength={2000}
+                  multiline
+                  textAlign="right"
+                  placeholder="اكتب ردًا خاصًا..."
+                  placeholderTextColor={colors.mutedForeground}
                   style={[
-                    styles.messageBubble,
+                    styles.input,
                     {
-                      alignSelf: index % 2 === 0 ? "flex-end" : "flex-start",
+                      color: colors.foreground,
                       borderColor: colors.border,
+                      backgroundColor: colors.background,
+                    },
+                  ]}
+                />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="إرسال رد WhatsApp"
+                  disabled={
+                    !draft.trim() ||
+                    reply.isPending ||
+                    hasUnknownSend ||
+                    hasPendingAutoReply
+                  }
+                  onPress={sendReply}
+                  style={({ pressed }) => [
+                    styles.sendButton,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity:
+                        !draft.trim() || reply.isPending || hasUnknownSend || hasPendingAutoReply
+                          ? 0.45
+                          : pressed
+                            ? 0.78
+                            : 1,
                     },
                   ]}
                 >
-                  <View style={styles.messageHeader}>
-                    <Skeleton width={64} height={9} radius={5} />
-                    <Skeleton width={88} height={9} radius={5} />
-                  </View>
-                  <Skeleton width="100%" height={10} radius={5} />
-                  <Skeleton width="64%" height={10} radius={5} />
-                </Panel>
-              ))}
-            </View>
-          ) : orderedMessages.length > 0 ? (
-            <View style={styles.messageList}>
-              {messages.hasNextPage ? (
-                <ActionButton
-                  label={
-                    messages.isFetchingNextPage
-                      ? "جارٍ تحميل الرسائل الأقدم..."
-                      : "تحميل رسائل أقدم"
-                  }
-                  icon={messages.isFetchingNextPage ? "clock" : "chevron-up"}
-                  secondary
-                  compact
-                  disabled={messages.isFetchingNextPage}
-                  onPress={() => void messages.fetchNextPage()}
-                />
-              ) : null}
-              {orderedMessages.map((message) => (
-                <DirectMessageBubble
-                  key={message.id}
-                  message={message}
-                  onConfirmNotSent={() => confirmNotSent.mutate(message.id)}
-                  confirming={
-                    confirmNotSent.isPending &&
-                    confirmNotSent.variables === message.id
-                  }
-                />
-              ))}
-            </View>
-          ) : messages.isError ? null : (
-            <EmptyState
-              icon="whatsapp"
-              title="لا توجد رسائل محفوظة"
-              body="ستظهر هنا الرسائل الواردة بعد وصولها إلى الحساب المرتبط."
-            />
-          )}
-          {reply.error ? (
-            <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
-              {reply.error instanceof Error ? reply.error.message : "تعذر إرسال الرد."}
-            </Text>
-          ) : null}
-          {confirmNotSent.error ? (
-            <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
-              {confirmNotSent.error instanceof Error
-                ? confirmNotSent.error.message
-                : "تعذر تحديث حالة الإرسال."}
-            </Text>
-          ) : null}
-          {hasUnknownSend ? (
-            <Text accessibilityRole="alert" style={{ color: colors.warning }}>
-              تحقق من WhatsApp قبل إرسال رد جديد؛ توجد محاولة لم تتأكد نتيجتها.
-            </Text>
-          ) : null}
-          {hasPendingAutoReply ? (
-            <Text style={{ color: colors.mutedForeground, textAlign: "right" }}>
-              جارٍ تجهيز الرد الآلي أو إرساله؛ انتظر تحديث الحالة قبل الرد اليدوي.
-            </Text>
-          ) : null}
-          {canReply ? (
-            <View style={styles.composer}>
-              <TextInput
-                accessibilityLabel="اكتب ردًا خاصًا على WhatsApp"
-                value={draft}
-                onChangeText={(text) => {
-                  setDraft(text.slice(0, 2000));
-                  setRequestId(null);
-                }}
-                editable={!hasUnknownSend && !hasPendingAutoReply && !reply.isPending}
-                maxLength={2000}
-                multiline
-                textAlign="right"
-                placeholder="اكتب ردًا خاصًا..."
-                placeholderTextColor={colors.mutedForeground}
-                style={[
-                  styles.input,
-                  {
-                    color: colors.foreground,
-                    borderColor: colors.border,
-                    backgroundColor: colors.background,
-                  },
-                ]}
-              />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="إرسال رد WhatsApp"
-                disabled={
-                  !draft.trim() ||
-                  reply.isPending ||
-                  hasUnknownSend ||
-                  hasPendingAutoReply
-                }
-                onPress={sendReply}
-                style={({ pressed }) => [
-                  styles.sendButton,
-                  {
-                    backgroundColor: colors.primary,
-                    opacity:
-                      !draft.trim() || reply.isPending || hasUnknownSend || hasPendingAutoReply
-                        ? 0.45
-                        : pressed
-                          ? 0.78
-                          : 1,
-                  },
-                ]}
-              >
-                <Icon name="send" size={17} color={colors.primaryForeground} />
-              </Pressable>
-            </View>
-          ) : (
-            <Text accessibilityRole="alert" style={{ color: colors.warning, textAlign: "right" }}>
-              وصلت هذه المحادثة بمعرّف LID دون رقم هاتف بديل؛ يمكن عرض الرسائل، لكن لا يمكن إرسال رد آمن.
-            </Text>
-          )}
+                  <Icon name="send" size={17} color={colors.primaryForeground} />
+                </Pressable>
+              </View>
+            ) : (
+              <Text accessibilityRole="alert" style={{ color: colors.warning, textAlign: "right" }}>
+                وصلت هذه المحادثة بمعرّف LID دون رقم هاتف بديل؛ يمكن عرض الرسائل، لكن لا يمكن إرسال رد آمن.
+              </Text>
+            )}
+          </View>
         </>
       ) : (
+        <>
+        <View style={styles.inboxHeader}>
+          <BrandHeader
+            title="المحادثات"
+            action={
+              <IconButton
+                icon="settings"
+                label="إعدادات الرد الآلي"
+                color={colors.primary}
+                onPress={() => router.push("/inbox/reply-settings")}
+              />
+            }
+          />
+          <InboxPlatformTabs
+            activePlatform="whatsapp"
+            onSelect={(platform) => {
+              if (platform === "whatsapp") return;
+              router.replace({
+                pathname: "/(tabs)/inbox",
+                params: { platform },
+              });
+            }}
+          />
+        </View>
+
         <Panel style={styles.inboxPanel}>
           <View style={styles.listHeading}>
             <Text style={{ color: colors.foreground, fontWeight: "800", fontSize: 15 }}>
@@ -542,6 +570,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
             />
           )}
         </Panel>
+        </>
       )}
     </Page>
   );
@@ -564,6 +593,7 @@ function DirectMessageBubble({
   const messageTypeLabel = whatsappDirectMessagePlaceholder(message.messageType);
   return (
     <Panel
+      accessibilityLabel={isBusiness ? "رد مُرسل من النشاط" : "رسالة واردة من العميل"}
       style={[
         styles.messageBubble,
         {
@@ -574,11 +604,11 @@ function DirectMessageBubble({
       ]}
     >
       <View style={styles.messageHeader}>
-        <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-          {isBusiness ? "رد النشاط" : "رسالة العميل"}
+        <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+          {formatArabicDate(message.occurredAt, { dateStyle: "short" }) ?? ""}
         </Text>
-        <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
-          {formatArabicDateTime(message.occurredAt) ?? ""}
+        <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+          {formatArabicDate(message.occurredAt, { timeStyle: "short" }) ?? ""}
         </Text>
       </View>
       <Text selectable style={{ color: colors.foreground, textAlign: "right", lineHeight: 22 }}>
@@ -629,7 +659,11 @@ const styles = StyleSheet.create({
   searchRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 9, borderWidth: 1, borderRadius: 12, paddingHorizontal: 11 },
   searchInput: { flex: 1, minWidth: 0, minHeight: 42, fontSize: 13, textAlign: "right", writingDirection: "rtl" },
   loadError: { gap: 9 },
-  conversationPanel: { gap: 0, padding: 10 },
+  chatHeader: { flexDirection: "row", alignItems: "center", gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, paddingBottom: 8 },
+  chatScroll: { flex: 1 },
+  chatMessages: { gap: 10, paddingVertical: 10 },
+  chatDock: { gap: 8, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 8 },
+
   conversationHeading: { flexDirection: "row", alignItems: "center", gap: 10 },
   avatar: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   conversationCopy: { flex: 1, gap: 4 },
@@ -644,7 +678,7 @@ const styles = StyleSheet.create({
   conversationAvatar: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   conversationMeta: { alignItems: "flex-end", gap: 5 },
   messageList: { gap: 10 },
-  messageBubble: { width: "94%", gap: 8, borderWidth: 1, borderRadius: 12, padding: 12 },
+  messageBubble: { maxWidth: "80%", gap: 6, borderWidth: 1, borderRadius: 12, padding: 10 },
   messageHeader: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
   unknownBlock: { gap: 8 },
   composer: { flexDirection: "row", alignItems: "flex-end", gap: 8 },

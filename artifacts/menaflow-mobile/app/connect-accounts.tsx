@@ -1,4 +1,4 @@
-import { SourcesScreen } from "./(tabs)/sources";
+import { SourcesScreen } from "@/components/sources/SourcesScreen";
 
 export default function ConnectAccountsRoute() {
   return <SourcesScreen
