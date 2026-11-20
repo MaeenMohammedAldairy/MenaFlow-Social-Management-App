@@ -147,7 +147,9 @@ Set `EXPO_PUBLIC_DOMAIN` to the public HTTPS API origin and configure `EXPO_PUBL
 
 The repository does not include a configured EAS project or a verified hosting target for the mobile/web app. Choose the intended Expo build/export and hosting flow, then validate the generated client against the deployed API before release.
 
-The available Expo client is an application UI, not a public marketing site. Do not publish dashboard routes in a sitemap or claim they are indexable public content. Add SEO metadata, `robots.txt`, or a sitemap only if public marketing pages are introduced and can be verified independently.
+Signed-out visitors now land on the marketing page (`components/MarketingLandingPage.tsx`) on both web and native, and `app/+html.tsx` supplies its title, description, and social preview tags. Set `EXPO_PUBLIC_SITE_URL` to the public origin of the web build so `og:image` resolves to an absolute URL, and set `EXPO_PUBLIC_OG_IMAGE_URL` when a dedicated 1200x630 share card exists (otherwise the app icon is used). Without `EXPO_PUBLIC_SITE_URL` the preview image stays relative and some crawlers will not render it.
+
+Only the marketing route is public. Do not publish dashboard routes in a sitemap or claim they are indexable public content. Add `robots.txt` or a sitemap only when the hosting target is known and the public routes can be verified.
 
 ## Key rotation and existing Meta connections
 
