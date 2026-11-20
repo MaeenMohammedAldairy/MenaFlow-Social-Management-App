@@ -94,35 +94,42 @@ export function WhatsAppSyncStatusPanel({
     setting: WhatsAppSyncSettingKey,
     label: string,
     value: boolean | undefined,
-  ) => (
-    <View key={setting} style={styles.autoSyncToggleRow}>
-      <Text style={[styles.autoSyncToggleLabel, { color: colors.foreground }]}>
-        {label}
-      </Text>
-      <Text style={[styles.settingState, { color: colors.mutedForeground }]}>
-        {loading
-          ? "جارٍ التحميل"
-          : hasError
-            ? "غير متاح"
-            : value
-              ? "مفعّلة"
-              : "متوقفة"}
-      </Text>
-      <View style={styles.autoSyncSwitch}>
-        <Switch
-          accessibilityLabel={label}
-          value={value ?? true}
-          disabled={loading || hasError || syncing || autoSyncSaving[setting]}
-          onValueChange={(enabled) => onUpdateSetting(setting, enabled)}
-          trackColor={{
-            false: colors.border,
-            true: colors.primary,
-          }}
-          thumbColor={colors.card}
-        />
+  ) => {
+    // Never render a switch as "on" before its real value is known.
+    const unavailable = value === undefined;
+    const disabled =
+      loading || hasError || unavailable || syncing || autoSyncSaving[setting];
+    return (
+      <View key={setting} style={styles.autoSyncToggleRow}>
+        <Text style={[styles.autoSyncToggleLabel, { color: colors.foreground }]}>
+          {label}
+        </Text>
+        <Text style={[styles.settingState, { color: colors.mutedForeground }]}>
+          {loading
+            ? "جارٍ التحميل"
+            : hasError || unavailable
+              ? "غير متاح"
+              : value
+                ? "مفعّلة"
+                : "متوقفة"}
+        </Text>
+        <View style={styles.autoSyncSwitch}>
+          <Switch
+            accessibilityLabel={label}
+            accessibilityState={{ disabled }}
+            value={Boolean(value)}
+            disabled={disabled}
+            onValueChange={(enabled) => onUpdateSetting(setting, enabled)}
+            trackColor={{
+              false: colors.border,
+              true: colors.primary,
+            }}
+            thumbColor={colors.card}
+          />
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <Panel>

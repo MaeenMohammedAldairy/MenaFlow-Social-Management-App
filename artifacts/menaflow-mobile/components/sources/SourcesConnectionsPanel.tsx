@@ -45,6 +45,7 @@ interface SourcesConnectionsPanelProps {
   connectionError: string | null;
   isConnected: (key: SourceKey) => boolean;
   sourceStatus: (key: SourceKey) => string;
+  sourceDetail: (key: SourceKey) => string | null;
   buttonLabel: (key: SourceKey) => string;
   onSourceCardPress: (key: SourceKey) => void;
   onSourceAction: (key: SourceKey) => void;
@@ -66,6 +67,7 @@ export function SourcesConnectionsPanel({
   connectionError,
   isConnected,
   sourceStatus,
+  sourceDetail,
   buttonLabel,
   onSourceCardPress,
   onSourceAction,
@@ -169,6 +171,8 @@ export function SourcesConnectionsPanel({
             : connectionNeedsAttention
               ? "amber"
               : "muted";
+        const statusLabel = sourceStatus(source.key);
+        const detail = sourceDetail(source.key);
 
         return (
           <View
@@ -188,8 +192,9 @@ export function SourcesConnectionsPanel({
           >
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={
-                connected ? `تفاصيل حساب ${source.name}` : `ربط ${source.name}`
+              accessibilityLabel={`${source.name}، ${statusLabel}`}
+              accessibilityHint={
+                connected ? "يفتح تفاصيل الحساب" : "يبدأ ربط الحساب"
               }
               onPress={() => onSourceCardPress(source.key)}
               disabled={sourceBusy}
@@ -211,26 +216,22 @@ export function SourcesConnectionsPanel({
                   >
                     {source.name}
                   </Text>
-                  <StatusPill
-                    label={sourceStatus(source.key)}
-                    tone={statusTone}
-                  />
+                  <StatusPill label={statusLabel} tone={statusTone} />
                 </View>
-                {!connected || reauthorizationRequired ? (
-                  <Text
-                    style={[
-                      styles.sourceDescription,
-                      { color: colors.secondaryForeground },
-                    ]}
-                  >
-                    {source.description}
-                  </Text>
-                ) : null}
+                <Text
+                  numberOfLines={2}
+                  style={[
+                    styles.sourceDescription,
+                    { color: colors.secondaryForeground },
+                  ]}
+                >
+                  {detail ?? source.description}
+                </Text>
               </View>
             </Pressable>
 
             {source.key === "whatsapp" && connections?.whatsapp ? (
-              <View style={styles.whatsappCardActions}>
+              <View style={styles.cardActions}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={whatsappActionLabel}
@@ -297,25 +298,88 @@ export function SourcesConnectionsPanel({
                   </Pressable>
                 ) : null}
               </View>
+            ) : connected && !reauthorizationRequired ? (
+              <View style={styles.cardActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`إدارة حساب ${source.name}`}
+                  disabled={sourceBusy}
+                  onPress={() => onSourceCardPress(source.key)}
+                  style={[
+                    styles.connectButton,
+                    {
+                      borderColor: colors.primary,
+                      backgroundColor: colors.primary,
+                      opacity: sourceBusy ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  <Icon
+                    name="settings"
+                    size={14}
+                    color={colors.primaryForeground}
+                  />
+                  <Text
+                    style={[
+                      styles.connectLabel,
+                      { color: colors.primaryForeground },
+                    ]}
+                  >
+                    إدارة الحساب
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`إلغاء ربط ${source.name}`}
+                  disabled={sourceBusy}
+                  onPress={() => onSourceAction(source.key)}
+                  style={[
+                    styles.disconnectButton,
+                    {
+                      borderColor: colors.border,
+                      opacity: sourceBusy ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  {sourceBusy ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.destructive}
+                    />
+                  ) : (
+                    <Icon
+                      name="x-circle"
+                      size={15}
+                      color={colors.destructive}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.disconnectLabel,
+                      { color: colors.destructive },
+                    ]}
+                  >
+                    {disconnectingSource === source.key
+                      ? "جارٍ الفصل…"
+                      : "إلغاء الربط"}
+                  </Text>
+                </Pressable>
+              </View>
             ) : (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
                   reauthorizationRequired
                     ? `إعادة تفويض ${source.name}`
-                    : `${connected ? "إلغاء ربط" : "ربط"} ${source.name}`
+                    : `ربط ${source.name}`
                 }
                 disabled={sourceBusy}
                 onPress={() => onSourceAction(source.key)}
                 style={[
                   styles.connectButton,
                   {
-                    borderColor: connected && !reauthorizationRequired
-                      ? colors.destructive
-                      : colors.primary,
-                    backgroundColor: connected && !reauthorizationRequired
-                      ? colors.secondary
-                      : colors.primary,
+                    borderColor: colors.primary,
+                    backgroundColor: colors.primary,
                     opacity: sourceBusy ? 0.6 : 1,
                   },
                 ]}
@@ -323,40 +387,18 @@ export function SourcesConnectionsPanel({
                 {sourceBusy ? (
                   <ActivityIndicator
                     size="small"
-                    color={
-                      disconnectingSource === source.key
-                        ? colors.destructive
-                        : colors.primaryForeground
-                    }
+                    color={colors.primaryForeground}
                   />
                 ) : (
-                  <Icon
-                    name={
-                      connected && !reauthorizationRequired
-                        ? "x-circle"
-                        : "link"
-                    }
-                    size={14}
-                    color={
-                      connected && !reauthorizationRequired
-                        ? colors.destructive
-                        : colors.primaryForeground
-                    }
-                  />
+                  <Icon name="link" size={14} color={colors.primaryForeground} />
                 )}
                 <Text
                   style={[
                     styles.connectLabel,
-                    {
-                      color: connected && !reauthorizationRequired
-                        ? colors.destructive
-                        : colors.primaryForeground,
-                    },
+                    { color: colors.primaryForeground },
                   ]}
                 >
-                  {disconnectingSource === source.key
-                    ? "جارٍ الفصل…"
-                    : buttonLabel(source.key)}
+                  {buttonLabel(source.key)}
                 </Text>
               </Pressable>
             )}
@@ -458,7 +500,7 @@ const styles = StyleSheet.create({
   },
   sourceName: { fontSize: 14, fontWeight: "800" },
   sourceDescription: { fontSize: 12, lineHeight: 17, textAlign: "left" },
-  whatsappCardActions: {
+  cardActions: {
     gap: 7,
     alignItems: "stretch",
     minWidth: 132,

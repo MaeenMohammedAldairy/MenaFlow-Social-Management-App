@@ -37,6 +37,7 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
+  RefreshControl,
   StyleSheet,
   View,
   useWindowDimensions,
@@ -965,6 +966,22 @@ function SourcesContent({
       group.status !== "idle",
   );
 
+  // Manual refresh only — automatic polling must not flip the refresh button
+  // into a disabled "جارٍ التحديث…" state.
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshSources = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await connectionsQuery.refetch();
+      if (connections?.whatsapp) {
+        await syncStatusQuery.refetch();
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const runWhatsAppSync = async () => {
     if (syncRequestInFlightRef.current || syncRunningOnServer) return;
     const syncSettings = queryClient.getQueryData<WhatsAppSyncStatusResponse>(
@@ -1336,54 +1353,76 @@ function SourcesContent({
     return false;
   };
 
+  const metaReauthorizationReason = (
+    platform: "facebook" | "instagram",
+  ): string => {
+    const reason = connections?.[platform]?.authorizationReason;
+    if (reason === "token_invalid") return "رمز Meta غير صالح أو مرفوض.";
+    if (reason === "token_expired") return "انتهت صلاحية رمز Meta.";
+    return "صلاحيات Meta تحتاج إلى تحقق.";
+  };
+
   const sourceStatus = (key: SourceKey): string => {
     if (connectionsQuery.isLoading) return "جارٍ التحقق…";
-    if (key === "facebook") {
-      if (!connections?.facebook) return "غير مربوط";
-      if (
-        connections.facebook.authorizationStatus === "needs_reauthorization"
-      ) {
-        return connections.facebook.authorizationReason === "token_invalid"
-          ? "رمز Meta غير صالح أو مرفوض · أعد التفويض"
-          : connections.facebook.authorizationReason === "token_expired"
-            ? "انتهت صلاحية الرمز · أعد التفويض"
-            : "صلاحيات Meta تحتاج إلى تحقق · أعد التفويض";
-      }
-      return `متصل: ${connections.facebook.accountName}`;
-    }
-    if (key === "instagram") {
-      if (connections?.instagram) {
-        if (
-          connections.instagram.authorizationStatus === "needs_reauthorization"
-        ) {
-          return connections.instagram.authorizationReason === "token_invalid"
-            ? "رمز Meta غير صالح أو مرفوض · أعد التفويض"
-            : connections.instagram.authorizationReason === "token_expired"
-              ? "انتهت صلاحية الرمز · أعد التفويض"
-              : "صلاحيات Meta تحتاج إلى تحقق · أعد التفويض";
-        }
-        return `متصل: @${connections.instagram.accountName}`;
-      }
-      return "غير مربوط";
+    if (key === "facebook" || key === "instagram") {
+      const connection = connections?.[key];
+      if (!connection) return "غير مربوط";
+      return connection.authorizationStatus === "needs_reauthorization"
+        ? "يحتاج إعادة تفويض"
+        : "متصل";
     }
     if (key === "whatsapp") {
       if (!connections?.whatsapp) return "غير مربوط";
-      if (isConnected("whatsapp"))
-        return `متصل: ${connections.whatsapp.accountName}`;
+      if (isConnected("whatsapp")) return "متصل";
       if (connections.whatsapp.connectionState === "connecting") {
-        return "جارٍ استعادة اتصال واتساب…";
+        return "جارٍ الاتصال…";
       }
       if (connections.whatsapp.connectionState === "unavailable") {
-        return "الحساب محفوظ · تعذّر التحقق من الاتصال الآن";
+        return "غير متاح";
       }
       if (connections.whatsapp.connectionState === "failed") {
-        return "تعذر إعداد الاتصال · أعد محاولة الربط";
+        return "فشل الاتصال";
       }
       return connections.whatsapp.connectionState === "missing"
-        ? "الحساب محفوظ · نسخة الخادم غير موجودة"
-        : "الحساب محفوظ · يحتاج إلى إعادة الاتصال";
+        ? "غير متاح"
+        : "يحتاج إعادة ربط";
     }
     return "غير مربوط";
+  };
+
+  // Secondary line shown under the source name: account identity or the
+  // reason a connection needs attention. Keeps the status pill short.
+  const sourceDetail = (key: SourceKey): string | null => {
+    if (connectionsQuery.isLoading) return null;
+    if (key === "facebook" || key === "instagram") {
+      const connection = connections?.[key];
+      if (!connection) return null;
+      if (connection.authorizationStatus === "needs_reauthorization") {
+        return metaReauthorizationReason(key);
+      }
+      return key === "facebook"
+        ? `صفحة: ${connection.accountName}`
+        : `@${connection.accountName}`;
+    }
+    if (key === "whatsapp") {
+      if (!connections?.whatsapp) return null;
+      if (isConnected("whatsapp")) {
+        return `الحساب: ${connections.whatsapp.accountName}`;
+      }
+      if (connections.whatsapp.connectionState === "connecting") {
+        return "يتم التحقق من الاتصال تلقائيًا.";
+      }
+      if (connections.whatsapp.connectionState === "unavailable") {
+        return "الحساب محفوظ · تعذّر التحقق من الاتصال الآن.";
+      }
+      if (connections.whatsapp.connectionState === "failed") {
+        return "تعذر إعداد الاتصال · أعد محاولة الربط.";
+      }
+      return connections.whatsapp.connectionState === "missing"
+        ? "الحساب محفوظ · نسخة الخادم غير موجودة."
+        : "الحساب محفوظ · يحتاج إلى إعادة الاتصال.";
+    }
+    return null;
   };
 
   const handlePress = (key: SourceKey) => {
@@ -1489,6 +1528,14 @@ function SourcesContent({
 
   return (
     <Page
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void refreshSources()}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
+        />
+      }
       bottomPadding={
         socialSetupPending && !hasConnectedSocialAccount ? 24 : undefined
       }
@@ -1698,7 +1745,7 @@ function SourcesContent({
         refreshLabel={
           isPublishingAccounts ? "تحديث حالة الحسابات" : "تحديث حالة المصادر"
         }
-        isRefreshing={connectionsQuery.isFetching}
+        isRefreshing={refreshing}
         connections={connections}
         busySources={busySources}
         disconnectingSource={disconnectingSource}
@@ -1711,13 +1758,14 @@ function SourcesContent({
         }
         isConnected={isConnected}
         sourceStatus={sourceStatus}
+        sourceDetail={sourceDetail}
         buttonLabel={buttonLabel}
         onSourceCardPress={handleSourceCardPress}
         onSourceAction={handlePress}
         onOpenWhatsAppSetup={openWhatsAppSetup}
         onConnectWhatsApp={connectWhatsApp}
         onDisconnectWhatsApp={disconnectWhatsApp}
-        onRefresh={() => void connectionsQuery.refetch()}
+        onRefresh={() => void refreshSources()}
       />
 
       {!isPublishingAccounts ? <CsvProductImportCard userId={userId} /> : null}
