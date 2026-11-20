@@ -97,16 +97,6 @@ export function SourcesConnectionsPanel({
           </View>
           <SectionTitle title={sectionTitle} />
         </View>
-        <View
-          style={[
-            styles.sourceCount,
-            { backgroundColor: colors.secondary },
-          ]}
-        >
-          <Text style={[styles.sourceCountText, { color: colors.foreground }]}>
-            {visibleSources.length}
-          </Text>
-        </View>
       </View>
       {readableConnectionError ? (
         <View
@@ -134,6 +124,26 @@ export function SourcesConnectionsPanel({
             <Text style={[styles.error, { color: colors.mutedForeground }]}>
               {readableConnectionError}
             </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إعادة محاولة تحميل حالة المصادر"
+              disabled={isRefreshing}
+              onPress={onRefresh}
+              style={[
+                styles.errorRetry,
+                {
+                  borderColor: colors.destructive,
+                  opacity: isRefreshing ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Icon name="refresh-cw" size={13} color={colors.destructive} />
+              <Text
+                style={[styles.errorRetryLabel, { color: colors.destructive }]}
+              >
+                {isRefreshing ? "جارٍ المحاولة…" : "إعادة المحاولة"}
+              </Text>
+            </Pressable>
           </View>
         </View>
       ) : null}
@@ -437,15 +447,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 12,
   },
-  sourceCount: {
-    minWidth: 28,
-    height: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 14,
-    paddingHorizontal: 8,
-  },
-  sourceCountText: { fontSize: 12, fontWeight: "800" },
   errorPanel: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -532,4 +533,16 @@ const styles = StyleSheet.create({
   },
   disconnectLabel: { fontSize: 11, fontWeight: "700" },
   error: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  errorRetry: {
+    marginTop: 6,
+    alignSelf: "flex-start",
+    minHeight: 34,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  errorRetryLabel: { fontSize: 11, fontWeight: "800" },
 });
