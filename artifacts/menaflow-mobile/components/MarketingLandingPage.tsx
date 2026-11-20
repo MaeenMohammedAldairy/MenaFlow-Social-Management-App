@@ -98,9 +98,22 @@ const steps = [
   },
 ];
 
+const sectionLinks = [
+  { key: 'features', label: 'المزايا' },
+  { key: 'pricing', label: 'الأسعار' },
+  { key: 'faq', label: 'الأسئلة الشائعة' },
+];
+
 export function MarketingLandingPage() {
   const colors = useColors();
   const [openFaq, setOpenFaq] = React.useState<string | null>(null);
+  const scrollRef = React.useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const sectionOffsets = React.useRef<Record<string, number>>({});
+  const scrollToSection = (key: string) => {
+    const offset = sectionOffsets.current[key];
+    if (offset === undefined) return;
+    scrollRef.current?.scrollTo({ y: Math.max(0, offset - 16), animated: true });
+  };
   const { width } = useWindowDimensions();
   const compact = width < 720;
   const showThreeColumns = width >= 980;
@@ -109,6 +122,7 @@ export function MarketingLandingPage() {
   return (
     <View style={[styles.page, { backgroundColor: colors.background }]}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
@@ -180,6 +194,28 @@ export function MarketingLandingPage() {
             </View>
           </View>
 
+          {compact ? null : (
+            <View style={styles.sectionNav}>
+              {sectionLinks.map((link) => (
+                <Pressable
+                  key={link.key}
+                  accessibilityRole="link"
+                  onPress={() => scrollToSection(link.key)}
+                  style={styles.sectionNavLink}
+                >
+                  <Text
+                    style={[
+                      styles.sectionNavText,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    {link.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
           <View
             style={[
               styles.hero,
@@ -197,6 +233,7 @@ export function MarketingLandingPage() {
               </View>
               <Text
                 accessibilityRole="header"
+                aria-level={1}
                 style={[
                   styles.heroTitle,
                   compact && styles.heroTitleCompact,
@@ -352,6 +389,9 @@ export function MarketingLandingPage() {
           <View
             style={[styles.section, compact && styles.sectionCompact]}
             nativeID="features"
+            onLayout={(event) => {
+              sectionOffsets.current["features"] = event.nativeEvent.layout.y;
+            }}
           >
             <SectionHeading
               compact={compact}
@@ -455,6 +495,9 @@ export function MarketingLandingPage() {
           <View
             style={[styles.section, compact && styles.sectionCompact]}
             nativeID="pricing"
+            onLayout={(event) => {
+              sectionOffsets.current["pricing"] = event.nativeEvent.layout.y;
+            }}
           >
             <SectionHeading
               compact={compact}
@@ -559,6 +602,9 @@ export function MarketingLandingPage() {
           <View
             style={[styles.section, compact && styles.sectionCompact]}
             nativeID="faq"
+            onLayout={(event) => {
+              sectionOffsets.current["faq"] = event.nativeEvent.layout.y;
+            }}
           >
             <SectionHeading
               compact={compact}
@@ -689,6 +735,7 @@ function SectionHeading({
       </Text>
       <Text
         accessibilityRole="header"
+        aria-level={2}
         style={[
           styles.sectionTitle,
           compact && styles.sectionTitleCompact,
@@ -711,6 +758,14 @@ function SectionHeading({
 }
 
 const styles = StyleSheet.create({
+  sectionNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingTop: 10,
+  },
+  sectionNavLink: { paddingHorizontal: 8, paddingVertical: 6 },
+  sectionNavText: { fontSize: 14, fontWeight: "600" },
   faqList: { gap: 10, width: "100%" },
   faqItem: {
     borderWidth: 1,
