@@ -33,6 +33,11 @@ import {
 } from "@/components/CairoTypography";
 import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
+import {
+  FilterBar,
+  FilterChipGroup,
+  FilterSheet,
+} from "@/components/FilterBar";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { useColors } from "@/hooks/useColors";
 import {
@@ -218,6 +223,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
     ? params.customerName[0]
     : params.customerName;
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(Boolean(initialSourceId));
   const [customerName, setCustomerName] = useState(initialCustomerName ?? "");
@@ -483,6 +489,18 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
 
   return (
     <Page scroll={false}>
+      <FilterBar
+        activeCount={statusFilter === "all" ? 0 : 1}
+        onOpenFilters={() => setFiltersOpen(true)}
+      >
+        <CairoTextInput
+          accessibilityLabel="ابحث بالعميل أو رقم الطلب"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="ابحث بالعميل أو رقم الطلب"
+          style={[styles.searchInput, { color: colors.foreground }]}
+        />
+      </FilterBar>
       <Modal
         visible={Boolean(deliveryEditOrder)}
         transparent
@@ -1128,59 +1146,6 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
             </View>
           ) : null}
         </View>
-        <View
-          style={[
-            styles.searchBox,
-            { backgroundColor: colors.background, borderColor: colors.border },
-          ]}
-        >
-          <Icon name="search" size={17} color={colors.mutedForeground} />
-          <CairoTextInput
-            accessibilityLabel="ابحث بالعميل أو رقم الطلب"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="ابحث بالعميل أو رقم الطلب"
-            style={[styles.searchInput, { color: colors.foreground }]}
-          />
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.statusFilters}
-        >
-          {orderStatuses.map((status) => {
-            const selected = statusFilter === status.id;
-            return (
-              <Pressable
-                key={status.id}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                onPress={() => setStatusFilter(status.id)}
-                style={[
-                  styles.statusFilter,
-                  {
-                    backgroundColor: selected
-                      ? colors.primary
-                      : colors.background,
-                    borderColor: selected ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={{
-                    color: selected
-                      ? colors.primaryForeground
-                      : colors.foreground,
-                    fontSize: 12,
-                    fontWeight: "700",
-                  }}
-                >
-                  {status.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
       </Panel>
           </View>
         }
@@ -1281,6 +1246,21 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           />
         }
       />
+      <FilterSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onClear={() => setStatusFilter("all")}
+      >
+        <FilterChipGroup
+          title="حالة الطلب"
+          selected={statusFilter}
+          onSelect={(key) => setStatusFilter(key as OrderStatus | "all")}
+          options={orderStatuses.map((status) => ({
+            key: status.id,
+            label: status.label,
+          }))}
+        />
+      </FilterSheet>
     </Page>
   );
 
@@ -1718,14 +1698,6 @@ const styles = StyleSheet.create({
   },
   totalLabel: { fontSize: 13, fontWeight: "800" },
   totalValue: { fontSize: 15, fontWeight: "900" },
-  statusFilters: { flexDirection: "row", gap: 7, paddingVertical: 2 },
-  statusFilter: {
-    minHeight: 34,
-    justifyContent: "center",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 11,
-  },
   countBadge: {
     minWidth: 27,
     height: 27,

@@ -1,7 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -13,6 +12,11 @@ import { useQuery } from "@tanstack/react-query";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
+import {
+  FilterBar,
+  FilterChipGroup,
+  FilterSheet,
+} from "@/components/FilterBar";
 import { useColors } from "@/hooks/useColors";
 import {
   useStudio,
@@ -357,87 +361,32 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
 
   return (
     <Page scroll={false}>
-      <View style={styles.filterBar}>
-        <View
-          style={[
-            styles.searchRow,
-            {
-              backgroundColor: colors.background,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <Icon name="search" size={17} color={colors.mutedForeground} />
-          <TextInput
-            accessibilityLabel="ابحث في المنشورات"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="ابحث في المنشورات"
-            placeholderTextColor={colors.mutedForeground}
-            style={[styles.searchInput, { color: colors.foreground }]}
-            textAlign="right"
-            returnKeyType="search"
-          />
-          {search ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="مسح البحث"
-              onPress={() => setSearch("")}
-              style={styles.clearSearchButton}
-              hitSlop={8}
-            >
-              <Icon name="x" size={16} color={colors.mutedForeground} />
-            </Pressable>
-          ) : null}
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={
-            activeFilterCount > 0
-              ? `التصفية، ${activeFilterCount} مطبقة`
-              : "التصفية"
-          }
-          accessibilityState={{ expanded: filtersOpen }}
-          onPress={() => setFiltersOpen(true)}
-          style={({ pressed }) => [
-            styles.filterBarButton,
-            {
-              backgroundColor:
-                activeFilterCount > 0 ? colors.accent : colors.card,
-              borderColor: colors.border,
-              opacity: pressed ? 0.8 : 1,
-            },
-          ]}
-        >
-          <Icon
-            name="filter"
-            size={17}
-            color={
-              activeFilterCount > 0 ? colors.primary : colors.mutedForeground
-            }
-          />
-          <Text style={[styles.filterLabel, { color: colors.foreground }]}>
-            تصفية
-          </Text>
-          {activeFilterCount > 0 ? (
-            <View
-              style={[
-                styles.activeFilterBadge,
-                { backgroundColor: colors.primary },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.activeFilterBadgeText,
-                  { color: colors.primaryForeground },
-                ]}
-              >
-                {activeFilterCount}
-              </Text>
-            </View>
-          ) : null}
-        </Pressable>
-      </View>
+      <FilterBar
+        activeCount={activeFilterCount}
+        onOpenFilters={() => setFiltersOpen(true)}
+      >
+        <TextInput
+          accessibilityLabel="ابحث في المنشورات"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="ابحث في المنشورات"
+          placeholderTextColor={colors.mutedForeground}
+          style={[styles.searchInput, { color: colors.foreground }]}
+          textAlign="right"
+          returnKeyType="search"
+        />
+        {search ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="مسح البحث"
+            onPress={() => setSearch("")}
+            style={styles.clearSearchButton}
+            hitSlop={8}
+          >
+            <Icon name="x" size={16} color={colors.mutedForeground} />
+          </Pressable>
+        ) : null}
+      </FilterBar>
       <ContentPostList
         ready={ready}
         header={
@@ -707,185 +656,80 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
         retryConfirmationVisible={retryConfirmationVisible}
         setRetryConfirmationVisible={setRetryConfirmationVisible}
       />
-      <Modal
+      <FilterSheet
         visible={filtersOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setFiltersOpen(false)}
+        onClose={() => setFiltersOpen(false)}
+        onClear={clearContentFilters}
       >
-        <View style={styles.filtersSheetWrap}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="إغلاق التصفية"
-            onPress={() => setFiltersOpen(false)}
-            style={styles.filtersBackdrop}
-          />
-          <View
-            style={[
-              styles.filtersSheet,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.filtersSheetHeader}>
-              <Text
-                style={[styles.filtersSheetTitle, { color: colors.foreground }]}
-              >
-                التصفية
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                onPress={clearContentFilters}
-                hitSlop={8}
-              >
-                <Text style={[styles.reviewAction, { color: colors.primary }]}>
-                  مسح الكل
-                </Text>
-              </Pressable>
-            </View>
-            <ScrollView
-              contentContainerStyle={styles.filtersSheetBody}
-              showsVerticalScrollIndicator={false}
-            >
-              <FilterChipGroup
-                title="بحاجة إلى متابعة"
-                selected={filter}
-                onSelect={(key) => setFilter(key as PostStatus | "all")}
-                options={[
-                  {
-                    key: "review",
-                    label: "بانتظار المراجعة",
-                    count: statusCounts.review ?? 0,
-                  },
-                  {
-                    key: "failed",
-                    label: "فشل النشر",
-                    count: statusCounts.failed ?? 0,
-                  },
-                  {
-                    key: "scheduled",
-                    label: "مؤجلة (دون موعد)",
-                    count: statusCounts.scheduled ?? 0,
-                  },
-                ]}
-              />
-              <FilterChipGroup
-                title="الحالة"
-                selected={filter}
-                onSelect={(key) => setFilter(key as PostStatus | "all")}
-                options={[
-                  { key: "all", label: "الكل" },
-                  { key: "draft", label: "مسودات" },
-                  { key: "approved", label: "معتمد للنشر التلقائي" },
-                  { key: "published", label: "تم النشر" },
-                  { key: "publishing", label: "قيد الإرسال" },
-                ]}
-              />
-              <FilterChipGroup
-                title="المنصة"
-                selected={platformFilter}
-                onSelect={(key) =>
-                  setPlatformFilter(key as "all" | "facebook" | "instagram")
-                }
-                options={[
-                  { key: "all", label: "كل المنصات" },
-                  { key: "facebook", label: "فيسبوك" },
-                  { key: "instagram", label: "إنستغرام" },
-                ]}
-              />
-              <FilterChipGroup
-                title="الفترة"
-                selected={dateFilter}
-                onSelect={(key) => setDateFilter(key as "all" | "7" | "30")}
-                options={[
-                  { key: "all", label: "كل التواريخ" },
-                  { key: "7", label: "7 أيام" },
-                  { key: "30", label: "30 يوماً" },
-                ]}
-              />
-              <FilterChipGroup
-                title="الترتيب"
-                selected={sortMode}
-                onSelect={(key) =>
-                  setSortMode(key as "priority" | "newest" | "oldest")
-                }
-                options={[
-                  { key: "priority", label: "الأولوية" },
-                  { key: "newest", label: "الأحدث" },
-                  { key: "oldest", label: "الأقدم" },
-                ]}
-              />
-            </ScrollView>
-            <ActionButton
-              label="عرض النتائج"
-              icon="check"
-              onPress={() => setFiltersOpen(false)}
-            />
-          </View>
-        </View>
-      </Modal>
+        <FilterChipGroup
+          title="بحاجة إلى متابعة"
+          selected={filter}
+          onSelect={(key) => setFilter(key as PostStatus | "all")}
+          options={[
+            {
+              key: "review",
+              label: "بانتظار المراجعة",
+              count: statusCounts.review ?? 0,
+            },
+            {
+              key: "failed",
+              label: "فشل النشر",
+              count: statusCounts.failed ?? 0,
+            },
+            {
+              key: "scheduled",
+              label: "مؤجلة (دون موعد)",
+              count: statusCounts.scheduled ?? 0,
+            },
+          ]}
+        />
+        <FilterChipGroup
+          title="الحالة"
+          selected={filter}
+          onSelect={(key) => setFilter(key as PostStatus | "all")}
+          options={[
+            { key: "all", label: "الكل" },
+            { key: "draft", label: "مسودات" },
+            { key: "approved", label: "معتمد للنشر التلقائي" },
+            { key: "published", label: "تم النشر" },
+            { key: "publishing", label: "قيد الإرسال" },
+          ]}
+        />
+        <FilterChipGroup
+          title="المنصة"
+          selected={platformFilter}
+          onSelect={(key) =>
+            setPlatformFilter(key as "all" | "facebook" | "instagram")
+          }
+          options={[
+            { key: "all", label: "كل المنصات" },
+            { key: "facebook", label: "فيسبوك" },
+            { key: "instagram", label: "إنستغرام" },
+          ]}
+        />
+        <FilterChipGroup
+          title="الفترة"
+          selected={dateFilter}
+          onSelect={(key) => setDateFilter(key as "all" | "7" | "30")}
+          options={[
+            { key: "all", label: "كل التواريخ" },
+            { key: "7", label: "7 أيام" },
+            { key: "30", label: "30 يوماً" },
+          ]}
+        />
+        <FilterChipGroup
+          title="الترتيب"
+          selected={sortMode}
+          onSelect={(key) =>
+            setSortMode(key as "priority" | "newest" | "oldest")
+          }
+          options={[
+            { key: "priority", label: "الأولوية" },
+            { key: "newest", label: "الأحدث" },
+            { key: "oldest", label: "الأقدم" },
+          ]}
+        />
+      </FilterSheet>
     </Page>
-  );
-}
-
-function FilterChipGroup({
-  title,
-  options,
-  selected,
-  onSelect,
-}: {
-  title: string;
-  options: Array<{ key: string; label: string; count?: number }>;
-  selected: string;
-  onSelect: (key: string) => void;
-}) {
-  const colors = useColors();
-  return (
-    <View style={styles.filterGroup}>
-      <Text style={[styles.filterGroupLabel, { color: colors.mutedForeground }]}>
-        {title}
-      </Text>
-      <View style={styles.filterRow}>
-        {options.map((option) => {
-          const isSelected = option.key === selected;
-          return (
-            <Pressable
-              key={option.key}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isSelected }}
-              accessibilityLabel={
-                option.count === undefined
-                  ? option.label
-                  : `${option.label}: ${option.count}`
-              }
-              onPress={() => onSelect(option.key)}
-              style={({ pressed }) => [
-                styles.filterChip,
-                {
-                  backgroundColor: isSelected
-                    ? colors.primary
-                    : colors.secondary,
-                  opacity: pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.filterLabel,
-                  {
-                    color: isSelected
-                      ? colors.primaryForeground
-                      : colors.mutedForeground,
-                  },
-                ]}
-              >
-                {option.count === undefined
-                  ? option.label
-                  : `${option.label} · ${option.count}`}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
   );
 }

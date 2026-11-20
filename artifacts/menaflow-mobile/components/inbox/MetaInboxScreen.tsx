@@ -27,7 +27,12 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useColors } from "@/hooks/useColors";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
-import { InboxPlatformTabs, type InboxPlatform } from "@/components/inbox/InboxPlatformTabs";
+import type { InboxPlatform } from "@/components/inbox/InboxPlatformTabs";
+import {
+  FilterBar,
+  FilterChipGroup,
+  FilterSheet,
+} from "@/components/FilterBar";
 import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 import {
   getMetaAutoReplySettings,
@@ -292,6 +297,21 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
     setFilter("all");
     router.setParams({ platform: nextPlatform });
   };
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterCounts = filters.reduce<Record<string, number>>((counts, option) => {
+    counts[option.key] =
+      loadedItems.filter(
+        (item) =>
+          (platform === "all" || item.platform === platform) &&
+          (option.key === "all" || item.kind === option.key),
+      ).length +
+      (platform === "all" && option.key !== "comment"
+        ? whatsappConversations.length
+        : 0);
+    return counts;
+  }, {});
+  const activeFilterCount =
+    (filter !== "all" ? 1 : 0) + (platform !== "all" ? 1 : 0);
   const visibleMetaPlatforms: MetaInboxPlatform[] =
     platform === "all" ? ["facebook", "instagram"] : [platform];
 
@@ -506,6 +526,30 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
 
   return (
     <Page scroll={false}>
+      <FilterBar
+        activeCount={activeFilterCount}
+        onOpenFilters={() => setFiltersOpen(true)}
+      >
+        <TextInput
+          accessibilityLabel="ابحث في الرسائل والتعليقات"
+          value={search}
+          onChangeText={setSearch}
+          placeholder="ابحث بالاسم أو نص الرسالة"
+          placeholderTextColor={colors.mutedForeground}
+          returnKeyType="search"
+          style={[styles.searchInput, { color: colors.foreground }]}
+        />
+        {search ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="مسح البحث"
+            onPress={() => setSearch("")}
+            hitSlop={8}
+          >
+            <Icon name="x" size={17} color={colors.mutedForeground} />
+          </Pressable>
+        ) : null}
+      </FilterBar>
       <FlatList
         data={rows}
         keyExtractor={(row) => row.key}
@@ -526,11 +570,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
             />
           }
         />
-        <InboxPlatformTabs
-          activePlatform={platform}
-          onSelect={selectPlatform}
-        />
-
         <Panel style={styles.automationSummary}>
           <View style={styles.automationHeading}>
             <Icon name="zap" size={15} color={colors.primary} />
@@ -625,96 +664,11 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
       <Panel style={styles.inboxToolbar}>
         <View style={styles.toolbarHeading}>
           <Text style={[styles.toolbarTitle, { color: colors.foreground }]}>
-            نوع التفاعل
+            المحادثات
           </Text>
           <Text style={[styles.resultCount, { color: colors.mutedForeground }]}>
             {formatArabicNumber(rows.length)} محادثة
           </Text>
-        </View>
-        <View
-          style={[
-            styles.searchRow,
-            { borderColor: colors.border, backgroundColor: colors.background },
-          ]}
-        >
-          <Icon name="search" size={18} color={colors.mutedForeground} />
-          <TextInput
-            accessibilityLabel="ابحث في الرسائل والتعليقات"
-            value={search}
-            onChangeText={setSearch}
-            placeholder="ابحث بالاسم أو نص الرسالة"
-            placeholderTextColor={colors.mutedForeground}
-            returnKeyType="search"
-            style={[styles.searchInput, { color: colors.foreground }]}
-          />
-          {search ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="مسح البحث"
-              onPress={() => setSearch("")}
-              hitSlop={8}
-            >
-              <Icon name="x" size={17} color={colors.mutedForeground} />
-            </Pressable>
-          ) : null}
-        </View>
-        <View style={styles.filters}>
-          {filters.map((option) => {
-            const selected = filter === option.key;
-            const count =
-              loadedItems.filter((item) => {
-                return (
-                  (platform === "all" || item.platform === platform) &&
-                  (option.key === "all" || item.kind === option.key)
-                );
-              }).length +
-              (platform === "all" && option.key !== "comment"
-                ? whatsappConversations.length
-                : 0);
-            return (
-              <Pressable
-                key={option.key}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => setFilter(option.key)}
-                style={({ pressed }) => [
-                  styles.filter,
-                  {
-                    backgroundColor: selected
-                      ? colors.primary
-                      : colors.background,
-                    borderColor: selected ? colors.primary : colors.border,
-                    opacity: pressed ? 0.78 : 1,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.filterLabel,
-                    {
-                      color: selected
-                        ? colors.primaryForeground
-                        : colors.foreground,
-                    },
-                  ]}
-                >
-                  {option.label}
-                </Text>
-                <Text
-                  style={[
-                    styles.filterCount,
-                    {
-                      color: selected
-                        ? colors.primaryForeground
-                        : colors.mutedForeground,
-                    },
-                  ]}
-                >
-                  {formatArabicNumber(count)}
-                </Text>
-              </Pressable>
-            );
-          })}
         </View>
         {inbox.isError ? (
           <Panel style={[styles.loadError, { borderColor: colors.border }]}>
@@ -857,6 +811,35 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
       />
+      <FilterSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onClear={() => {
+          setFilter("all");
+          selectPlatform("all");
+        }}
+      >
+        <FilterChipGroup
+          title="نوع التفاعل"
+          selected={filter}
+          onSelect={(key) => setFilter(key as InboxFilter)}
+          options={filters.map((option) => ({
+            key: option.key,
+            label: option.label,
+            count: filterCounts[option.key] ?? 0,
+          }))}
+        />
+        <FilterChipGroup
+          title="المنصة"
+          selected={platform}
+          onSelect={(key) => selectPlatform(key as InboxPlatform)}
+          options={[
+            { key: "all", label: "كل المنصات" },
+            { key: "facebook", label: "فيسبوك" },
+            { key: "instagram", label: "إنستغرام" },
+          ]}
+        />
+      </FilterSheet>
     </Page>
   );
 }
@@ -919,18 +902,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   toolbarTitle: { fontSize: 12, fontWeight: "800", textAlign: "right" },
-  filters: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  filter: {
-    borderWidth: 1,
-    borderRadius: 12,
-    minHeight: 40,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 11,
-  },
-  filterLabel: { fontSize: 12, fontWeight: "700" },
-  filterCount: { fontSize: 12, fontWeight: "700" },
   toolbarFooter: {
     flexDirection: "row",
     alignItems: "center",
@@ -938,15 +909,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   resultCount: { fontSize: 12, fontWeight: "700" },
-  searchRow: {
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-  },
   searchInput: {
     flex: 1,
     minHeight: 46,
