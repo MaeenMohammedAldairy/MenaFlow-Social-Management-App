@@ -340,6 +340,9 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
           </View>
           <View style={styles.conversationHeading}>
             <View style={styles.conversationTopLine}>
+              {platform === "all" ? (
+                <Icon name="whatsapp" size={15} color={colors.primary} />
+              ) : null}
               <Text
                 style={[styles.conversationTitle, { color: colors.foreground }]}
                 numberOfLines={1}
@@ -359,13 +362,6 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                 {conversation.preview || "رسالة بدون نص"}
               </Text>
             </View>
-            {platform === "all" ? (
-              <View style={styles.conversationBottomLine}>
-                <View style={[styles.platformBadge, { backgroundColor: colors.accent }]}>
-                  <Text style={[styles.platformLabel, { color: colors.primary }]}>WhatsApp</Text>
-                </View>
-              </View>
-            ) : null}
           </View>
           <Icon name="chevron-left" size={19} color={colors.primary} />
         </Pressable>

@@ -442,9 +442,24 @@ export function PageTitle({
   );
 }
 
-export function Panel({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+export function Panel({
+  children,
+  style,
+  accessibilityLabel,
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
+}) {
   const colors = useColors();
-  return <View style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.border }, style]}>{children}</View>;
+  return (
+    <View
+      accessibilityLabel={accessibilityLabel}
+      style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.border }, style]}
+    >
+      {children}
+    </View>
+  );
 }
 
 export function SectionTitle({ title, action }: { title: string; action?: React.ReactNode }) {
