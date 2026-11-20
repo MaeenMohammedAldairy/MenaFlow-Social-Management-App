@@ -56,6 +56,7 @@ import {
   StepBadge,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
+import { markSetupCompleted } from "@/lib/setup-reminders";
 import { useStudio } from "@/context/StudioContext";
 import {
   Redirect,
@@ -427,6 +428,8 @@ function SourcesContent({
     mutationFn: markSocialAccountsSetupComplete,
     onSuccess: (status) => {
       queryClient.setQueryData(getOnboardingStatusQueryKey(userId), status);
+      // The dashboard shows a one-time confirmation for this flag.
+      void markSetupCompleted();
       router.replace("/(tabs)");
     },
   });
@@ -1737,6 +1740,19 @@ function SourcesContent({
         </Panel>
       )}
 
+      {isPublishingAccounts ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="متابعة الإعداد لاحقًا والانتقال إلى لوحة التحكم"
+          onPress={() => router.replace("/(tabs)")}
+          style={styles.onboardingSkip}
+        >
+          <Text style={[styles.onboardingSkipText, { color: colors.mutedForeground }]}>
+            أكمل لاحقًا
+          </Text>
+        </Pressable>
+      ) : null}
+
       {onboardingQuery.isError && (
         <Panel style={styles.onboardingActions}>
           <Text style={[styles.error, { color: colors.destructive }]}>
@@ -2306,6 +2322,8 @@ const styles = StyleSheet.create({
   tabDot: { width: 7, height: 7, borderRadius: 4 },
   syncEmptyPanel: { gap: 12, alignItems: "stretch" },
   onboardingActions: { alignItems: "stretch", gap: 12, paddingTop: 2 },
+  onboardingSkip: { alignSelf: "center", paddingVertical: 8, paddingHorizontal: 12 },
+  onboardingSkipText: { fontSize: 13, fontWeight: "600" },
   onboardingContinue: {
     minHeight: 46,
     borderRadius: 14,
