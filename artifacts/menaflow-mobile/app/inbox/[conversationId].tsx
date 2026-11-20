@@ -1,5 +1,11 @@
 import React, { useState } from "react";
-import { RefreshControl, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  View,
+} from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
@@ -173,6 +179,18 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
           tintColor={colors.primary}
         />
       }
+      scrollEventThrottle={16}
+      onScroll={(event) => {
+        const { contentOffset, contentSize, layoutMeasurement } =
+          event.nativeEvent;
+        // Anything above the top means the reader has started moving the thread.
+        if (contentOffset.y <= 0) return;
+        if (olderError || layoutMeasurement.height <= 0) return;
+        const distanceToEnd =
+          contentSize.height - (contentOffset.y + layoutMeasurement.height);
+        if (distanceToEnd > 240) return;
+        void loadOlder();
+      }}
     >
       <BrandHeader />
       <PageTitle
@@ -379,20 +397,38 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
             ))}
           </View>
           {olderError ? (
-            <Text
-              accessibilityRole="alert"
-              style={{ color: colors.destructive, textAlign: "right" }}
-            >
-              {olderError}
-            </Text>
-          ) : null}
-          {canLoadOlder ? (
-            <ActionButton
-              label={loadingOlder ? "جارٍ تحميل الأقدم..." : "تحميل عناصر أقدم"}
-              icon={loadingOlder ? "clock" : "chevron-down"}
-              disabled={loadingOlder}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إعادة محاولة تحميل رسائل أقدم"
               onPress={() => void loadOlder()}
-            />
+              style={styles.loadOlderRetry}
+            >
+              <Text
+                accessibilityRole="alert"
+                style={[
+                  styles.loadOlderRetryText,
+                  { color: colors.destructive },
+                ]}
+              >
+                {`${olderError} — إعادة المحاولة`}
+              </Text>
+            </Pressable>
+          ) : canLoadOlder && loadingOlder ? (
+            <View
+              accessible
+              accessibilityLabel="جارٍ تحميل رسائل أقدم"
+              style={styles.loadOlderLoading}
+            >
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text
+                style={[
+                  styles.loadOlderLoadingText,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                جارٍ تحميل المزيد…
+              </Text>
+            </View>
           ) : null}
         </View>
       )}
@@ -405,6 +441,16 @@ const styles = StyleSheet.create({
   retryPanel: { gap: 10, padding: 14 },
   notice: { textAlign: "center", paddingVertical: 16 },
   thread: { gap: 12 },
+  loadOlderLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+  },
+  loadOlderLoadingText: { fontSize: 12, fontWeight: "700" },
+  loadOlderRetry: { alignItems: "center", paddingVertical: 14 },
+  loadOlderRetryText: { fontSize: 12, fontWeight: "700", textAlign: "center" },
   summary: { gap: 10, padding: 14 },
   summaryTop: { flexDirection: "row", alignItems: "center", gap: 10 },
   summaryCopy: { flex: 1, gap: 3 },

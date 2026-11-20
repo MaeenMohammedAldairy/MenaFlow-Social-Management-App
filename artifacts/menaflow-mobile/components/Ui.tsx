@@ -33,6 +33,7 @@ export function Page({
   refreshControl,
   bottomPadding,
   onScroll,
+  scrollEventThrottle,
   contentMaxWidth,
 }: {
   children: React.ReactNode;
@@ -40,6 +41,8 @@ export function Page({
   refreshControl?: React.ReactElement<RefreshControlProps>;
   bottomPadding?: number;
   onScroll?: ScrollViewProps['onScroll'];
+  /** Override for screens that read the offset to page in more content. */
+  scrollEventThrottle?: number;
   contentMaxWidth?: number;
 }) {
   const colors = useColors();
@@ -82,7 +85,9 @@ export function Page({
         <ScrollView
           refreshControl={refreshControl}
           onScroll={onScroll}
-          scrollEventThrottle={onScroll ? 250 : undefined}
+          scrollEventThrottle={
+            scrollEventThrottle ?? (onScroll ? 250 : undefined)
+          }
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets
           keyboardDismissMode="on-drag"
