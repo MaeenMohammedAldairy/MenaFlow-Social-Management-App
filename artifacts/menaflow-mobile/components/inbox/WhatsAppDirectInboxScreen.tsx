@@ -419,29 +419,29 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
         </>
       ) : (
         <>
-      <View style={styles.inboxHeader}>
-        <BrandHeader
-          title="المحادثات"
-          action={
-            <IconButton
-              icon="settings"
-              label="إعدادات الرد الآلي"
-              color={colors.primary}
-              onPress={() => router.push("/inbox/reply-settings")}
-            />
-          }
-        />
-        <InboxPlatformTabs
-          activePlatform="whatsapp"
-          onSelect={(platform) => {
-            if (platform === "whatsapp") return;
-            router.replace({
-              pathname: "/(tabs)/inbox",
-              params: { platform },
-            });
-          }}
-        />
-      </View>
+        <View style={styles.inboxHeader}>
+          <BrandHeader
+            title="المحادثات"
+            action={
+              <IconButton
+                icon="settings"
+                label="إعدادات الرد الآلي"
+                color={colors.primary}
+                onPress={() => router.push("/inbox/reply-settings")}
+              />
+            }
+          />
+          <InboxPlatformTabs
+            activePlatform="whatsapp"
+            onSelect={(platform) => {
+              if (platform === "whatsapp") return;
+              router.replace({
+                pathname: "/(tabs)/inbox",
+                params: { platform },
+              });
+            }}
+          />
+        </View>
 
         <Panel style={styles.inboxPanel}>
           <View style={styles.listHeading}>
