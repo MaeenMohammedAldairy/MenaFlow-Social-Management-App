@@ -462,9 +462,11 @@ export function MarketingLandingPage() {
                   style={[
                     styles.stepCard,
                     compact && styles.stepCardCompact,
-                    compact || !showThreeColumns
-                      ? styles.halfWidth
-                      : styles.thirdWidth,
+                    compact
+                      ? styles.fullWidth
+                      : showThreeColumns
+                        ? styles.thirdWidth
+                        : styles.halfWidth,
                     {
                       backgroundColor: colors.card,
                       borderColor: colors.border,

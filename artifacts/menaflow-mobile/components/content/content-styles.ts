@@ -116,11 +116,10 @@ export const styles = StyleSheet.create({
   },
   autoPublishChip: {
     maxWidth: 190,
-    minHeight: 28,
+    minHeight: 30,
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 8,
   },
@@ -128,8 +127,10 @@ export const styles = StyleSheet.create({
   resultsSummary: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    minHeight: 36,
+    flexWrap: "wrap",
+    justifyContent: "flex-start",
+    gap: 10,
+    minHeight: 32,
   },
   clearFiltersButton: {
     minHeight: 40,

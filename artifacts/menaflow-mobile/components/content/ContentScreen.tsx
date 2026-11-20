@@ -492,7 +492,6 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
               styles.autoPublishChip,
               {
                 backgroundColor: autoPublish ? colors.accent : "transparent",
-                borderColor: colors.border,
                 opacity: pressed ? 0.8 : 1,
               },
             ]}

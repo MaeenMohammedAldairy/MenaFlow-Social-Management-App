@@ -38,7 +38,6 @@ import {
   BrandHeader,
   EmptyState,
   Page,
-  PageTitle,
   Panel,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
@@ -950,70 +949,62 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           />
         }
       >
-        <BrandHeader />
-        <View style={styles.catalogIntro}>
-          <PageTitle
-            title="كتالوج المنتجات"
-            subtitle="إدارة منتجاتك ومسوداتك"
-            back={
-              returnTo === "settings"
-                ? {
-                    href: "/(tabs)/more/settings",
-                    label: "العودة إلى الإعدادات",
-                  }
-                : undefined
-            }
-            action={
-              <View style={styles.headerActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="إضافة منتج"
-                  onPress={() =>
-                    openEditor({ id: null, value: emptyDraft, mediaPreviews: [] })
-                  }
-                  style={({ pressed }) => [
-                    styles.addButton,
-                    {
-                      backgroundColor: colors.primary,
-                      opacity: pressed ? 0.84 : 1,
-                      transform: [{ scale: pressed ? 0.98 : 1 }],
-                    },
-                  ]}
+        <BrandHeader
+          title="المنتجات"
+          back={
+            returnTo === "settings"
+              ? {
+                  href: "/(tabs)/more/settings",
+                  label: "العودة إلى الإعدادات",
+                }
+              : undefined
+          }
+          action={
+            <>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="إضافة منتج"
+                onPress={() =>
+                  openEditor({ id: null, value: emptyDraft, mediaPreviews: [] })
+                }
+                style={({ pressed }) => [
+                  styles.addButton,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed ? 0.84 : 1,
+                  },
+                ]}
+              >
+                <Icon name="plus" size={16} color={colors.primaryForeground} />
+                <Text
+                  style={{
+                    color: colors.primaryForeground,
+                    fontWeight: "700",
+                    fontSize: 12,
+                  }}
                 >
-                  <Icon name="plus" size={17} color={colors.primaryForeground} />
-                  <Text
-                    style={{
-                      color: colors.primaryForeground,
-                      fontWeight: "700",
-                    }}
-                  >
-                    إضافة منتج
-                  </Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="استيراد المنتجات من ملف CSV"
-                  accessibilityHint="يفتح نافذة استيراد منتجات متعددة كمسودات للمراجعة"
-                  onPress={() => setCsvImportVisible(true)}
-                  style={({ pressed }) => [
-                    styles.addButton,
-                    {
-                      backgroundColor: colors.card,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      opacity: pressed ? 0.84 : 1,
-                    },
-                  ]}
-                >
-                  <Icon name="file-text" size={16} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontWeight: "700" }}>
-                    CSV
-                  </Text>
-                </Pressable>
-              </View>
-            }
-          />
-        </View>
+                  إضافة منتج
+                </Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="استيراد المنتجات من ملف CSV"
+                accessibilityHint="يفتح نافذة استيراد منتجات متعددة كمسودات للمراجعة"
+                onPress={() => setCsvImportVisible(true)}
+                style={({ pressed }) => [
+                  styles.headerIconAction,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                    opacity: pressed ? 0.84 : 1,
+                  },
+                ]}
+              >
+                <Icon name="file-text" size={17} color={colors.primary} />
+              </Pressable>
+            </>
+          }
+        />
         <View
           accessibilityLabel="ملخص حالة كتالوج المنتجات"
           style={styles.catalogOverview}
@@ -3709,7 +3700,6 @@ function DropdownField({
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  catalogIntro: { gap: 0, padding: 0 },
   catalogOverview: {
     flexDirection: "row",
     gap: 8,
@@ -3758,6 +3748,14 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     gap: 8,
     flexWrap: "wrap",
+  },
+  headerIconAction: {
+    width: 38,
+    height: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: 12,
   },
   addButton: {
     minHeight: 44,
