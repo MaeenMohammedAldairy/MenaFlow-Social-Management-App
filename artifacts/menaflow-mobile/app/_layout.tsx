@@ -372,6 +372,8 @@ function AuthenticatedAppNavigator() {
       pathname.endsWith("/connect-accounts") ||
       pathname.endsWith("/more/sources") ||
       pathname.endsWith("/more/accounts") ||
+      pathname.endsWith("/more/channels") ||
+      pathname.endsWith("/inbox/reply-settings") ||
       pathname.endsWith("/whatsapp-setup");
 
     if (!onboarding.data.completed && !onOnboarding) {

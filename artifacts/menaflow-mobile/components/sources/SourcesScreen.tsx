@@ -862,8 +862,11 @@ function SourcesContent({
     setWhatsappSetupError("");
     setWhatsappSetupInitialized(false);
     router.push({
-      pathname: "/whatsapp-setup",
-      params: includeWhatsApp ? { returnTo: "connect-accounts" } : undefined,
+      pathname: "/inbox/reply-settings",
+      params: {
+        tab: "whatsapp",
+        ...(includeWhatsApp ? { returnTo: "connect-accounts" } : {}),
+      },
     });
   };
 

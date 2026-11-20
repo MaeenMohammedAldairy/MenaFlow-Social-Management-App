@@ -116,8 +116,11 @@ function readinessMessage(
 
 export function MetaAutoReplySettingsPanel({
   userId,
+  onOpenWhatsApp,
 }: {
   userId: string | null;
+  /** When the panel sits inside the tabbed settings screen, switch tabs instead of navigating. */
+  onOpenWhatsApp?: () => void;
 }) {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -352,7 +355,14 @@ export function MetaAutoReplySettingsPanel({
     }
     setError("");
     setIsModalOpen(false);
-    router.push({ pathname: "/whatsapp-setup", params: { returnTo: "inbox" } });
+    if (onOpenWhatsApp) {
+      onOpenWhatsApp();
+      return;
+    }
+    router.push({
+      pathname: "/inbox/reply-settings",
+      params: { tab: "whatsapp" },
+    });
   };
 
   return (
