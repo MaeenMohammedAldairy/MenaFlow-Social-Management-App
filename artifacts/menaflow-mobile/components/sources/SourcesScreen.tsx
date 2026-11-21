@@ -857,16 +857,12 @@ function SourcesContent({
     }
   };
 
+  // The group picker lives here now, not on the reply screen, so the account
+  // and group buttons open the setup sheet in place instead of navigating.
   const openWhatsAppSetup = () => {
     setWhatsappSetupError("");
     setWhatsappSetupInitialized(false);
-    router.push({
-      pathname: "/inbox/reply-settings",
-      params: {
-        channel: "whatsapp",
-        ...(includeWhatsApp ? { returnTo: "connect-accounts" } : {}),
-      },
-    });
+    setWhatsappSetupOpen(true);
   };
 
   const openGroupPicker = () => {

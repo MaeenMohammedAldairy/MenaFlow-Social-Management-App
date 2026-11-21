@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   getGetSocialConnectionsQueryKey,
   getSocialConnections,
@@ -115,13 +115,10 @@ function readinessMessage(
 export function MetaAutoReplySettingsPanel({
   userId,
   platform,
-  onDirtyChange,
 }: {
   userId: string | null;
   /** Each card owns a single Meta platform, so the editor is scoped to it. */
   platform: MetaInboxPlatform;
-  /** Lets the owning card warn before it throws an unsaved draft away. */
-  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -183,13 +180,6 @@ export function MetaAutoReplySettingsPanel({
     if (query.data) setSettings(query.data.settings);
   }, [query.data]);
 
-  const dirtyCallback = useRef(onDirtyChange);
-  dirtyCallback.current = onDirtyChange;
-  useEffect(() => {
-    const loaded = query.data?.settings;
-    if (!dirtyCallback.current || !loaded) return;
-    dirtyCallback.current(JSON.stringify(loaded) !== JSON.stringify(settings));
-  }, [query.data?.settings, settings]);
 
   const save = useMutation({
     mutationFn: saveMetaAutoReplySettings,
