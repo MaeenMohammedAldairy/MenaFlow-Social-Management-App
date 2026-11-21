@@ -986,12 +986,18 @@ function SourcesContent({
       (group) => group.status === "failed" || group.status === "partial",
     );
 
+  // The account cards belong to the channels hub; this screen is about groups
+  // and sync. They only show up on boarding, or when the hub deep-links to them.
+  const connectionsAvailable = includeWhatsApp || section === "connections";
   const [activeSection, setActiveSection] = useState<"connections" | "sync">(
-    section === "sync" ? "sync" : "connections",
+    connectionsAvailable && section !== "sync" ? "connections" : "sync",
   );
   useEffect(() => {
-    if (section === "sync") setActiveSection("sync");
-  }, [section]);
+    setActiveSection((current) => {
+      if (!connectionsAvailable) return "sync";
+      return section === "sync" || section === "connections" ? section : current;
+    });
+  }, [connectionsAvailable, section]);
   const latestSyncAt = useMemo(() => {
     const groups = syncStatusQuery.data?.groups ?? [];
     return groups.reduce<string | null>((latest, group) => {
@@ -1719,7 +1725,16 @@ function SourcesContent({
             {!isPublishingAccounts && (
               <Pressable
                 accessibilityRole="button"
-                onPress={() => router.push("/connect-accounts")}
+                onPress={() =>
+                  router.push(
+                    includeWhatsApp
+                      ? {
+                          pathname: "/connect-accounts",
+                          params: { view: "publishing" },
+                        }
+                      : "/(tabs)/more/accounts",
+                  )
+                }
                 style={[
                   styles.onboardingContinue,
                   {
@@ -1743,7 +1758,7 @@ function SourcesContent({
         </Panel>
       )}
 
-      {isPublishingAccounts ? (
+      {includeWhatsApp && isPublishingAccounts ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="متابعة الإعداد لاحقًا والانتقال إلى لوحة التحكم"
@@ -1888,7 +1903,7 @@ function SourcesContent({
         </View>
       ) : null}
 
-      {!isPublishingAccounts ? (
+      {!isPublishingAccounts && connectionsAvailable ? (
         <View
           accessibilityRole="tablist"
           style={[
@@ -1990,7 +2005,7 @@ function SourcesContent({
             includeWhatsApp
               ? "المنصات"
               : isPublishingAccounts
-                ? "حسابات النشر"
+                ? undefined
                 : "حساب واتساب"
           }
           refreshLabel={

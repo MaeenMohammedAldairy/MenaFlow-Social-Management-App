@@ -1,11 +1,6 @@
 import {
   getWhatsAppAutoReplySettings,
-  getGetSocialConnectionsQueryKey,
-  getWhatsAppGroupSelections,
-  getWhatsAppGroups,
-  getSocialConnections,
   saveWhatsAppAutoReplySettings,
-  saveWhatsAppGroupSelections,
   testWhatsAppAutoReply,
   type WhatsAppAutoReplySettings,
   type WhatsAppAutoReplyTone,
@@ -23,13 +18,11 @@ import {
   View,
 } from "react-native";
 import { CairoText as Text } from "@/components/CairoTypography";
-import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   ActionButton,
   EmptyState,
   navigateBack,
   Panel,
-  SectionTitle,
   StatusPill,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
@@ -93,62 +86,12 @@ function WhatsAppReplyContent({
   const colors = useColors();
   const queryClient = useQueryClient();
   const queryKey = ["whatsappAutoReplySettings", userId ?? "local"];
-  const connectionsQueryKey = [
-    ...getGetSocialConnectionsQueryKey(),
-    userId ?? "local",
-  ] as const;
-  const [groupsFetchEnabled, setGroupsFetchEnabled] = useState(false);
-  const [showAvailableGroups, setShowAvailableGroups] = useState(false);
   const settingsQuery = useQuery({
     queryKey,
     queryFn: getWhatsAppAutoReplySettings,
     retry: false,
   });
-  const connectionsQuery = useQuery({
-    queryKey: connectionsQueryKey,
-    queryFn: getSocialConnections,
-    staleTime: 30_000,
-  });
   const connected = settingsQuery.data?.connected === true;
-  const instanceName = connectionsQuery.data?.whatsapp?.instanceName;
-  const selectionQueryKey = [
-    "whatsappGroupSelections",
-    userId ?? "local",
-    instanceName ?? "no-connection",
-  ] as const;
-  const groupsQueryKey = [
-    "whatsappGroups",
-    userId ?? "local",
-    instanceName ?? "no-connection",
-  ] as const;
-  const groupSelectionsQuery = useQuery({
-    queryKey: selectionQueryKey,
-    queryFn: getWhatsAppGroupSelections,
-    enabled: connected && Boolean(instanceName),
-    retry: false,
-  });
-  const groupsQuery = useQuery({
-    queryKey: groupsQueryKey,
-    queryFn: async ({ signal }) => {
-      try {
-        return await getWhatsAppGroups({ signal });
-      } catch (error) {
-        setGroupsFetchEnabled(false);
-        throw error;
-      }
-    },
-    enabled:
-      connected &&
-      showAvailableGroups &&
-      groupsFetchEnabled &&
-      Boolean(instanceName),
-    retry: false,
-    retryOnMount: false,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    staleTime: 5 * 60 * 1000,
-  });
   const [settings, setSettings] =
     useState<WhatsAppAutoReplySettings>(defaultSettings);
   const settingsInitialized = useRef(false);
@@ -159,11 +102,6 @@ function WhatsAppReplyContent({
   const [settingsNotice, setSettingsNotice] = useState("");
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [selectedGroupJids, setSelectedGroupJids] = useState<string[]>([]);
-  const [groupsInitialized, setGroupsInitialized] = useState(false);
-  const [groupsError, setGroupsError] = useState("");
-  const [groupsNotice, setGroupsNotice] = useState("");
-  const [savingGroups, setSavingGroups] = useState(false);
 
   useEffect(() => {
     if (!settingsQuery.data || settingsInitialized.current) return;
@@ -174,23 +112,6 @@ function WhatsAppReplyContent({
     }
     settingsInitialized.current = true;
   }, [settingsQuery.data]);
-
-  useEffect(() => {
-    if (
-      !groupSelectionsQuery.data ||
-      groupSelectionsQuery.isFetching ||
-      groupsInitialized
-    )
-      return;
-    setSelectedGroupJids(
-      groupSelectionsQuery.data.groups.map((group) => group.groupJid),
-    );
-    setGroupsInitialized(true);
-  }, [
-    groupSelectionsQuery.data,
-    groupSelectionsQuery.isFetching,
-    groupsInitialized,
-  ]);
 
   const testIsCurrent = useMemo(
     () => Boolean(testedSettings) && testedSettings === settingsFingerprint(settings),
@@ -252,51 +173,6 @@ function WhatsAppReplyContent({
     } finally {
       setSaving(false);
     }
-  };
-
-  const saveGroups = async (): Promise<boolean> => {
-    if (savingGroups) return false;
-    setSavingGroups(true);
-    setGroupsError("");
-    setGroupsNotice("");
-    try {
-      const saved = await saveWhatsAppGroupSelections({
-        groupJids: selectedGroupJids,
-      });
-      setSelectedGroupJids(saved.groups.map((group) => group.groupJid));
-      queryClient.setQueryData(selectionQueryKey, saved);
-      setGroupsNotice("تم حفظ مجموعات واتساب.");
-      return true;
-    } catch (error) {
-      setGroupsError(
-        errorMessage(error, "تعذّر حفظ مجموعات واتساب. حاول مرة أخرى."),
-      );
-      return false;
-    } finally {
-      setSavingGroups(false);
-    }
-  };
-
-  const continueAfterGroups = async () => {
-    if (savingGroups || selectedGroupJids.length === 0) return;
-    if (!(await saveGroups())) return;
-    if (returnTo === "connect-accounts") {
-      router.replace("/connect-accounts");
-      return;
-    }
-    router.replace({
-      pathname: "/(tabs)/more/sources",
-      params: { section: "sync" },
-    });
-  };
-
-  const toggleGroup = (groupJid: string) => {
-    setGroupsNotice("");
-    setSelectedGroupJids((current) =>
-      current.includes(groupJid)
-        ? current.filter((jid) => jid !== groupJid)
-        : [...current, groupJid],
-    );
   };
 
   const retrySettings = () => void settingsQuery.refetch();
@@ -543,232 +419,15 @@ function WhatsAppReplyContent({
           </Panel>
 
           <Panel>
-            <SectionTitle title="مصادر البيانات والمجموعات" />
-            <Text style={[styles.body, { color: colors.mutedForeground }]}>
-              اختر مجموعات واتساب التي تريد استيراد رسائلها وإعداد محتواها. هذا الاختيار منفصل عن الردود الآلية، التي تعمل على المحادثات الفردية فقط.
+            <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+              استيراد رسائل المجموعات ومزامنتها يُدار من شاشة القنوات، ولا علاقة
+              له بالرد الآلي على المحادثات الفردية.
             </Text>
-            {groupSelectionsQuery.isLoading ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={colors.primary} />
-                <Text style={[styles.body, { color: colors.mutedForeground }]}>
-                  جارٍ تحميل المجموعات المختارة…
-                </Text>
-              </View>
-            ) : groupSelectionsQuery.isError ? (
-              <View style={styles.errorBlock}>
-                <Text style={[styles.body, { color: colors.destructive }]}>
-                  {errorMessage(groupSelectionsQuery.error, "تعذّر تحميل المجموعات المختارة.")}
-                </Text>
-                <ActionButton
-                  label="إعادة المحاولة"
-                  icon="refresh-cw"
-                  secondary
-                  onPress={() => void groupSelectionsQuery.refetch()}
-                />
-              </View>
-            ) : (
-              <>
-                {selectedGroupJids.length > 0 ? (
-                  <View style={styles.groupList}>
-                    {selectedGroupJids.map((groupJid) => {
-                      const group =
-                        groupsQuery.data?.groups.find(
-                          (item) => item.groupJid === groupJid,
-                        ) ??
-                        groupSelectionsQuery.data?.groups.find(
-                          (item) => item.groupJid === groupJid,
-                        );
-                      return (
-                        <View
-                          key={groupJid}
-                          style={[
-                            styles.groupRow,
-                            { borderColor: colors.border },
-                          ]}
-                        >
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`إزالة ${group?.name ?? "المجموعة"} من الاختيار`}
-                            onPress={() => toggleGroup(groupJid)}
-                            style={styles.removeGroupButton}
-                          >
-                            <Icon name="x" size={16} color={colors.destructive} />
-                          </Pressable>
-                          <View style={styles.groupCopy}>
-                            <Text
-                              style={[
-                                styles.fieldTitle,
-                                { color: colors.foreground },
-                              ]}
-                            >
-                              {group?.name ?? "مجموعة واتساب"}
-                            </Text>
-                            <Text
-                              style={[
-                                styles.bodySmall,
-                                { color: colors.mutedForeground },
-                              ]}
-                            >
-                              {group
-                                ? "مجموعة إعلانات"
-                                : "المجموعة المختارة"}
-                            </Text>
-                          </View>
-                        </View>
-                      );
-                    })}
-                  </View>
-                ) : (
-                  <EmptyState
-                    icon="whatsapp"
-                    title="لم تختر أي مجموعات بعد"
-                    body="أضف مجموعة واتساب لبدء استيراد رسائلها وإعداد محتواها."
-                  />
-                )}
-
-                <ActionButton
-                  label={showAvailableGroups ? "إخفاء المجموعات" : "إضافة مجموعة جديدة"}
-                  icon={showAvailableGroups ? "chevron-left" : "plus"}
-                  secondary
-                  onPress={() => {
-                    const opening = !showAvailableGroups;
-                    setShowAvailableGroups(opening);
-                    setGroupsFetchEnabled(opening);
-                  }}
-                />
-
-                {showAvailableGroups ? (
-                  groupsQuery.isLoading ? (
-                    <View style={styles.loadingRow}>
-                      <ActivityIndicator color={colors.primary} />
-                      <Text
-                        style={[
-                          styles.body,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        جارٍ تحميل المجموعات المتاحة…
-                      </Text>
-                    </View>
-                  ) : groupsQuery.isError ? (
-                    <View style={styles.errorBlock}>
-                      <Text style={[styles.body, { color: colors.destructive }]}>
-                        {errorMessage(
-                          groupsQuery.error,
-                          "تعذّر تحميل المجموعات المتاحة.",
-                        )}
-                      </Text>
-                      <ActionButton
-                        label="إعادة المحاولة"
-                        icon="refresh-cw"
-                        secondary
-                        onPress={() => {
-                          setGroupsFetchEnabled(true);
-                          void groupsQuery.refetch();
-                        }}
-                      />
-                    </View>
-                  ) : groupsQuery.data?.groups.length ? (
-                    <View style={styles.groupList}>
-                      {groupsQuery.data.groups
-                        .filter(
-                          (group) =>
-                            !selectedGroupJids.includes(group.groupJid),
-                        )
-                        .map((group) => (
-                          <Pressable
-                            key={group.groupJid}
-                            accessibilityRole="button"
-                            accessibilityLabel={`إضافة مجموعة ${group.name}`}
-                            onPress={() => toggleGroup(group.groupJid)}
-                            style={[
-                              styles.groupRow,
-                              { borderColor: colors.border },
-                            ]}
-                          >
-                            <Icon name="plus" size={17} color={colors.primary} />
-                            <View style={styles.groupCopy}>
-                              <Text
-                                style={[
-                                  styles.fieldTitle,
-                                  { color: colors.foreground },
-                                ]}
-                              >
-                                {group.name}
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.bodySmall,
-                                  { color: colors.mutedForeground },
-                                ]}
-                              >
-                                "مجموعة إعلانات"
-                              </Text>
-                            </View>
-                          </Pressable>
-                        ))}
-                      {groupsQuery.data.groups.every((group) =>
-                        selectedGroupJids.includes(group.groupJid),
-                      ) ? (
-                        <Text
-                          style={[
-                            styles.bodySmall,
-                            { color: colors.mutedForeground },
-                          ]}
-                        >
-                          أُضيفت جميع المجموعات المتاحة.
-                        </Text>
-                      ) : null}
-                    </View>
-                  ) : (
-                    <EmptyState
-                      icon="whatsapp"
-                      title="لا توجد مجموعات متاحة"
-                      body="تحقق من اتصال واتساب أو حدّث قائمة المجموعات."
-                    />
-                  )
-                ) : null}
-              </>
-            )}
-            {groupsError ? (
-              <Text accessibilityRole="alert" style={[styles.notice, { color: colors.destructive }]}>
-                {groupsError}
-              </Text>
-            ) : null}
-            {groupsNotice ? (
-              <Text style={[styles.notice, { color: colors.primary }]}>
-                {groupsNotice}
-              </Text>
-            ) : null}
             <ActionButton
-              label={savingGroups ? "جارٍ حفظ المجموعات…" : "حفظ إعدادات المجموعات"}
-              icon={savingGroups ? "refresh-cw" : "save"}
-              secondary
-              disabled={
-                savingGroups ||
-                !groupsInitialized ||
-                groupSelectionsQuery.isLoading
-              }
-              onPress={() => void saveGroups()}
-            />
-            {selectedGroupJids.length === 0 ? (
-              <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
-                اختر مجموعة واحدة على الأقل لبدء مزامنة رسائلها.
-              </Text>
-            ) : null}
-            <ActionButton
-              label={
-                returnTo === "connect-accounts"
-                  ? "متابعة إلى إتمام الإعداد"
-                  : "متابعة إلى المزامنة"
-              }
+              label="إدارة المجموعات والمزامنة"
               icon="chevron-left"
-              disabled={
-                savingGroups ||
-                selectedGroupJids.length === 0 ||
-                !groupsInitialized
-              }
-              onPress={() => void continueAfterGroups()}
+              secondary
+              onPress={() => router.push("/(tabs)/more/sources")}
             />
           </Panel>
 
@@ -863,23 +522,6 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 14,
   },
-  errorBlock: { gap: 12 },
-  groupList: { gap: 8 },
-  groupRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderWidth: 1,
-    borderRadius: 13,
-    padding: 11,
-  },
-  removeGroupButton: {
-    width: 30,
-    height: 30,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: 10,
-  },
   checkbox: {
     width: 22,
     height: 22,
@@ -888,7 +530,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  groupCopy: { flex: 1, alignItems: "flex-start", gap: 2 },
   presetChip: {
     paddingHorizontal: 12,
     paddingVertical: 8,

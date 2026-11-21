@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -152,6 +153,9 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
   >([]);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [olderError, setOlderError] = useState<string | null>(null);
+  // Older pages load as the list is scrolled. The flag keeps the first render
+  // from firing a request before the reader has touched the list at all.
+  const olderAutoLoadArmed = useRef(false);
   const queryKey = ["meta-inbox", userId ?? "local"] as const;
   const inbox = useQuery({
     queryKey,
@@ -625,17 +629,35 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
         ListFooterComponent={
           <>
       {olderError ? (
-        <Text accessibilityRole="alert" style={{ color: colors.destructive }}>
-          {olderError}
-        </Text>
-      ) : null}
-      {canLoadOlder ? (
-        <ActionButton
-          label={loadingOlder ? "جارٍ تحميل الأقدم..." : "تحميل عناصر أقدم"}
-          icon={loadingOlder ? "clock" : "chevron-down"}
-          disabled={loadingOlder}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="إعادة محاولة تحميل عناصر أقدم"
           onPress={() => void loadOlder()}
-        />
+          style={styles.loadOlderRetry}
+        >
+          <Text
+            accessibilityRole="alert"
+            style={[styles.loadOlderRetryText, { color: colors.destructive }]}
+          >
+            {`${olderError} — إعادة المحاولة`}
+          </Text>
+        </Pressable>
+      ) : canLoadOlder && loadingOlder ? (
+        <View
+          accessible
+          accessibilityLabel="جارٍ تحميل المزيد من المحادثات"
+          style={styles.loadOlderLoading}
+        >
+          <ActivityIndicator size="small" color={colors.primary} />
+          <Text
+            style={[
+              styles.loadOlderLoadingText,
+              { color: colors.mutedForeground },
+            ]}
+          >
+            جارٍ تحميل المزيد…
+          </Text>
+        </View>
       ) : null}
           </>
         }
@@ -651,6 +673,18 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
             tintColor={colors.primary}
           />
         }
+        onScroll={(event) => {
+          // Arming on any real scroll covers touch drags and mouse wheels alike.
+          if (event.nativeEvent.contentOffset.y > 0) {
+            olderAutoLoadArmed.current = true;
+          }
+        }}
+        scrollEventThrottle={16}
+        onEndReached={() => {
+          if (!olderAutoLoadArmed.current || olderError) return;
+          void loadOlder();
+        }}
+        onEndReachedThreshold={0.4}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
         keyboardDismissMode="on-drag"
@@ -695,6 +729,16 @@ const styles = StyleSheet.create({
   listContent: { gap: 10 },
   listHeaderStack: { gap: 18 },
   rowSeparator: { height: 10 },
+  loadOlderLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+  },
+  loadOlderLoadingText: { fontSize: 12, fontWeight: "700" },
+  loadOlderRetry: { alignItems: "center", paddingVertical: 14 },
+  loadOlderRetryText: { fontSize: 12, fontWeight: "700", textAlign: "center" },
   loadError: { alignItems: "center", gap: 10, paddingVertical: 20 },
   loadErrorIcon: {
     width: 52,
