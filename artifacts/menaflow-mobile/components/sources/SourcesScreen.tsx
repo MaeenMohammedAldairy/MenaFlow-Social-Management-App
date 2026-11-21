@@ -1725,7 +1725,16 @@ function SourcesContent({
             {!isPublishingAccounts && (
               <Pressable
                 accessibilityRole="button"
-                onPress={() => router.push("/connect-accounts")}
+                onPress={() =>
+                  router.push(
+                    includeWhatsApp
+                      ? {
+                          pathname: "/connect-accounts",
+                          params: { view: "publishing" },
+                        }
+                      : "/(tabs)/more/accounts",
+                  )
+                }
                 style={[
                   styles.onboardingContinue,
                   {
@@ -1749,7 +1758,7 @@ function SourcesContent({
         </Panel>
       )}
 
-      {isPublishingAccounts ? (
+      {includeWhatsApp && isPublishingAccounts ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="متابعة الإعداد لاحقًا والانتقال إلى لوحة التحكم"
@@ -1996,7 +2005,7 @@ function SourcesContent({
             includeWhatsApp
               ? "المنصات"
               : isPublishingAccounts
-                ? "حسابات النشر"
+                ? undefined
                 : "حساب واتساب"
           }
           refreshLabel={

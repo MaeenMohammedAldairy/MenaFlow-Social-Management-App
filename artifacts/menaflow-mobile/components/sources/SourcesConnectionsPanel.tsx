@@ -36,7 +36,8 @@ const sources: SourceDefinition[] = [
 interface SourcesConnectionsPanelProps {
   compactLayout: boolean;
   sourceKeys: SourceKey[];
-  sectionTitle: string;
+  /** Omitted when the page title already names what the cards below are. */
+  sectionTitle?: string;
   refreshLabel: string;
   isRefreshing: boolean;
   connections?: SocialConnectionsResponse;
@@ -88,16 +89,18 @@ export function SourcesConnectionsPanel({
 
   return (
     <Panel style={styles.panel}>
-      <View style={styles.sectionHeader}>
-        <View style={styles.sectionTitleGroup}>
-          <View
-            style={[styles.sectionIcon, { backgroundColor: colors.accent }]}
-          >
-            <Icon name="share-2" size={17} color={colors.primary} />
+      {sectionTitle ? (
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleGroup}>
+            <View
+              style={[styles.sectionIcon, { backgroundColor: colors.accent }]}
+            >
+              <Icon name="share-2" size={17} color={colors.primary} />
+            </View>
+            <SectionTitle title={sectionTitle} />
           </View>
-          <SectionTitle title={sectionTitle} />
         </View>
-      </View>
+      ) : null}
       {readableConnectionError ? (
         <View
           accessibilityRole="alert"
