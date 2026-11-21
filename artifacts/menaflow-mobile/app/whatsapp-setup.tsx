@@ -53,14 +53,14 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-/** Kept so older links keep working; the WhatsApp settings live beside Meta now. */
+/** Kept so older links keep working; WhatsApp groups live on the sources screen. */
 export default function WhatsAppSetupScreen() {
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   return (
     <Redirect
       href={{
-        pathname: "/inbox/reply-settings",
-        params: { channel: "whatsapp", ...(returnTo ? { returnTo } : {}) },
+        pathname: "/(tabs)/more/sources",
+        params: { section: "connections", ...(returnTo ? { returnTo } : {}) },
       }}
     />
   );

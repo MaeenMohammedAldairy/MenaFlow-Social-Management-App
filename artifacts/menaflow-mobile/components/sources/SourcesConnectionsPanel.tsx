@@ -173,7 +173,7 @@ export function SourcesConnectionsPanel({
         const whatsappActionLabel = busySources.whatsapp
           ? "جارٍ الربط…"
           : connected
-            ? "إعدادات الحساب"
+            ? "إعدادات المجموعات"
             : whatsappConnecting
               ? "متابعة الربط"
               : "إعادة الربط";
