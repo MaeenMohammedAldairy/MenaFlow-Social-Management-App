@@ -50,7 +50,6 @@ import {
   BrandHeader,
   EmptyState,
   Page,
-  PageTitle,
   Panel,
   StatusPill,
   StepBadge,
@@ -1591,8 +1590,7 @@ function SourcesContent({
         socialSetupPending && !hasConnectedSocialAccount ? 24 : undefined
       }
     >
-      <BrandHeader showBell />
-      <PageTitle
+      <BrandHeader
         title={
           socialSetupPending && isPublishingAccounts
             ? "اربط حساباتك الاجتماعية مع MenaFlow"

@@ -27,7 +27,6 @@ import {
   BrandHeader,
   EmptyState,
   Page,
-  PageTitle,
   Panel,
   SectionTitle,
   StatusPill,
@@ -224,7 +223,10 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
   if (!platform || !platformInfo) {
     return (
       <Page>
-        <BrandHeader />
+        <BrandHeader
+          title="تفاصيل الحساب"
+          back={{ href: manageAccountsHref, label: "العودة إلى الحسابات" }}
+        />
         <EmptyState
           icon="alert-circle"
           title="الحساب غير معروف"
@@ -253,8 +255,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
         />
       }
     >
-      <BrandHeader />
-      <PageTitle
+      <BrandHeader
         title={`تفاصيل حساب ${platformInfo.name}`}
         subtitle="بيانات الحساب وإحصاءاته من المنصة ومزامنة مساحة العمل."
         back={{

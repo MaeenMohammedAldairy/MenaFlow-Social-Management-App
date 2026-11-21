@@ -26,7 +26,6 @@ import {
   BrandHeader,
   EmptyState,
   Page,
-  PageTitle,
   Panel,
   SectionTitle,
   StatusPill,
@@ -483,7 +482,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       }
       contentMaxWidth={1280}
     >
-      <BrandHeader showBell />
+      <BrandHeader title="الرئيسية" />
       {showSetupBanner ? (
         <View
           accessibilityRole="alert"

@@ -66,22 +66,55 @@ export default function WhatsAppSetupScreen() {
   );
 }
 
-export function WhatsAppReplyPanel({ returnTo }: { returnTo?: string }) {
-  if (isLocalAuthDisabled) return <WhatsAppReplyContent userId={null} returnTo={returnTo} />;
-  return <AuthenticatedWhatsAppReply returnTo={returnTo} />;
+export function WhatsAppReplyPanel({
+  returnTo,
+  onDirtyChange,
+}: {
+  returnTo?: string;
+  /** Lets the owning card warn before it throws an unsaved draft away. */
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  if (isLocalAuthDisabled)
+    return (
+      <WhatsAppReplyContent
+        userId={null}
+        returnTo={returnTo}
+        onDirtyChange={onDirtyChange}
+      />
+    );
+  return (
+    <AuthenticatedWhatsAppReply
+      returnTo={returnTo}
+      onDirtyChange={onDirtyChange}
+    />
+  );
 }
 
-function AuthenticatedWhatsAppReply({ returnTo }: { returnTo?: string }) {
+function AuthenticatedWhatsAppReply({
+  returnTo,
+  onDirtyChange,
+}: {
+  returnTo?: string;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const { userId } = useAuth();
-  return <WhatsAppReplyContent userId={userId ?? null} returnTo={returnTo} />;
+  return (
+    <WhatsAppReplyContent
+      userId={userId ?? null}
+      returnTo={returnTo}
+      onDirtyChange={onDirtyChange}
+    />
+  );
 }
 
 function WhatsAppReplyContent({
   userId,
   returnTo,
+  onDirtyChange,
 }: {
   userId: string | null;
   returnTo?: string;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const colors = useColors();
   const queryClient = useQueryClient();
@@ -112,6 +145,14 @@ function WhatsAppReplyContent({
     }
     settingsInitialized.current = true;
   }, [settingsQuery.data]);
+
+  const dirtyCallback = useRef(onDirtyChange);
+  dirtyCallback.current = onDirtyChange;
+  useEffect(() => {
+    const loaded = settingsQuery.data?.settings;
+    if (!dirtyCallback.current || !loaded) return;
+    dirtyCallback.current(JSON.stringify(loaded) !== JSON.stringify(settings));
+  }, [settingsQuery.data?.settings, settings]);
 
   const testIsCurrent = useMemo(
     () => Boolean(testedSettings) && testedSettings === settingsFingerprint(settings),

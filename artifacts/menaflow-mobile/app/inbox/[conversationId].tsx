@@ -17,7 +17,6 @@ import {
   EmptyState,
   ActionButton,
   Page,
-  PageTitle,
   Panel,
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
@@ -192,8 +191,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
         void loadOlder();
       }}
     >
-      <BrandHeader />
-      <PageTitle
+      <BrandHeader
         title={title}
         subtitle={
           platform

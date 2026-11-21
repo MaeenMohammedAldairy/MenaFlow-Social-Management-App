@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { CairoText as Text } from '@/components/CairoTypography';
 import { LucideIcon as Icon } from '@/components/LucideIcon';
-import { ActionButton, BrandHeader, EmptyState, Page, PageTitle, Panel, SectionTitle } from '@/components/Ui';
+import { ActionButton, BrandHeader, EmptyState, Page, Panel, SectionTitle } from '@/components/Ui';
 import { useColors } from '@/hooks/useColors';
 import { router } from 'expo-router';
 import { getGetSocialConnectionsQueryKey, getPostReportSummary, getSocialConnections } from '@workspace/api-client-react';
@@ -77,8 +77,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
         />
       }
     >
-      <BrandHeader />
-      <PageTitle
+      <BrandHeader
         title="التقارير"
         subtitle="ملخص المحتوى وحالاته وتوزيعه على القنوات."
         back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}

@@ -21,7 +21,6 @@ import {
   BrandHeader,
   EmptyState,
   Page,
-  PageTitle,
   Panel,
   StatusPill,
 } from "@/components/Ui";
@@ -196,8 +195,7 @@ function ActivitiesContent({ userId }: { userId: string | null }) {
         />
       }
     >
-      <BrandHeader />
-      <PageTitle
+      <BrandHeader
         title="الأنشطة"
         subtitle="وقت استلام الرسائل والتعليقات، وآخر تحديث للمنشورات، وتاريخ إضافة المنتجات."
         back={{ href: "/", label: "العودة إلى الرئيسية" }}

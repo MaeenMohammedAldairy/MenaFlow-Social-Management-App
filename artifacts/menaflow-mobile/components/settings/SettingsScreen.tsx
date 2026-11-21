@@ -12,7 +12,7 @@ import {
   LucideIcon as Icon,
   type LucideIconName,
 } from "@/components/LucideIcon";
-import { BrandHeader, Page, PageTitle, Panel } from "@/components/Ui";
+import { BrandHeader, Page, Panel } from "@/components/Ui";
 import { useStudio } from "@/context/StudioContext";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import { useColors } from "@/hooks/useColors";
@@ -359,8 +359,7 @@ function SettingsContent({
   };
   return (
     <Page>
-      <BrandHeader />
-      <PageTitle
+      <BrandHeader
         title="الإعدادات"
         subtitle="تحكم في تفضيلات مساحة عملك."
         back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}

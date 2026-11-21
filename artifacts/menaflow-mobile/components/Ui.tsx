@@ -108,13 +108,15 @@ type BrandHeaderProps = {
    * one row, so a screen does not stack a brand card above its own title.
    */
   title?: string;
+  subtitle?: string;
   action?: React.ReactNode;
   back?: { href: Href; label: string };
 };
 
 export function BrandHeader({
-  showBell = false,
+  showBell = true,
   title,
+  subtitle,
   action,
   back,
 }: BrandHeaderProps) {
@@ -124,23 +126,35 @@ export function BrandHeader({
         showBell={showBell}
         userId={null}
         title={title}
+        subtitle={subtitle}
         action={action}
         back={back}
       />
     );
   }
   return (
-    <AuthenticatedBrandHeader title={title} action={action} back={back} />
+    <AuthenticatedBrandHeader
+      title={title}
+      subtitle={subtitle}
+      action={action}
+      back={back}
+    />
   );
 }
 
-function AuthenticatedBrandHeader({ title, action, back }: BrandHeaderProps) {
+function AuthenticatedBrandHeader({
+  title,
+  subtitle,
+  action,
+  back,
+}: BrandHeaderProps) {
   const { userId } = useAuth();
   return (
     <BrandHeaderContent
       showBell
       userId={userId ?? null}
       title={title}
+      subtitle={subtitle}
       action={action}
       back={back}
     />
@@ -151,6 +165,7 @@ function BrandHeaderContent({
   showBell,
   userId,
   title,
+  subtitle,
   action,
   back,
 }: {
@@ -183,18 +198,9 @@ function BrandHeaderContent({
     router.push('/(tabs)/more/orders');
   };
 
-  const compact = Boolean(title);
-
   return (
     <>
-      <View
-        style={[
-          compact ? styles.pageHeader : styles.brandHeader,
-          compact
-            ? null
-            : { backgroundColor: colors.card, borderColor: colors.border },
-        ]}
-      >
+      <View style={styles.pageHeader}>
         <View style={styles.headerActions}>
           {action}
           {showBell ? (
@@ -257,18 +263,28 @@ function BrandHeaderContent({
           ) : (
             <Image
               source={require('../assets/images/icon.png')}
-              style={compact ? styles.brandMarkSmall : styles.brandMark}
+              style={styles.brandMarkSmall}
             />
           )}
-          <Text
-            numberOfLines={1}
-            style={[
-              compact ? styles.pageHeaderTitle : styles.brandName,
-              { color: colors.foreground },
-            ]}
-          >
-            {title ?? 'MenaFlow'}
-          </Text>
+          <View style={styles.brandCopy}>
+            <Text
+              numberOfLines={1}
+              style={[styles.pageHeaderTitle, { color: colors.foreground }]}
+            >
+              {title ?? 'MenaFlow'}
+            </Text>
+            {subtitle ? (
+              <Text
+                numberOfLines={2}
+                style={[
+                  styles.pageHeaderSubtitle,
+                  { color: colors.mutedForeground },
+                ]}
+              >
+                {subtitle}
+              </Text>
+            ) : null}
+          </View>
         </View>
       </View>
       <Modal
@@ -397,56 +413,6 @@ function BrandHeaderContent({
   );
 }
 
-export function PageTitle({
-  title,
-  subtitle,
-  action,
-  back,
-}: {
-  title: string;
-  subtitle?: string;
-  action?: React.ReactNode;
-  back?: { href: Href; label: string };
-}) {
-  const colors = useColors();
-  return (
-    <View style={styles.titleRow}>
-      <View style={styles.titleCopy}>
-        <View style={styles.titleHeading}>
-          {back ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={back.label}
-              testID="page-back-button"
-              onPress={() => navigateBack(back.href)}
-              style={({ pressed }) => [
-                styles.backButton,
-                {
-                  backgroundColor: pressed ? colors.secondary : colors.accent,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Icon name="chevron-right" size={19} color={colors.primary} />
-            </Pressable>
-          ) : null}
-          <Text style={[styles.pageTitle, { color: colors.foreground }]}>
-            {title}
-          </Text>
-        </View>
-        {subtitle ? (
-          <Text style={[styles.pageSubtitle, { color: colors.mutedForeground }]}>
-            {subtitle}
-          </Text>
-        ) : null}
-      </View>
-      <View style={styles.titleActions}>
-        {action}
-      </View>
-    </View>
-  );
-}
-
 export function Panel({
   children,
   style,
@@ -563,15 +529,14 @@ const styles = StyleSheet.create({
   pageContent: { paddingHorizontal: 18, gap: 18 },
   pageContentFill: { flex: 1 },
   constrainedContent: { width: '100%', alignSelf: 'center' },
-  brandHeader: { width: '100%', alignSelf: 'stretch', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', minHeight: 58, paddingHorizontal: 10, borderWidth: 1, borderRadius: 17 },
   pageHeader: { width: '100%', alignSelf: 'stretch', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', minHeight: 50, gap: 10 },
   pageHeaderTitle: { flexShrink: 1, fontSize: 20, fontWeight: '800', textAlign: 'right' },
+  pageHeaderSubtitle: { flexShrink: 1, fontSize: 12, lineHeight: 18, textAlign: 'right' },
   brandMarkSmall: { width: 30, height: 30, borderRadius: 10 },
   compactBackButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 12 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  brandLockup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  brandMark: { width: 34, height: 34, borderRadius: 11 },
-  brandName: { fontSize: 18, fontWeight: '800', letterSpacing: -0.6 },
+  brandLockup: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  brandCopy: { flexShrink: 1, gap: 2 },
   headerIconButton: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   iconOnly: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   notificationDot: { position: 'absolute', width: 7, height: 7, borderRadius: 4, top: 7, end: 7 },
@@ -587,18 +552,6 @@ const styles = StyleSheet.create({
   notificationItemCopy: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 3 },
   notificationItemTitle: { fontSize: 13, fontWeight: '800', textAlign: 'right' },
   notificationEmpty: { minHeight: 110, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 4 },
-  titleCopy: { flex: 1, alignItems: 'flex-start', gap: 4 },
-  titleHeading: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 10 },
-  titleActions: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 14 },
-  pageTitle: { flexShrink: 1, fontSize: 24, fontWeight: '800', textAlign: 'right' },
-  pageSubtitle: {
-    alignSelf: 'stretch',
-    fontSize: 13,
-    lineHeight: 20,
-    textAlign: 'right',
-  },
   panel: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 14, shadowColor: '#0A2540', shadowOpacity: 0.035, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 1 },
   sectionTitle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   sectionText: { fontSize: 16, fontWeight: '800', textAlign: 'right' },
