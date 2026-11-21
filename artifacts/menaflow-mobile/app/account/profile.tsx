@@ -7,7 +7,6 @@ import {
   BrandHeader,
   confirmDiscardChanges,
   Page,
-  PageTitle,
   Panel,
   SectionTitle,
 } from "@/components/Ui";
@@ -26,8 +25,7 @@ function LocalProfileScreen() {
 
   return (
     <Page>
-      <BrandHeader />
-      <PageTitle
+      <BrandHeader
         title="الملف الشخصي"
         subtitle="إعداد حساب المستخدم."
         back={{ href: "/(tabs)/more/settings", label: "العودة إلى الإعدادات" }}
@@ -138,8 +136,7 @@ function AuthenticatedProfileScreen() {
 
   return (
     <Page>
-      <BrandHeader />
-      <PageTitle
+      <BrandHeader
         title="حساب المستخدم"
         subtitle="إدارة بيانات ملفك الشخصي ومعلومات تسجيل الدخول."
         back={{ href: "/(tabs)/more/settings", label: "العودة إلى الإعدادات" }}

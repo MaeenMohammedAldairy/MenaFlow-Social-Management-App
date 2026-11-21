@@ -14,7 +14,6 @@ import {
 import {
   BrandHeader,
   Page,
-  PageTitle,
   Panel,
 } from "@/components/Ui";
 import { CairoText as Text } from "@/components/CairoTypography";
@@ -188,8 +187,7 @@ function AutoPublishSettingsContent({ userId }: { userId: string | null }) {
 
   return (
     <Page>
-      <BrandHeader />
-      <PageTitle
+      <BrandHeader
         title="إعدادات النشر التلقائي"
         subtitle="حدد الحسابات التي تستقبل المنشورات المعتمدة تلقائيًا."
         back={{ href: "/(tabs)/content", label: "العودة إلى المنشورات" }}

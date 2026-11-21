@@ -9,7 +9,7 @@ import { CairoText as Text, CairoTextInput as TextInput } from '@/components/Cai
 import { LucideIcon as Icon, type LucideIconName } from '@/components/LucideIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAwareScrollViewCompat } from '@/components/KeyboardAwareScrollViewCompat';
-import { ActionButton, BrandHeader, confirmDiscardChanges, navigateBack, PageTitle, Panel, SectionTitle } from '@/components/Ui';
+import { ActionButton, BrandHeader, confirmDiscardChanges, navigateBack, Panel, SectionTitle } from '@/components/Ui';
 import { useStudio, type Channel } from '@/context/StudioContext';
 import { useColors } from '@/hooks/useColors';
 import { uploadProductMedia } from '@/lib/product-catalog-api';
@@ -201,8 +201,7 @@ export default function ComposeScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-      <BrandHeader />
-      <PageTitle
+      <BrandHeader
         title="منشور جديد"
         subtitle="اكتب المحتوى وحدد القنوات المقصودة."
         action={

@@ -4,7 +4,6 @@ import { Link, useNavigation } from "expo-router";
 import {
   BrandHeader,
   Page,
-  PageTitle,
   Panel,
 } from "@/components/Ui";
 import { CairoText as Text } from "@/components/CairoTypography";
@@ -108,8 +107,7 @@ export default function MoreScreen() {
 
   return (
     <Page>
-      <BrandHeader />
-      <PageTitle title="المزيد" subtitle="إدارة التطبيق ومصادر بياناتك وحسابات النشر." />
+      <BrandHeader title="المزيد" subtitle="إدارة التطبيق ومصادر بياناتك وحسابات النشر." />
       {destinationGroups.map((group) => (
         <Panel key={group.title} style={styles.managementPanel}>
           <View style={styles.sectionHeading}>
