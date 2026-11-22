@@ -31,6 +31,7 @@ import {
 } from "../lib/whatsapp-evolution";
 
 import { whatsappInstanceNameForWorkspace } from "../lib/whatsapp-instance";
+import { subscriptionDenial } from "../lib/subscription-denial.ts";
 
 import { connectedWhatsAppForWorkspace } from "./whatsapp-groups";
 import { evolutionErrorResponse } from "./whatsapp-route-errors";
@@ -182,12 +183,8 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
 
   const channelAccess = await canConnectChannel(workspaceId, "whatsapp");
   if (!channelAccess.allowed) {
-    res.status(403).json({
-      error: "بلغت الحد الأقصى لقنوات خطتك الحالية. تظهر خيارات الترقية قريبًا.",
-      code: "SUBSCRIPTION_LIMIT_REACHED",
-      usage: channelAccess.used,
-      limit: channelAccess.limit,
-    });
+    const denial = subscriptionDenial("channels", channelAccess);
+    res.status(denial.status).json(denial.body);
     return;
   }
 
@@ -309,12 +306,8 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
       "whatsapp",
     );
     if (!finalChannelAccess.allowed) {
-      res.status(403).json({
-        error: "بلغت الحد الأقصى لقنوات خطتك الحالية. تظهر خيارات الترقية قريبًا.",
-        code: "SUBSCRIPTION_LIMIT_REACHED",
-        usage: finalChannelAccess.used,
-        limit: finalChannelAccess.limit,
-      });
+      const denial = subscriptionDenial("channels", finalChannelAccess);
+      res.status(denial.status).json(denial.body);
       return;
     }
 

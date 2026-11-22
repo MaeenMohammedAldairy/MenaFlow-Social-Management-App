@@ -8,6 +8,7 @@ import {
 } from "@workspace/db";
 
 import { recordOrEmpty as safeRecord } from "../lib/value-utils.ts";
+import { subscriptionDenial } from "../lib/subscription-denial.ts";
 import {
   publishPostToMeta,
   signedProductMediaUrl,
@@ -50,14 +51,12 @@ export function normalizeChannels(value: unknown): string[] {
 export function sendPostQuotaError(
   res: import("express").Response,
   error: unknown,
+  quota?: { used: number; limit: number },
 ): boolean {
   const message = error instanceof Error ? error.message : "";
   if (!message.includes("SUBSCRIPTION_LIMIT_REACHED:posts")) return false;
-  res.status(403).json({
-    error:
-      "بلغت الحد الشهري للمنشورات في خطتك الحالية. تظهر خيارات الترقية قريبًا.",
-    code: "SUBSCRIPTION_LIMIT_REACHED",
-  });
+  const denial = subscriptionDenial("postsCreated", quota);
+  res.status(denial.status).json(denial.body);
   return true;
 }
 

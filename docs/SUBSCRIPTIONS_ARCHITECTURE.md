@@ -298,7 +298,14 @@ function resolveEntitlements(state, now): Entitlements {
 
 ## 12. الرصد والتشغيل
 
-- أحداث `pino` ثابتة الأسماء: `subscription.transition`, `subscription.self_healed`, `usage.consumed`, `usage.duplicate_ignored`, `entitlement.denied`.
+- أحداث `pino` ثابتة الأسماء: `subscription.transition`, `subscription.self_healed`, `subscription.trial_expired`, `usage.consumed`, `usage.duplicate_ignored`, `entitlement.denied`.
+- كل رفض حصة يُعاد بعقد واحد: `{ error, code, errorClass, messageKey, retryable, meter, usage, limit }`، وحالة HTTP من السجل لا من موضع الاستدعاء.
+- **تغيير خطة مساحة** يبقى عملية تشغيلية بـSQL حتى تُبنى آلة الحالات في المرحلة (ب)، لأن لوحة المالك للقراءة فقط بقرار تصميمي:
+  ```sql
+  update mena_workspace_subscriptions
+     set plan_id = 'starter', status = 'active', current_period_start = now(), current_period_end = now() + interval '1 month', updated_at = now()
+   where workspace_id = '<WS>';
+  ```
 - لوحة المالك تُضيف: عدد المساحات في كل حالة، تجارب ستنتهي خلال ٧ أيام، مساحات تجاوزت ٨٠٪، تغييرات خطط آخر ٣٠ يومًا (من سجل الأحداث).
 - `/readyz` لا يتغير؛ تُضاف مهمة انتقال الحالات إلى حلقة العمّال وتسجّل نفسها كعامل `subscription-lifecycle`.
 
@@ -355,6 +362,11 @@ function resolveEntitlements(state, now): Entitlements {
 | إغلاق استدعاء AI غير محاسَب | `whatsapp-marketing-ai.ts`, `meta-auto-reply.ts`, `metered-ai-provider.ts` | منجز |
 | منع الانحدار (لا استدعاء خارج البوابة) | `src/lib/ai-metering-guard.test.mjs` | منجز |
 | تكافؤ نصوص التسعير في التطبيق مع الكتالوج | `artifacts/menaflow-mobile/constants/pricing.test.mjs` | منجز |
+| عقد موحّد لكل رفض حصة (5 مواضع كانت تُعيد أشكالًا مختلفة) | `lib/subscription-denial.ts` | منجز |
+| عقد موحّد لأخطاء المزوّد (config ← 500، retryable ← 502) | `lib/error-codes.ts` + `routes/ai.ts` | منجز |
+| انتهاء التجربة يُكتب في القاعدة مرة واحدة (`trialing → canceled`) | `lib/entitlement-store.ts` | منجز |
+
+**ما تبقّى ويحتاج ترحيلًا (مؤجَّل بقرار صريح):** آلة الحالات وكاتبها وسجل الأحداث ودورة الفوترة ومسارات تغيير الخطة/الإلغاء، إضافة إلى البند التالي.
 
 **الفجوة المعروفة الوحيدة بعد المرحلة (أ):** قاعدة «المسودات لا تُحتسب» محسومة في هذه الوثيقة، لكن التنفيذ الفعلي للعدّ يقع داخل قاعدة البيانات: المُشغّل `mena_posts_subscription_limit` يزيد `posts_created` عند **كل** إدراج في `mena_posts`، بما فيه صف المسودة (`status = 'draft'`). لذلك:
 - حفظ مسودة يستهلك من الحصة، ويمكن أن يُرفض بخطأ `SUBSCRIPTION_LIMIT_REACHED:posts` عند بلوغ الحد.

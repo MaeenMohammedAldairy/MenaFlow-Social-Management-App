@@ -4,6 +4,7 @@ import {
   calendarPeriodBounds,
   calendarPeriodKey,
   resolveEntitlements,
+  trialHasExpired,
 } from "./entitlements.ts";
 import {
   FREE_PLAN_ID,
@@ -60,6 +61,37 @@ test("an expired trial falls back to the free plan without changing the row", ()
   assert.equal(entitlements.source, "free");
   assert.equal(entitlements.plan.id, FREE_PLAN_ID);
   assert.equal(entitlements.plan.limits.aiGenerations, 10);
+});
+
+test("only a trialing row whose end date has passed counts as expired", () => {
+  const ended = new Date(now.getTime() - 1);
+  assert.equal(
+    trialHasExpired({ status: "trialing", trialEndsAt: ended }, now),
+    true,
+  );
+  assert.equal(
+    trialHasExpired({ status: "trialing", trialEndsAt: now }, now),
+    true,
+  );
+  assert.equal(
+    trialHasExpired(
+      { status: "trialing", trialEndsAt: new Date(now.getTime() + dayMs) },
+      now,
+    ),
+    false,
+  );
+  assert.equal(
+    trialHasExpired({ status: "trialing", trialEndsAt: null }, now),
+    false,
+  );
+  assert.equal(
+    trialHasExpired({ status: "active", trialEndsAt: ended }, now),
+    false,
+  );
+  assert.equal(
+    trialHasExpired({ status: "canceled", trialEndsAt: ended }, now),
+    false,
+  );
 });
 
 test("a paid plan uses its own limits", () => {

@@ -9,6 +9,11 @@ import {
   callMeteredAiProvider,
   SubscriptionAiQuotaError,
 } from "../lib/metered-ai-provider.ts";
+import {
+  errorPayload,
+  errorStatus,
+  subscriptionDenial,
+} from "../lib/subscription-denial.ts";
 
 const router: IRouter = Router();
 
@@ -104,28 +109,38 @@ router.post("/ai/content", requireWorkspace, async (req, res): Promise<void> => 
     );
   } catch (error) {
     if (error instanceof SubscriptionAiQuotaError) {
-      res.status(429).json({
-        error: "بلغت الحد الشهري لتوليد المحتوى في خطتك الحالية.",
-        code: "SUBSCRIPTION_LIMIT_REACHED",
-        usage: error.used,
+      const denial = subscriptionDenial("aiGenerations", {
+        used: error.used,
         limit: error.limit,
       });
+      res.status(denial.status).json(denial.body);
       return;
     }
     const message = error instanceof Error ? error.message : "";
     if (message.startsWith("MISSING_")) {
-      res.status(503).json({
-        error: `خدمة ${provider === "gemini" ? "Gemini" : "OpenAI"} غير مهيأة.`,
-      });
+      const code = "MISSING_AI_PROVIDER_KEY";
+      res.status(errorStatus(code)).json(
+        errorPayload(
+          code,
+          `خدمة ${provider === "gemini" ? "Gemini" : "OpenAI"} غير مهيأة.`,
+        ),
+      );
       return;
     }
+    const modelConfig = message.startsWith("AI model");
+    const code = modelConfig ? "AI_MODEL_NAME_INVALID" : "AI_PROVIDER_ERROR";
     req.log.warn(
-      { provider, reason: message.startsWith("AI model") ? "model_config" : "provider_error" },
+      { provider, reason: modelConfig ? "model_config" : "provider_error" },
       "AI content generation failed",
     );
-    res.status(502).json({
-      error: "تعذر إنشاء المحتوى الآن. تحقق من إعداد الخدمة ثم حاول مرة أخرى.",
-    });
+    res.status(errorStatus(code)).json(
+      errorPayload(
+        code,
+        modelConfig
+          ? "إعداد نموذج الذكاء الاصطناعي غير صالح. راجع إعدادات الخدمة."
+          : "تعذر إنشاء المحتوى الآن. تحقق من إعداد الخدمة ثم حاول مرة أخرى.",
+      ),
+    );
   }
 });
 

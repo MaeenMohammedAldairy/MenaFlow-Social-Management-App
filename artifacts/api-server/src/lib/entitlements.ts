@@ -1,9 +1,7 @@
 import {
   FREE_PLAN_ID,
   planOrFree,
-  subscriptionPlans,
   TRIAL_PLAN_ID,
-  type PlanId,
   type SubscriptionPlan,
 } from "./plan-catalog.ts";
 
@@ -64,6 +62,22 @@ export function calendarPeriodBounds(now: Date): {
 
 function billingPeriodKey(periodStart: Date): string {
   return `billing:${periodStart.toISOString().slice(0, 10)}`;
+}
+
+/**
+ * A trial whose end date has passed is over, even if nobody wrote that down.
+ * The store uses this to persist the transition once, instead of leaving a row
+ * that says `trialing` forever while the resolver silently serves free limits.
+ */
+export function trialHasExpired(
+  state: Pick<SubscriptionState, "status" | "trialEndsAt">,
+  now: Date,
+): boolean {
+  return (
+    state.status === "trialing" &&
+    Boolean(state.trialEndsAt) &&
+    (state.trialEndsAt as Date).getTime() <= now.getTime()
+  );
 }
 
 /**
@@ -141,8 +155,3 @@ export function entitlementsForRow(
     now,
   );
 }
-
-/** Plan ids the API may advertise; guards against a typo in the catalog. */
-export const advertisedPlanIds: readonly PlanId[] = subscriptionPlans.map(
-  (plan) => plan.id,
-);
