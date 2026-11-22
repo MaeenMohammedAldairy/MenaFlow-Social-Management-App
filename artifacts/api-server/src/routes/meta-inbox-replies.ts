@@ -18,6 +18,7 @@ import {
   reserveMetaInboxReply,
 } from "../lib/meta-inbox-reply-reservation";
 import { metaString } from "../lib/meta-inbox-utils";
+import { metaAutoReplyRetryableStatus } from "../lib/meta-auto-reply";
 import { requestOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
@@ -366,6 +367,121 @@ router.post(
       }
       throw error;
     }
+  },
+);
+
+/**
+ * Requeue an automatic reply that stopped before sending: the workspace ran out
+ * of AI quota, the provider was not configured, or the queue gave up. Entries
+ * whose outcome is unknown are refused on purpose, because resending them could
+ * deliver the same answer twice.
+ */
+router.post(
+  "/social/meta-inbox/items/:id/auto-reply",
+  requireWorkspace,
+  async (req: Request, res: Response) => {
+    const ownerId = requestOwnerId(req);
+    const workspaceId = requestWorkspaceId(req);
+    if (!ownerId) {
+      res.status(401).json({ error: "سجّل الدخول أولاً." });
+      return;
+    }
+    const itemId = metaString(req.params.id);
+    if (!itemId) {
+      res.status(400).json({ error: "معرّف الرسالة أو التعليق غير صالح." });
+      return;
+    }
+
+    const [item] = await db
+      .select({
+        replyText: menaMetaInboxItems.replyText,
+        replyStatus: menaMetaInboxItems.replyStatus,
+      })
+      .from(menaMetaInboxItems)
+      .where(
+        and(
+          eq(menaMetaInboxItems.id, itemId),
+          eq(menaMetaInboxItems.workspaceId, workspaceId),
+        ),
+      )
+      .limit(1);
+    if (!item) {
+      res.status(404).json({ error: "لم يتم العثور على الرسالة أو التعليق." });
+      return;
+    }
+    if (item.replyText) {
+      res.status(409).json({
+        error: "تم الرد على هذه الرسالة أو التعليق بالفعل.",
+        code: "META_ITEM_ALREADY_REPLIED",
+      });
+      return;
+    }
+    if (item.replyStatus === "unknown") {
+      res.status(409).json({
+        error:
+          "نتيجة الرد السابق غير مؤكدة. تحقق من المحادثة قبل إعادة المحاولة.",
+        code: "META_SEND_RESULT_UNKNOWN",
+      });
+      return;
+    }
+
+    const [job] = await db
+      .select({
+        id: menaMetaAutoReplyJobs.id,
+        status: menaMetaAutoReplyJobs.status,
+      })
+      .from(menaMetaAutoReplyJobs)
+      .where(
+        and(
+          eq(menaMetaAutoReplyJobs.workspaceId, workspaceId),
+          eq(menaMetaAutoReplyJobs.inboxItemId, itemId),
+        ),
+      )
+      .limit(1);
+    if (!job) {
+      res.status(409).json({
+        error: "لم يُسجَّل رد آلي لهذه الرسالة، اكتب ردًا يدويًا.",
+        code: "META_AUTO_REPLY_NOT_QUEUED",
+      });
+      return;
+    }
+    if (!metaAutoReplyRetryableStatus(job.status)) {
+      res.status(409).json({
+        error: "الرد الآلي قيد التنفيذ بالفعل.",
+        code: "META_AUTO_REPLY_IN_PROGRESS",
+      });
+      return;
+    }
+
+    const now = new Date();
+    const [requeued] = await db
+      .update(menaMetaAutoReplyJobs)
+      .set({
+        status: "queued",
+        attempts: 0,
+        errorCode: null,
+        nextRunAt: now,
+        leaseExpiresAt: null,
+        completedAt: null,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(menaMetaAutoReplyJobs.id, job.id),
+          eq(menaMetaAutoReplyJobs.workspaceId, workspaceId),
+          eq(menaMetaAutoReplyJobs.status, job.status),
+        ),
+      )
+      .returning({ status: menaMetaAutoReplyJobs.status });
+    if (!requeued) {
+      res.status(409).json({
+        error: "تغيّرت حالة الرد الآلي، أعد تحميل المحادثة.",
+        code: "META_AUTO_REPLY_IN_PROGRESS",
+      });
+      return;
+    }
+
+    res.json({ queued: true, autoReplyStatus: requeued.status });
   },
 );
 

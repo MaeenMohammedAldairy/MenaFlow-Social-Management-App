@@ -3,6 +3,8 @@ import test from "node:test";
 import { buildGeminiRequestBody } from "./ai-provider.ts";
 import {
   analyzeMetaAutoReplyUnderstanding,
+  classifyMetaAutoReplyFailure,
+  metaAutoReplyRetryableStatus,
   buildMetaAutoReplyConversationContext,
   buildMetaAutoReplySystemInstruction,
   buildMetaAutoReplyUnderstandingProviderOptions,
@@ -2199,4 +2201,49 @@ test("rejects unknown product identity and factual fields instead of passing the
   const topLevelProductId = validUnderstanding();
   topLevelProductId.productId = "invented-id";
   assert.equal(parseUnderstanding(topLevelProductId), null);
+});
+
+test("a workspace without AI budget pauses the reply instead of failing it", () => {
+  assert.equal(
+    classifyMetaAutoReplyFailure("SUBSCRIPTION_LIMIT_REACHED:aiGenerations"),
+    "skipped",
+  );
+  assert.equal(
+    classifyMetaAutoReplyFailure("WORKSPACE_SUBSCRIPTION_MISSING"),
+    "skipped",
+  );
+  assert.equal(
+    classifyMetaAutoReplyFailure("MISSING_AI_PROVIDER_KEY"),
+    "skipped",
+  );
+  assert.equal(
+    classifyMetaAutoReplyFailure("MISSING_OPENAI_KEY"),
+    "skipped",
+  );
+  assert.equal(
+    classifyMetaAutoReplyFailure("AI_MODEL_NAME_INVALID"),
+    "skipped",
+  );
+});
+
+test("real delivery and provider failures still fail the job", () => {
+  assert.equal(classifyMetaAutoReplyFailure("OPENAI_HTTP_429"), "failed");
+  assert.equal(classifyMetaAutoReplyFailure("GEMINI_EMPTY_RESPONSE"), "failed");
+  assert.equal(
+    classifyMetaAutoReplyFailure("META_AUTO_REPLY_INVALID_RESPONSE"),
+    "failed",
+  );
+  assert.equal(classifyMetaAutoReplyFailure("META_AUTO_REPLY_FAILED"), "failed");
+  assert.equal(classifyMetaAutoReplyFailure(""), "failed");
+});
+
+test("only paused or failed replies may be requeued", () => {
+  assert.equal(metaAutoReplyRetryableStatus("failed"), true);
+  assert.equal(metaAutoReplyRetryableStatus("skipped"), true);
+  assert.equal(metaAutoReplyRetryableStatus("queued"), false);
+  assert.equal(metaAutoReplyRetryableStatus("processing"), false);
+  assert.equal(metaAutoReplyRetryableStatus("sending"), false);
+  assert.equal(metaAutoReplyRetryableStatus("sent"), false);
+  assert.equal(metaAutoReplyRetryableStatus("unknown"), false);
+  assert.equal(metaAutoReplyRetryableStatus(null), false);
 });

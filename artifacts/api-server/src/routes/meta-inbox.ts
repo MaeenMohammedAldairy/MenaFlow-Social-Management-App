@@ -195,6 +195,7 @@ router.get("/social/meta-inbox", requireWorkspace, async (req, res) => {
       .select({
         item: menaMetaInboxItems,
         autoReplyStatus: menaMetaAutoReplyJobs.status,
+        autoReplyErrorCode: menaMetaAutoReplyJobs.errorCode,
       })
       .from(menaMetaInboxItems)
       .leftJoin(
@@ -243,7 +244,7 @@ router.get("/social/meta-inbox", requireWorkspace, async (req, res) => {
       hasMore && lastItem
         ? encodeMetaInboxCursor(lastItem.occurredAt, lastItem.id)
         : null,
-    items: items.map(({ item, autoReplyStatus }) => ({
+    items: items.map(({ item, autoReplyStatus, autoReplyErrorCode }) => ({
       id: item.id,
       platform: item.platform,
       kind: item.kind,
@@ -259,6 +260,9 @@ router.get("/social/meta-inbox", requireWorkspace, async (req, res) => {
       repliedAt: item.repliedAt?.toISOString() ?? null,
       replyStatus: item.replyStatus,
       autoReplyStatus,
+      // Why the automatic reply stopped, so the app can explain it instead of
+      // showing one generic "could not send" banner for every cause.
+      autoReplyErrorCode,
     })),
   });
 });

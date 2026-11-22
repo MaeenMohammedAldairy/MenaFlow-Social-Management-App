@@ -1131,3 +1131,37 @@ export function retryMetaAutoReplyGeneration(
     )
   );
 }
+
+/**
+ * Codes that mean the reply was never generated, so nothing was sent and the
+ * customer is not waiting on half a delivery. Recording them as "failed" burns
+ * the retry budget and tells the merchant a send failed, which never happened.
+ */
+export const metaAutoReplyPausedCodes = [
+  "SUBSCRIPTION_LIMIT_REACHED",
+  "WORKSPACE_SUBSCRIPTION_MISSING",
+  "WORKSPACE_SUBSCRIPTION_PLAN_INVALID",
+  "MISSING_OPENAI_KEY",
+  "MISSING_GEMINI_KEY",
+  "MISSING_AI_PROVIDER_KEY",
+  "AI_MODEL_NAME_INVALID",
+] as const;
+
+export function classifyMetaAutoReplyFailure(
+  reason: string,
+): "skipped" | "failed" {
+  const code = reason.trim();
+  const paused = metaAutoReplyPausedCodes.some(
+    (candidate) =>
+      code === candidate || code.startsWith(`${candidate}:`) ||
+      code.includes(candidate),
+  );
+  return paused ? "skipped" : "failed";
+}
+
+/** Only these states can be requeued without risking a second delivery. */
+export function metaAutoReplyRetryableStatus(
+  status: string | null | undefined,
+): boolean {
+  return status === "failed" || status === "skipped";
+}

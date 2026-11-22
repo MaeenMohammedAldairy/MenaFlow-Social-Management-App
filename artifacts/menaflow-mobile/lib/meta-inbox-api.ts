@@ -34,6 +34,7 @@ export type MetaInboxItem = {
     | "skipped"
     | "unknown"
     | null;
+  autoReplyErrorCode: string | null;
 };
 
 export function metaInboxPersonId(item: MetaInboxItem): string {
@@ -219,6 +220,17 @@ export async function sendMetaInboxReply(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     },
+  );
+  return responseJson(response);
+}
+
+export async function retryMetaAutoReply(itemId: string): Promise<{
+  queued: boolean;
+  autoReplyStatus: string;
+}> {
+  const response = await fetchApiResponse(
+    `/api/social/meta-inbox/items/${encodeURIComponent(itemId)}/auto-reply`,
+    { method: "POST" },
   );
   return responseJson(response);
 }

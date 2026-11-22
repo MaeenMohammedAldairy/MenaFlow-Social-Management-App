@@ -24,6 +24,7 @@ import { formatArabicDateTime } from "@/lib/formatting";
 import {
   confirmMetaInboxReplyNotSent,
   getMetaInbox,
+  retryMetaAutoReply,
   sendMetaInboxReply,
   type MetaInboxItem,
   type MetaInboxPlatform,
@@ -107,6 +108,17 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
         error instanceof Error
           ? error.message
           : "تعذر تأكيد نتيجة محاولة الرد.",
+      ),
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: inboxListQueryKey }),
+  });
+
+  const retryAutoReply = useMutation({
+    mutationFn: (item: MetaInboxItem) => retryMetaAutoReply(item.id),
+    onSuccess: () => setActionError(null),
+    onError: (error) =>
+      setActionError(
+        error instanceof Error ? error.message : "تعذر إعادة محاولة الرد الآلي.",
       ),
     onSettled: () =>
       queryClient.invalidateQueries({ queryKey: inboxListQueryKey }),
@@ -375,6 +387,14 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
                     setActionError(null);
                     confirmRetry.mutate(item);
                   }}
+                  onRetryAutoReply={() => {
+                    setActionError(null);
+                    retryAutoReply.mutate(item);
+                  }}
+                  retryingAutoReply={
+                    retryAutoReply.isPending &&
+                    retryAutoReply.variables?.id === item.id
+                  }
                   sending={
                     reply.isPending && reply.variables?.item.id === item.id
                   }
