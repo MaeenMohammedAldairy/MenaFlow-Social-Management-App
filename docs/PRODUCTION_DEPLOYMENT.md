@@ -62,11 +62,12 @@ loop skips that same queue when the inline loop is enabled.
 ### Owner console
 
 The internal owner dashboard is served by this same API process at `/owner`
-(no extra host, no extra database migration). Build it with
-`pnpm --filter @workspace/owner-console run build` — the root `pnpm -r build`
-already includes it — and enable access with `MENA_OWNER_CONSOLE_TOKEN` and/or
-`MENA_OWNER_USER_IDS`. Without those variables every `/api/owner/*` route
-answers 404. See `docs/OWNER_CONSOLE.md` for the security model and endpoints.
+(no extra host, no extra database migration). It is built by the API's own build
+step (`artifacts/api-server/build.mjs`), so hosts that only run
+`pnpm --filter @workspace/api-server build` still ship it; set
+`MENA_SKIP_OWNER_CONSOLE_BUILD=1` to opt out. Enable access with
+`MENA_OWNER_CONSOLE_TOKEN` and/or `MENA_OWNER_USER_IDS`. Without those variables
+every `/api/owner/*` route answers 404. See `docs/OWNER_CONSOLE.md` for the security model and endpoints.
 
 The API build script replaces only `artifacts/api-server/dist`. The mobile package's `build` script removes `artifacts/menaflow-mobile/static-build` and clears Metro caches; inspect or back up those outputs before running it.
 
