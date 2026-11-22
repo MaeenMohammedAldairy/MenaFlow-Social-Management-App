@@ -8,6 +8,7 @@ import {
   evolutionRequest,
   isExclusiveWhatsAppInstance,
   mapEvolutionConnectionState,
+  resolveWhatsAppWebhookSecret,
   verifyWhatsAppWebhookSecret,
   whatsappWebhookUrl,
 } from "./whatsapp-evolution.ts";
@@ -135,6 +136,66 @@ test("validates webhook credentials without accepting missing or mismatched valu
       WHATSAPP_EVOLUTION_API_KEY: undefined,
     },
     () => assert.equal(verifyWhatsAppWebhookSecret("any-value"), false),
+  );
+});
+
+test("production webhook verification never accepts the Evolution admin key as the secret", () => {
+  // The fallback stays available in development only. In production the admin
+  // key is stored in the provider's webhook configuration, so accepting it
+  // would widen a webhook leak into full control over every WhatsApp instance.
+  withEnvironment(
+    {
+      NODE_ENV: "production",
+      WHATSAPP_EVOLUTION_WEBHOOK_SECRET: undefined,
+      WHATSAPP_EVOLUTION_API_KEY: "evolution-admin-key",
+    },
+    () => {
+      assert.equal(resolveWhatsAppWebhookSecret(), null);
+      assert.equal(verifyWhatsAppWebhookSecret("evolution-admin-key"), false);
+      assert.equal(verifyWhatsAppWebhookSecret("any-value"), false);
+    },
+  );
+
+  withEnvironment(
+    {
+      NODE_ENV: "production",
+      WHATSAPP_EVOLUTION_WEBHOOK_SECRET: "dedicated-webhook-secret",
+      WHATSAPP_EVOLUTION_API_KEY: "evolution-admin-key",
+    },
+    () => {
+      assert.equal(
+        resolveWhatsAppWebhookSecret(),
+        "dedicated-webhook-secret",
+      );
+      assert.equal(
+        verifyWhatsAppWebhookSecret("dedicated-webhook-secret"),
+        true,
+      );
+      assert.equal(verifyWhatsAppWebhookSecret("evolution-admin-key"), false);
+    },
+  );
+});
+
+test("development keeps the admin-key fallback and ignores blank secrets", () => {
+  withEnvironment(
+    {
+      NODE_ENV: "development",
+      WHATSAPP_EVOLUTION_WEBHOOK_SECRET: undefined,
+      WHATSAPP_EVOLUTION_API_KEY: "evolution-admin-key",
+    },
+    () => {
+      assert.equal(resolveWhatsAppWebhookSecret(), "evolution-admin-key");
+      assert.equal(verifyWhatsAppWebhookSecret("evolution-admin-key"), true);
+    },
+  );
+
+  withEnvironment(
+    {
+      NODE_ENV: "development",
+      WHATSAPP_EVOLUTION_WEBHOOK_SECRET: "   ",
+      WHATSAPP_EVOLUTION_API_KEY: "  ",
+    },
+    () => assert.equal(resolveWhatsAppWebhookSecret(), null),
   );
 });
 

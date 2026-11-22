@@ -193,3 +193,70 @@ test("production CORS origins must be exact HTTPS origins", () => {
       ),
   );
 });
+
+test("production Evolution configuration refuses to reuse the admin key as the webhook secret", () => {
+  const common = {
+    NODE_ENV: "production",
+    MENA_AUTH_DISABLED: undefined,
+    CLERK_SECRET_KEY: "secret",
+    CLERK_PUBLISHABLE_KEY: "publishable",
+    ENCRYPTION_KEY: "a-production-encryption-key-with-at-least-32-chars",
+    // Clear anything the surrounding environment may already set, so these
+    // assertions do not depend on the machine running them.
+    WHATSAPP_EVOLUTION_API_KEY: undefined,
+    WHATSAPP_EVOLUTION_WEBHOOK_SECRET: undefined,
+  };
+
+  // Evolution not enabled: no new requirement.
+  withEnvironment(common, () =>
+    assert.doesNotThrow(() => assertProductionConfiguration()),
+  );
+
+  // Enabled with a dedicated secret: accepted.
+  withEnvironment(
+    {
+      ...common,
+      WHATSAPP_EVOLUTION_API_KEY: "evolution-admin-key",
+      WHATSAPP_EVOLUTION_WEBHOOK_SECRET: "dedicated-webhook-secret",
+    },
+    () => assert.doesNotThrow(() => assertProductionConfiguration()),
+  );
+
+  // Enabled without a dedicated secret: the admin-key fallback is refused.
+  withEnvironment(
+    { ...common, WHATSAPP_EVOLUTION_API_KEY: "evolution-admin-key" },
+    () =>
+      assert.throws(
+        () => assertProductionConfiguration(),
+        /WHATSAPP_EVOLUTION_WEBHOOK_SECRET must be configured in production/,
+      ),
+  );
+
+  // Set to the admin key itself: refused, because that is the same exposure.
+  withEnvironment(
+    {
+      ...common,
+      WHATSAPP_EVOLUTION_API_KEY: "evolution-admin-key",
+      WHATSAPP_EVOLUTION_WEBHOOK_SECRET: "evolution-admin-key",
+    },
+    () =>
+      assert.throws(
+        () => assertProductionConfiguration(),
+        /WHATSAPP_EVOLUTION_WEBHOOK_SECRET must differ from WHATSAPP_EVOLUTION_API_KEY/,
+      ),
+  );
+
+  // Blank values count as missing.
+  withEnvironment(
+    {
+      ...common,
+      WHATSAPP_EVOLUTION_API_KEY: "evolution-admin-key",
+      WHATSAPP_EVOLUTION_WEBHOOK_SECRET: "   ",
+    },
+    () =>
+      assert.throws(
+        () => assertProductionConfiguration(),
+        /WHATSAPP_EVOLUTION_WEBHOOK_SECRET must be configured in production/,
+      ),
+  );
+});

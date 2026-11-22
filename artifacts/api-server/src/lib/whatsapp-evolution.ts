@@ -12,13 +12,33 @@ export class EvolutionApiError extends Error {
   }
 }
 
+/**
+ * The secret Evolution sends back in `x-evolution-api-key` on every webhook
+ * event, and the value this API configures on the provider.
+ *
+ * Both callers must resolve it identically, or the provider would be
+ * configured with one secret while events are verified against another.
+ *
+ * Production requires a dedicated `WHATSAPP_EVOLUTION_WEBHOOK_SECRET`. Falling
+ * back to `WHATSAPP_EVOLUTION_API_KEY` would hand Evolution's *admin* key to
+ * the webhook path and store it in the provider's webhook configuration, so
+ * leaking that configuration or its logs would grant full control over every
+ * WhatsApp instance — reading and sending messages, deleting instances — and
+ * not merely the ability to forge webhook events. Development keeps the
+ * fallback for convenience.
+ */
+export function resolveWhatsAppWebhookSecret(): string | null {
+  const dedicated = process.env.WHATSAPP_EVOLUTION_WEBHOOK_SECRET?.trim();
+  if (dedicated) return dedicated;
+  if (process.env.NODE_ENV === "production") return null;
+  return process.env.WHATSAPP_EVOLUTION_API_KEY?.trim() || null;
+}
+
 export function verifyWhatsAppWebhookSecret(
   provided: string | string[] | undefined,
 ): boolean {
   const supplied = Array.isArray(provided) ? provided[0] : provided;
-  const expected =
-    process.env.WHATSAPP_EVOLUTION_WEBHOOK_SECRET?.trim() ||
-    process.env.WHATSAPP_EVOLUTION_API_KEY?.trim();
+  const expected = resolveWhatsAppWebhookSecret();
   if (!supplied || !expected) return false;
   const suppliedBytes = Buffer.from(supplied);
   const expectedBytes = Buffer.from(expected);
@@ -303,9 +323,7 @@ export function whatsappWebhookUrl(): string {
 export async function configureWhatsAppWebhook(
   instanceName: string,
 ): Promise<void> {
-  const webhookSecret =
-    process.env.WHATSAPP_EVOLUTION_WEBHOOK_SECRET?.trim() ||
-    process.env.WHATSAPP_EVOLUTION_API_KEY?.trim();
+  const webhookSecret = resolveWhatsAppWebhookSecret();
   if (!webhookSecret) {
     throw new EvolutionApiError(503, "WHATSAPP_WEBHOOK_SECRET_REQUIRED");
   }

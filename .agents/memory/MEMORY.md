@@ -1,1 +1,1 @@
-- [MenaFlow owner access](menaflow-single-owner.md) — MenaFlow is for one business owner; keep workspace access scoped to that account.
+- [MenaFlow workspace scope](menaflow-workspace-scope.md) — one business owner plus 2–3 staff in a single workspace; roles are `owner`/`admin`/`member`, staff join by invitation only, and connection management stays owner-only.
