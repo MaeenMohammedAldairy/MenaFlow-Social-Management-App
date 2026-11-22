@@ -6,60 +6,26 @@ import {
   workspaceSubscriptionUsage,
   workspaceSubscriptions,
 } from "@workspace/db";
+import {
+  planOrFree,
+  paymentsEnabled,
+  subscriptionPlans,
+  type SubscriptionChannel,
+  type SubscriptionMeter,
+} from "./plan-catalog.ts";
+import {
+  entitlementsForRow,
+  resolveEntitlements,
+  type SubscriptionStatus,
+} from "./entitlements.ts";
+import { ensureSubscription } from "./entitlement-store.ts";
 
-export type SubscriptionMeter = "aiGenerations" | "postsCreated";
-export type SubscriptionChannel = "facebook" | "instagram" | "whatsapp";
-
-export const subscriptionPlans = [
-  {
-    id: "free",
-    name: "مجاني",
-    monthlyPriceUsd: 0,
-    limits: { postsCreated: 10, aiGenerations: 10, channels: 2 },
-  },
-  {
-    id: "starter",
-    name: "بداية",
-    monthlyPriceUsd: 9,
-    limits: { postsCreated: 100, aiGenerations: 100, channels: 3 },
-  },
-  {
-    id: "growth",
-    name: "نمو",
-    monthlyPriceUsd: 29,
-    limits: { postsCreated: 500, aiGenerations: 500, channels: 3 },
-  },
-] as const;
-
-const planById = new Map(subscriptionPlans.map((plan) => [plan.id, plan]));
-
-function currentPeriodKey(now = new Date()): string {
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-}
-
-function effectivePlanId(
-  subscription: typeof workspaceSubscriptions.$inferSelect,
-  now: Date,
-): (typeof subscriptionPlans)[number]["id"] {
-  if (subscription.status === "trialing") {
-    return subscription.trialEndsAt && subscription.trialEndsAt > now
-      ? "growth"
-      : "free";
-  }
-  return subscription.status === "active" ? subscription.planId : "free";
-}
-
-async function subscriptionForWorkspace(workspaceId: string) {
-  const [subscription] = await db
-    .select()
-    .from(workspaceSubscriptions)
-    .where(eq(workspaceSubscriptions.workspaceId, workspaceId))
-    .limit(1);
-  if (!subscription) {
-    throw new Error("WORKSPACE_SUBSCRIPTION_MISSING");
-  }
-  return subscription;
-}
+export {
+  subscriptionPlans,
+  type SubscriptionChannel,
+  type SubscriptionMeter,
+} from "./plan-catalog.ts";
+export type { SubscriptionStatus } from "./entitlements.ts";
 
 async function channelUsage(workspaceId: string) {
   const [meta] = await db
@@ -84,12 +50,11 @@ async function channelUsage(workspaceId: string) {
 
 export async function getSubscriptionOverview(workspaceId: string) {
   const now = new Date();
-  const subscription = await subscriptionForWorkspace(workspaceId);
-  const planId = effectivePlanId(subscription, now);
-  const plan = planById.get(planId);
-  if (!plan) throw new Error("WORKSPACE_SUBSCRIPTION_PLAN_INVALID");
-
-  const periodKey = currentPeriodKey(now);
+  const subscription = await ensureSubscription(workspaceId);
+  const entitlements = entitlementsForRow(subscription, now);
+  const plan = entitlements.plan;
+  const planId = plan.id;
+  const periodKey = entitlements.periodKey;
   const [usage] = await db
     .select()
     .from(workspaceSubscriptionUsage)
@@ -110,8 +75,11 @@ export async function getSubscriptionOverview(workspaceId: string) {
         ? "free"
         : subscription.status,
     trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
-    paymentAvailable: false,
+    paymentAvailable: paymentsEnabled(),
+    source: entitlements.source,
     periodKey,
+    periodStart: entitlements.periodStart?.toISOString() ?? null,
+    periodEnd: entitlements.periodEnd?.toISOString() ?? null,
     usage: {
       postsCreated: usage?.postsCreated ?? 0,
       aiGenerations: usage?.aiGenerations ?? 0,
@@ -126,7 +94,8 @@ export async function consumeSubscriptionUsage(
   meter: SubscriptionMeter,
 ): Promise<{ allowed: boolean; used: number; limit: number; periodKey: string }> {
   const now = new Date();
-  const periodKey = currentPeriodKey(now);
+  // A missing row is a self-healing condition, not a 500 for the merchant.
+  await ensureSubscription(workspaceId);
 
   return db.transaction(async (transaction) => {
     const [subscription] = await transaction
@@ -137,10 +106,18 @@ export async function consumeSubscriptionUsage(
       .limit(1);
     if (!subscription) throw new Error("WORKSPACE_SUBSCRIPTION_MISSING");
 
-    const planId = effectivePlanId(subscription, now);
-    const plan = planById.get(planId);
-    if (!plan) throw new Error("WORKSPACE_SUBSCRIPTION_PLAN_INVALID");
-    const limit = plan.limits[meter];
+    const entitlements = resolveEntitlements(
+      {
+        planId: subscription.planId,
+        status: subscription.status as SubscriptionStatus,
+        trialEndsAt: subscription.trialEndsAt,
+        currentPeriodStart: subscription.currentPeriodStart,
+        currentPeriodEnd: subscription.currentPeriodEnd,
+      },
+      now,
+    );
+    const periodKey = entitlements.periodKey;
+    const limit = entitlements.plan.limits[meter];
 
     await transaction
       .insert(workspaceSubscriptionUsage)
@@ -245,10 +222,8 @@ export async function canConnectChannel(
   workspaceId: string,
   channel: SubscriptionChannel,
 ): Promise<{ allowed: boolean; used: number; limit: number }> {
-  const subscription = await subscriptionForWorkspace(workspaceId);
-  const planId = effectivePlanId(subscription, new Date());
-  const plan = planById.get(planId);
-  if (!plan) throw new Error("WORKSPACE_SUBSCRIPTION_PLAN_INVALID");
+  const subscription = await ensureSubscription(workspaceId);
+  const plan = planOrFree(entitlementsForRow(subscription, new Date()).plan.id);
 
   const channels = await channelUsage(workspaceId);
   if (channels[channel]) {
@@ -271,10 +246,8 @@ export async function canConnectMetaAccounts(
   workspaceId: string,
   includesInstagram: boolean,
 ): Promise<{ allowed: boolean; used: number; limit: number }> {
-  const subscription = await subscriptionForWorkspace(workspaceId);
-  const planId = effectivePlanId(subscription, new Date());
-  const plan = planById.get(planId);
-  if (!plan) throw new Error("WORKSPACE_SUBSCRIPTION_PLAN_INVALID");
+  const subscription = await ensureSubscription(workspaceId);
+  const plan = planOrFree(entitlementsForRow(subscription, new Date()).plan.id);
 
   const channels = await channelUsage(workspaceId);
   const used = Number(channels.whatsapp) + 1 + Number(includesInstagram);

@@ -48,6 +48,10 @@ export type AiProviderOptions = {
   timeoutMs?: number;
 };
 
+export type AiProviderCallOptions = AiProviderOptions & {
+  preferredProvider?: "openai" | "gemini";
+};
+
 export type AiProviderResult = {
   content: string;
   model: string;
@@ -298,7 +302,7 @@ async function callGemini(
  * The caller can force a specific provider by passing `preferredProvider`.
  */
 export async function callAiProvider(
-  options: AiProviderOptions & { preferredProvider?: "openai" | "gemini" },
+  options: AiProviderCallOptions,
 ): Promise<AiProviderResult> {
   const openAiKey = process.env.OPENAI_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;

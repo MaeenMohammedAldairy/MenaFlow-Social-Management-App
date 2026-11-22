@@ -1,4 +1,7 @@
-import { callAiProvider, type AiProviderOptions } from "./ai-provider.ts";
+import type {
+  AiProviderOptions,
+  AiProviderResult,
+} from "./ai-provider.ts";
 import { callMeteredAiProvider } from "./metered-ai-provider.ts";
 import { boundedString as boundedText, isRecord } from "./value-utils.ts";
 
@@ -537,9 +540,13 @@ export function buildMetaAutoReplyUnderstandingProviderOptions(
   };
 }
 
+export type MetaAutoReplyUnderstandingCaller = (
+  options: AiProviderOptions,
+) => Promise<AiProviderResult>;
+
 export async function analyzeMetaAutoReplyUnderstanding(
   turns: MetaAutoReplyContextTurn[],
-  provider: typeof callAiProvider = callAiProvider,
+  provider: MetaAutoReplyUnderstandingCaller,
 ): Promise<MetaAutoReplyUnderstanding> {
   if (turns.length === 0) {
     throw new Error("META_AUTO_REPLY_UNDERSTANDING_CONTEXT_REQUIRED");

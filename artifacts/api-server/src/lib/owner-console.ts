@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { calendarPeriodKey } from "./entitlements.ts";
 
 /**
  * Access rules for the owner console.
@@ -144,5 +145,5 @@ export function clampOwnerLimit(
 
 /** Current billing period key, matching `mena_workspace_subscription_usage`. */
 export function ownerUsagePeriodKey(now: Date = new Date()): string {
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  return calendarPeriodKey(now);
 }
