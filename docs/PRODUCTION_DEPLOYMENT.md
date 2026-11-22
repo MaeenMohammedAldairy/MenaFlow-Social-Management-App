@@ -59,6 +59,15 @@ Evolution media downloads can run through the API's inline loop with
 `WHATSAPP_MEDIA_DOWNLOAD_INLINE_WORKER_ENABLED=true`; the regular API worker
 loop skips that same queue when the inline loop is enabled.
 
+### Owner console
+
+The internal owner dashboard is served by this same API process at `/owner`
+(no extra host, no extra database migration). Build it with
+`pnpm --filter @workspace/owner-console run build` — the root `pnpm -r build`
+already includes it — and enable access with `MENA_OWNER_CONSOLE_TOKEN` and/or
+`MENA_OWNER_USER_IDS`. Without those variables every `/api/owner/*` route
+answers 404. See `docs/OWNER_CONSOLE.md` for the security model and endpoints.
+
 The API build script replaces only `artifacts/api-server/dist`. The mobile package's `build` script removes `artifacts/menaflow-mobile/static-build` and clears Metro caches; inspect or back up those outputs before running it.
 
 Configure these API variables in the hosting provider's secret/configuration manager:
