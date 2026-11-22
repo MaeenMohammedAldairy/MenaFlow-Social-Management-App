@@ -31,6 +31,14 @@ workers. Its supported values are
 `media-thumbnails`, or `whatsapp-marketing` to run a single worker family.
 Keep one replica for `meta-webhook-subscriptions` until its reconciliation
 work is protected by a cross-process claim.
+`GET /api/readyz` returns a `workers` array describing every started loop
+(`lastRunFinishedAt`, `lastRunDurationMs`, `consecutiveErrors`, `lastError`,
+`stale`). A worker that stops running is invisible in request metrics, so point
+an uptime monitor at the response and alert when a worker is `stale` or its
+`consecutiveErrors` keeps climbing. The `whatsapp-auto-replies` worker also
+stops answering a chat that receives more than
+`WHATSAPP_AUTO_REPLY_HOURLY_LIMIT` automatic replies in an hour (default 12,
+maximum 100) to keep two automated systems from answering each other forever.
 The `whatsapp-auto-replies` worker claims WhatsApp reply events from a durable
 queue. Leases prevent concurrent sends for the same event. Recovery requeues
 expired pre-send work and marks expired in-flight sends unknown without

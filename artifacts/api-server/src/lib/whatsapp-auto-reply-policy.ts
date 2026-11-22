@@ -24,6 +24,31 @@ export function whatsAppAutoReplyNextRunAt(now: Date = new Date()): Date {
   return new Date(now.getTime() + whatsAppAutoReplyDebounceMs);
 }
 
+/** Error code recorded when a newer message in the same chat wins the reply. */
+export const whatsAppAutoReplySupersededCode = "SUPERSEDED_BY_NEWER_MESSAGE";
+
+/** Error code recorded when a chat hits the automatic-reply ceiling. */
+export const whatsAppAutoReplyLoopGuardCode = "AUTO_REPLY_LOOP_GUARD";
+
+/**
+ * Automatic replies allowed per chat in a rolling hour.
+ *
+ * Two automated systems greeting each other can otherwise answer in an endless
+ * loop, spending the workspace AI quota on a conversation no customer reads.
+ * A normal customer conversation stays well below this ceiling.
+ */
+export const whatsAppAutoReplyDefaultHourlyLimit = 12;
+
+export function whatsAppAutoReplyHourlyLimit(
+  value: string | undefined = process.env.WHATSAPP_AUTO_REPLY_HOURLY_LIMIT,
+): number {
+  const parsed = Number.parseInt(value?.trim() ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return whatsAppAutoReplyDefaultHourlyLimit;
+  }
+  return Math.min(parsed, 100);
+}
+
 const toneInstructions: Record<WhatsAppAutoReplyTone, string> = {
   friendly_professional: "ودود ومهني، واضح ومحترم.",
   concise: "مختصر ومباشر مع الحفاظ على الاحترام.",

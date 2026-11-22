@@ -10,6 +10,7 @@ import {
   isNotNull,
   lte,
   lt,
+  ne,
   or,
   sql,
 } from "drizzle-orm";
@@ -47,7 +48,12 @@ import {
   normalizeRemoteJid,
 } from "../lib/whatsapp-message-scope";
 import { isWhatsAppOptOutMessage } from "../lib/whatsapp-opt-out";
-import { whatsAppAutoReplyNextRunAt } from "../lib/whatsapp-auto-reply-policy";
+import {
+  whatsAppAutoReplyHourlyLimit,
+  whatsAppAutoReplyLoopGuardCode,
+  whatsAppAutoReplyNextRunAt,
+  whatsAppAutoReplySupersededCode,
+} from "../lib/whatsapp-auto-reply-policy";
 import { processWhatsAppOrderIntake } from "../lib/whatsapp-order-intake";
 import {
   resolveWhatsAppAlbumSource,
@@ -1243,6 +1249,7 @@ async function processWhatsAppAutoReplyAsync(input: {
   remoteJid: string;
   remoteJidHash: string;
   remoteMessageId: string;
+  messageTimestamp: Date;
   customerMessage: string;
 }): Promise<void> {
   let sendStarted = false;
@@ -1298,6 +1305,38 @@ async function processWhatsAppAutoReplyAsync(input: {
             ),
           ),
         );
+      return;
+    }
+    // A newer message in the same chat may have its own waiting reply; drop
+    // this stale answer before spending an AI generation on it.
+    if (
+      await chatHasNewerWaitingWhatsAppAutoReply({
+        workspaceId: input.connection.workspaceId,
+        instanceName: input.instanceName,
+        remoteJidHash: input.remoteJidHash,
+        claimId: input.claimId,
+        messageTimestamp: input.messageTimestamp,
+      })
+    ) {
+      await stopWhatsAppAutoReplyEvent({
+        claimId: input.claimId,
+        workspaceId: input.connection.workspaceId,
+        errorCode: whatsAppAutoReplySupersededCode,
+      });
+      return;
+    }
+    if (
+      (await countRecentWhatsAppAutoReplies({
+        workspaceId: input.connection.workspaceId,
+        instanceName: input.instanceName,
+        remoteJidHash: input.remoteJidHash,
+      })) >= whatsAppAutoReplyHourlyLimit()
+    ) {
+      await stopWhatsAppAutoReplyEvent({
+        claimId: input.claimId,
+        workspaceId: input.connection.workspaceId,
+        errorCode: whatsAppAutoReplyLoopGuardCode,
+      });
       return;
     }
 
@@ -1655,11 +1694,130 @@ export async function processWhatsAppAutoReplyQueue(limit = 5): Promise<number> 
       remoteJid,
       remoteJidHash: message.remoteJidHash,
       remoteMessageId: event.remoteMessageId,
+      messageTimestamp: message.messageTimestamp,
       customerMessage,
     });
     processed += 1;
   }
   return processed;
+}
+
+/**
+ * Ends a claimed auto-reply event without sending anything.
+ *
+ * Nothing reached the customer, so the event is closed so it cannot be
+ * retried; `errorCode` explains why to the inbox.
+ */
+async function stopWhatsAppAutoReplyEvent(input: {
+  claimId: string;
+  workspaceId: string;
+  errorCode: string;
+}): Promise<void> {
+  await db
+    .update(menaWhatsAppAutoReplyEvents)
+    .set({
+      status: "failed",
+      errorCode: input.errorCode,
+      leaseExpiresAt: null,
+      completedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+        eq(menaWhatsAppAutoReplyEvents.workspaceId, input.workspaceId),
+      ),
+    );
+}
+
+/**
+ * True when a newer message in the same chat already has its own waiting
+ * reply, so the reply being generated now would answer an older message.
+ */
+async function chatHasNewerWaitingWhatsAppAutoReply(input: {
+  workspaceId: string;
+  instanceName: string;
+  remoteJidHash: string;
+  claimId: string;
+  messageTimestamp: Date;
+}): Promise<boolean> {
+  const [newer] = await db
+    .select({ id: menaWhatsAppAutoReplyEvents.id })
+    .from(menaWhatsAppAutoReplyEvents)
+    .innerJoin(
+      menaWhatsAppDirectMessages,
+      and(
+        eq(
+          menaWhatsAppDirectMessages.workspaceId,
+          menaWhatsAppAutoReplyEvents.workspaceId,
+        ),
+        eq(
+          menaWhatsAppDirectMessages.instanceName,
+          menaWhatsAppAutoReplyEvents.instanceName,
+        ),
+        eq(
+          menaWhatsAppDirectMessages.providerMessageId,
+          menaWhatsAppAutoReplyEvents.remoteMessageId,
+        ),
+        eq(menaWhatsAppDirectMessages.direction, "inbound"),
+      ),
+    )
+    .where(
+      and(
+        eq(menaWhatsAppAutoReplyEvents.workspaceId, input.workspaceId),
+        eq(menaWhatsAppAutoReplyEvents.instanceName, input.instanceName),
+        eq(menaWhatsAppDirectMessages.remoteJidHash, input.remoteJidHash),
+        inArray(menaWhatsAppAutoReplyEvents.status, ["queued", "processing"]),
+        gt(menaWhatsAppDirectMessages.messageTimestamp, input.messageTimestamp),
+        ne(menaWhatsAppAutoReplyEvents.id, input.claimId),
+      ),
+    )
+    .limit(1);
+  return Boolean(newer);
+}
+
+/**
+ * Automatic replies already sent to this chat during the last hour.
+ *
+ * Two automated systems greeting each other would otherwise answer forever and
+ * spend the workspace AI quota on a conversation no customer ever reads.
+ */
+async function countRecentWhatsAppAutoReplies(input: {
+  workspaceId: string;
+  instanceName: string;
+  remoteJidHash: string;
+}): Promise<number> {
+  const since = new Date(Date.now() - 60 * 60 * 1000);
+  const [row] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(menaWhatsAppAutoReplyEvents)
+    .innerJoin(
+      menaWhatsAppDirectMessages,
+      and(
+        eq(
+          menaWhatsAppDirectMessages.workspaceId,
+          menaWhatsAppAutoReplyEvents.workspaceId,
+        ),
+        eq(
+          menaWhatsAppDirectMessages.instanceName,
+          menaWhatsAppAutoReplyEvents.instanceName,
+        ),
+        eq(
+          menaWhatsAppDirectMessages.providerMessageId,
+          menaWhatsAppAutoReplyEvents.remoteMessageId,
+        ),
+        eq(menaWhatsAppDirectMessages.direction, "inbound"),
+      ),
+    )
+    .where(
+      and(
+        eq(menaWhatsAppAutoReplyEvents.workspaceId, input.workspaceId),
+        eq(menaWhatsAppAutoReplyEvents.instanceName, input.instanceName),
+        eq(menaWhatsAppDirectMessages.remoteJidHash, input.remoteJidHash),
+        eq(menaWhatsAppAutoReplyEvents.status, "sent"),
+        gt(menaWhatsAppAutoReplyEvents.completedAt, since),
+      ),
+    );
+  return row?.total ?? 0;
 }
 
 /**

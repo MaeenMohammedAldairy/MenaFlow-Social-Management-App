@@ -55,11 +55,35 @@ function makeRequestId(): string {
   return `whatsapp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
 }
 
+/**
+ * Replies we deliberately did not send. They are recorded as `failed` in the
+ * queue so nothing retries them, but nothing went wrong for the merchant, so
+ * they are shown as information instead of an error.
+ */
+function suppressedAutoReplyMessage(
+  message: WhatsAppDirectMessage,
+): string | null {
+  if (
+    message.direction !== "inbound" ||
+    message.autoReplyStatus !== "failed"
+  ) {
+    return null;
+  }
+  if (message.autoReplyErrorCode === "SUPERSEDED_BY_NEWER_MESSAGE") {
+    return "لم يُرسل هذا الرد لأن رسالة أحدث وصلت من العميل، ويجري الرد عليها.";
+  }
+  if (message.autoReplyErrorCode === "AUTO_REPLY_LOOP_GUARD") {
+    return "أوقفنا الرد الآلي في هذه المحادثة مؤقتًا لتجاوزها حد الردود التلقائية في الساعة الأخيرة. يمكنك الرد يدويًا.";
+  }
+  return null;
+}
+
 function sendFailureMessage(message: WhatsAppDirectMessage): string | null {
   if (
     message.direction === "inbound" &&
     message.autoReplyStatus === "failed"
   ) {
+    if (suppressedAutoReplyMessage(message)) return null;
     if (message.autoReplyErrorCode === "SubscriptionAiQuotaError") {
       return "تعذّر إنشاء الرد الآلي لأن حصة الذكاء الاصطناعي مستنفدة. زد الحصة أو أرسل ردًا يدويًا.";
     }
@@ -421,6 +445,7 @@ function DirectMessageBubble({
   const isUnknown =
     message.status === "unknown" || message.autoReplyStatus === "unknown";
   const failureMessage = sendFailureMessage(message);
+  const suppressedMessage = suppressedAutoReplyMessage(message);
   const messageTypeLabel = whatsappDirectMessagePlaceholder(message.messageType);
   return (
     <Panel
@@ -471,6 +496,11 @@ function DirectMessageBubble({
           {message.autoReplyStatus === "sending"
             ? "جارٍ إرسال الرد الآلي..."
             : "جارٍ إعداد الرد الآلي..."}
+        </Text>
+      ) : null}
+      {suppressedMessage ? (
+        <Text style={{ color: colors.mutedForeground, textAlign: "right" }}>
+          {suppressedMessage}
         </Text>
       ) : null}
       {failureMessage ? (
