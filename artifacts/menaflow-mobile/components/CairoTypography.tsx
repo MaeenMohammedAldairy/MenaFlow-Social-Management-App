@@ -58,7 +58,13 @@ export const CairoText = React.forwardRef<
   TextProps
 >(
   ({ style, ...props }, ref) => (
-    <NativeText ref={ref} {...props} style={[style, cairoStyle(style)]} />
+    <NativeText
+      ref={ref}
+      {...props}
+      // Flattened on purpose: a nested style array is what makes Safari throw
+      // "Failed to set an indexed property on CSSStyleDeclaration".
+      style={[StyleSheet.flatten(style) ?? {}, cairoStyle(style)]}
+    />
   ),
 );
 
@@ -66,5 +72,9 @@ export const CairoTextInput = React.forwardRef<
   React.ElementRef<typeof NativeTextInput>,
   TextInputProps
 >(({ style, ...props }, ref) => (
-  <NativeTextInput ref={ref} {...props} style={[style, cairoInputStyle(style)]} />
+  <NativeTextInput
+    ref={ref}
+    {...props}
+    style={[StyleSheet.flatten(style) ?? {}, cairoInputStyle(style)]}
+  />
 ));
