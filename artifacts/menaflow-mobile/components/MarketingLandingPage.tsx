@@ -996,7 +996,11 @@ const styles = StyleSheet.create({
   trustDivider: { width: 1, alignSelf: "stretch", backgroundColor: palette.border },
   trustDividerStacked: { width: "100%", height: 1 },
   trustItem: {
-    flex: 1,
+    // Longhands instead of `flex: 1`: on web the `flex` shorthand compiles to
+    // `flex: 1 1 0%`, and the stacked override below has to reset that basis.
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1004,7 +1008,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   trustItemStacked: {
-    flex: 0,
+    // A `0%` basis collapses the row to zero height whenever the card has a
+    // definite height (web), which made the title/note overlap the divider.
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: "auto",
     justifyContent: "flex-start",
     paddingHorizontal: 0,
     gap: 10,
