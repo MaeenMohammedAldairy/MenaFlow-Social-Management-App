@@ -59,8 +59,13 @@ export function ownerConsoleMode(
 
 export function bearerToken(header: string | undefined): string | null {
   if (!header) return null;
-  const match = /^bearer\s+(.+)$/i.exec(header.trim());
-  return match?.[1]?.trim() || null;
+  // Parsed by hand instead of a regular expression so a hostile header such as
+  // "bearer" followed by thousands of spaces stays linear.
+  const separator = header.indexOf(" ");
+  if (separator <= 0) return null;
+  if (header.slice(0, separator).toLowerCase() !== "bearer") return null;
+  const token = header.slice(separator + 1).trim();
+  return token.length > 0 ? token : null;
 }
 
 function digest(value: string): Buffer {

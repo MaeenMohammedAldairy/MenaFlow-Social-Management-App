@@ -56,6 +56,10 @@ test("bearer parsing only accepts a bearer scheme", () => {
   assert.equal(bearerToken(undefined), null);
   assert.equal(bearerToken("Basic abc"), null);
   assert.equal(bearerToken("Bearer   secret-token  "), "secret-token");
+  assert.equal(bearerToken("bearer  padded "), "padded");
+  assert.equal(bearerToken("Bearer"), null);
+  assert.equal(bearerToken("Bearer    "), null);
+  assert.equal(bearerToken(`Bearer ${" ".repeat(20000)}late`), "late");
 });
 
 test("access resolves for the token, for an allowlisted clerk user, or not at all", () => {
