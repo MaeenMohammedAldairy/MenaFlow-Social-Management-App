@@ -94,10 +94,10 @@ Configure these API variables in the hosting provider's secret/configuration man
 - `WHATSAPP_MEDIA_DOWNLOAD_INLINE_WORKER_ENABLED=true` to process Evolution media-download jobs inside the API Web Service
 - `MENA_FACEBOOK_WEB_ORIGINS` for explicitly allowed browser return origins where applicable
 - `MENA_PUBLIC_MEDIA_BASE_URL` (public HTTPS API origin) when publishing media that Meta must fetch
-- `WHATSAPP_EVOLUTION_BASE_URL`, `WHATSAPP_EVOLUTION_API_KEY`, `WHATSAPP_EVOLUTION_WEBHOOK_SECRET`, and `WHATSAPP_EVOLUTION_WEBHOOK_URL` (public HTTPS callback) when enabling Evolution
+- `WHATSAPP_EVOLUTION_BASE_URL`, `WHATSAPP_EVOLUTION_API_KEY`, `WHATSAPP_EVOLUTION_WEBHOOK_SECRET`, and `WHATSAPP_EVOLUTION_WEBHOOK_URL` (public HTTPS callback) when enabling Evolution. The webhook secret is **required** in production and must be a dedicated random value **different from** `WHATSAPP_EVOLUTION_API_KEY`: this API stores it in the provider's webhook configuration, so reusing the admin key would widen a webhook leak into full control over every WhatsApp instance. Development may still fall back to the API key.
 - `GEMINI_API_KEY` and/or `OPENAI_API_KEY` when enabling AI generation
 
-Production startup rejects disabled Clerk auth, missing Clerk keys, short encryption keys, short supplied previous keys, and malformed/non-HTTPS CORS origins. Meta media and Evolution callbacks do not use app-domain, localhost, or Docker-host fallbacks in production. Keep database and provider credentials server-side; only `EXPO_PUBLIC_*` values are embedded into the app.
+Production startup rejects disabled Clerk auth, missing Clerk keys, short encryption keys, short supplied previous keys, malformed/non-HTTPS CORS origins, and — when `WHATSAPP_EVOLUTION_API_KEY` is set — a missing `WHATSAPP_EVOLUTION_WEBHOOK_SECRET` or one equal to the admin key. Meta media and Evolution callbacks do not use app-domain, localhost, or Docker-host fallbacks in production. Keep database and provider credentials server-side; only `EXPO_PUBLIC_*` values are embedded into the app.
 
 ### Subscription plans
 

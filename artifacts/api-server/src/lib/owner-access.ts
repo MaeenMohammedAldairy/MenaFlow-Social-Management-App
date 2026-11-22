@@ -74,6 +74,26 @@ export function assertProductionConfiguration(): void {
       );
     }
   }
+
+  // Evolution's admin API key must never double as the webhook secret: this API
+  // stores the webhook secret in the provider's webhook configuration, so
+  // reusing the admin key would widen a webhook leak into full control over
+  // every WhatsApp instance.
+  const evolutionApiKey = process.env.WHATSAPP_EVOLUTION_API_KEY?.trim();
+  if (evolutionApiKey) {
+    const evolutionWebhookSecret =
+      process.env.WHATSAPP_EVOLUTION_WEBHOOK_SECRET?.trim();
+    if (!evolutionWebhookSecret) {
+      throw new Error(
+        "WHATSAPP_EVOLUTION_WEBHOOK_SECRET must be configured in production when Evolution is enabled; it must not fall back to WHATSAPP_EVOLUTION_API_KEY.",
+      );
+    }
+    if (evolutionWebhookSecret === evolutionApiKey) {
+      throw new Error(
+        "WHATSAPP_EVOLUTION_WEBHOOK_SECRET must differ from WHATSAPP_EVOLUTION_API_KEY in production.",
+      );
+    }
+  }
 }
 
 /** Returns the verified Clerk user ID, or the explicitly configured single local-dev identity. */
