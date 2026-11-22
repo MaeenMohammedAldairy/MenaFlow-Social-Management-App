@@ -1,4 +1,7 @@
-import { callAiProvider } from "./ai-provider.ts";
+import type {
+  AiProviderCallOptions,
+  AiProviderResult,
+} from "./ai-provider.ts";
 
 export type AiDraft = {
   eligible: boolean;
@@ -8,8 +11,16 @@ export type AiDraft = {
   reason: string;
 };
 
+/**
+ * The caller is injected on purpose: every AI call must go through
+ * `callMeteredAiProvider` so workspace quota is enforced. There is no default,
+ * so an unmetered call cannot happen by accident.
+ */
+export type AiCaller = (options: AiProviderCallOptions) => Promise<AiProviderResult>;
+
 export async function generateDraft(
   text: string,
+  callProvider: AiCaller,
 ): Promise<{ draft: AiDraft; model: string }> {
   const prompt = [
     "قيّم رسالة من مجموعة واتساب تجارية وأنشئ منشورين عربيين ملائمين لفيسبوك وإنستغرام.",
@@ -23,7 +34,7 @@ export async function generateDraft(
   ].join("\n");
 
   const systemInstruction = "حلّل النص بحذر ولا تستنتج معلومات غير مذكورة فيه.";
-  let generatedResult = await callAiProvider({
+  let generatedResult = await callProvider({
     openAiMessages: [
       { role: "system", content: systemInstruction },
       { role: "user", content: prompt },
@@ -110,7 +121,7 @@ export async function generateDraft(
     // Try to repair invalid JSON by re-requesting from Gemini if available
     if (process.env.GEMINI_API_KEY) {
       try {
-        const repaired = await callAiProvider({
+        const repaired = await callProvider({
           preferredProvider: "gemini",
           geminiContents: [{ parts: [{ text: prompt }] }],
           geminiSystemInstruction: "حلّل النص بحذر ولا تستنتج معلومات غير مذكورة فيه.",

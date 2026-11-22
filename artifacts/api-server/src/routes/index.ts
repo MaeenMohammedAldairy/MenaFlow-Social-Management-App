@@ -23,10 +23,13 @@ import whatsappDirectInboxRouter from "./whatsapp-direct-inbox";
 import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
 import ownerRouter from "./owner";
+import plansRouter from "./plans";
 
 const router: IRouter = Router();
 
 router.use("/owner", ownerRouter);
+// Public: the plan catalog carries no workspace data.
+router.use(plansRouter);
 router.use(accessRouter);
 router.use(socialRouter);
 router.use(whatsappMessagesRouter);

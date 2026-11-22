@@ -1,6 +1,6 @@
 import {
   callAiProvider,
-  type AiProviderOptions,
+  type AiProviderCallOptions,
   type AiProviderResult,
 } from "./ai-provider.ts";
 
@@ -21,7 +21,7 @@ export class SubscriptionAiQuotaError extends Error {
 
 export async function callMeteredAiProvider(
   workspaceId: string,
-  options: AiProviderOptions & { preferredProvider?: "openai" | "gemini" },
+  options: AiProviderCallOptions,
 ): Promise<AiProviderResult> {
   const { consumeSubscriptionUsage, releaseSubscriptionUsage } = await import(
     "./subscriptions.ts"
