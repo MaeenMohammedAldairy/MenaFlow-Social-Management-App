@@ -60,8 +60,21 @@ input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 textarea:-webkit-autofill {
-  -webkit-text-fill-color: inherit !important;
-  caret-color: auto !important;
+  -webkit-text-fill-color: #0A2A63 !important;
+  caret-color: #0A2A63 !important;
+  /* A huge inset shadow in the field's own colour is the only way to cover the
+     background Chrome paints over autofilled inputs. */
+  -webkit-box-shadow: 0 0 0 1000px #F6FBFD inset !important;
   transition: background-color 9999s ease-out 0s;
+}
+@media (prefers-color-scheme: dark) {
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill {
+    -webkit-text-fill-color: #E9F2F9 !important;
+    caret-color: #E9F2F9 !important;
+    -webkit-box-shadow: 0 0 0 1000px #152A3B inset !important;
+  }
 }
 `;

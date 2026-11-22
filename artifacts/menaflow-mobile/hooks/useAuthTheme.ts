@@ -31,6 +31,8 @@ export type AuthTheme = {
   link: string;
   subtitle: string;
   destructive: string;
+  dangerSurface: string;
+  dangerBorder: string;
   facebook: string;
   shadow: string;
   overlay: string;
@@ -50,11 +52,13 @@ const light: AuthTheme = {
   primarySoft: "#E6F8EF",
   accent: "#E7F8F0",
   accentForeground: "#028A54",
-  border: "#DDEBF2",
-  inputSurface: "#FFFFFF",
+  border: "#E3EFF5",
+  inputSurface: "#F6FBFD",
   link: "#049143",
   subtitle: "#2366D7",
   destructive: "#C62828",
+  dangerSurface: "#FDEDED",
+  dangerBorder: "#F3C9C9",
   facebook: "#1877F2",
   shadow: "#0A2A63",
   overlay: "rgba(10, 42, 99, 0.06)",
@@ -74,11 +78,14 @@ const dark: AuthTheme = {
   primarySoft: "#0F3A2C",
   accent: "#0F3A2C",
   accentForeground: "#5BE3B0",
-  border: "#22323F",
-  inputSurface: "#0D1A26",
+  border: "#1E2E3D",
+  // A touch lighter than the card so the field reads as an input, not a hole.
+  inputSurface: "#152A3B",
   link: "#3ED9A0",
   subtitle: "#8FB6F0",
   destructive: "#FF8A8A",
+  dangerSurface: "#2E1A1E",
+  dangerBorder: "#5A2E33",
   facebook: "#4A90F5",
   shadow: "#000000",
   overlay: "rgba(255, 255, 255, 0.04)",

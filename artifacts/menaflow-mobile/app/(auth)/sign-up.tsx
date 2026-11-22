@@ -1,4 +1,5 @@
 import { useSignUp } from "@clerk/expo";
+import { AuthAlert } from "@/components/AuthAlert";
 import { Link, router } from "expo-router";
 import React, { useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -196,6 +197,8 @@ export default function SignUpScreen() {
                 returnKeyType="go"
               />
             </View>
+            {errorMessage ? <AuthAlert message={errorMessage} /> : null}
+
             <Pressable
               accessibilityRole="button"
               onPress={verifyCode}
@@ -419,6 +422,8 @@ export default function SignUpScreen() {
 
             <View nativeID="clerk-captcha" />
 
+            {errorMessage ? <AuthAlert message={errorMessage} /> : null}
+
             <Pressable
               accessibilityRole="button"
               onPress={startSignUp}
@@ -435,12 +440,6 @@ export default function SignUpScreen() {
             </Pressable>
           </>
         )}
-
-        {errorMessage ? (
-          <Text accessibilityRole="alert" style={[authStyles.error, { color: theme.destructive }]}>
-            {errorMessage}
-          </Text>
-        ) : null}
 
         <View style={authStyles.linkRow}>
           <Text style={[styles.footerHint, { color: theme.mutedForeground }]}>

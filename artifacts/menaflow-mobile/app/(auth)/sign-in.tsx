@@ -7,6 +7,7 @@ import { AuthFrame, authStyles } from "@/components/AuthFrame";
 import { GoogleLogo } from "@/components/GoogleLogo";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { PasswordResetForm, SecondFactorForm } from "@/components/SignInAdditionalForms";
+import { AuthAlert } from "@/components/AuthAlert";
 import { useAuthTheme } from "@/hooks/useAuthTheme";
 import { useSignInFlow } from "@/hooks/use-sign-in-flow";
 import { readRememberedEmail, syncRememberedEmail } from "@/lib/remembered-email";
@@ -216,6 +217,8 @@ export default function SignInScreen() {
               </Pressable>
             </View>
 
+            {errorMessage ? <AuthAlert message={errorMessage} /> : null}
+
             <Pressable
               accessibilityRole="button"
               onPress={handleSubmit}
@@ -287,10 +290,10 @@ export default function SignInScreen() {
           </>
         )}
 
-        {errorMessage ? (
-          <Text accessibilityRole="alert" style={[authStyles.error, { color: theme.destructive }]}>
-            {errorMessage}
-          </Text>
+        {/* The main step shows the alert above its button; the second-factor and
+            reset steps keep it here because their button lives inside the form. */}
+        {errorMessage && (requiresSecondFactor || resetStep) ? (
+          <AuthAlert message={errorMessage} />
         ) : null}
         {successMessage && !resetStep && requiresSecondFactor ? (
           <Text

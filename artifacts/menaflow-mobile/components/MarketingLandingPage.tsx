@@ -322,7 +322,7 @@ export function MarketingLandingPage() {
             nativeID="dashboard"
             onLayout={trackSection("dashboard")}
           >
-            <View style={styles.dashboardCopy}>
+            <View style={[styles.dashboardCopy, wide && styles.dashboardCopyWide]}>
               <Text style={styles.dashboardTitle}>
                 لوحة تحكم ذكية{"\n"}تمنحك رؤية شاملة
               </Text>
@@ -339,7 +339,7 @@ export function MarketingLandingPage() {
                 ))}
               </View>
             </View>
-            <View style={styles.phoneWrap}>
+            <View style={[styles.phoneWrap, wide && styles.phoneWrapWide]}>
               <View style={styles.phone}>
                 <View style={styles.phoneNotch} />
                 <View style={styles.phoneHeader}>
@@ -421,11 +421,18 @@ export function MarketingLandingPage() {
           </View>
 
           {/* Trust bar */}
-          <View style={styles.trustBar}>
+          <View style={[styles.trustBar, compact && styles.trustBarStacked]}>
             {trustItems.map((item, index) => (
               <React.Fragment key={item.title}>
-                {index > 0 ? <View style={styles.trustDivider} /> : null}
-                <View style={styles.trustItem}>
+                {index > 0 ? (
+                  <View
+                    style={[
+                      styles.trustDivider,
+                      compact && styles.trustDividerStacked,
+                    ]}
+                  />
+                ) : null}
+                <View style={[styles.trustItem, compact && styles.trustItemStacked]}>
                   <View style={styles.trustIcon}>
                     <Icon name={item.icon} size={17} color={palette.green} />
                   </View>
@@ -813,7 +820,8 @@ const styles = StyleSheet.create({
     gap: 40,
     paddingVertical: 18,
   },
-  phoneWrap: { alignItems: "center", justifyContent: "center", flex: 1 },
+  phoneWrap: { alignItems: "center", justifyContent: "center" },
+  phoneWrapWide: { flex: 1 },
   phone: {
     width: 258,
     backgroundColor: "#0F2437",
@@ -936,7 +944,8 @@ const styles = StyleSheet.create({
   },
   phoneRowTime: { fontSize: 7, color: "#7E9AB3" },
 
-  dashboardCopy: { flex: 1, gap: 12 },
+  dashboardCopy: { gap: 12 },
+  dashboardCopyWide: { flex: 1 },
   dashboardTitle: {
     fontSize: 22,
     lineHeight: 34,
@@ -976,7 +985,16 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: 10,
   },
+  trustBarStacked: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 12,
+    borderRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+  },
   trustDivider: { width: 1, alignSelf: "stretch", backgroundColor: palette.border },
+  trustDividerStacked: { width: "100%", height: 1 },
   trustItem: {
     flex: 1,
     flexDirection: "row",
@@ -984,6 +1002,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
     paddingHorizontal: 4,
+  },
+  trustItemStacked: {
+    flex: 0,
+    justifyContent: "flex-start",
+    paddingHorizontal: 0,
+    gap: 10,
   },
   trustIcon: {
     width: 30,
