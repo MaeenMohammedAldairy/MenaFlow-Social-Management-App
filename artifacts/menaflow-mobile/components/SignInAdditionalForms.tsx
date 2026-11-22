@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, type StyleProp, type TextInputProps, type ViewSt
 import { Eye, EyeOff, KeyRound, LockKeyhole, Mail, RefreshCw } from 'lucide-react-native';
 import { CairoText as Text, CairoTextInput as TextInput } from '@/components/CairoTypography';
 import { authStyles } from '@/components/AuthFrame';
-import { useColors } from '@/hooks/useColors';
+import { useAuthTheme } from '@/hooks/useAuthTheme';
 import type { ResetStep, SecondFactorStrategy } from '@/hooks/use-sign-in-flow';
 
 type InputFocusProps = Pick<TextInputProps, 'onFocus' | 'onBlur' | 'selectionColor'>;
@@ -41,7 +41,7 @@ export function SecondFactorForm({
   resendSecondFactor: () => void | Promise<void>;
   secondFactorLabel: (strategy: SecondFactorStrategy) => string;
 }) {
-  const colors = useColors();
+  const colors = useAuthTheme();
 
   return (
     <>
@@ -176,7 +176,7 @@ export function PasswordResetForm({
   verifyPasswordResetCode: () => void;
   finishPasswordReset: () => void;
 }) {
-  const colors = useColors();
+  const colors = useAuthTheme();
 
   return (
     <>

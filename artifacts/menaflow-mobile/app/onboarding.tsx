@@ -13,10 +13,9 @@ import {
   ArrowRight,
   BarChart3,
   Check,
-  Clock3,
-  MessageCircle,
-  Send,
-  Sparkles,
+  Headphones,
+  ShieldCheck,
+  Zap,
 } from "lucide-react-native";
 import React from "react";
 import {
@@ -29,31 +28,54 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { BrandMark } from "@/components/BrandMark";
 import { CairoText as Text } from "@/components/CairoTypography";
-import { useColors } from "@/hooks/useColors";
+import { useAuthTheme } from "@/hooks/useAuthTheme";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isLocalAuthDisabled } from "@/constants/auth";
 
+/**
+ * Onboarding intro, shown to a brand-new account right after the email is
+ * confirmed. The three slides, the server-side progress sync and the hand-off to
+ * the account connection screen are unchanged — only the presentation follows the
+ * MenaFlow onboarding artwork (stepper, mascot illustrations, mint surfaces).
+ */
 const slides = [
   {
     title: "قنواتك ومحادثاتك في مساحة واحدة",
     description:
       "فيسبوك وإنستغرام وواتساب: المحتوى والرسائل والطلبات تُدار من مكان واحد.",
-    artwork: "dashboard",
+    artwork: "space",
+    stepLabel: "مساحة العمل",
+    image: require("../assets/images/onboarding-space.png"),
+    accessibilityLabel: "شخصية MenaFlow تحييك أمام حاسوبها",
   },
   {
     title: "رسالة عميل… تصبح محتوى جاهزًا",
     description:
       "حوّل رسالة أو تعليقًا إلى مسودة منشور، واستعن بالمساعد الذكي لصياغتها.",
-    artwork: "assistant",
+    artwork: "content",
+    stepLabel: "المحتوى الذكي",
+    image: require("../assets/images/onboarding-content.png"),
+    accessibilityLabel: "شخصية MenaFlow تصل الحسابات وتربط المحادثات",
   },
   {
     title: "خطوة واحدة تفصلك عن البدء",
     description:
       "اربط صفحتك أو واتساب أعمال، وسنحوّل أول رسالة إلى مسودة جاهزة للمراجعة.",
-    artwork: "publishing",
+    artwork: "ready",
+    stepLabel: "الربط والانطلاق",
+    image: require("../assets/images/onboarding-ready.png"),
+    accessibilityLabel: "شخصية MenaFlow تحتفل بإتمام الإعداد",
   },
+] as const;
+
+const trustItems = [
+  { label: "أمان عالٍ\nوحماية بياناتك", icon: ShieldCheck },
+  { label: "دعم عبر واتساب\nمن فريق حقيقي", icon: Headphones },
+  { label: "إعداد سريع\nفي دقائق", icon: Zap },
+  { label: "منصة متكاملة\nلنمو أعمالك", icon: BarChart3 },
 ] as const;
 
 export default function OnboardingRoute() {
@@ -62,7 +84,7 @@ export default function OnboardingRoute() {
 }
 
 function AuthenticatedOnboarding() {
-  const colors = useColors();
+  const theme = useAuthTheme();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const { isLoaded, userId } = useAuth();
@@ -80,7 +102,8 @@ function AuthenticatedOnboarding() {
       queryClient.setQueryData(queryKey, next);
     },
   });
-  const compact = height < 760 || width < 380;
+  const compact = width < 400 || height < 700;
+  const wide = width >= 900;
   const offline = useNetworkStatus();
   // The intro is static content, so it advances locally and syncs in the
   // background; a flaky connection must never trap the user on slide one.
@@ -91,7 +114,6 @@ function AuthenticatedOnboarding() {
   const serverStep = status.data?.currentStep ?? 0;
   const slide = Math.min(localStep ?? serverStep, slides.length - 1);
   const currentSlide = slides[slide];
-  const background = colors.background;
   const completed = status.data?.completed === true;
   const continueToWorkspace = (socialSetupComplete: boolean) => {
     router.replace(
@@ -157,426 +179,262 @@ function AuthenticatedOnboarding() {
       ? "لم يُحفظ تقدّمك على الخادم بعد؛ سنعيد المحاولة عند عودة الاتصال."
       : null;
 
+  const primaryLabel =
+    slide === slides.length - 1
+      ? status.data?.socialAccountsCompleted
+        ? "ابدأ الآن"
+        : "ربط حساباتك"
+      : "التالي";
+
+  // Short phones get a smaller illustration so the primary action stays above
+  // the fold on a 640pt-tall screen.
+  const artworkSize = height < 640 ? 150 : compact ? 190 : wide ? 260 : 225;
+
   return (
-    <View style={[styles.root, { backgroundColor: background }]}>
+    <LinearGradient
+      colors={[theme.card, theme.background]}
+      style={styles.root}
+    >
       <View
         pointerEvents="none"
-        style={[
-          styles.glow,
-          styles.glowTop,
-          { backgroundColor: colors.accent },
-        ]}
+        style={[styles.blob, styles.blobTop, { backgroundColor: theme.waveSoft }]}
       />
       <View
         pointerEvents="none"
-        style={[
-          styles.glow,
-          styles.glowBottom,
-          { backgroundColor: colors.greenSoft },
-        ]}
+        style={[styles.blob, styles.blobBottom, { backgroundColor: theme.wave }]}
       />
       <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
           {
-            minHeight: Math.max(height, 680),
-            paddingTop: Math.max(insets.top, 16),
-            paddingBottom: Math.max(insets.bottom, 16),
+            paddingTop: Math.max(insets.top, 16) + 8,
+            paddingBottom: Math.max(insets.bottom, 16) + 16,
           },
         ]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              minHeight: compact ? 620 : 660,
-            },
-          ]}
-        >
+        <View style={[styles.column, { maxWidth: wide ? 560 : 480 }]}>
           <View style={styles.brand}>
-            <View style={styles.brandIdentity}>
-              <Image
-                source={require("../assets/images/icon.png")}
-                style={styles.logo}
-                resizeMode="contain"
-                accessibilityLabel="شعار MenaFlow"
-              />
-              <Text style={[styles.brandName, { color: colors.foreground }]}>
-                MenaFlow
-              </Text>
-            </View>
+            <BrandMark height={compact ? 26 : 30} />
+            <Text style={[styles.brandName, { color: theme.foreground }]}>
+              MenaFlow
+            </Text>
           </View>
 
-          <SlideArtwork kind={currentSlide.artwork} />
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: theme.card, borderColor: theme.border },
+            ]}
+          >
+            <Text style={[styles.counter, { color: theme.mutedForeground }]}>
+              الخطوة {slide + 1} من {slides.length}
+            </Text>
 
-          <View style={styles.copy}>
+            <Stepper activeIndex={slide} />
+
+            <Image
+              source={currentSlide.image}
+              style={{ width: artworkSize, height: artworkSize * 1.03 }}
+              resizeMode="contain"
+              accessibilityLabel={currentSlide.accessibilityLabel}
+            />
+
             <Text
               accessibilityRole="header"
-              style={[styles.title, { color: colors.foreground }]}
+              style={[styles.title, { color: theme.foreground }]}
             >
               {currentSlide.title}
             </Text>
-            <Text
-              style={[styles.description, { color: colors.mutedForeground }]}
-            >
+            <Text style={[styles.description, { color: theme.mutedForeground }]}>
               {currentSlide.description}
             </Text>
-          </View>
 
-          <View
-            style={styles.dots}
-            accessible
-            accessibilityRole="progressbar"
-            accessibilityLabel={`الخطوة ${slide + 1} من ${slides.length}`}
-            accessibilityValue={{
-              min: 1,
-              max: slides.length,
-              now: slide + 1,
-              text: `الخطوة ${slide + 1} من ${slides.length}`,
-            }}
-          >
-            {slides.map((item, index) => (
-              <View
-                key={item.artwork}
-                style={[
-                  styles.dot,
-                  {
-                    backgroundColor:
-                      index === slide ? colors.primary : colors.border,
-                  },
-                  index === slide && styles.activeDot,
-                ]}
-              />
-            ))}
-          </View>
-
-          {errorMessage ? (
-            <Text
-              accessibilityRole="alert"
-              style={[styles.error, { color: colors.destructive }]}
-            >
-              {errorMessage}
-            </Text>
-          ) : null}
-
-          <Pressable
-            accessibilityRole="button"
-            onPress={handleAdvance}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              {
-                backgroundColor: colors.primary,
-                opacity: pressed ? 0.85 : 1,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.primaryButtonText,
-                { color: colors.primaryForeground },
-              ]}
-            >
-              {slide === slides.length - 1
-                ? status.data?.socialAccountsCompleted
-                  ? "ابدأ الآن"
-                  : "ربط حساباتك"
-                : "التالي"}
-            </Text>
-            <ArrowLeft size={18} color={colors.primaryForeground} />
-          </Pressable>
-
-          <View style={styles.secondaryActions}>
-            {slide > 0 ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="الخطوة السابقة"
-                onPress={handleBack}
-                style={({ pressed }) => [
-                  styles.backButton,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                    opacity: pressed ? 0.72 : 1,
-                  },
-                ]}
+            {errorMessage ? (
+              <Text
+                accessibilityRole="alert"
+                style={[styles.error, { color: theme.destructive }]}
               >
-                <ArrowRight size={16} color={colors.mutedForeground} />
-                <Text
-                  style={[styles.skipText, { color: colors.mutedForeground }]}
-                >
-                  السابق
-                </Text>
-              </Pressable>
-            ) : (
-              <View style={styles.backButton} />
-            )}
+                {errorMessage}
+              </Text>
+            ) : null}
+
             <Pressable
               accessibilityRole="button"
-              onPress={handleSkip}
-              style={styles.skipButton}
+              onPress={handleAdvance}
+              style={({ pressed }) => [
+                styles.primaryButton,
+                {
+                  backgroundColor: theme.primary,
+                  opacity: pressed ? 0.88 : 1,
+                  shadowColor: theme.primary,
+                },
+              ]}
             >
               <Text
-                style={[styles.skipText, { color: colors.mutedForeground }]}
+                style={[
+                  styles.primaryButtonText,
+                  { color: theme.primaryForeground },
+                ]}
               >
-                تخطي المقدمة
+                {primaryLabel}
               </Text>
+              <ArrowLeft size={18} color={theme.primaryForeground} />
             </Pressable>
+
+            <View style={styles.secondaryActions}>
+              {slide > 0 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="الخطوة السابقة"
+                  onPress={handleBack}
+                  style={({ pressed }) => [
+                    styles.backButton,
+                    {
+                      backgroundColor: theme.card,
+                      borderColor: theme.border,
+                      opacity: pressed ? 0.72 : 1,
+                    },
+                  ]}
+                >
+                  <ArrowRight size={16} color={theme.mutedForeground} />
+                  <Text style={[styles.backText, { color: theme.mutedForeground }]}>
+                    السابق
+                  </Text>
+                </Pressable>
+              ) : (
+                <View style={styles.backPlaceholder} />
+              )}
+              <Pressable
+                accessibilityRole="button"
+                onPress={handleSkip}
+                style={styles.skipButton}
+                hitSlop={6}
+              >
+                <Text style={[styles.skipText, { color: theme.link }]}>
+                  تخطي المقدمة
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={[styles.trustBar, compact && styles.trustBarCompact]}>
+            {trustItems.map((item) => (
+              <View
+                key={item.label}
+                style={[
+                  styles.trustItem,
+                  {
+                    backgroundColor: theme.card,
+                    borderColor: theme.border,
+                  },
+                  compact && styles.trustItemCompact,
+                ]}
+              >
+                <View style={[styles.trustIcon, { backgroundColor: theme.accent }]}>
+                  <item.icon size={18} color={theme.accentForeground} />
+                </View>
+                <Text style={[styles.trustLabel, { color: theme.foreground }]}>
+                  {item.label}
+                </Text>
+              </View>
+            ))}
           </View>
         </View>
       </ScrollView>
-    </View>
-  );
-}
-
-function SlideArtwork({ kind }: { kind: (typeof slides)[number]["artwork"] }) {
-  const colors = useColors();
-  return (
-    <View
-      accessibilityLabel={
-        kind === "dashboard"
-          ? "لوحة تعرض حسابات التواصل وإحصاءات المحتوى"
-          : kind === "assistant"
-            ? "مساعد MenaFlow الذكي وأدوات إنشاء المحتوى"
-            : "معاينة منشور وحسابات اجتماعية متصلة"
-      }
-      accessible
-      style={[
-        styles.artwork,
-        { backgroundColor: colors.secondary, borderColor: colors.border },
-      ]}
-    >
-      <View style={[styles.artHalo, { backgroundColor: colors.accent }]} />
-      <View style={[styles.artOrbit, { borderColor: colors.border }]} />
-      {kind === "dashboard" ? (
-        <View style={styles.socialOrbit}>
-          <PlatformBubble
-            label="f"
-            color="#3978D6"
-            style={styles.platformFacebook}
-          />
-          <PlatformBubble
-            label="◎"
-            color="#C54898"
-            style={styles.platformInstagram}
-          />
-          <PlatformBubble
-            label="✦"
-            color="#10A982"
-            style={styles.platformWhatsapp}
-          />
-          <DashboardCard />
-        </View>
-      ) : kind === "assistant" ? (
-        <View style={styles.assistantStage}>
-          <View
-            style={[
-              styles.messageFloat,
-              styles.messageFloatLeft,
-              { backgroundColor: colors.card },
-            ]}
-          >
-            <MessageCircle size={22} color={colors.primary} />
-          </View>
-          <View
-            style={[styles.clockBadge, { backgroundColor: colors.primary }]}
-          >
-            <Clock3 size={25} color="#FFFFFF" />
-            <Text style={styles.clockText}>AI</Text>
-          </View>
-          <RobotIllustration />
-          <View
-            style={[
-              styles.messageFloat,
-              styles.messageFloatRight,
-              { backgroundColor: colors.card },
-            ]}
-          >
-            <Sparkles size={22} color={colors.primary} />
-          </View>
-        </View>
-      ) : (
-        <View style={styles.phoneStage}>
-          <PlatformBubble
-            label="f"
-            color="#3978D6"
-            style={styles.phoneFacebook}
-          />
-          <PlatformBubble
-            label="◎"
-            color="#C54898"
-            style={styles.phoneInstagram}
-          />
-          <PlatformBubble
-            label="↗"
-            color="#10A982"
-            style={styles.phoneWhatsapp}
-          />
-          <View
-            style={[
-              styles.phone,
-              { backgroundColor: colors.card, borderColor: colors.foreground },
-            ]}
-          >
-            <View
-              style={[
-                styles.phoneSpeaker,
-                { backgroundColor: colors.foreground },
-              ]}
-            />
-            <View
-              style={[styles.postImage, { backgroundColor: colors.accent }]}
-            >
-              <View style={styles.postImageSun} />
-              <View
-                style={[styles.postHillBack, { backgroundColor: "#76D9B7" }]}
-              />
-              <View
-                style={[
-                  styles.postHillFront,
-                  { backgroundColor: colors.primary },
-                ]}
-              />
-            </View>
-            <View
-              style={[styles.postLine, { backgroundColor: colors.border }]}
-            />
-            <View
-              style={[styles.postLineShort, { backgroundColor: colors.border }]}
-            />
-            <View
-              style={[styles.postAction, { backgroundColor: colors.primary }]}
-            >
-              <Send size={15} color="#FFFFFF" />
-              <Text style={styles.postActionText}>منشور جاهز</Text>
-            </View>
-          </View>
-        </View>
-      )}
-    </View>
-  );
-}
-
-function PlatformBubble({
-  label,
-  color,
-  style,
-}: {
-  label: string;
-  color: string;
-  style: object;
-}) {
-  return (
-    <View style={[styles.platformBubble, style, { backgroundColor: color }]}>
-      <Text style={styles.platformLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function DashboardCard() {
-  const colors = useColors();
-  return (
-    <View
-      style={[
-        styles.dashboard,
-        { backgroundColor: colors.card, borderColor: colors.border },
-      ]}
-    >
-      <View
-        style={[styles.dashboardHeader, { backgroundColor: colors.accent }]}
-      >
-        <View
-          style={[styles.dashboardLogo, { backgroundColor: colors.primary }]}
-        >
-          <Sparkles size={17} color="#FFFFFF" />
-        </View>
-        <View style={styles.dashboardTitleLines}>
-          <View
-            style={[
-              styles.dashboardLine,
-              { backgroundColor: colors.foreground },
-            ]}
-          />
-          <View
-            style={[
-              styles.dashboardLineSmall,
-              { backgroundColor: colors.mutedForeground },
-            ]}
-          />
-        </View>
-        <View style={[styles.checkBadge, { backgroundColor: colors.primary }]}>
-          <Check size={14} color="#FFFFFF" />
-        </View>
-      </View>
-      <View style={styles.chartRow}>
-        <View
-          style={[
-            styles.chartBar,
-            { height: 32, backgroundColor: colors.accent },
-          ]}
-        />
-        <View
-          style={[
-            styles.chartBar,
-            { height: 48, backgroundColor: colors.primary },
-          ]}
-        />
-        <View
-          style={[
-            styles.chartBar,
-            { height: 38, backgroundColor: colors.accent },
-          ]}
-        />
-        <View
-          style={[
-            styles.chartBar,
-            { height: 64, backgroundColor: colors.primary },
-          ]}
-        />
-        <View
-          style={[
-            styles.chartBar,
-            { height: 52, backgroundColor: colors.accent },
-          ]}
-        />
-        <BarChart3 size={22} color={colors.primary} />
-      </View>
-    </View>
-  );
-}
-
-function RobotIllustration() {
-  const colors = useColors();
-  return (
-    <LinearGradient
-      colors={[colors.accent, colors.greenSoft]}
-      style={styles.robotHalo}
-    >
-      <View style={[styles.robotEar, styles.robotEarLeft]} />
-      <View style={[styles.robotEar, styles.robotEarRight]} />
-      <View style={styles.robotHead}>
-        <View style={styles.robotEyes}>
-          <View style={styles.robotEye} />
-          <View style={styles.robotEye} />
-        </View>
-        <View style={styles.robotSmile} />
-      </View>
-      <View style={[styles.robotBody, { backgroundColor: colors.primary }]}>
-        <Sparkles size={21} color="#FFFFFF" />
-      </View>
     </LinearGradient>
   );
 }
 
-function LoadingScreen() {
-  const colors = useColors();
+/**
+ * Numbered journey rail: completed steps become green ticks, the current step is
+ * filled, upcoming steps stay neutral. Mirrors the reference artwork and stays
+ * readable from three steps up.
+ */
+function Stepper({ activeIndex }: { activeIndex: number }) {
+  const theme = useAuthTheme();
   return (
-    <View style={[styles.loadingRoot, { backgroundColor: colors.background }]}>
-      <ActivityIndicator color={colors.primary} size="large" />
-      <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
+    <View
+      style={styles.stepper}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={`الخطوة ${activeIndex + 1} من ${slides.length}`}
+      accessibilityValue={{
+        min: 1,
+        max: slides.length,
+        now: activeIndex + 1,
+        text: `الخطوة ${activeIndex + 1} من ${slides.length}`,
+      }}
+    >
+      {slides.map((item, index) => {
+        const done = index < activeIndex;
+        const current = index === activeIndex;
+        return (
+          <React.Fragment key={item.artwork}>
+            {index > 0 ? (
+              <View
+                style={[
+                  styles.connector,
+                  {
+                    backgroundColor:
+                      index <= activeIndex ? theme.primary : theme.border,
+                  },
+                ]}
+              />
+            ) : null}
+            <View style={styles.stepItem}>
+              <View
+                style={[
+                  styles.stepCircle,
+                  done || current
+                    ? { backgroundColor: theme.primary, borderColor: theme.primary }
+                    : { backgroundColor: theme.card, borderColor: theme.border },
+                ]}
+              >
+                {done ? (
+                  <Check size={14} color={theme.primaryForeground} strokeWidth={3.2} />
+                ) : (
+                  <Text
+                    style={[
+                      styles.stepNumber,
+                      {
+                        color: current
+                          ? theme.primaryForeground
+                          : theme.mutedForeground,
+                      },
+                    ]}
+                  >
+                    {index + 1}
+                  </Text>
+                )}
+              </View>
+              <Text
+                style={[
+                  styles.stepLabel,
+                  {
+                    color: done || current ? theme.foreground : theme.mutedForeground,
+                    fontWeight: current ? "800" : "600",
+                  },
+                ]}
+                numberOfLines={2}
+              >
+                {item.stepLabel}
+              </Text>
+            </View>
+          </React.Fragment>
+        );
+      })}
+    </View>
+  );
+}
+
+function LoadingScreen() {
+  const theme = useAuthTheme();
+  return (
+    <View style={[styles.loadingRoot, { backgroundColor: theme.background }]}>
+      <ActivityIndicator color={theme.primary} size="large" />
+      <Text style={[styles.loadingText, { color: theme.mutedForeground }]}>
         جارٍ استعادة تقدم الإعداد…
       </Text>
     </View>
@@ -584,6 +442,7 @@ function LoadingScreen() {
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, overflow: "hidden" },
   loadingRoot: {
     flex: 1,
     alignItems: "center",
@@ -592,392 +451,154 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   loadingText: { fontSize: 15, lineHeight: 24, textAlign: "center" },
-  root: { flex: 1, overflow: "hidden" },
-  glow: {
+  blob: {
     position: "absolute",
-    width: 350,
-    height: 350,
-    borderRadius: 175,
+    borderRadius: 400,
   },
-  glowTop: { top: -235, left: -130 },
-  glowBottom: { bottom: -250, right: -125 },
+  blobTop: {
+    width: 420,
+    height: 420,
+    top: -260,
+    end: -150,
+    opacity: 0.9,
+  },
+  blobBottom: {
+    width: 560,
+    height: 300,
+    bottom: -190,
+    start: -180,
+    opacity: 0.55,
+    transform: [{ rotate: "-8deg" }],
+  },
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 16,
   },
+  column: { width: "100%", gap: 14 },
+  brand: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 9,
+  },
+  brandName: { fontSize: 22, fontWeight: "900", letterSpacing: -0.5 },
   card: {
     width: "100%",
-    maxWidth: 420,
-    paddingHorizontal: 22,
-    paddingTop: 15,
-    paddingBottom: 22,
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 20,
+    borderRadius: 28,
     borderWidth: 1,
-    borderRadius: 30,
-    alignItems: "center",
-    justifyContent: "space-between",
-    overflow: "hidden",
-    shadowColor: "#2B7899",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.12,
-    shadowRadius: 24,
-    elevation: 5,
-  },
-  brand: {
-    width: "100%",
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 2,
-  },
-  brandIdentity: { flexDirection: "row", alignItems: "center", gap: 7 },
-  logo: { width: 43, height: 38 },
-  brandName: { fontSize: 18, fontWeight: "900" },
-  artwork: {
-    width: "100%",
-    minHeight: 245,
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 5,
-    borderRadius: 26,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  artHalo: {
-    position: "absolute",
-    width: 230,
-    height: 230,
-    borderRadius: 115,
-    opacity: 0.78,
-  },
-  artOrbit: {
-    position: "absolute",
-    width: 195,
-    height: 195,
-    borderRadius: 98,
-    borderWidth: 1,
-    borderStyle: "dashed",
-  },
-  socialOrbit: {
-    width: 250,
-    height: 225,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  platformBubble: {
-    position: "absolute",
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#10356A",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  platformLabel: { color: "#FFFFFF", fontSize: 22, fontWeight: "900" },
-  platformFacebook: { top: 21, left: 0 },
-  platformInstagram: { top: 0, right: 41 },
-  platformWhatsapp: { bottom: 4, right: 6 },
-  dashboard: {
-    width: 190,
-    height: 142,
-    borderWidth: 1,
-    borderRadius: 22,
-    padding: 12,
-    justifyContent: "space-between",
-    transform: [{ rotate: "-5deg" }],
-    shadowColor: "#174E4A",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.13,
-    shadowRadius: 14,
-    elevation: 4,
-  },
-  dashboardHeader: {
-    height: 50,
-    borderRadius: 13,
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    gap: 8,
-  },
-  dashboardLogo: {
-    width: 31,
-    height: 31,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  dashboardTitleLines: { flex: 1, gap: 5 },
-  dashboardLine: { width: 64, height: 5, borderRadius: 4 },
-  dashboardLineSmall: { width: 43, height: 4, borderRadius: 4, opacity: 0.65 },
-  checkBadge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  chartRow: {
-    height: 60,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-around",
-    gap: 6,
-  },
-  chartBar: { width: 15, borderRadius: 6 },
-  assistantStage: {
-    width: 260,
-    height: 235,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  robotHalo: {
-    width: 166,
-    height: 166,
-    borderRadius: 83,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#20C995",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.17,
-    shadowRadius: 18,
-    elevation: 4,
-  },
-  robotEar: {
-    position: "absolute",
-    top: 55,
-    width: 20,
-    height: 31,
-    borderRadius: 11,
-    backgroundColor: "#07B984",
-    borderColor: "#8DE8CC",
-    borderWidth: 4,
-  },
-  robotEarLeft: { left: 28 },
-  robotEarRight: { right: 28 },
-  robotHead: {
-    width: 97,
-    height: 75,
-    borderRadius: 27,
-    borderColor: "#FFFFFF",
-    borderWidth: 4,
-    backgroundColor: "#123266",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    zIndex: 1,
-  },
-  robotEyes: { flexDirection: "row", gap: 24 },
-  robotEye: {
-    width: 8,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#67F5D0",
-  },
-  robotSmile: {
-    width: 17,
-    height: 7,
-    borderBottomWidth: 2,
-    borderColor: "#67F5D0",
-    borderRadius: 9,
-  },
-  robotBody: {
-    width: 80,
-    height: 45,
-    marginTop: -10,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  messageFloat: {
-    position: "absolute",
-    width: 51,
-    height: 48,
-    borderRadius: 15,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#174E4A",
-    shadowOffset: { width: 0, height: 5 },
+    shadowColor: "#0A2A63",
+    shadowOffset: { width: 0, height: 18 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowRadius: 30,
+    elevation: 6,
   },
-  messageFloatLeft: { top: 42, left: 8 },
-  messageFloatRight: { right: 3, bottom: 43 },
-  clockBadge: {
-    position: "absolute",
-    top: 4,
-    right: 45,
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 2,
-    borderWidth: 4,
-    borderColor: "#FFFFFF",
-  },
-  clockText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "900",
-    marginTop: -3,
-  },
-  phoneStage: {
-    width: 260,
-    height: 235,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  phone: {
-    width: 137,
-    height: 213,
-    borderRadius: 27,
-    borderWidth: 4,
-    padding: 11,
-    alignItems: "center",
-    justifyContent: "flex-start",
-    gap: 9,
-    transform: [{ rotate: "5deg" }],
-    shadowColor: "#123266",
-    shadowOffset: { width: 0, height: 9 },
-    shadowOpacity: 0.13,
-    shadowRadius: 13,
-    elevation: 4,
-  },
-  phoneSpeaker: { width: 38, height: 5, borderRadius: 4, marginBottom: 3 },
-  postImage: {
+  counter: { fontSize: 12.5, fontWeight: "600" },
+  stepper: {
     width: "100%",
-    height: 83,
-    borderRadius: 13,
-    overflow: "hidden",
-    alignItems: "flex-start",
-    justifyContent: "flex-start",
-    padding: 9,
-  },
-  postImageSun: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: "#F7D879",
-  },
-  postHillBack: {
-    position: "absolute",
-    width: 84,
-    height: 46,
-    borderRadius: 22,
-    bottom: -20,
-    left: -5,
-    transform: [{ rotate: "-18deg" }],
-  },
-  postHillFront: {
-    position: "absolute",
-    width: 87,
-    height: 38,
-    borderRadius: 20,
-    bottom: -19,
-    right: -13,
-    transform: [{ rotate: "13deg" }],
-  },
-  postLine: {
-    width: "91%",
-    height: 5,
-    borderRadius: 3,
-    alignSelf: "flex-start",
-  },
-  postLineShort: {
-    width: "58%",
-    height: 5,
-    borderRadius: 3,
-    alignSelf: "flex-start",
-  },
-  postAction: {
-    width: "100%",
-    height: 30,
-    borderRadius: 10,
     flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    paddingHorizontal: 2,
+  },
+  stepItem: { alignItems: "center", gap: 5, width: 74 },
+  stepCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1.5,
     alignItems: "center",
     justifyContent: "center",
-    gap: 5,
-    marginTop: 2,
   },
-  postActionText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
-  phoneFacebook: { top: 44, left: 3 },
-  phoneInstagram: { top: 6, right: 28 },
-  phoneWhatsapp: { bottom: 20, right: 7 },
-  copy: {
-    width: "100%",
-    alignItems: "center",
-    gap: 7,
-    paddingHorizontal: 8,
-    paddingTop: 3,
+  stepNumber: { fontSize: 13, fontWeight: "800" },
+  stepLabel: { fontSize: 10.5, lineHeight: 15, textAlign: "center" },
+  connector: {
+    flex: 1,
+    minWidth: 12,
+    height: 2,
+    marginTop: 14,
+    borderRadius: 1,
   },
   title: {
-    fontSize: 21,
-    lineHeight: 31,
-    fontWeight: "900",
+    fontSize: 23,
+    lineHeight: 34,
+    fontWeight: "800",
     textAlign: "center",
+    marginTop: 2,
   },
   description: {
-    alignSelf: "stretch",
-    fontSize: 12,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 23,
     textAlign: "center",
-    maxWidth: 320,
+    maxWidth: 330,
   },
-  dots: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginVertical: 17,
-  },
-  dot: { width: 9, height: 9, borderRadius: 5 },
-  activeDot: { width: 11, height: 11 },
-  error: { fontSize: 12, lineHeight: 19, textAlign: "right", marginBottom: 8 },
+  error: { fontSize: 12.5, lineHeight: 20, textAlign: "center" },
   primaryButton: {
     width: "100%",
-    minHeight: 48,
-    borderRadius: 15,
-    flexDirection: "row",
+    minHeight: 54,
+    marginTop: 4,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
     gap: 8,
-    shadowColor: "#07865F",
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.17,
-    shadowRadius: 9,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+    elevation: 5,
   },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "900" },
+  primaryButtonText: { fontSize: 15.5, fontWeight: "800" },
   secondaryActions: {
     width: "100%",
-    minHeight: 38,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    marginTop: 2,
   },
   backButton: {
-    minWidth: 68,
-    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
-    gap: 3,
-    borderWidth: 1,
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 12,
-    paddingHorizontal: 8,
+    borderWidth: 1,
   },
-  skipButton: {
-    minWidth: 60,
-    minHeight: 44,
+  backText: { fontSize: 13, fontWeight: "700" },
+  backPlaceholder: { width: 1 },
+  skipButton: { paddingVertical: 8, paddingHorizontal: 4 },
+  skipText: { fontSize: 13, fontWeight: "800" },
+  trustBar: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 2,
+  },
+  trustBarCompact: { flexWrap: "wrap" },
+  trustItem: {
+    flex: 1,
+    minHeight: 58,
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 9,
+  },
+  trustItemCompact: { flexBasis: "47%", flexGrow: 1, flexShrink: 0 },
+  trustIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
   },
-  skipText: { fontSize: 13, fontWeight: "600" },
+  trustLabel: { fontSize: 11, lineHeight: 16, fontWeight: "700" },
 });
