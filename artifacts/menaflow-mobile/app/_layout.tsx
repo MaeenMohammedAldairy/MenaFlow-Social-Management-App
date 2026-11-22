@@ -19,6 +19,11 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import {
+  SetupProblemScreen,
+  type SetupProblem,
+} from "@/components/SetupProblemScreen";
+import { describeError } from "@/lib/error-diagnostics";
 import { AppFeedbackProvider } from "@/components/AppFeedback";
 import {
   useFonts,
@@ -151,37 +156,58 @@ queryClient.setQueryDefaults(getGetOnboardingStatusQueryKey(), {
   staleTime: 5 * 60_000,
   refetchOnWindowFocus: false,
 });
+// Configuration problems are captured instead of thrown: a throw at module
+// scope is not caught by our ErrorBoundary, so the app used to die with a blank
+// screen and no explanation. RootLayout renders a setup screen instead.
+let configProblem: SetupProblem | null = null;
 const configuredPublicDomain = process.env.EXPO_PUBLIC_DOMAIN?.trim();
 const isPreviewBuild = process.env.EXPO_PUBLIC_APP_VARIANT === "preview";
 if (!__DEV__ && !configuredPublicDomain) {
-  throw new Error("Missing EXPO_PUBLIC_DOMAIN for a production API build.");
+  configProblem = {
+    title: "إعداد الاتصال بالخادم غير مكتمل",
+    detail:
+      "هذا البناء لا يعرف عنوان خادم MenaFlow، لذلك لا يستطيع التطبيق تحميل أي بيانات.",
+    hints: ["EXPO_PUBLIC_DOMAIN — العنوان العام (HTTPS) لواجهة الـAPI"],
+  };
 }
 const publicDomain = configuredPublicDomain || "localhost:5000";
-if (publicDomain) {
+if (publicDomain && !configProblem) {
   const hasProtocol = /^https?:\/\//i.test(publicDomain);
-  const apiUrl = new URL(
-    hasProtocol ? publicDomain : `https://${publicDomain}`,
-  );
-  if (
-    !__DEV__ &&
-    !isPreviewBuild &&
-    (apiUrl.protocol !== "https:" ||
-      ["localhost", "127.0.0.1", "[::1]"].includes(apiUrl.hostname))
-  ) {
-    throw new Error(
-      "Production EXPO_PUBLIC_DOMAIN must use a public HTTPS API origin.",
+  try {
+    const apiUrl = new URL(
+      hasProtocol ? publicDomain : `https://${publicDomain}`,
     );
-  }
+    if (
+      !__DEV__ &&
+      !isPreviewBuild &&
+      (apiUrl.protocol !== "https:" ||
+        ["localhost", "127.0.0.1", "[::1]"].includes(apiUrl.hostname))
+    ) {
+      configProblem = {
+        title: "عنوان الخادم غير صالح لهذا البناء",
+        detail:
+          "بناء الإنتاج يحتاج عنوان API عامًا عبر HTTPS، والعنوان الحالي يشير إلى localhost أو إلى بروتوكول غير مشفّر.",
+        hints: ["EXPO_PUBLIC_DOMAIN — يجب أن يبدأ بـ https:// ويشير إلى نطاق عام"],
+      };
+    }
 
-  if (
-    !hasProtocol &&
-    (apiUrl.hostname === "localhost" ||
-      apiUrl.hostname === "127.0.0.1" ||
-      apiUrl.hostname === "[::1]")
-  ) {
-    apiUrl.protocol = "http:";
+    if (
+      !hasProtocol &&
+      (apiUrl.hostname === "localhost" ||
+        apiUrl.hostname === "127.0.0.1" ||
+        apiUrl.hostname === "[::1]")
+    ) {
+      apiUrl.protocol = "http:";
+    }
+    if (!configProblem) setBaseUrl(apiUrl.origin);
+  } catch {
+    configProblem = {
+      title: "تعذّر قراءة عنوان الخادم",
+      detail:
+        "قيمة EXPO_PUBLIC_DOMAIN ليست عنوانًا صالحًا، لذلك لا يمكن بناء روابط الـAPI.",
+      hints: ["EXPO_PUBLIC_DOMAIN — مثال: https://api.example.com"],
+    };
   }
-  setBaseUrl(apiUrl.origin);
 }
 
 const clerkPublishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY ?? "";
@@ -564,15 +590,36 @@ export default function RootLayout() {
   }, []);
 
   if (!fontsLoaded && !fontError) return null;
-  if (!isLocalAuthDisabled && !clerkPublishableKey) {
-    throw new Error(
-      "Missing Clerk publishable key. Check the secure Clerk setup.",
+
+  const activeProblem: SetupProblem | null =
+    configProblem ??
+    (!isLocalAuthDisabled && !clerkPublishableKey
+      ? {
+          title: "إعداد المصادقة غير مكتمل",
+          detail:
+            "لا يستطيع التطبيق عرض شاشة الدخول لأن مفتاح Clerk العام غير موجود في بيئة هذا البناء.",
+          hints: [
+            "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY — المفتاح العام من لوحة Clerk",
+          ],
+        }
+      : null);
+
+  if (activeProblem) {
+    return (
+      <SafeAreaProvider>
+        <SetupProblemScreen problem={activeProblem} />
+      </SafeAreaProvider>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
+      <ErrorBoundary
+        onError={(error, stackTrace) => {
+          const { code } = describeError(error);
+          console.error(`[MenaFlow] render error ${code}`, error, stackTrace);
+        }}
+      >
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView style={{ flex: 1, direction: "rtl" }}>
             <WebFocusRing />

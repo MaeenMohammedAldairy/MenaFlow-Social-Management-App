@@ -12,6 +12,7 @@ import { LucideIcon as Icon } from '@/components/LucideIcon';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { reloadAppAsync } from 'expo';
+import { describeError } from '@/lib/error-diagnostics';
 
 export type ErrorFallbackProps = {
   error: Error;
@@ -24,6 +25,8 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
 
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
+  const diagnostics = describeError(error);
 
   const handleRestart = async () => {
     if (isRestarting) return;
@@ -108,7 +111,46 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           <Text style={[styles.message, { color: colors.mutedForeground }]}>
             تعذر متابعة استخدام التطبيق. أعد المحاولة للمتابعة.
           </Text>
+          <Text
+            selectable
+            accessibilityLabel={`رمز الخطأ ${diagnostics.code}`}
+            style={[styles.errorCode, { color: colors.mutedForeground }]}
+          >
+            الرمز: {diagnostics.code}
+          </Text>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showDetails }}
+          onPress={() => setShowDetails((visible) => !visible)}
+          style={styles.detailsToggle}
+        >
+          <Text
+            style={[styles.detailsToggleText, { color: colors.mutedForeground }]}
+          >
+            {showDetails ? 'إخفاء التفاصيل التقنية' : 'عرض التفاصيل التقنية'}
+          </Text>
+        </Pressable>
+        {showDetails ? (
+          <View
+            style={[
+              styles.detailsBox,
+              { borderColor: colors.border, backgroundColor: colors.secondary },
+            ]}
+          >
+            <Text
+              selectable
+              style={[
+                styles.detailsText,
+                { color: colors.foreground, fontFamily: monoFont },
+              ]}
+            >
+              {`الرمز: ${diagnostics.code}\nالنوع: ${diagnostics.name}\nالرسالة: ${diagnostics.message}${
+                diagnostics.stack ? `\n\n${diagnostics.stack}` : ''
+              }`}
+            </Text>
+          </View>
+        ) : null}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={isRestarting ? 'جارٍ إعادة تحميل التطبيق' : 'إعادة تحميل التطبيق'}
@@ -239,6 +281,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
   },
+  errorCode: { fontSize: 11.5, textAlign: 'center' },
+  detailsToggle: { paddingVertical: 2 },
+  detailsToggleText: { fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
+  detailsBox: {
+    width: '100%',
+    maxHeight: 220,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  detailsText: { fontSize: 11, lineHeight: 17, textAlign: 'left', writingDirection: 'ltr' },
   messageGroup: {
     alignItems: 'center',
     gap: 10,
