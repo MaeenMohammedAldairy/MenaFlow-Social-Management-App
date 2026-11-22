@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import express, { type Express } from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -53,6 +55,19 @@ const evolutionWebhookRateLimit = rateLimit({
     res.status(429).json({
       error: "تجاوز ويبهوك واتساب الحد المؤقت للطلبات. أعد المحاولة لاحقًا.",
       code: "EVOLUTION_WEBHOOK_RATE_LIMITED",
+    });
+  },
+});
+const ownerConsoleRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: requestIpKey,
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: "طلبات كثيرة على لوحة المالك. انتظر دقيقة ثم أعد المحاولة.",
+      code: "OWNER_CONSOLE_RATE_LIMITED",
     });
   },
 });
@@ -158,6 +173,56 @@ app.use(
 app.use("/api/social/whatsapp/webhook", express.json({ limit: "1mb" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+/**
+ * Owner console: an internal read-only dashboard, built from
+ * `artifacts/owner-console` and served by this same process so it needs neither
+ * a second host nor a second domain. The page itself is public HTML with a
+ * noindex header; every number behind it requires the owner credentials checked
+ * in `routes/owner.ts`.
+ */
+const ownerConsoleDir =
+  process.env.MENA_OWNER_CONSOLE_DIST?.trim() ||
+  fileURLToPath(new URL("../../owner-console/dist", import.meta.url));
+const ownerConsoleIndex = `${ownerConsoleDir}/index.html`;
+const ownerConsoleAvailable = existsSync(ownerConsoleIndex);
+
+if (ownerConsoleAvailable) {
+  app.use(
+    "/owner",
+    express.static(ownerConsoleDir, {
+      index: false,
+      maxAge: "1h",
+      setHeaders(res, filePath) {
+        res.setHeader("X-Robots-Tag", "noindex, nofollow");
+        res.setHeader("Referrer-Policy", "no-referrer");
+        if (filePath.endsWith("index.html")) {
+          res.setHeader("Cache-Control", "no-store");
+        }
+      },
+    }),
+  );
+  app.get(/^\/owner(?:\/.*)?$/, (req, res) => {
+    const lastSegment = req.path.split("/").pop() ?? "";
+    if (lastSegment.includes(".") && !lastSegment.endsWith(".html")) {
+      // A missing asset must not be answered with the SPA shell.
+      res.status(404).type("text/plain").send("Not found");
+      return;
+    }
+    res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Cache-Control", "no-store");
+    res.sendFile(ownerConsoleIndex);
+  });
+} else {
+  app.get(/^\/owner(?:\/.*)?$/, (_req, res) => {
+    res.status(503).type("text/plain").send(
+      "Owner console is not built. Run `pnpm --filter @workspace/owner-console run build` and restart the API.",
+    );
+  });
+}
+
+app.use("/api/owner", ownerConsoleRateLimit);
 app.use("/api", router);
 
 app.use(

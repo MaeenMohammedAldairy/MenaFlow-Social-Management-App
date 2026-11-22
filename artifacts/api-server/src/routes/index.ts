@@ -22,9 +22,11 @@ import whatsappAutoRepliesRouter from "./whatsapp-auto-replies";
 import whatsappDirectInboxRouter from "./whatsapp-direct-inbox";
 import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
+import ownerRouter from "./owner";
 
 const router: IRouter = Router();
 
+router.use("/owner", ownerRouter);
 router.use(accessRouter);
 router.use(socialRouter);
 router.use(whatsappMessagesRouter);

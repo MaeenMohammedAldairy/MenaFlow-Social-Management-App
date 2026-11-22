@@ -17,10 +17,10 @@ catalogs:
       version: 25.9.6
     '@types/react':
       specifier: ^19.2.0
-      version: 19.2.18
+      version: 19.3.0
     '@types/react-dom':
       specifier: ^19.2.0
-      version: 19.2.7
+      version: 19.3.0
     '@vitejs/plugin-react':
       specifier: ^5.0.4
       version: 5.2.0
@@ -535,6 +535,36 @@ importers:
       vaul:
         specifier: ^1.1.2
         version: 1.1.2(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      vite:
+        specifier: 'catalog:'
+        version: 7.3.8(@types/node@25.9.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
+
+  artifacts/owner-console:
+    devDependencies:
+      '@tailwindcss/vite':
+        specifier: 'catalog:'
+        version: 4.3.3(vite@7.3.8(@types/node@25.9.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
+      '@vitejs/plugin-react':
+        specifier: 'catalog:'
+        version: 5.2.0(supports-color@8.1.1)(vite@7.3.8(@types/node@25.9.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
+      react:
+        specifier: 'catalog:'
+        version: 19.1.0
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.1.0(react@19.1.0)
+      tailwindcss:
+        specifier: 'catalog:'
+        version: 4.3.3
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
       vite:
         specifier: 'catalog:'
         version: 7.3.8(@types/node@25.9.6)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0)
@@ -1179,7 +1209,6 @@ packages:
   '@expo/log-box@58.0.14':
     resolution: {integrity: sha512-0aXQIWgTBvtzlzzqS7+oDx+DeGyX961Xxr53HzWWiyxNM9PkK7QXVV2gVeuvAYL0RIKUL1hNC0ZCz7sSkYyfww==}
     peerDependencies:
-      '@expo/dom-webview': ^58.0.2
       expo: '*'
       react: '*'
       react-native: '*'
@@ -1201,7 +1230,6 @@ packages:
   '@expo/metro-runtime@58.0.16':
     resolution: {integrity: sha512-gE9Vx3NuqWCXcKnk4/fbJdfpkf5ABpdk+76QlzJFZ31R0ke85C7C48xKSXc4fxl+kFY0lAQYICz26107NVroNg==}
     peerDependencies:
-      '@expo/log-box': ^58.0.14
       expo: '*'
       react: '*'
       react-dom: '*'
@@ -3535,8 +3563,6 @@ packages:
   expo-router@58.0.29:
     resolution: {integrity: sha512-WF/40FrYoiFR3AAsbZorbn3CDURb7ne1BFlNZp+v8wE3fzHCIGwSue64Xu3NGrmnZ8/4I22fiYbHSxBFg3pgGQ==}
     peerDependencies:
-      '@expo/log-box': ^58.0.14
-      '@expo/metro-runtime': ^58.0.16
       '@expo/ui': ^58.0.26
       '@testing-library/react-native': '>= 14.0.0'
       expo: '*'
@@ -3630,7 +3656,6 @@ packages:
     engines: {node: ^22.13.0 || ^24.3.0 || ^26.0.0 || >=27.0.0}
     hasBin: true
     peerDependencies:
-      '@expo/dom-webview': '*'
       '@expo/metro-runtime': '*'
       react: '*'
       react-dom: '*'
@@ -3638,8 +3663,6 @@ packages:
       react-native-web: '*'
       react-native-webview: '*'
     peerDependenciesMeta:
-      '@expo/dom-webview':
-        optional: true
       '@expo/metro-runtime':
         optional: true
       react-dom:
