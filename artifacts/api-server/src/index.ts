@@ -5,8 +5,6 @@ import {
   startBackgroundWorkerLoop,
   type BackgroundWorkerLoopHandle,
 } from "./lib/background-worker-loop";
-import { processMetaAutoReplyQueue } from "./lib/meta-auto-reply-worker";
-import { processMetaOrderConfirmationsQueue } from "./lib/meta-order-confirmation-queue";
 import { processWhatsAppMediaDownloadQueue } from "./lib/whatsapp-media-download";
 import { startAppWorkerLoops, type AppWorkerLoops } from "./lib/app-workers";
 
@@ -25,7 +23,6 @@ if (Number.isNaN(port) || port <= 0) {
 }
 
 let mediaWorkerHandle: BackgroundWorkerLoopHandle | null = null;
-let metaAutoReplyWorkerHandle: BackgroundWorkerLoopHandle | null = null;
 let appWorkerLoops: AppWorkerLoops | null = null;
 let shutdownPromise: Promise<void> | null = null;
 
@@ -39,27 +36,6 @@ const server = app.listen(port, "0.0.0.0", (err) => {
   appWorkerLoops = startAppWorkerLoops("all", {
     excludeInlineMediaDownload: true,
   });
-  const metaAutoRepliesEnabled =
-    process.env.META_AUTO_REPLY_WORKER_ENABLED !== "false";
-  metaAutoReplyWorkerHandle = startBackgroundWorkerLoop(
-    "meta-inline-queues",
-    async () => {
-      const queues = [processMetaOrderConfirmationsQueue()];
-      if (metaAutoRepliesEnabled) queues.push(processMetaAutoReplyQueue());
-      await Promise.all(queues);
-      return 0;
-    },
-    (error) => {
-      logger.error({ err: error }, "Meta inline queue poll failed");
-    },
-    3_000,
-    false,
-  );
-  logger.info(
-    { autoRepliesEnabled: metaAutoRepliesEnabled },
-    "Meta inline queues started",
-  );
-
   if (
     process.env.WHATSAPP_MEDIA_DOWNLOAD_INLINE_WORKER_ENABLED === "true" &&
     process.env.WHATSAPP_MEDIA_DOWNLOAD_WORKER_ENABLED !== "false"
@@ -90,7 +66,6 @@ function shutdown(signal: NodeJS.Signals): Promise<void> {
     const workersStopped = Promise.all([
       appWorkerLoops?.stop() ?? Promise.resolve(),
       mediaWorkerHandle?.stop() ?? Promise.resolve(),
-      metaAutoReplyWorkerHandle?.stop() ?? Promise.resolve(),
     ]);
     const serverClosed = new Promise<void>((resolve, reject) => {
       server.close((error) => {

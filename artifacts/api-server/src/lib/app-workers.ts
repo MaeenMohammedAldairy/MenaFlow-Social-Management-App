@@ -13,11 +13,15 @@ import { processWhatsAppAutoReplyQueue } from "./whatsapp-sync";
 import { processWhatsAppOrderConfirmationsQueue } from "./whatsapp-order-confirmation-queue";
 import { processProductPublicationQueue } from "./product-publishing";
 import { processMetaWebhookSubscriptionQueue } from "./meta-webhook-subscriptions";
+import { processMetaAutoReplyQueue } from "./meta-auto-reply-worker";
+import { processMetaOrderConfirmationsQueue } from "./meta-order-confirmation-queue";
 import { markStaleWhatsAppAutoRepliesUnknown } from "./whatsapp-auto-reply-recovery";
 import { purgeExpiredWhatsAppDirectMessages } from "./whatsapp-direct-message-retention";
 
 type WorkerName =
   | "auto-reply-recovery"
+  | "meta-auto-replies"
+  | "meta-order-confirmations"
   | "whatsapp-auto-replies"
   | "whatsapp-order-confirmations"
   | "whatsapp-direct-message-retention"
@@ -57,6 +61,25 @@ const workers: WorkerDefinition[] = [
     run: purgeExpiredWhatsAppDirectMessages,
     disabledMessage: "",
     errorMessage: "WhatsApp direct-message retention cleanup failed",
+  },
+  {
+    // Meta replies used to run from an inline loop inside the API process only,
+    // so a deployment that runs this worker separately never answered Facebook
+    // or Instagram messages. Both entries now run wherever workers run.
+    name: "meta-auto-replies",
+    intervalMs: 3_000,
+    enabled: () => process.env.META_AUTO_REPLY_WORKER_ENABLED !== "false",
+    run: processMetaAutoReplyQueue,
+    disabledMessage: "Meta automatic reply worker disabled",
+    errorMessage: "Meta automatic reply queue poll failed",
+  },
+  {
+    name: "meta-order-confirmations",
+    intervalMs: 3_000,
+    enabled: () => true,
+    run: processMetaOrderConfirmationsQueue,
+    disabledMessage: "",
+    errorMessage: "Meta order confirmation queue poll failed",
   },
   {
     name: "whatsapp-auto-replies",

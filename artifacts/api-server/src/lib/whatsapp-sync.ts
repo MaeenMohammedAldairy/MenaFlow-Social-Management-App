@@ -10,6 +10,7 @@ import {
   isNotNull,
   lte,
   lt,
+  ne,
   or,
   sql,
 } from "drizzle-orm";
@@ -47,6 +48,14 @@ import {
   normalizeRemoteJid,
 } from "../lib/whatsapp-message-scope";
 import { isWhatsAppOptOutMessage } from "../lib/whatsapp-opt-out";
+import {
+  whatsAppAutoReplyHourlyLimit,
+  whatsAppAutoReplyLoopGuardCode,
+  whatsAppAutoReplyMaxAgeMs,
+  whatsAppAutoReplyNextRunAt,
+  whatsAppAutoReplySupersededCode,
+  whatsAppAutoReplyWindowExpiredCode,
+} from "../lib/whatsapp-auto-reply-policy";
 import { processWhatsAppOrderIntake } from "../lib/whatsapp-order-intake";
 import {
   resolveWhatsAppAlbumSource,
@@ -1242,6 +1251,7 @@ async function processWhatsAppAutoReplyAsync(input: {
   remoteJid: string;
   remoteJidHash: string;
   remoteMessageId: string;
+  messageTimestamp: Date;
   customerMessage: string;
 }): Promise<void> {
   let sendStarted = false;
@@ -1297,6 +1307,51 @@ async function processWhatsAppAutoReplyAsync(input: {
             ),
           ),
         );
+      return;
+    }
+    // WhatsApp has no messaging window like Meta, so a delayed queue could
+    // answer a message from yesterday. Beyond the limit a human takes over.
+    if (
+      Date.now() - input.messageTimestamp.getTime() >
+      whatsAppAutoReplyMaxAgeMs()
+    ) {
+      await stopWhatsAppAutoReplyEvent({
+        claimId: input.claimId,
+        workspaceId: input.connection.workspaceId,
+        errorCode: whatsAppAutoReplyWindowExpiredCode,
+      });
+      return;
+    }
+    // A newer message in the same chat may have its own waiting reply; drop
+    // this stale answer before spending an AI generation on it.
+    if (
+      await chatHasNewerWaitingWhatsAppAutoReply({
+        workspaceId: input.connection.workspaceId,
+        instanceName: input.instanceName,
+        remoteJidHash: input.remoteJidHash,
+        claimId: input.claimId,
+        messageTimestamp: input.messageTimestamp,
+      })
+    ) {
+      await stopWhatsAppAutoReplyEvent({
+        claimId: input.claimId,
+        workspaceId: input.connection.workspaceId,
+        errorCode: whatsAppAutoReplySupersededCode,
+      });
+      return;
+    }
+    if (
+      (await countRecentWhatsAppAutoReplies({
+        workspaceId: input.connection.workspaceId,
+        instanceName: input.instanceName,
+        remoteJidHash: input.remoteJidHash,
+      })) >= whatsAppAutoReplyHourlyLimit()
+    ) {
+      await stopWhatsAppAutoReplyEvent({
+        claimId: input.claimId,
+        workspaceId: input.connection.workspaceId,
+        errorCode: whatsAppAutoReplyLoopGuardCode,
+      });
       return;
     }
 
@@ -1654,11 +1709,203 @@ export async function processWhatsAppAutoReplyQueue(limit = 5): Promise<number> 
       remoteJid,
       remoteJidHash: message.remoteJidHash,
       remoteMessageId: event.remoteMessageId,
+      messageTimestamp: message.messageTimestamp,
       customerMessage,
     });
     processed += 1;
   }
   return processed;
+}
+
+/**
+ * Ends a claimed auto-reply event without sending anything.
+ *
+ * Nothing reached the customer, so the event is closed so it cannot be
+ * retried; `errorCode` explains why to the inbox.
+ */
+async function stopWhatsAppAutoReplyEvent(input: {
+  claimId: string;
+  workspaceId: string;
+  errorCode: string;
+}): Promise<void> {
+  await db
+    .update(menaWhatsAppAutoReplyEvents)
+    .set({
+      status: "failed",
+      errorCode: input.errorCode,
+      leaseExpiresAt: null,
+      completedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+        eq(menaWhatsAppAutoReplyEvents.workspaceId, input.workspaceId),
+      ),
+    );
+}
+
+/**
+ * True when a newer message in the same chat already has its own waiting
+ * reply, so the reply being generated now would answer an older message.
+ */
+async function chatHasNewerWaitingWhatsAppAutoReply(input: {
+  workspaceId: string;
+  instanceName: string;
+  remoteJidHash: string;
+  claimId: string;
+  messageTimestamp: Date;
+}): Promise<boolean> {
+  const [newer] = await db
+    .select({ id: menaWhatsAppAutoReplyEvents.id })
+    .from(menaWhatsAppAutoReplyEvents)
+    .innerJoin(
+      menaWhatsAppDirectMessages,
+      and(
+        eq(
+          menaWhatsAppDirectMessages.workspaceId,
+          menaWhatsAppAutoReplyEvents.workspaceId,
+        ),
+        eq(
+          menaWhatsAppDirectMessages.instanceName,
+          menaWhatsAppAutoReplyEvents.instanceName,
+        ),
+        eq(
+          menaWhatsAppDirectMessages.providerMessageId,
+          menaWhatsAppAutoReplyEvents.remoteMessageId,
+        ),
+        eq(menaWhatsAppDirectMessages.direction, "inbound"),
+      ),
+    )
+    .where(
+      and(
+        eq(menaWhatsAppAutoReplyEvents.workspaceId, input.workspaceId),
+        eq(menaWhatsAppAutoReplyEvents.instanceName, input.instanceName),
+        eq(menaWhatsAppDirectMessages.remoteJidHash, input.remoteJidHash),
+        inArray(menaWhatsAppAutoReplyEvents.status, ["queued", "processing"]),
+        gt(menaWhatsAppDirectMessages.messageTimestamp, input.messageTimestamp),
+        ne(menaWhatsAppAutoReplyEvents.id, input.claimId),
+      ),
+    )
+    .limit(1);
+  return Boolean(newer);
+}
+
+/**
+ * Automatic replies already sent to this chat during the last hour.
+ *
+ * Two automated systems greeting each other would otherwise answer forever and
+ * spend the workspace AI quota on a conversation no customer ever reads.
+ */
+async function countRecentWhatsAppAutoReplies(input: {
+  workspaceId: string;
+  instanceName: string;
+  remoteJidHash: string;
+}): Promise<number> {
+  const since = new Date(Date.now() - 60 * 60 * 1000);
+  const [row] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(menaWhatsAppAutoReplyEvents)
+    .innerJoin(
+      menaWhatsAppDirectMessages,
+      and(
+        eq(
+          menaWhatsAppDirectMessages.workspaceId,
+          menaWhatsAppAutoReplyEvents.workspaceId,
+        ),
+        eq(
+          menaWhatsAppDirectMessages.instanceName,
+          menaWhatsAppAutoReplyEvents.instanceName,
+        ),
+        eq(
+          menaWhatsAppDirectMessages.providerMessageId,
+          menaWhatsAppAutoReplyEvents.remoteMessageId,
+        ),
+        eq(menaWhatsAppDirectMessages.direction, "inbound"),
+      ),
+    )
+    .where(
+      and(
+        eq(menaWhatsAppAutoReplyEvents.workspaceId, input.workspaceId),
+        eq(menaWhatsAppAutoReplyEvents.instanceName, input.instanceName),
+        eq(menaWhatsAppDirectMessages.remoteJidHash, input.remoteJidHash),
+        eq(menaWhatsAppAutoReplyEvents.status, "sent"),
+        gt(menaWhatsAppAutoReplyEvents.completedAt, since),
+      ),
+    );
+  return row?.total ?? 0;
+}
+
+/**
+ * Keep one waiting reply per chat.
+ *
+ * Customers often send two or three short messages in a row. Queueing a reply
+ * for every message produced several AI answers (and spent several AI
+ * generations) for the same conversation, some of them already stale. When the
+ * chat already has a reply that has not started yet, that reply is moved to the
+ * newest message and its timer restarted instead of queueing a second one.
+ *
+ * Returns false when there was nothing to reuse, so the caller inserts a row.
+ */
+async function coalesceQueuedWhatsAppAutoReply(input: {
+  workspaceId: string;
+  instanceName: string;
+  remoteJidHash: string;
+  remoteMessageId: string;
+  messageTimestamp: Date | null;
+  nextRunAt: Date;
+}): Promise<boolean> {
+  const [pending] = await db
+    .select({ id: menaWhatsAppAutoReplyEvents.id })
+    .from(menaWhatsAppAutoReplyEvents)
+    .innerJoin(
+      menaWhatsAppDirectMessages,
+      and(
+        eq(
+          menaWhatsAppDirectMessages.workspaceId,
+          menaWhatsAppAutoReplyEvents.workspaceId,
+        ),
+        eq(
+          menaWhatsAppDirectMessages.instanceName,
+          menaWhatsAppAutoReplyEvents.instanceName,
+        ),
+        eq(
+          menaWhatsAppDirectMessages.providerMessageId,
+          menaWhatsAppAutoReplyEvents.remoteMessageId,
+        ),
+        eq(menaWhatsAppDirectMessages.direction, "inbound"),
+      ),
+    )
+    .where(
+      and(
+        eq(menaWhatsAppAutoReplyEvents.workspaceId, input.workspaceId),
+        eq(menaWhatsAppAutoReplyEvents.instanceName, input.instanceName),
+        eq(menaWhatsAppDirectMessages.remoteJidHash, input.remoteJidHash),
+        eq(menaWhatsAppAutoReplyEvents.status, "queued"),
+        gt(menaWhatsAppAutoReplyEvents.nextRunAt, new Date()),
+        ...(input.messageTimestamp
+          ? [
+              lte(
+                menaWhatsAppDirectMessages.messageTimestamp,
+                input.messageTimestamp,
+              ),
+            ]
+          : []),
+      ),
+    )
+    .orderBy(desc(menaWhatsAppAutoReplyEvents.nextRunAt))
+    .limit(1);
+  if (!pending) return false;
+  const updated = await db
+    .update(menaWhatsAppAutoReplyEvents)
+    .set({ remoteMessageId: input.remoteMessageId, nextRunAt: input.nextRunAt })
+    .where(
+      and(
+        eq(menaWhatsAppAutoReplyEvents.id, pending.id),
+        eq(menaWhatsAppAutoReplyEvents.status, "queued"),
+      ),
+    )
+    .returning({ id: menaWhatsAppAutoReplyEvents.id });
+  return updated.length > 0;
 }
 
 export async function processWebhookEvent(
@@ -1765,6 +2012,7 @@ export async function processWebhookEvent(
         ? eventPayload.id
         : null;
   let directConversationKey: string | null = null;
+  let directMessageTimestamp: Date | null = null;
   if (
     isDirectConversationMessage &&
     directMessageId &&
@@ -1785,6 +2033,7 @@ export async function processWebhookEvent(
         .map(parseWhatsAppHistoryTimestamp)
         .find((timestamp): timestamp is Date => Boolean(timestamp)) ??
       new Date();
+    directMessageTimestamp = messageTimestamp;
     const conversationKey = whatsappDirectConversationKeys(
       connection.workspaceId,
       instanceName,
@@ -1808,10 +2057,15 @@ export async function processWebhookEvent(
       expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
     }).onConflictDoNothing();
   }
+  const incomingWithinAutoReplyWindow =
+    directMessageTimestamp === null ||
+    Date.now() - directMessageTimestamp.getTime() <=
+      whatsAppAutoReplyMaxAgeMs();
   if (
     eventName === "MESSAGES_UPSERT" &&
     connection.autoReplyEnabled &&
     !customerOptedOut &&
+    incomingWithinAutoReplyWindow &&
     isDirectIncoming &&
     isWhatsAppDirectPhoneJid(directRemoteJid) &&
     incomingMessageCandidate
@@ -1826,18 +2080,31 @@ export async function processWebhookEvent(
           ? eventPayload.id
           : "";
     if (customerMessage && remoteMessageId) {
-      await db
-        .insert(menaWhatsAppAutoReplyEvents)
-        .values({
-          id: randomUUID(),
-          ownerId: connection.ownerId,
+      const nextRunAt = whatsAppAutoReplyNextRunAt();
+      const coalesced =
+        directConversationKey !== null &&
+        (await coalesceQueuedWhatsAppAutoReply({
           workspaceId: connection.workspaceId,
           instanceName,
+          remoteJidHash: directConversationKey,
           remoteMessageId,
-          status: "queued",
-          nextRunAt: new Date(),
-        })
-        .onConflictDoNothing();
+          messageTimestamp: directMessageTimestamp,
+          nextRunAt,
+        }));
+      if (!coalesced) {
+        await db
+          .insert(menaWhatsAppAutoReplyEvents)
+          .values({
+            id: randomUUID(),
+            ownerId: connection.ownerId,
+            workspaceId: connection.workspaceId,
+            instanceName,
+            remoteMessageId,
+            status: "queued",
+            nextRunAt,
+          })
+          .onConflictDoNothing();
+      }
     }
   }
 

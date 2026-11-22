@@ -4,6 +4,7 @@ import {
   asc,
   desc,
   eq,
+  gt,
   inArray,
   isNotNull,
   lt,
@@ -35,6 +36,9 @@ import {
   buildMetaAutoReplyConversationContext,
   hasPreviousMetaAutoReplyInteraction,
   matchMetaAutoReplyProductFromPublishedPost,
+  metaAutoReplyHourlyLimit,
+  metaAutoReplyLoopGuardCode,
+  metaAutoReplySupersededCode,
   type MetaAutoReplyConversationEvent,
 } from "./meta-auto-reply";
 import { formatMetaOrderDraftReply } from "./meta-order-messages";
@@ -594,6 +598,75 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
   }
   if (item.kind === "comment" && item.actorId === expectedAccount) {
     await markJob(job.id, job.workspaceId, "skipped", "OWN_COMMENT");
+    return;
+  }
+
+  // A page and another automated page can answer each other forever and spend
+  // the workspace AI quota on messages no customer reads.
+  const [recentReplies] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(menaMetaAutoReplyJobs)
+    .innerJoin(
+      menaMetaInboxItems,
+      eq(menaMetaInboxItems.id, menaMetaAutoReplyJobs.inboxItemId),
+    )
+    .where(
+      and(
+        eq(menaMetaAutoReplyJobs.workspaceId, job.workspaceId),
+        eq(menaMetaAutoReplyJobs.status, "sent"),
+        eq(menaMetaInboxItems.platform, item.platform),
+        eq(menaMetaInboxItems.conversationId, item.conversationId),
+        gt(
+          menaMetaAutoReplyJobs.completedAt,
+          new Date(Date.now() - 60 * 60 * 1000),
+        ),
+      ),
+    );
+  if ((recentReplies?.total ?? 0) >= metaAutoReplyHourlyLimit()) {
+    await markJob(
+      job.id,
+      job.workspaceId,
+      "skipped",
+      metaAutoReplyLoopGuardCode,
+    );
+    return;
+  }
+
+  // Coalesce a burst: when a newer message/comment in the same conversation is
+  // already waiting its own reply, let that one answer the whole thread instead
+  // of sending one AI reply (and one AI generation) per message.
+  const [newestPendingJob] = await db
+    .select({ inboxItemId: menaMetaAutoReplyJobs.inboxItemId })
+    .from(menaMetaAutoReplyJobs)
+    .innerJoin(
+      menaMetaInboxItems,
+      eq(menaMetaInboxItems.id, menaMetaAutoReplyJobs.inboxItemId),
+    )
+    .where(
+      and(
+        eq(menaMetaAutoReplyJobs.workspaceId, job.workspaceId),
+        inArray(menaMetaAutoReplyJobs.status, ["queued", "processing"]),
+        eq(menaMetaInboxItems.platform, item.platform),
+        eq(menaMetaInboxItems.kind, item.kind),
+        eq(menaMetaInboxItems.conversationId, item.conversationId),
+        ...(item.kind === "comment" && item.actorId
+          ? [eq(menaMetaInboxItems.actorId, item.actorId)]
+          : []),
+      ),
+    )
+    .orderBy(
+      desc(menaMetaInboxItems.occurredAt),
+      desc(menaMetaInboxItems.createdAt),
+      desc(menaMetaInboxItems.id),
+    )
+    .limit(1);
+  if (newestPendingJob && newestPendingJob.inboxItemId !== item.id) {
+    await markJob(
+      job.id,
+      job.workspaceId,
+      "skipped",
+      metaAutoReplySupersededCode,
+    );
     return;
   }
 

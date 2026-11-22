@@ -13,6 +13,64 @@ export type WhatsAppAutoReplySettings = {
   instructions: string;
 };
 
+/**
+ * How long a queued reply waits before it runs, so a burst of customer
+ * messages is answered once (by the newest message) instead of once per
+ * message. Mirrors the Meta debounce.
+ */
+export const whatsAppAutoReplyDebounceMs = 6_000;
+
+export function whatsAppAutoReplyNextRunAt(now: Date = new Date()): Date {
+  return new Date(now.getTime() + whatsAppAutoReplyDebounceMs);
+}
+
+/** Error code recorded when a newer message in the same chat wins the reply. */
+export const whatsAppAutoReplySupersededCode = "SUPERSEDED_BY_NEWER_MESSAGE";
+
+/** Error code recorded when the customer message is too old to answer. */
+export const whatsAppAutoReplyWindowExpiredCode = "AUTO_REPLY_WINDOW_EXPIRED";
+
+/**
+ * How old a customer message may be and still get an automatic reply.
+ *
+ * WhatsApp has no messaging window, unlike Meta, so a delayed queue could
+ * answer yesterday's question. Beyond this age the reply is dropped and the
+ * conversation waits for a human.
+ */
+export const whatsAppAutoReplyDefaultMaxAgeMs = 12 * 60 * 60 * 1000;
+
+export function whatsAppAutoReplyMaxAgeMs(
+  value: string | undefined = process.env.WHATSAPP_AUTO_REPLY_MAX_AGE_MINUTES,
+): number {
+  const parsed = Number.parseInt(value?.trim() ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return whatsAppAutoReplyDefaultMaxAgeMs;
+  }
+  return Math.min(parsed, 7 * 24 * 60) * 60 * 1000;
+}
+
+/** Error code recorded when a chat hits the automatic-reply ceiling. */
+export const whatsAppAutoReplyLoopGuardCode = "AUTO_REPLY_LOOP_GUARD";
+
+/**
+ * Automatic replies allowed per chat in a rolling hour.
+ *
+ * Two automated systems greeting each other can otherwise answer in an endless
+ * loop, spending the workspace AI quota on a conversation no customer reads.
+ * A normal customer conversation stays well below this ceiling.
+ */
+export const whatsAppAutoReplyDefaultHourlyLimit = 12;
+
+export function whatsAppAutoReplyHourlyLimit(
+  value: string | undefined = process.env.WHATSAPP_AUTO_REPLY_HOURLY_LIMIT,
+): number {
+  const parsed = Number.parseInt(value?.trim() ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return whatsAppAutoReplyDefaultHourlyLimit;
+  }
+  return Math.min(parsed, 100);
+}
+
 const toneInstructions: Record<WhatsAppAutoReplyTone, string> = {
   friendly_professional: "ودود ومهني، واضح ومحترم.",
   concise: "مختصر ومباشر مع الحفاظ على الاحترام.",

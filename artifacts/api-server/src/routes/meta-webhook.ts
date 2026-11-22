@@ -8,7 +8,10 @@ import {
   menaMetaConnections,
   menaMetaInboxItems,
 } from "@workspace/db";
-import { metaAutoReplyEnabled } from "../lib/meta-auto-reply";
+import {
+  metaAutoReplyEnabled,
+  metaAutoReplyNextRunAt,
+} from "../lib/meta-auto-reply";
 import {
   parseMetaWebhookEvents,
   resolveUniqueMetaConnection,
@@ -154,6 +157,7 @@ router.post("/social/meta/webhook", async (req, res) => {
           metaAutoReplyEnabled(settings, item.platform, item.kind),
         );
         if (eligible.length === 0) return;
+        const nextRunAt = metaAutoReplyNextRunAt();
         await transaction
           .insert(menaMetaAutoReplyJobs)
           .values(
@@ -162,6 +166,7 @@ router.post("/social/meta/webhook", async (req, res) => {
               ownerId: connection.ownerId,
               workspaceId: connection.workspaceId,
               inboxItemId: item.id,
+              nextRunAt,
             })),
           )
           .onConflictDoNothing();
