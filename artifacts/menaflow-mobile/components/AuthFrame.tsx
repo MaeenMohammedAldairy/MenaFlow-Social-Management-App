@@ -15,6 +15,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { useAuthTheme } from "@/hooks/useAuthTheme";
+import { useAppearanceMode } from "@/lib/appearance";
+import { useColorScheme } from "react-native";
 
 type AuthMode = "sign-in" | "sign-up";
 
@@ -33,9 +35,26 @@ export function AuthFrame({
   children: React.ReactNode;
 }) {
   const theme = useAuthTheme();
+  const appearanceMode = useAppearanceMode();
+  const systemScheme = useColorScheme();
+  const activeScheme =
+    appearanceMode === "system" ? systemScheme : appearanceMode;
+  const isDark = activeScheme === "dark";
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [backPressed, setBackPressed] = React.useState(false);
+
+  // Browsers style form controls (autofill, caret, password reveal) from the
+  // document colour scheme. Pinning it here keeps those controls in the same
+  // theme as the card instead of painting a white box on the dark surface.
+  React.useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const previous = document.documentElement.style.colorScheme;
+    document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+    return () => {
+      document.documentElement.style.colorScheme = previous;
+    };
+  }, [isDark]);
   const withHero = mode === "sign-in" && hero;
   const compact = width < 430;
   const mascotWidth = width < 360 ? 96 : compact ? 118 : 150;
@@ -92,34 +111,44 @@ export function AuthFrame({
           ]}
         >
           {mode === "sign-up" ? (
-            <Link href="/(auth)/sign-in" asChild>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="العودة إلى تسجيل الدخول"
-                onPressIn={() => setBackPressed(true)}
-                onPressOut={() => setBackPressed(false)}
-                // Flat object on purpose: Slot drops function styles.
-                style={StyleSheet.flatten([
-                  styles.backButton,
-                  {
-                    backgroundColor: theme.accent,
-                    opacity: backPressed ? 0.7 : 1,
-                  },
-                ])}
-              >
-                <ArrowRight size={18} color={theme.accentForeground} />
-              </Pressable>
-            </Link>
+            <View style={styles.topBar}>
+              <Link href="/(auth)/sign-in" asChild>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="العودة إلى تسجيل الدخول"
+                  onPressIn={() => setBackPressed(true)}
+                  onPressOut={() => setBackPressed(false)}
+                  // Flat object on purpose: Slot drops function styles.
+                  style={StyleSheet.flatten([
+                    styles.backButton,
+                    {
+                      backgroundColor: theme.accent,
+                      opacity: backPressed ? 0.7 : 1,
+                    },
+                  ])}
+                >
+                  <ArrowRight size={18} color={theme.accentForeground} />
+                </Pressable>
+              </Link>
+              <View style={styles.topBarSpacer} />
+            </View>
           ) : null}
 
           {withHero ? (
             <View style={styles.heroRow}>
-              <Image
-                source={require("../assets/images/auth-mascot.png")}
-                style={[styles.mascot, { width: mascotWidth, height: mascotWidth * 1.07 }]}
-                resizeMode="contain"
-                accessibilityLabel="شخصية MenaFlow ترحب بك"
-              />
+              <View
+                style={[
+                  styles.mascotFrame,
+                  { width: mascotWidth, height: mascotWidth * 1.07 },
+                ]}
+              >
+                <Image
+                  source={require("../assets/images/auth-mascot.png")}
+                  style={styles.mascot}
+                  resizeMode="contain"
+                  accessibilityLabel="شخصية MenaFlow ترحب بك"
+                />
+              </View>
               <View style={styles.heroCopy}>
                 {brandRow}
                 <Text
@@ -182,11 +211,13 @@ export const authStyles = StyleSheet.create({
   inputRow: {
     minHeight: 52,
     borderRadius: 12,
-    borderWidth: 1,
+    // 1.5 on both states: switching width on focus nudged the whole field.
+    borderWidth: 1.5,
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    // Wide enough that long passwords and e-mails never touch the icons.
+    gap: 13,
   },
   inputFocused: {
     borderWidth: 1.5,
@@ -199,15 +230,18 @@ export const authStyles = StyleSheet.create({
   input: {
     minHeight: 50,
     flex: 1,
-    paddingHorizontal: 0,
+    minWidth: 0,
+    paddingHorizontal: 2,
     paddingVertical: 0,
     fontSize: 15,
     textAlign: "right",
     writingDirection: "rtl",
     outlineStyle: "none",
   } as never,
+  // Latin content reads from the left; the empty state keeps the Arabic
+  // placeholder on the right (callers override textAlign when empty).
   ltrInput: {
-    textAlign: "right",
+    textAlign: "left",
     writingDirection: "ltr",
   },
   button: {
@@ -301,23 +335,34 @@ const styles = StyleSheet.create({
     elevation: 8,
     gap: 14,
   },
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: -6,
+  },
+  topBarSpacer: { width: 38, height: 38 },
   backButton: {
-    position: "absolute",
-    start: 16,
-    top: 16,
     width: 38,
     height: 38,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 2,
   },
   heroRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
-  mascot: { flexShrink: 0 },
+  // The artwork has a transparent background now (it used to ship on a white
+  // square that turned into a bright block on the dark card), so the frame only
+  // fixes the box and keeps the mascot from growing in the row.
+  mascotFrame: {
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  mascot: { width: "100%", height: "100%" },
   heroCopy: { flex: 1, gap: 4, flexShrink: 1 },
   brandRowHero: {
     flexDirection: "row",

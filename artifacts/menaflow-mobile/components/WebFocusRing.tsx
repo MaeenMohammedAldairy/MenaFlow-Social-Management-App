@@ -24,6 +24,13 @@ export function WebFocusRing() {
   outline: 2px solid ${primary} !important;
   outline-offset: 2px !important;
 }
+/* Text fields draw their own ring on the wrapper (border + glow), so the UA
+   outline only added a second rectangle cutting through the icons. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none !important;
+}
 `.trim();
   }, [primary]);
   return null;
