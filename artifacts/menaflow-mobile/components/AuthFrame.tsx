@@ -35,7 +35,6 @@ export function AuthFrame({
   const theme = useAuthTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  const [backPressed, setBackPressed] = React.useState(false);
   const withHero = mode === "sign-in" && hero;
   const compact = width < 430;
   const mascotWidth = width < 360 ? 96 : compact ? 118 : 150;
@@ -96,16 +95,13 @@ export function AuthFrame({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="العودة إلى تسجيل الدخول"
-                onPressIn={() => setBackPressed(true)}
-                onPressOut={() => setBackPressed(false)}
-                // Flat object on purpose: Slot drops function styles.
-                style={StyleSheet.flatten([
+                style={({ pressed }) => [
                   styles.backButton,
                   {
                     backgroundColor: theme.accent,
-                    opacity: backPressed ? 0.7 : 1,
+                    opacity: pressed ? 0.7 : 1,
                   },
-                ])}
+                ]}
               >
                 <ArrowRight size={18} color={theme.accentForeground} />
               </Pressable>
