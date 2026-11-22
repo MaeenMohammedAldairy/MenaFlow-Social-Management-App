@@ -45,6 +45,18 @@ the Meta worker applies the same ceiling per conversation through
 answered automatically, so a delayed queue cannot reply to yesterday's question.
 Turning auto replies off drops the replies already queued for that workspace
 instead of failing them one by one while the worker drains the queue.
+A Meta automatic reply that cannot be generated is now **paused**, not failed:
+`SUBSCRIPTION_LIMIT_REACHED:aiGenerations` (the workspace used its monthly AI
+quota), `WORKSPACE_SUBSCRIPTION_MISSING`, `WORKSPACE_SUBSCRIPTION_PLAN_INVALID`,
+`MISSING_OPENAI_KEY`, `MISSING_GEMINI_KEY`, `MISSING_AI_PROVIDER_KEY` and
+`AI_MODEL_NAME_INVALID` are recorded as `skipped` with the code, so the mobile
+inbox can explain the cause and offer a retry instead of claiming the send
+failed. Nothing was sent to Meta in those cases, so `POST
+/api/social/meta-inbox/items/:id/auto-reply` may requeue the reply; entries whose
+outcome is `unknown` are deliberately refused to prevent a second delivery.
+Raise the plan (or wait for the monthly reset, UTC) to clear the quota pause;
+messages older than the 24-hour reply window are skipped again on retry.
+
 The `whatsapp-auto-replies` worker claims WhatsApp reply events from a durable
 queue. Leases prevent concurrent sends for the same event. Recovery requeues
 expired pre-send work and marks expired in-flight sends unknown without

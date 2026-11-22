@@ -49,7 +49,7 @@ const statusLabels: Record<string, string> = {
   sending: "جارٍ الإرسال",
   sent: "أُرسل",
   failed: "فشل",
-  skipped: "تم تجاوزه",
+  skipped: "متوقف",
   unknown: "غير مؤكد",
 };
 

@@ -33,6 +33,7 @@ import {
   requestedMetaProductImages,
   formatMetaAutoReplyPrice,
   retryMetaAutoReplyGeneration,
+  classifyMetaAutoReplyFailure,
   buildMetaAutoReplyConversationContext,
   hasPreviousMetaAutoReplyInteraction,
   matchMetaAutoReplyProductFromPublishedPost,
@@ -483,6 +484,20 @@ async function retryOrFail(
 ): Promise<void> {
   const reason =
     error instanceof Error ? error.message : "META_AUTO_REPLY_FAILED";
+  if (classifyMetaAutoReplyFailure(reason) === "skipped") {
+    // Nothing left the server: the workspace has no AI budget or the provider
+    // is not configured. Pause the queue entry instead of failing it.
+    logger.info(
+      {
+        workspaceId: job.workspaceId,
+        jobId: job.id,
+        errorCode: reason.slice(0, 80),
+      },
+      "Meta automatic reply paused before sending",
+    );
+    await markJob(job.id, job.workspaceId, "skipped", reason.slice(0, 80));
+    return;
+  }
   const retryable =
     job.attempts < maxAttempts &&
     (retryMetaAutoReplyGeneration(error, job.attempts) ||

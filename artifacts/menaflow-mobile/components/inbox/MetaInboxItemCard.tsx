@@ -6,6 +6,10 @@ import { Panel } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { formatArabicDateTime } from "@/lib/formatting";
 import type { MetaInboxItem } from "@/lib/meta-inbox-api";
+import {
+  canRetryMetaAutoReply,
+  describeMetaAutoReplyFailure,
+} from "@/lib/meta-auto-reply-failure";
 import { MetaInboxMedia } from "./MetaInboxMedia";
 
 const kindNames = {
@@ -19,18 +23,31 @@ export function MetaInboxItemCard({
   onChangeReply,
   onReply,
   onConfirmUnknown,
+  onRetryAutoReply,
   sending,
   confirmingUnknown,
+  retryingAutoReply,
 }: {
   item: MetaInboxItem;
   replyText: string;
   onChangeReply: (text: string) => void;
   onReply: () => void;
   onConfirmUnknown: () => void;
+  onRetryAutoReply: () => void;
   sending: boolean;
   confirmingUnknown: boolean;
+  retryingAutoReply: boolean;
 }) {
   const colors = useColors();
+  const autoReplyPaused =
+    item.autoReplyStatus === "failed" || item.autoReplyStatus === "skipped";
+  const autoReplyReason = autoReplyPaused
+    ? describeMetaAutoReplyFailure(item.autoReplyErrorCode)
+    : null;
+  const autoReplyNeedsAttention =
+    item.autoReplyStatus === "failed" ||
+    item.autoReplyStatus === "unknown" ||
+    (item.autoReplyStatus === "skipped" && Boolean(autoReplyReason));
   const media = item.media ?? [];
   const messageText =
     item.text ||
@@ -76,7 +93,7 @@ export function MetaInboxItemCard({
       </View>
       {!item.replyText &&
       !item.replyStatus &&
-      ["queued", "processing", "sending", "failed", "unknown"].includes(
+      ["queued", "processing", "sending", "failed", "unknown", "skipped"].includes(
         item.autoReplyStatus ?? "",
       ) ? (
         <View
@@ -84,21 +101,17 @@ export function MetaInboxItemCard({
             styles.autoReplyStatus,
             {
               backgroundColor: colors.accent,
-              borderColor:
-                item.autoReplyStatus === "failed" ||
-                item.autoReplyStatus === "unknown"
-                  ? colors.warning
-                  : colors.border,
+              borderColor: autoReplyNeedsAttention
+                ? colors.warning
+                : colors.border,
             },
           ]}
         >
           <Text
             style={{
-              color:
-                item.autoReplyStatus === "failed" ||
-                item.autoReplyStatus === "unknown"
-                  ? colors.warning
-                  : colors.mutedForeground,
+              color: autoReplyNeedsAttention
+                ? colors.warning
+                : colors.mutedForeground,
               textAlign: "right",
             }}
           >
@@ -109,8 +122,33 @@ export function MetaInboxItemCard({
                 ? "جارٍ إرسال الرد الآلي..."
                 : item.autoReplyStatus === "unknown"
                   ? "نتيجة الإرسال غير مؤكدة. تحقق من المحادثة قبل الرد لتجنب التكرار."
-                  : "تعذر إرسال الرد الآلي. يمكنك المتابعة بالرد يدويًا."}
+                  : item.autoReplyStatus === "skipped"
+                    ? (autoReplyReason ??
+                      "لم يُرسل رد آلي لهذه الرسالة. يمكنك الرد يدويًا.")
+                    : (autoReplyReason ??
+                      "تعذر إرسال الرد الآلي. يمكنك المتابعة بالرد يدويًا.")}
           </Text>
+          {canRetryMetaAutoReply(item.autoReplyStatus) && onRetryAutoReply ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إعادة محاولة الرد الآلي"
+              disabled={retryingAutoReply}
+              onPress={onRetryAutoReply}
+              style={[
+                styles.autoReplyRetry,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: colors.secondary,
+                  opacity: retryingAutoReply ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Icon name="refresh-cw" size={13} color={colors.primary} />
+              <Text style={[styles.autoReplyRetryText, { color: colors.primary }]}>
+                {retryingAutoReply ? "جارٍ الإعادة..." : "إعادة المحاولة"}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
 
@@ -300,4 +338,17 @@ const styles = StyleSheet.create({
   },
   sentLabel: { fontSize: 12, fontWeight: "700", textAlign: "right" },
   autoReplyStatus: { borderWidth: 1, borderRadius: 10, padding: 10 },
+  autoReplyRetry: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    marginTop: 9,
+    borderRadius: 9,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  autoReplyRetryText: { fontSize: 12, fontWeight: "700" },
 });

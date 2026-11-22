@@ -8,8 +8,10 @@ import {
   ilike,
   inArray,
   isNotNull,
+  like,
   lt,
   lte,
+  or,
   sql,
 } from "drizzle-orm";
 import {
@@ -28,6 +30,7 @@ import {
 } from "@workspace/db";
 import { getAuth } from "@clerk/express";
 import { backgroundWorkerSnapshots } from "../lib/background-worker-loop";
+import { metaAutoReplyPausedCodes } from "../lib/meta-auto-reply";
 import {
   clampOwnerLimit,
   ownerUsagePeriodKey,
@@ -394,7 +397,20 @@ router.get("/auto-replies", async (req, res) => {
       .where(
         and(
           gte(menaMetaAutoReplyJobs.createdAt, window.since),
-          inArray(menaMetaAutoReplyJobs.status, failedStatuses),
+          or(
+            inArray(menaMetaAutoReplyJobs.status, failedStatuses),
+            // A workspace that ran out of AI quota stops before sending, so the
+            // job is "skipped" rather than "failed": still a queue problem the
+            // owner has to see.
+            and(
+              eq(menaMetaAutoReplyJobs.status, "skipped"),
+              or(
+                ...metaAutoReplyPausedCodes.map((code) =>
+                  like(menaMetaAutoReplyJobs.errorCode, `${code}%`),
+                ),
+              ),
+            ),
+          ),
         ),
       )
       .orderBy(desc(menaMetaAutoReplyJobs.createdAt))
