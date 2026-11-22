@@ -13,6 +13,17 @@ export type WhatsAppAutoReplySettings = {
   instructions: string;
 };
 
+/**
+ * How long a queued reply waits before it runs, so a burst of customer
+ * messages is answered once (by the newest message) instead of once per
+ * message. Mirrors the Meta debounce.
+ */
+export const whatsAppAutoReplyDebounceMs = 6_000;
+
+export function whatsAppAutoReplyNextRunAt(now: Date = new Date()): Date {
+  return new Date(now.getTime() + whatsAppAutoReplyDebounceMs);
+}
+
 const toneInstructions: Record<WhatsAppAutoReplyTone, string> = {
   friendly_professional: "ودود ومهني، واضح ومحترم.",
   concise: "مختصر ومباشر مع الحفاظ على الاحترام.",

@@ -1056,6 +1056,24 @@ export async function generateMetaAutoReply(input: {
   return finalizeMetaAutoReplyText(reply, input.productImagesWillBeSent);
 }
 
+/**
+ * How long a queued reply waits before it runs.
+ *
+ * Customers often send two or three short messages in a row ("السلام عليكم",
+ * "عندكم ...", "بكم؟"). Answering each one produces several AI replies to the
+ * same conversation — some of them stale — and burns one AI generation per
+ * message. A short wait lets the burst settle so the newest message is the one
+ * answered, while the earlier jobs are superseded.
+ */
+export const metaAutoReplyDebounceMs = 6_000;
+
+export function metaAutoReplyNextRunAt(now: Date = new Date()): Date {
+  return new Date(now.getTime() + metaAutoReplyDebounceMs);
+}
+
+/** Error code recorded when a newer message in the same conversation wins. */
+export const metaAutoReplySupersededCode = "SUPERSEDED_BY_NEWER_MESSAGE";
+
 export function metaAutoReplyEnabled(
   settings: {
     enabled: boolean;
