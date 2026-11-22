@@ -57,7 +57,7 @@ export function AuthFrame({
   }, [isDark]);
   const withHero = mode === "sign-in" && hero;
   const compact = width < 430;
-  const mascotWidth = width < 360 ? 96 : compact ? 118 : 150;
+  const mascotWidth = width < 360 ? 74 : compact ? 92 : 120;
 
   const brandRow = (
     <View style={withHero ? styles.brandRowHero : styles.brandRowCentered}>
@@ -271,7 +271,6 @@ export const authStyles = StyleSheet.create({
     gap: 8,
   },
   secondaryText: { fontSize: 14, fontWeight: "700" },
-  error: { fontSize: 13, lineHeight: 20, textAlign: "right" },
   linkRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -327,11 +326,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 22,
     paddingTop: 24,
     paddingBottom: 22,
-    borderRadius: 28,
+    // Softer shell: a wider radius and a lower-contrast shadow read as glass
+    // rather than a hard panel on both palettes.
+    borderRadius: 30,
     borderWidth: 1,
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.12,
-    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 22 },
+    shadowOpacity: 0.1,
+    shadowRadius: 38,
     elevation: 8,
     gap: 14,
   },
