@@ -146,6 +146,19 @@ const faqs = [
   },
 ];
 
+const dashboardActivity: Array<{
+  icon: LucideIconName;
+  label: string;
+  time: string;
+}> = [
+  { icon: "message-circle", label: "رسالة واتساب جديدة", time: "الآن" },
+  { icon: "file-text", label: "مسودة منشور جاهزة", time: "قبل ٥ د" },
+];
+
+/** Ascending heights: in RTL the first bar sits on the right, so the chart
+ *  reads as growth towards the left, with the newest bars highlighted. */
+const chartBars = [18, 24, 21, 30, 27, 38, 46, 58];
+
 const navLinks = [
   { key: "features", label: "المزايا" },
   { key: "dashboard", label: "لوحة التحكم" },
@@ -278,12 +291,23 @@ export function MarketingLandingPage() {
                   style={[
                     styles.featureCard,
                     narrow ? styles.featureCardNarrow : null,
+                    narrow ? styles.featureCardRow : null,
                   ]}
                 >
-                  <View style={styles.featureIcon}>
-                    <Icon name={feature.icon} size={20} color={palette.green} />
+                  <View
+                    style={[styles.featureIcon, narrow && styles.featureIconNarrow]}
+                  >
+                    <Icon
+                      name={feature.icon}
+                      size={narrow ? 16 : 20}
+                      color={palette.green}
+                    />
                   </View>
-                  <Text style={styles.featureTitle}>{feature.title}</Text>
+                  <Text
+                    style={[styles.featureTitle, narrow && styles.featureTitleRow]}
+                  >
+                    {feature.title}
+                  </Text>
                   {narrow ? null : (
                     <Text style={styles.featureDescription}>{feature.description}</Text>
                   )}
@@ -298,61 +322,6 @@ export function MarketingLandingPage() {
             nativeID="dashboard"
             onLayout={trackSection("dashboard")}
           >
-            <View style={styles.phoneWrap}>
-              <View style={styles.phone}>
-                <View style={styles.phoneNotch} />
-                <View style={styles.phoneHeader}>
-                  <Image
-                    source={require("../assets/images/icon.png")}
-                    style={styles.phoneBrandIcon}
-                    accessibilityLabel="شعار MenaFlow داخل لوحة التحكم"
-                  />
-                  <Text style={styles.phoneBrand}>MenaFlow</Text>
-                </View>
-                <View style={styles.phoneStats}>
-                  {[
-                    { value: "24", label: "محادثة جديدة" },
-                    { value: "8", label: "طلبات جديدة" },
-                    { value: "12", label: "منشور مجدول" },
-                  ].map((stat) => (
-                    <View key={stat.label} style={styles.phoneStat}>
-                      <Text style={styles.phoneStatValue}>{stat.value}</Text>
-                      <Text style={styles.phoneStatLabel}>{stat.label}</Text>
-                    </View>
-                  ))}
-                </View>
-                <View style={styles.phoneCard}>
-                  <View style={styles.phoneCardHead}>
-                    <Text style={styles.phoneCardTitle}>أداء النشاط التجاري</Text>
-                    <Text style={styles.phoneCardBadge}>+68%</Text>
-                  </View>
-                  <View style={styles.chart}>
-                    {[26, 40, 32, 52, 46, 64, 58, 74].map((height, index) => (
-                      <View
-                        key={`bar-${index}`}
-                        style={[
-                          styles.chartBar,
-                          {
-                            height,
-                            backgroundColor:
-                              index > 4 ? palette.green : palette.greenSoft,
-                          },
-                        ]}
-                      />
-                    ))}
-                  </View>
-                </View>
-                <View style={styles.phoneRow}>
-                  <View style={styles.phoneRowDot} />
-                  <Text style={styles.phoneRowText}>رسالة واتساب ← مسودة منشور</Text>
-                </View>
-                <View style={styles.phoneRow}>
-                  <View style={styles.phoneRowDot} />
-                  <Text style={styles.phoneRowText}>طلب جديد من محادثة</Text>
-                </View>
-              </View>
-            </View>
-
             <View style={styles.dashboardCopy}>
               <Text style={styles.dashboardTitle}>
                 لوحة تحكم ذكية{"\n"}تمنحك رؤية شاملة
@@ -370,6 +339,85 @@ export function MarketingLandingPage() {
                 ))}
               </View>
             </View>
+            <View style={styles.phoneWrap}>
+              <View style={styles.phone}>
+                <View style={styles.phoneNotch} />
+                <View style={styles.phoneHeader}>
+                  <View style={styles.phoneBrandGroup}>
+                    <Image
+                      source={require("../assets/images/icon.png")}
+                      style={styles.phoneBrandIcon}
+                      accessibilityLabel="شعار MenaFlow داخل لوحة التحكم"
+                    />
+                    <Text style={styles.phoneBrand}>MenaFlow</Text>
+                  </View>
+                  <View style={styles.phoneLive}>
+                    <View style={styles.phoneLiveDot} />
+                    <Text style={styles.phoneLiveText}>مباشر</Text>
+                  </View>
+                </View>
+
+                <View style={styles.phoneStats}>
+                  {[
+                    { value: "24", label: "محادثة" },
+                    { value: "8", label: "طلب" },
+                    { value: "12", label: "منشور" },
+                  ].map((stat) => (
+                    <View key={stat.label} style={styles.phoneStat}>
+                      <Text style={styles.phoneStatValue}>{stat.value}</Text>
+                      <Text style={styles.phoneStatLabel}>{stat.label}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={styles.phoneCard}>
+                  <View style={styles.phoneCardHead}>
+                    <View style={styles.phoneCardTitleGroup}>
+                      <Text style={styles.phoneCardTitle}>أداء النشاط التجاري</Text>
+                      <Text style={styles.phoneCardHint}>آخر ٨ أسابيع</Text>
+                    </View>
+                    <Text style={styles.phoneCardBadge}>‎+68%</Text>
+                  </View>
+                  <View style={styles.chart}>
+                    {chartBars.map((height, index) => (
+                      <View
+                        key={`bar-${index}`}
+                        style={[
+                          styles.chartBar,
+                          {
+                            height,
+                            backgroundColor:
+                              index >= chartBars.length - 3
+                                ? palette.green
+                                : palette.greenSoft,
+                          },
+                        ]}
+                      />
+                    ))}
+                  </View>
+                  <View style={styles.chartAxis}>
+                    <Text style={styles.chartAxisLabel}>قبل</Text>
+                    <View style={styles.chartAxisRule} />
+                    <Text style={styles.chartAxisLabel}>الآن</Text>
+                  </View>
+                </View>
+
+                <View style={styles.phoneActivity}>
+                  {dashboardActivity.map((item) => (
+                    <View key={item.label} style={styles.phoneRow}>
+                      <View style={styles.phoneRowIcon}>
+                        <Icon name={item.icon} size={11} color={palette.green} />
+                      </View>
+                      <Text numberOfLines={1} style={styles.phoneRowText}>
+                        {item.label}
+                      </Text>
+                      <Text style={styles.phoneRowTime}>{item.time}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
+
           </View>
 
           {/* Trust bar */}
@@ -706,7 +754,8 @@ const styles = StyleSheet.create({
     flexBasis: "30%",
     minWidth: 150,
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    gap: 9,
     backgroundColor: palette.mintSoft,
     borderWidth: 1,
     borderColor: palette.border,
@@ -714,7 +763,25 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 10,
   },
-  featureCardNarrow: { flexBasis: "45%", minWidth: 130 },
+  featureCardNarrow: { flexBasis: "45%", minWidth: 130, minHeight: 72 },
+  // Phones get a compact row card (icon beside the label): the stacked card ate
+  // too much height and left the text floating in the middle of the tile.
+  featureCardRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-start",
+    gap: 8,
+    paddingHorizontal: 11,
+    paddingVertical: 12,
+    borderRadius: 16,
+  },
+  featureIconNarrow: { width: 32, height: 32, borderRadius: 10 },
+  featureTitleRow: {
+    flex: 1,
+    fontSize: 12.5,
+    lineHeight: 19,
+    textAlign: "right",
+  },
   featureIcon: {
     width: 42,
     height: 42,
@@ -737,89 +804,139 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  dashboard: { gap: 18, paddingVertical: 6 },
+  dashboard: { gap: 20, paddingVertical: 14 },
+  // Copy first in the DOM: stacked on phones (copy above the mockup) and on
+  // wide screens the RTL row puts it on the right, the mockup on the left.
   dashboardWide: {
-    flexDirection: "row-reverse",
+    flexDirection: "row",
     alignItems: "center",
-    gap: 28,
+    gap: 40,
     paddingVertical: 18,
   },
   phoneWrap: { alignItems: "center", justifyContent: "center", flex: 1 },
   phone: {
-    width: 232,
+    width: 258,
     backgroundColor: "#0F2437",
-    borderRadius: 34,
-    padding: 9,
-    gap: 8,
+    borderRadius: 32,
+    paddingHorizontal: 11,
+    paddingTop: 9,
+    paddingBottom: 11,
+    gap: 9,
+    shadowColor: "#0B2B45",
+    shadowOpacity: 0.2,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 8,
   },
   phoneNotch: {
     alignSelf: "center",
-    width: 62,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: "#25415A",
-    marginBottom: 2,
+    width: 54,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#2B4A66",
+    marginBottom: 1,
   },
-  phoneHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
-  phoneBrandIcon: { width: 16, height: 16, borderRadius: 5 },
-  phoneBrand: { fontSize: 11, fontWeight: "800", color: palette.white },
-  phoneStats: { flexDirection: "row", gap: 6 },
-  phoneStat: {
-    flex: 1,
-    backgroundColor: palette.white,
-    borderRadius: 10,
-    paddingVertical: 7,
-    alignItems: "center",
-    gap: 1,
-  },
-  phoneStatValue: { fontSize: 13, fontWeight: "800", color: palette.ink },
-  phoneStatLabel: { fontSize: 7, color: palette.inkSoft },
-  phoneCard: {
-    backgroundColor: palette.white,
-    borderRadius: 12,
-    padding: 9,
-    gap: 7,
-  },
-  phoneCardHead: {
+  phoneHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  phoneCardTitle: { fontSize: 9, fontWeight: "800", color: palette.ink },
+  phoneBrandGroup: { flexDirection: "row", alignItems: "center", gap: 5 },
+  phoneBrandIcon: { width: 15, height: 15, borderRadius: 4 },
+  phoneBrand: {
+    fontSize: 10.5,
+    fontWeight: "800",
+    color: palette.white,
+    letterSpacing: 0.2,
+  },
+  phoneLive: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(14,159,110,0.18)",
+    borderRadius: 99,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  phoneLiveDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: palette.green,
+  },
+  phoneLiveText: { fontSize: 7.5, fontWeight: "700", color: "#7FE3BE" },
+  phoneStats: { flexDirection: "row", gap: 6 },
+  phoneStat: {
+    flex: 1,
+    backgroundColor: palette.white,
+    borderRadius: 12,
+    paddingVertical: 8,
+    alignItems: "center",
+    gap: 2,
+  },
+  phoneStatValue: { fontSize: 15, fontWeight: "800", color: palette.ink },
+  phoneStatLabel: { fontSize: 8, fontWeight: "600", color: palette.inkSoft },
+  phoneCard: {
+    backgroundColor: palette.white,
+    borderRadius: 14,
+    padding: 10,
+    gap: 8,
+  },
+  phoneCardHead: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 6,
+  },
+  phoneCardTitleGroup: { flexShrink: 1, gap: 1 },
+  phoneCardTitle: { fontSize: 9.5, fontWeight: "800", color: palette.ink },
+  phoneCardHint: { fontSize: 7, color: palette.inkSoft },
   phoneCardBadge: {
-    fontSize: 8,
+    fontSize: 8.5,
     fontWeight: "800",
     color: palette.greenDark,
     backgroundColor: palette.greenSoft,
-    borderRadius: 6,
+    borderRadius: 7,
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
   chart: {
-    height: 78,
+    height: 74,
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 5,
   },
-  chartBar: { flex: 1, borderRadius: 4 },
+  chartBar: { flex: 1, borderTopLeftRadius: 4, borderTopRightRadius: 4 },
+  chartAxis: { flexDirection: "row", alignItems: "center", gap: 6 },
+  chartAxisRule: { flex: 1, height: 1, backgroundColor: palette.border },
+  chartAxisLabel: { fontSize: 6.5, color: palette.inkSoft },
+  phoneActivity: { gap: 6 },
   phoneRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 7,
     backgroundColor: "#17324A",
-    borderRadius: 9,
+    borderRadius: 10,
     paddingHorizontal: 8,
-    paddingVertical: 6,
+    paddingVertical: 7,
   },
-  phoneRowDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: palette.green,
+  phoneRowIcon: {
+    width: 18,
+    height: 18,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(14,159,110,0.2)",
   },
-  phoneRowText: { fontSize: 8, color: "#C9DCEA", flex: 1 },
+  phoneRowText: {
+    flex: 1,
+    fontSize: 8.5,
+    fontWeight: "600",
+    color: "#D6E6F2",
+  },
+  phoneRowTime: { fontSize: 7, color: "#7E9AB3" },
 
-  dashboardCopy: { flex: 1, gap: 10 },
+  dashboardCopy: { flex: 1, gap: 12 },
   dashboardTitle: {
     fontSize: 22,
     lineHeight: 34,

@@ -52,4 +52,16 @@ export default function Root({ children }: PropsWithChildren) {
 const responsiveBackground = `
 body { background-color: #F5F7F6; }
 @media (prefers-color-scheme: dark) { body { background-color: #0D1722; } }
+/* Chrome paints autofilled fields with its own background, which showed up as a
+   white block over the dark auth card. The auth screens pin color-scheme on the
+   document, so the engine follows our palette; these rules keep the text and the
+   caret readable either way. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill {
+  -webkit-text-fill-color: inherit !important;
+  caret-color: auto !important;
+  transition: background-color 9999s ease-out 0s;
+}
 `;
