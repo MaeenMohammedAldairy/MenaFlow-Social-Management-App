@@ -16,10 +16,16 @@ import { describeError } from '@/lib/error-diagnostics';
 
 export type ErrorFallbackProps = {
   error: Error;
+  /** React's "where did it break" trace, supplied by ErrorBoundary. */
+  componentStack?: string;
   resetError: () => void;
 };
 
-export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
+export function ErrorFallback({
+  error,
+  componentStack,
+  resetError,
+}: ErrorFallbackProps) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
 
@@ -44,6 +50,9 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
     let details = `الخطأ: ${error.message}\n\n`;
     if (error.stack) {
       details += `مكدس الاستدعاء:\n${error.stack}`;
+    }
+    if (componentStack) {
+      details += `\n\nمسار المكوّنات:\n${componentStack.trim()}`;
     }
     return details;
   };
@@ -147,6 +156,10 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
             >
               {`الرمز: ${diagnostics.code}\nالنوع: ${diagnostics.name}\nالرسالة: ${diagnostics.message}${
                 diagnostics.stack ? `\n\n${diagnostics.stack}` : ''
+              }${
+                componentStack
+                  ? `\n\nمسار المكوّنات:\n${componentStack.trim()}`
+                  : ''
               }`}
             </Text>
           </View>

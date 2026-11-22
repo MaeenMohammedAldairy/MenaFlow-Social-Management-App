@@ -62,6 +62,7 @@ import { signOutAndClearQueryCache } from "@/lib/sign-out";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { useColors } from "@/hooks/useColors";
 import { WebFocusRing } from "@/components/WebFocusRing";
+import { installWebStyleSafety } from "@/lib/web-style-safety";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import {
   markNetworkAvailable,
@@ -69,6 +70,9 @@ import {
 } from "@/lib/network-status";
 
 if (Platform.OS === "web" && typeof document !== "undefined") {
+  // Safari throws when a style array reaches a DOM node; install the guard
+  // before the first render so a library slip can never take the app down.
+  installWebStyleSafety();
   document.documentElement.lang = "ar";
   document.documentElement.dir = "rtl";
 }
