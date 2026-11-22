@@ -4,6 +4,7 @@ import {
   asc,
   desc,
   eq,
+  gt,
   inArray,
   isNotNull,
   lt,
@@ -35,6 +36,8 @@ import {
   buildMetaAutoReplyConversationContext,
   hasPreviousMetaAutoReplyInteraction,
   matchMetaAutoReplyProductFromPublishedPost,
+  metaAutoReplyHourlyLimit,
+  metaAutoReplyLoopGuardCode,
   metaAutoReplySupersededCode,
   type MetaAutoReplyConversationEvent,
 } from "./meta-auto-reply";
@@ -595,6 +598,37 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
   }
   if (item.kind === "comment" && item.actorId === expectedAccount) {
     await markJob(job.id, job.workspaceId, "skipped", "OWN_COMMENT");
+    return;
+  }
+
+  // A page and another automated page can answer each other forever and spend
+  // the workspace AI quota on messages no customer reads.
+  const [recentReplies] = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(menaMetaAutoReplyJobs)
+    .innerJoin(
+      menaMetaInboxItems,
+      eq(menaMetaInboxItems.id, menaMetaAutoReplyJobs.inboxItemId),
+    )
+    .where(
+      and(
+        eq(menaMetaAutoReplyJobs.workspaceId, job.workspaceId),
+        eq(menaMetaAutoReplyJobs.status, "sent"),
+        eq(menaMetaInboxItems.platform, item.platform),
+        eq(menaMetaInboxItems.conversationId, item.conversationId),
+        gt(
+          menaMetaAutoReplyJobs.completedAt,
+          new Date(Date.now() - 60 * 60 * 1000),
+        ),
+      ),
+    );
+  if ((recentReplies?.total ?? 0) >= metaAutoReplyHourlyLimit()) {
+    await markJob(
+      job.id,
+      job.workspaceId,
+      "skipped",
+      metaAutoReplyLoopGuardCode,
+    );
     return;
   }
 

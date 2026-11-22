@@ -51,8 +51,10 @@ import { isWhatsAppOptOutMessage } from "../lib/whatsapp-opt-out";
 import {
   whatsAppAutoReplyHourlyLimit,
   whatsAppAutoReplyLoopGuardCode,
+  whatsAppAutoReplyMaxAgeMs,
   whatsAppAutoReplyNextRunAt,
   whatsAppAutoReplySupersededCode,
+  whatsAppAutoReplyWindowExpiredCode,
 } from "../lib/whatsapp-auto-reply-policy";
 import { processWhatsAppOrderIntake } from "../lib/whatsapp-order-intake";
 import {
@@ -1307,6 +1309,19 @@ async function processWhatsAppAutoReplyAsync(input: {
         );
       return;
     }
+    // WhatsApp has no messaging window like Meta, so a delayed queue could
+    // answer a message from yesterday. Beyond the limit a human takes over.
+    if (
+      Date.now() - input.messageTimestamp.getTime() >
+      whatsAppAutoReplyMaxAgeMs()
+    ) {
+      await stopWhatsAppAutoReplyEvent({
+        claimId: input.claimId,
+        workspaceId: input.connection.workspaceId,
+        errorCode: whatsAppAutoReplyWindowExpiredCode,
+      });
+      return;
+    }
     // A newer message in the same chat may have its own waiting reply; drop
     // this stale answer before spending an AI generation on it.
     if (
@@ -2042,10 +2057,15 @@ export async function processWebhookEvent(
       expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
     }).onConflictDoNothing();
   }
+  const incomingWithinAutoReplyWindow =
+    directMessageTimestamp === null ||
+    Date.now() - directMessageTimestamp.getTime() <=
+      whatsAppAutoReplyMaxAgeMs();
   if (
     eventName === "MESSAGES_UPSERT" &&
     connection.autoReplyEnabled &&
     !customerOptedOut &&
+    incomingWithinAutoReplyWindow &&
     isDirectIncoming &&
     isWhatsAppDirectPhoneJid(directRemoteJid) &&
     incomingMessageCandidate

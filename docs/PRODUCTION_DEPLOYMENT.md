@@ -38,7 +38,13 @@ an uptime monitor at the response and alert when a worker is `stale` or its
 `consecutiveErrors` keeps climbing. The `whatsapp-auto-replies` worker also
 stops answering a chat that receives more than
 `WHATSAPP_AUTO_REPLY_HOURLY_LIMIT` automatic replies in an hour (default 12,
-maximum 100) to keep two automated systems from answering each other forever.
+maximum 100) to keep two automated systems from answering each other forever;
+the Meta worker applies the same ceiling per conversation through
+`META_AUTO_REPLY_HOURLY_LIMIT`. A WhatsApp message older than
+`WHATSAPP_AUTO_REPLY_MAX_AGE_MINUTES` (default 720, maximum 10080) is no longer
+answered automatically, so a delayed queue cannot reply to yesterday's question.
+Turning auto replies off drops the replies already queued for that workspace
+instead of failing them one by one while the worker drains the queue.
 The `whatsapp-auto-replies` worker claims WhatsApp reply events from a durable
 queue. Leases prevent concurrent sends for the same event. Recovery requeues
 expired pre-send work and marks expired in-flight sends unknown without

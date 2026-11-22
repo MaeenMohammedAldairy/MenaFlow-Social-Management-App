@@ -2,15 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   metaAutoReplyDebounceMs,
+  metaAutoReplyDefaultHourlyLimit,
+  metaAutoReplyHourlyLimit,
+  metaAutoReplyLoopGuardCode,
   metaAutoReplyNextRunAt,
   metaAutoReplySupersededCode,
 } from "./meta-auto-reply.ts";
 import {
   whatsAppAutoReplyDebounceMs,
   whatsAppAutoReplyDefaultHourlyLimit,
+  whatsAppAutoReplyDefaultMaxAgeMs,
   whatsAppAutoReplyHourlyLimit,
   whatsAppAutoReplyLoopGuardCode,
+  whatsAppAutoReplyMaxAgeMs,
   whatsAppAutoReplyNextRunAt,
+  whatsAppAutoReplyWindowExpiredCode,
 } from "./whatsapp-auto-reply-policy.ts";
 import {
   backgroundWorkerSnapshots,
@@ -66,4 +72,20 @@ test("worker snapshots expose a heartbeat a readiness check can read", async () 
   assert.equal(snapshot.stale, false);
   assert.ok(snapshot.lastRunStartedAt);
   await handle.stop();
+});
+
+test("meta conversations are capped at the same hourly reply limit", () => {
+  assert.equal(metaAutoReplyHourlyLimit(undefined), metaAutoReplyDefaultHourlyLimit);
+  assert.equal(metaAutoReplyHourlyLimit("3"), 3);
+  assert.equal(metaAutoReplyHourlyLimit("500"), 100);
+  assert.equal(metaAutoReplyLoopGuardCode, "AUTO_REPLY_LOOP_GUARD");
+  assert.equal(metaAutoReplyHourlyLimit(undefined), whatsAppAutoReplyHourlyLimit(undefined));
+});
+
+test("a whatsapp reply is dropped once the customer message is too old", () => {
+  assert.equal(whatsAppAutoReplyMaxAgeMs(undefined), whatsAppAutoReplyDefaultMaxAgeMs);
+  assert.equal(whatsAppAutoReplyMaxAgeMs("30"), 30 * 60 * 1000);
+  assert.equal(whatsAppAutoReplyMaxAgeMs("999999"), 7 * 24 * 60 * 60 * 1000);
+  assert.equal(whatsAppAutoReplyMaxAgeMs("0"), whatsAppAutoReplyDefaultMaxAgeMs);
+  assert.equal(whatsAppAutoReplyWindowExpiredCode, "AUTO_REPLY_WINDOW_EXPIRED");
 });

@@ -75,6 +75,12 @@ function suppressedAutoReplyMessage(
   if (message.autoReplyErrorCode === "AUTO_REPLY_LOOP_GUARD") {
     return "أوقفنا الرد الآلي في هذه المحادثة مؤقتًا لتجاوزها حد الردود التلقائية في الساعة الأخيرة. يمكنك الرد يدويًا.";
   }
+  if (message.autoReplyErrorCode === "AUTO_REPLY_WINDOW_EXPIRED") {
+    return "لم يُرسل الرد الآلي لأن الرسالة أقدم من المدة المسموحة للرد التلقائي. يمكنك الرد يدويًا.";
+  }
+  if (message.autoReplyErrorCode === "AUTO_REPLY_DISABLED") {
+    return "الرد الآلي غير مفعّل لهذه الرسالة. يمكنك الرد يدويًا.";
+  }
   return null;
 }
 
@@ -86,9 +92,6 @@ function sendFailureMessage(message: WhatsAppDirectMessage): string | null {
     if (suppressedAutoReplyMessage(message)) return null;
     if (message.autoReplyErrorCode === "SubscriptionAiQuotaError") {
       return "تعذّر إنشاء الرد الآلي لأن حصة الذكاء الاصطناعي مستنفدة. زد الحصة أو أرسل ردًا يدويًا.";
-    }
-    if (message.autoReplyErrorCode === "AUTO_REPLY_DISABLED") {
-      return "الرد الآلي غير مفعّل لهذه الرسالة. يمكنك الرد يدويًا.";
     }
     return "تعذّر إرسال الرد الآلي. يمكنك الرد يدويًا أو مراجعة إعداداته.";
   }

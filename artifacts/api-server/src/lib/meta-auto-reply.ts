@@ -1074,6 +1074,27 @@ export function metaAutoReplyNextRunAt(now: Date = new Date()): Date {
 /** Error code recorded when a newer message in the same conversation wins. */
 export const metaAutoReplySupersededCode = "SUPERSEDED_BY_NEWER_MESSAGE";
 
+/** Error code recorded when a conversation hits the automatic-reply ceiling. */
+export const metaAutoReplyLoopGuardCode = "AUTO_REPLY_LOOP_GUARD";
+
+/**
+ * Automatic replies allowed per conversation in a rolling hour.
+ *
+ * A page and another automated page can otherwise answer each other forever,
+ * spending the workspace AI quota on a conversation no customer reads.
+ */
+export const metaAutoReplyDefaultHourlyLimit = 12;
+
+export function metaAutoReplyHourlyLimit(
+  value: string | undefined = process.env.META_AUTO_REPLY_HOURLY_LIMIT,
+): number {
+  const parsed = Number.parseInt(value?.trim() ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return metaAutoReplyDefaultHourlyLimit;
+  }
+  return Math.min(parsed, 100);
+}
+
 export function metaAutoReplyEnabled(
   settings: {
     enabled: boolean;

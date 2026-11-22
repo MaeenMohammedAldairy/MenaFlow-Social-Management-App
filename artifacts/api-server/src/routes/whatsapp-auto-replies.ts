@@ -2,6 +2,7 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { autoReplySettingsHash } from "../lib/whatsapp-auto-reply-policy";
 import {
   db,
+  menaWhatsAppAutoReplyEvents,
   menaWhatsAppConnections,
   products,
 } from "@workspace/db";
@@ -294,6 +295,24 @@ router.put(
     if (!updated) {
       res.status(409).json({ error: "تغيّر اتصال واتساب. حدّث الصفحة وحاول مرة أخرى." });
       return;
+    }
+    if (!updated.autoReplyEnabled) {
+      // Nothing queued should be sent after the merchant turned replies off.
+      await db
+        .update(menaWhatsAppAutoReplyEvents)
+        .set({
+          status: "failed",
+          errorCode: "AUTO_REPLY_DISABLED",
+          leaseExpiresAt: null,
+          completedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(menaWhatsAppAutoReplyEvents.workspaceId, workspaceId),
+            eq(menaWhatsAppAutoReplyEvents.instanceName, connection.instanceName),
+            eq(menaWhatsAppAutoReplyEvents.status, "queued"),
+          ),
+        );
     }
     res.json({
       enabled: updated.autoReplyEnabled,

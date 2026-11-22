@@ -27,6 +27,28 @@ export function whatsAppAutoReplyNextRunAt(now: Date = new Date()): Date {
 /** Error code recorded when a newer message in the same chat wins the reply. */
 export const whatsAppAutoReplySupersededCode = "SUPERSEDED_BY_NEWER_MESSAGE";
 
+/** Error code recorded when the customer message is too old to answer. */
+export const whatsAppAutoReplyWindowExpiredCode = "AUTO_REPLY_WINDOW_EXPIRED";
+
+/**
+ * How old a customer message may be and still get an automatic reply.
+ *
+ * WhatsApp has no messaging window, unlike Meta, so a delayed queue could
+ * answer yesterday's question. Beyond this age the reply is dropped and the
+ * conversation waits for a human.
+ */
+export const whatsAppAutoReplyDefaultMaxAgeMs = 12 * 60 * 60 * 1000;
+
+export function whatsAppAutoReplyMaxAgeMs(
+  value: string | undefined = process.env.WHATSAPP_AUTO_REPLY_MAX_AGE_MINUTES,
+): number {
+  const parsed = Number.parseInt(value?.trim() ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return whatsAppAutoReplyDefaultMaxAgeMs;
+  }
+  return Math.min(parsed, 7 * 24 * 60) * 60 * 1000;
+}
+
 /** Error code recorded when a chat hits the automatic-reply ceiling. */
 export const whatsAppAutoReplyLoopGuardCode = "AUTO_REPLY_LOOP_GUARD";
 
