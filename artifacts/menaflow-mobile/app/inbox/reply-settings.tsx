@@ -244,7 +244,13 @@ function ChannelCard({
               ) : null}
             </View>
           </View>
-          <StatusPill label={status.label} tone={status.tone} />
+          {/* StatusPill aligns itself to the start of its parent; inside this
+              centred header row that pins it to the top of the card. */}
+          <StatusPill
+            label={status.label}
+            tone={status.tone}
+            style={styles.cardStatus}
+          />
           <Icon
             name={expanded ? "chevron-up" : "chevron-down"}
             size={18}
@@ -273,6 +279,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   cardHeading: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10 },
+  cardStatus: { alignSelf: "center" },
   cardIcons: { flexDirection: "row", alignItems: "center", gap: 4 },
   cardCopy: { flexShrink: 1, gap: 2 },
   cardTitle: { fontSize: 15, fontWeight: "800", textAlign: "right" },
