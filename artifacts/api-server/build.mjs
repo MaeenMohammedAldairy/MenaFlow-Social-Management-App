@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
 import { rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -123,7 +125,61 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   });
 }
 
-buildAll().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// The owner console is served by this process (see `src/app.ts`), so it has to be
+// built together with the API. Hosts that build only this package (Render runs
+// `pnpm --filter @workspace/api-server build`) would otherwise ship without it
+// and `/owner` would answer 503. A failure here never fails the API build: the
+// API keeps working and `/owner` explains how to build the console.
+function buildOwnerConsole() {
+  if (process.env.MENA_SKIP_OWNER_CONSOLE_BUILD === "1") {
+    console.log("[owner-console] skipped by MENA_SKIP_OWNER_CONSOLE_BUILD");
+    return;
+  }
+
+  const consoleDir = path.resolve(artifactDir, "../owner-console");
+  if (!existsSync(path.resolve(consoleDir, "package.json"))) {
+    console.log("[owner-console] package not present, skipped");
+    return;
+  }
+
+  const strategies = [
+    {
+      label: "package script",
+      command: "pnpm",
+      args: ["--filter", "@workspace/owner-console", "run", "build"],
+      cwd: path.resolve(artifactDir, "../.."),
+    },
+    {
+      label: "vite directly",
+      command: process.execPath,
+      args: [path.resolve(consoleDir, "node_modules/vite/bin/vite.js"), "build"],
+      cwd: consoleDir,
+    },
+  ];
+
+  for (const strategy of strategies) {
+    try {
+      execFileSync(strategy.command, strategy.args, {
+        cwd: strategy.cwd,
+        stdio: "inherit",
+      });
+      console.log(`[owner-console] built via ${strategy.label}`);
+      return;
+    } catch (error) {
+      console.warn(
+        `[owner-console] ${strategy.label} failed: ${error?.message ?? error}`,
+      );
+    }
+  }
+
+  console.warn(
+    "[owner-console] not built; /owner answers 503 until the console is built",
+  );
+}
+
+buildAll()
+  .then(buildOwnerConsole)
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

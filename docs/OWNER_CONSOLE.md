@@ -29,12 +29,17 @@
 
 ```sh
 # داخل المستودع
-pnpm --filter @workspace/owner-console run build   # ينتج artifacts/owner-console/dist
-pnpm --filter @workspace/api-server run build      # بناء الـAPI كالمعتاد
+pnpm --filter @workspace/api-server run build      # يبني الـAPI واللوحة معًا
 pnpm --filter @workspace/api-server run start      # يخدم الواجهة على /owner
 ```
 
-- أمر `pnpm -r build` الجذري يبني اللوحة تلقائيًا مع بقية الحزم.
+- **بناء الـAPI يبني اللوحة تلقائيًا**: `artifacts/api-server/build.mjs` يستدعي بناء
+  اللوحة بعد حزم الـAPI، لذا أي استضافة تبني هذه الحزمة فقط (Render مثلًا:
+  `pnpm install --frozen-lockfile && pnpm --filter @workspace/api-server build`)
+  تحصل على اللوحة دون تعديل إعدادات النشر.
+- لتعطيل ذلك (بيئات لا تحتاج اللوحة): `MENA_SKIP_OWNER_CONSOLE_BUILD=1`.
+- إن فشل بناء اللوحة لا يفشل بناء الـAPI؛ يظهر تحذير في سجل البناء ويعيد `/owner`
+  رسالة 503، ويبقى الـAPI يعمل طبيعيًا.
 - بعد البناء افتح: `https://<api-host>/owner/`
 - إن لم تكن اللوحة مبنية، يعيد `/owner` رسالة 503 توضح الأمر المطلوب، ولا يتأثر
   عمل الـAPI.
