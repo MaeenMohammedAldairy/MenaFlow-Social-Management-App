@@ -15,11 +15,25 @@
  * dies on Safari — and why the failure cannot be reproduced in a Chromium or
  * jsdom based harness.
  *
- * The guard below replaces those indexed setters with one that merges the
- * leaked style object into the element as real CSS declarations. A stray style
- * array therefore renders correctly instead of killing the app, and a console
- * warning still points at the component that leaked it, so the root cause can
- * be removed without shipping a second crash to users.
+ * WebKit implements those indices as if they were *own* properties of the
+ * declaration, so patching `CSSStyleDeclaration.prototype` (which is what the
+ * first attempt at this file did) never runs: the engine throws before any
+ * JavaScript setter is consulted. What does work on every engine is wrapping the
+ * `style` property itself: the getter returns a proxy that flattens a leaked
+ * style object into real CSS declarations instead of letting the engine throw.
+ *
+ * The concrete producer of such an array in this app is `<Link asChild>`:
+ * expo-router renders the child through Radix `Slot`, which merges props with
+ * `{ ...slotProps.style, ...childProps.style }`. A child with `style={[a, b]}`
+ * therefore becomes `{ 0: a, 1: b }`, and React writes `style["0"] = a`.
+ * Chromium drops those declarations (the element silently loses its styles),
+ * WebKit throws. Those call sites were flattened at the source; this guard
+ * keeps the whole class of mistake non-fatal.
+ *
+ * The wrapper is only installed after a capability probe proves the engine is
+ * affected, so Chromium, Firefox and native rendering pay nothing. A console
+ * warning names the leaking call site once, so the root cause can still be
+ * deleted later.
  */
 
 const UNITLESS_PROPERTIES = new Set([
@@ -51,6 +65,8 @@ const UNITLESS_PROPERTIES = new Set([
   'zIndex',
   'zoom',
 ]);
+
+const INDEX_PATTERN = /^\d+$/;
 
 export type StyleDeclarationWriter = {
   setProperty: (property: string, value: string) => void;
@@ -94,11 +110,8 @@ export function styleDeclarations(
   for (const [property, rawValue] of Object.entries(
     value as Record<string, unknown>,
   )) {
-    if (rawValue !== null && typeof rawValue === 'object') {
-      // Nested array or a platform-specific style map: keep flattening.
-      if (Array.isArray(rawValue)) {
-        styleDeclarations(rawValue, declarations);
-      }
+    if (Array.isArray(rawValue)) {
+      styleDeclarations(rawValue, declarations);
       continue;
     }
     const cssValue = toCssValue(property, rawValue);
@@ -125,45 +138,74 @@ export function applyStyleObject(
   return declarations.length;
 }
 
+type StyleTarget = object & StyleDeclarationWriter;
+
 /**
- * Replaces the numeric index setters of a `CSSStyleDeclaration` prototype with
- * setters that merge object values instead of throwing.
+ * Replaces a `style` property getter so that every declaration React writes is
+ * routed through a proxy. Writing an object to a numeric index (the signature of
+ * a leaked style array) merges it as CSS instead of throwing.
  *
- * Returns `true` when at least one index was guarded.
+ * Returns `true` when the property could be guarded.
  */
-export function installIndexedStyleGuard(
+export function guardStyleProperty(
   prototype: object,
   onRepair?: (index: string, value: unknown) => void,
 ): boolean {
-  let guarded = 0;
-  for (let index = 0; index < 64; index += 1) {
-    const property = String(index);
-    const descriptor = Object.getOwnPropertyDescriptor(prototype, property);
-    const nativeSet = descriptor?.set;
-    try {
-      Object.defineProperty(prototype, property, {
-        configurable: true,
-        enumerable: descriptor?.enumerable ?? false,
-        get: descriptor?.get,
-        set(this: StyleDeclarationWriter, value: unknown) {
-          if (value !== null && typeof value === 'object') {
-            applyStyleObject(this, value);
-            onRepair?.(property, value);
-            return;
-          }
-          if (nativeSet) {
-            nativeSet.call(this, value);
-            return;
-          }
-          // No native indexed setter in this engine: keep the element intact.
-        },
-      });
-      guarded += 1;
-    } catch {
-      // Non-configurable in this engine — nothing to guard for this index.
-    }
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, 'style');
+  if (!descriptor || typeof descriptor.get !== 'function') return false;
+  const nativeGet = descriptor.get;
+  const proxies = new WeakMap<object, object>();
+
+  try {
+    Object.defineProperty(prototype, 'style', {
+      configurable: true,
+      enumerable: descriptor.enumerable ?? false,
+      get(this: object) {
+        const declaration = nativeGet.call(this) as StyleTarget | null;
+        if (!declaration || typeof declaration !== 'object') return declaration;
+
+        const cached = proxies.get(declaration);
+        if (cached) return cached;
+
+        const proxy = new Proxy(declaration, {
+          get(target, property) {
+            const value = Reflect.get(target, property, target);
+            return typeof value === 'function'
+              ? (value as (...args: unknown[]) => unknown).bind(target)
+              : value;
+          },
+          set(target, property, value) {
+            if (typeof property === 'string' && INDEX_PATTERN.test(property)) {
+              applyStyleObject(target as StyleTarget, value);
+              onRepair?.(property, value);
+              return true;
+            }
+            return Reflect.set(target, property, value, target);
+          },
+        });
+        proxies.set(declaration, proxy);
+        return proxy;
+      },
+      set: descriptor.set,
+    });
+    return true;
+  } catch {
+    return false;
   }
-  return guarded > 0;
+}
+
+/**
+ * True only on engines that throw on an indexed style assignment — WebKit.
+ * Everything else renders untouched.
+ */
+export function needsStyleGuard(documentRef: Document): boolean {
+  try {
+    const probe = documentRef.createElement('div');
+    (probe.style as unknown as Record<string, unknown>)['0'] = {};
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 let guardInstalled = false;
@@ -182,29 +224,47 @@ function reportingSite(): string {
   return line ?? 'unknown';
 }
 
+type GuardTargets = {
+  HTMLElement?: { prototype: object };
+  SVGElement?: { prototype: object };
+};
+
 /**
- * Installs the guard once, on web only. Safe to call from any module scope: it
- * does nothing during native rendering or server-side bundling.
+ * Installs the guard once, on web only, and only where the engine needs it.
+ * Safe to call from any module scope: it does nothing during native rendering
+ * or server-side bundling.
  */
 export function installWebStyleSafety(): void {
   if (guardInstalled) return;
   if (typeof document === 'undefined' || typeof window === 'undefined') return;
-
-  const styleDeclaration =
-    (window as unknown as { CSSStyleDeclaration?: { prototype?: object } })
-      .CSSStyleDeclaration;
-  const prototype = styleDeclaration?.prototype;
-  if (!prototype) return;
-
   guardInstalled = true;
+
+  if (!needsStyleGuard(document)) return;
+
   const reported = new Set<string>();
-  installIndexedStyleGuard(prototype, () => {
+  const onRepair = (): void => {
     const site = reportingSite();
     if (reported.has(site)) return;
     reported.add(site);
     console.warn(
-      '[MenaFlow] A style array reached a DOM node; it was merged instead of throwing. Offender:',
+      '[MenaFlow] A style array reached a DOM node (usually <Link asChild> with an array or function style); it was merged instead of throwing. Offender:',
       site,
     );
-  });
+  };
+
+  const targets = window as unknown as GuardTargets;
+  const prototypes = [
+    targets.HTMLElement?.prototype,
+    targets.SVGElement?.prototype,
+  ];
+  let guarded = 0;
+  for (const prototype of prototypes) {
+    if (!prototype) continue;
+    if (guardStyleProperty(prototype, onRepair)) guarded += 1;
+  }
+  if (guarded === 0) {
+    console.warn(
+      '[MenaFlow] The indexed-style guard could not be installed on this engine.',
+    );
+  }
 }

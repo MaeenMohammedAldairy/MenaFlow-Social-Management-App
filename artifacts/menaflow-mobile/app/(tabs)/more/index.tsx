@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Link, useNavigation } from "expo-router";
 import {
@@ -92,6 +92,11 @@ type TabNavigation = {
 
 export default function MoreScreen() {
   const colors = useColors();
+  // Press feedback lives in state because <Link asChild> renders the card
+  // through Radix Slot, which drops function styles (`{...fn}` is `{}`).
+  const [pressedDestination, setPressedDestination] = useState<string | null>(
+    null,
+  );
   const navigation = useNavigation();
 
   useEffect(() => {
@@ -140,19 +145,27 @@ export default function MoreScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`${destination.title}: ${destination.description}`}
-                  style={({ pressed }) =>
-                    StyleSheet.flatten([
-                      styles.destination,
-                      {
-                        backgroundColor: colors.background,
-                        borderColor: colors.border,
-                        opacity: pressed ? 0.78 : 1,
-                      },
-                      index === 0 && styles.destinationFirst,
-                      index === group.destinations.length - 1 &&
-                        styles.destinationLast,
-                    ])
+                  onPressIn={() =>
+                    setPressedDestination(
+                      `${destination.title}-${destination.path}`,
+                    )
                   }
+                  onPressOut={() => setPressedDestination(null)}
+                  style={StyleSheet.flatten([
+                    styles.destination,
+                    {
+                      backgroundColor: colors.background,
+                      borderColor: colors.border,
+                      opacity:
+                        pressedDestination ===
+                        `${destination.title}-${destination.path}`
+                          ? 0.78
+                          : 1,
+                    },
+                    index === 0 && styles.destinationFirst,
+                    index === group.destinations.length - 1 &&
+                      styles.destinationLast,
+                  ])}
                 >
                   <View pointerEvents="none" style={styles.destinationContent}>
                     <View

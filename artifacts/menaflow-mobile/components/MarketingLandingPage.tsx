@@ -467,12 +467,16 @@ export function MarketingLandingPage() {
                   <Link href="/(auth)/sign-up" asChild>
                     <Pressable
                       accessibilityRole="button"
-                      style={[
+                      // Must stay flat: <Link asChild> renders the child through
+                      // Radix Slot, which merges styles with `{...style}`. An
+                      // array becomes {0:…,1:…} and React writes style["0"],
+                      // which WebKit refuses with MF-XHKY2.
+                      style={StyleSheet.flatten([
                         styles.planButton,
                         plan.id === "starter"
                           ? styles.planButtonPrimary
                           : styles.planButtonSecondary,
-                      ]}
+                      ])}
                     >
                       <Text
                         style={
