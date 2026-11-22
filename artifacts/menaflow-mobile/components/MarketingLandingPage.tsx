@@ -13,8 +13,26 @@ import {
   LucideIcon as Icon,
   type LucideIconName,
 } from "@/components/LucideIcon";
-import { useColors } from "@/hooks/useColors";
 import { channelNote, marketingPlans } from "@/constants/pricing";
+
+/**
+ * Marketing landing page.
+ *
+ * Fixed light palette on purpose: this page mirrors the brand artwork (mint
+ * background, navy headings, one green call to action) and must look the same
+ * in the app's dark theme, like any public marketing site.
+ */
+const palette = {
+  ink: "#0B2B45",
+  inkSoft: "#4A6478",
+  green: "#0E9F6E",
+  greenDark: "#0A7A55",
+  greenSoft: "#DFF4EA",
+  mintArt: "#DFF4EE",
+  mintSoft: "#F5FBF8",
+  border: "#DCEAE3",
+  white: "#FFFFFF",
+};
 
 const features: Array<{
   icon: LucideIconName;
@@ -22,28 +40,76 @@ const features: Array<{
   description: string;
 }> = [
   {
-    icon: "send",
-    title: "تنظيم النشر",
-    description:
-      "أنشئ محتوى قنواتك الاجتماعية وتابع حالة المنشورات من مساحة عمل واحدة.",
+    icon: "message-circle",
+    title: "ردود ذكية\nوتفاعل أفضل",
+    description: "ردود مقترحة بلغة عميلك من محادثات واتساب وMeta.",
   },
   {
-    icon: "message-square",
-    title: "متابعة المحادثات",
-    description:
-      "اجمع محادثات Meta ورسائل WhatsApp المرتبطة بمساحة العمل في تدفق واضح.",
-  },
-  {
-    icon: "package",
-    title: "كتالوج المنتجات والطلبات",
-    description:
-      "نظّم بيانات المنتجات وتابع طلبات العملاء المرتبطة بالمحادثات.",
+    icon: "truck",
+    title: "إدارة الطلبات\nوالتوصيل",
+    description: "طلبات تُنشأ من المحادثات وتُتابع حتى التسليم.",
   },
   {
     icon: "bar-chart-2",
-    title: "تقارير الأداء",
-    description:
-      "راجع مؤشرات المحتوى والقنوات لمتابعة ما نُشر وما يحتاج إلى إجراء.",
+    title: "تحليلات\nمتقدمة",
+    description: "أرقام النشر والمحادثات والطلبات في تقرير واحد.",
+  },
+  {
+    icon: "shield",
+    title: "أمان عالٍ\nوحماية لبياناتك",
+    description: "تشفير للرموز والرسائل الخاصة وفصل كامل للمساحات.",
+  },
+  {
+    icon: "share-2",
+    title: "ربط جميع\nقنواتك",
+    description: "فيسبوك وإنستغرام وواتساب في مساحة عمل واحدة.",
+  },
+  {
+    icon: "clock",
+    title: "جدولة المنشورات\nوإدارة المحتوى",
+    description: "اعتماد بشري قبل كل نشر، وسجل لما نُشر فعلًا.",
+  },
+];
+
+const dashboardPoints = [
+  "إدارة متعددة الأنشطة داخل مساحة عمل واحدة",
+  "متابعة المبيعات والأداء من شاشة واحدة",
+  "تنبيهات فورية للمهام التي تحتاج إجراءً",
+];
+
+const trustItems: Array<{ icon: LucideIconName; title: string; note: string }> = [
+  {
+    icon: "message-circle",
+    title: "دعم عبر واتساب",
+    note: "فريق يرد على أسئلتك",
+  },
+  {
+    icon: "globe",
+    title: "مصمّم للمتاجر اليمنية",
+    note: "بالعربية ومن اليمين لليسار",
+  },
+  {
+    icon: "shield",
+    title: "بيانات معزولة ومشفّرة",
+    note: "لكل مساحة عمل مفاتيحها",
+  },
+];
+
+const steps = [
+  {
+    number: "1",
+    title: "أنشئ حسابك",
+    description: "سجّل بياناتك وأنشئ مساحة العمل الخاصة بنشاطك.",
+  },
+  {
+    number: "2",
+    title: "اربط قنواتك",
+    description: "اختر الحسابات ومصادر الرسائل التي تريد إدارتها.",
+  },
+  {
+    number: "3",
+    title: "ابدأ التنظيم",
+    description: "تابع المحتوى والمحادثات والمنتجات والطلبات من لوحة واحدة.",
   },
 ];
 
@@ -80,584 +146,379 @@ const faqs = [
   },
 ];
 
-const steps = [
-  {
-    number: "1",
-    title: "أنشئ حسابك",
-    description: "سجّل بياناتك وأنشئ مساحة العمل الخاصة بنشاطك.",
-  },
-  {
-    number: "2",
-    title: "اربط قنواتك",
-    description: "اختر الحسابات ومصادر الرسائل التي تريد إدارتها.",
-  },
-  {
-    number: "3",
-    title: "ابدأ التنظيم",
-    description: "تابع المحتوى والمحادثات والمنتجات والطلبات من لوحة واحدة.",
-  },
-];
-
-const sectionLinks = [
-  { key: 'features', label: 'المزايا' },
-  { key: 'pricing', label: 'الأسعار' },
-  { key: 'faq', label: 'الأسئلة الشائعة' },
+const navLinks = [
+  { key: "features", label: "المزايا" },
+  { key: "dashboard", label: "لوحة التحكم" },
+  { key: "pricing", label: "الأسعار" },
+  { key: "faq", label: "الأسئلة" },
 ];
 
 export function MarketingLandingPage() {
-  const colors = useColors();
   const [openFaq, setOpenFaq] = React.useState<string | null>(null);
   const scrollRef = React.useRef<React.ComponentRef<typeof ScrollView>>(null);
   const sectionOffsets = React.useRef<Record<string, number>>({});
+  const { width } = useWindowDimensions();
+  const compact = width < 760;
+  const narrow = width < 420;
+  const wide = width >= 980;
+  const contentWidth = Math.min(width - (compact ? 32 : 56), 1120);
+
   const scrollToSection = (key: string) => {
     const offset = sectionOffsets.current[key];
     if (offset === undefined) return;
     scrollRef.current?.scrollTo({ y: Math.max(0, offset - 16), animated: true });
   };
-  const { width } = useWindowDimensions();
-  const compact = width < 720;
-  const showThreeColumns = width >= 980;
-  const contentWidth = Math.min(width - (compact ? 28 : 48), 1120);
+  const trackSection = (key: string) => (event: { nativeEvent: { layout: { y: number } } }) => {
+    sectionOffsets.current[key] = event.nativeEvent.layout.y;
+  };
 
   return (
-    <View style={[styles.page, { backgroundColor: colors.background }]}>
+    <View style={styles.page}>
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View
-          style={[
-            styles.content,
-            { width: contentWidth, maxWidth: contentWidth },
-          ]}
-        >
-          <View
-            style={[
-              styles.header,
-              compact && styles.headerCompact,
-              { borderBottomColor: colors.border },
-            ]}
-          >
+        <View style={[styles.content, { width: contentWidth, maxWidth: contentWidth }]}>
+          {/* Top bar */}
+          <View style={styles.header}>
+            <View style={styles.languagePill}>
+              <Icon name="globe" size={15} color={palette.green} />
+              <Text style={styles.languageText}>العربية</Text>
+            </View>
             <View style={styles.brand}>
               <Image
                 source={require("../assets/images/icon.png")}
                 style={styles.brandIcon}
                 accessibilityLabel="شعار MenaFlow"
               />
-              <Text style={[styles.brandName, { color: colors.foreground }]}>
-                MenaFlow
-              </Text>
-            </View>
-            <View
-              style={[
-                styles.headerActions,
-                compact && styles.headerActionsCompact,
-              ]}
-            >
-              <Link href="/(auth)/sign-in" asChild>
-                <Pressable
-                  accessibilityRole="button"
-                  style={StyleSheet.flatten([
-                    styles.headerLink,
-                    { borderColor: colors.border },
-                  ])}
-                >
-                  <Text
-                    style={[
-                      styles.headerLinkText,
-                      { color: colors.foreground },
-                    ]}
-                  >
-                    تسجيل الدخول
-                  </Text>
-                </Pressable>
-              </Link>
-              <Link href="/(auth)/sign-up" asChild>
-                <Pressable
-                  accessibilityRole="button"
-                  style={StyleSheet.flatten([
-                    styles.headerPrimary,
-                    { backgroundColor: colors.primary },
-                  ])}
-                >
-                  <Text
-                    style={[
-                      styles.headerLinkText,
-                      { color: colors.primaryForeground },
-                    ]}
-                  >
-                    إنشاء حساب
-                  </Text>
-                </Pressable>
-              </Link>
+              <Text style={styles.brandName}>MenaFlow</Text>
             </View>
           </View>
 
           {compact ? null : (
-            <View style={styles.sectionNav}>
-              {sectionLinks.map((link) => (
+            <View style={styles.navRow}>
+              {navLinks.map((link) => (
                 <Pressable
                   key={link.key}
                   accessibilityRole="link"
                   onPress={() => scrollToSection(link.key)}
-                  style={styles.sectionNavLink}
+                  style={styles.navLink}
                 >
-                  <Text
-                    style={[
-                      styles.sectionNavText,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    {link.label}
-                  </Text>
+                  <Text style={styles.navText}>{link.label}</Text>
                 </Pressable>
               ))}
+              <Link href="/(auth)/sign-in" asChild>
+                <Pressable accessibilityRole="link" style={styles.navSignIn}>
+                  <Text style={styles.navSignInText}>تسجيل الدخول</Text>
+                </Pressable>
+              </Link>
             </View>
           )}
 
-          <View
-            style={[
-              styles.hero,
-              compact && styles.heroCompact,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.heroCopy}>
-              <View
-                style={[styles.eyebrow, { backgroundColor: colors.accent }]}
-              >
-                <Text style={[styles.eyebrowText, { color: colors.primary }]}>
-                  لمتاجر فيسبوك وإنستغرام وواتساب
-                </Text>
-              </View>
-              <Text
-                accessibilityRole="header"
-                aria-level={1}
+          {/* Hero */}
+          <View style={[styles.hero, wide && styles.heroWide]}>
+            <View style={[styles.heroArt, wide ? styles.heroArtWide : null]}>
+              <Image
+                source={require("../assets/images/landing-mascot.png")}
                 style={[
-                  styles.heroTitle,
-                  compact && styles.heroTitleCompact,
-                  { color: colors.foreground },
+                  styles.mascot,
+                  narrow ? styles.mascotNarrow : null,
+                  wide ? styles.mascotWide : null,
                 ]}
-              >
-                رسالة واتساب واحدة… تصبح منشورًا مجدولًا وطلبًا مُتابَعًا
-              </Text>
-              <Text
-                style={[
-                  styles.heroDescription,
-                  compact && styles.heroDescriptionCompact,
-                  { color: colors.mutedForeground },
-                ]}
-              >
-                بدل التنقّل بين تطبيق النشر وجداول الطلبات ومحادثات واتساب،
-                اجمع المحتوى والرسائل والطلبات في مساحة عمل عربية واحدة.
-              </Text>
-              <View
-                style={[
-                  styles.heroActions,
-                  compact && styles.heroActionsCompact,
-                ]}
-              >
-                <Link href="/(auth)/sign-up" asChild>
-                  <Pressable
-                    accessibilityRole="button"
-                    style={StyleSheet.flatten([
-                      styles.primaryCta,
-                      compact && styles.primaryCtaCompact,
-                      { backgroundColor: colors.primary },
-                    ])}
-                  >
-                    <Text
-                      style={[
-                        styles.ctaText,
-                        compact && styles.ctaTextCompact,
-                        { color: colors.primaryForeground },
-                      ]}
-                    >
-                      ابدأ مجانًا
-                    </Text>
-                    <Icon
-                      name="chevron-left"
-                      size={18}
-                      color={colors.primaryForeground}
-                    />
-                  </Pressable>
-                </Link>
-                <Link href="/(auth)/sign-in" asChild>
-                  <Pressable
-                    accessibilityRole="button"
-                    style={StyleSheet.flatten([
-                      styles.secondaryCta,
-                      compact && styles.secondaryCtaCompact,
-                      { borderColor: colors.border },
-                    ])}
-                  >
-                    <Text
-                      style={[
-                        styles.ctaText,
-                        compact && styles.ctaTextCompact,
-                        { color: colors.foreground },
-                      ]}
-                    >
-                      {compact ? "تسجيل الدخول" : "لدي حساب بالفعل"}
-                    </Text>
-                  </Pressable>
-                </Link>
-              </View>
-              <Text
-                style={[
-                  styles.heroNote,
-                  compact && styles.heroNoteCompact,
-                  { color: colors.mutedForeground },
-                ]}
-              >
-                خطة مجانية للبدء؛ لا يلزم اختيار باقة مدفوعة.
-              </Text>
+                resizeMode="contain"
+                accessibilityLabel="شخصية MenaFlow مع أيقونات فيسبوك وإنستغرام وواتساب"
+              />
             </View>
-            <View
-              style={[
-                styles.heroVisual,
-                compact && styles.heroVisualCompact,
-                { backgroundColor: colors.accent, borderColor: colors.border },
-              ]}
-              accessible
-              accessibilityRole="image"
-              accessibilityLabel="معاينة مساحة عمل لإدارة المحتوى والمحادثات والطلبات"
-            >
-              <View
-                style={[
-                  styles.visualTop,
-                  compact && styles.visualTopCompact,
-                  { backgroundColor: colors.card },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.visualDot,
-                    { backgroundColor: colors.primary },
-                  ]}
-                />
-                <Text
-                  style={[styles.visualLabel, { color: colors.foreground }]}
+            <View style={styles.heroCopy}>
+              <Text accessibilityRole="header" aria-level={1} style={styles.heroTitle}>
+                إدارة نشاطك التجاري
+              </Text>
+              <Text accessibilityRole="header" aria-level={1} style={styles.heroTitleAccent}>
+                بكامل من منصة واحدة
+              </Text>
+              <Text style={styles.heroBody}>
+                MenaFlow منصة عربية ذكية تساعدك على نشر المحتوى، والتواصل مع
+                عملائك، ومعالجة الطلبات وأتمتة أعمالك بكل سهولة.
+              </Text>
+              <View style={[styles.heroActions, narrow && styles.heroActionsNarrow]}>
+                <Link href="/(auth)/sign-up" asChild>
+                  <Pressable accessibilityRole="button" style={styles.primaryCta}>
+                    <Text style={styles.primaryCtaText}>ابدأ مجانًا</Text>
+                    <Icon name="chevron-left" size={17} color={palette.white} />
+                  </Pressable>
+                </Link>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => scrollToSection("features")}
+                  style={styles.secondaryCta}
                 >
-                  مساحة العمل
-                </Text>
+                  <Icon name="play" size={15} color={palette.green} />
+                  <Text style={styles.secondaryCtaText}>استعرض المزايا</Text>
+                </Pressable>
               </View>
-              <View
-                style={[
-                  styles.visualStats,
-                  compact && styles.visualStatsCompact,
-                ]}
-              >
-                {[
-                  ["منشورات", "تنظيم المحتوى"],
-                  ["محادثات", "متابعة الرسائل"],
-                  ["طلبات", "سير عمل أوضح"],
-                ].map(([label, caption]) => (
-                  <View
-                    key={label}
-                    style={[
-                      styles.visualStat,
-                      compact && styles.visualStatCompact,
-                      { backgroundColor: colors.card },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.visualStatLabel,
-                        compact && styles.visualStatLabelCompact,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.visualStatCaption,
-                        compact && styles.visualStatCaptionCompact,
-                        { color: colors.foreground },
-                      ]}
-                    >
-                      {caption}
-                    </Text>
+            </View>
+          </View>
+
+          {/* Features */}
+          <View
+            style={styles.featuresPanel}
+            nativeID="features"
+            onLayout={trackSection("features")}
+          >
+            <View style={styles.sectionRuleRow}>
+              <View style={styles.sectionRule} />
+              <Text style={styles.sectionRuleTitle}>كل ما تحتاجه في مكان واحد</Text>
+              <View style={styles.sectionRule} />
+            </View>
+            <View style={styles.featureGrid}>
+              {features.map((feature) => (
+                <View
+                  key={feature.title}
+                  style={[
+                    styles.featureCard,
+                    narrow ? styles.featureCardNarrow : null,
+                  ]}
+                >
+                  <View style={styles.featureIcon}>
+                    <Icon name={feature.icon} size={20} color={palette.green} />
+                  </View>
+                  <Text style={styles.featureTitle}>{feature.title}</Text>
+                  {narrow ? null : (
+                    <Text style={styles.featureDescription}>{feature.description}</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Dashboard proof */}
+          <View
+            style={[styles.dashboard, wide && styles.dashboardWide]}
+            nativeID="dashboard"
+            onLayout={trackSection("dashboard")}
+          >
+            <View style={styles.phoneWrap}>
+              <View style={styles.phone}>
+                <View style={styles.phoneNotch} />
+                <View style={styles.phoneHeader}>
+                  <Image
+                    source={require("../assets/images/icon.png")}
+                    style={styles.phoneBrandIcon}
+                    accessibilityLabel="شعار MenaFlow داخل لوحة التحكم"
+                  />
+                  <Text style={styles.phoneBrand}>MenaFlow</Text>
+                </View>
+                <View style={styles.phoneStats}>
+                  {[
+                    { value: "24", label: "محادثة جديدة" },
+                    { value: "8", label: "طلبات جديدة" },
+                    { value: "12", label: "منشور مجدول" },
+                  ].map((stat) => (
+                    <View key={stat.label} style={styles.phoneStat}>
+                      <Text style={styles.phoneStatValue}>{stat.value}</Text>
+                      <Text style={styles.phoneStatLabel}>{stat.label}</Text>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.phoneCard}>
+                  <View style={styles.phoneCardHead}>
+                    <Text style={styles.phoneCardTitle}>أداء النشاط التجاري</Text>
+                    <Text style={styles.phoneCardBadge}>+68%</Text>
+                  </View>
+                  <View style={styles.chart}>
+                    {[26, 40, 32, 52, 46, 64, 58, 74].map((height, index) => (
+                      <View
+                        key={`bar-${index}`}
+                        style={[
+                          styles.chartBar,
+                          {
+                            height,
+                            backgroundColor:
+                              index > 4 ? palette.green : palette.greenSoft,
+                          },
+                        ]}
+                      />
+                    ))}
+                  </View>
+                </View>
+                <View style={styles.phoneRow}>
+                  <View style={styles.phoneRowDot} />
+                  <Text style={styles.phoneRowText}>رسالة واتساب ← مسودة منشور</Text>
+                </View>
+                <View style={styles.phoneRow}>
+                  <View style={styles.phoneRowDot} />
+                  <Text style={styles.phoneRowText}>طلب جديد من محادثة</Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.dashboardCopy}>
+              <Text style={styles.dashboardTitle}>
+                لوحة تحكم ذكية{"\n"}تمنحك رؤية شاملة
+              </Text>
+              <Text style={styles.dashboardBody}>
+                تابع أداء نشاطك في الوقت الحقيقي، واتخذ أفضل القرارات لتنمية
+                عملك.
+              </Text>
+              <View style={styles.dashboardPoints}>
+                {dashboardPoints.map((point) => (
+                  <View key={point} style={styles.dashboardPoint}>
+                    <Icon name="check-circle" size={17} color={palette.green} />
+                    <Text style={styles.dashboardPointText}>{point}</Text>
                   </View>
                 ))}
               </View>
             </View>
           </View>
 
-          <View
-            style={[styles.section, compact && styles.sectionCompact]}
-            nativeID="features"
-            onLayout={(event) => {
-              sectionOffsets.current["features"] = event.nativeEvent.layout.y;
-            }}
-          >
-            <SectionHeading
-              compact={compact}
-              eyebrow="ماذا يمكنك أن تدير؟"
-              title="أدوات مترابطة لعملك اليومي"
-              description="تابع المهام الأساسية لقنواتك الاجتماعية وعملياتك من لوحة واحدة."
-            />
-            <View style={[styles.featureGrid, compact && styles.column]}>
-              {features.map((feature) => (
-                <View
-                  key={feature.title}
-                  style={[
-                    styles.featureCard,
-                    compact ? styles.fullWidth : styles.halfWidth,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.featureIcon,
-                      { backgroundColor: colors.accent },
-                    ]}
-                  >
-                    <Icon
-                      name={feature.icon}
-                      size={20}
-                      color={colors.primary}
-                    />
+          {/* Trust bar */}
+          <View style={styles.trustBar}>
+            {trustItems.map((item, index) => (
+              <React.Fragment key={item.title}>
+                {index > 0 ? <View style={styles.trustDivider} /> : null}
+                <View style={styles.trustItem}>
+                  <View style={styles.trustIcon}>
+                    <Icon name={item.icon} size={17} color={palette.green} />
                   </View>
-                  <Text
-                    style={[styles.featureTitle, { color: colors.foreground }]}
-                  >
-                    {feature.title}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.featureDescription,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    {feature.description}
-                  </Text>
+                  <View style={styles.trustCopy}>
+                    <Text style={styles.trustTitle}>{item.title}</Text>
+                    <Text style={styles.trustNote}>{item.note}</Text>
+                  </View>
                 </View>
-              ))}
-            </View>
+              </React.Fragment>
+            ))}
           </View>
 
-          <View
-            style={[
-              styles.section,
-              compact && styles.sectionCompact,
-              { backgroundColor: colors.secondary },
-            ]}
-          >
-            <SectionHeading
-              compact={compact}
-              eyebrow="طريقة البدء"
-              title="ثلاث خطوات للانطلاق"
-              description="إعداد بسيط يعرّفك على مساحة العمل قبل البدء باستخدامها."
-            />
-            <View style={[styles.stepGrid, compact && styles.column]}>
+          {/* Closing call to action */}
+          <View style={styles.ctaBand}>
+            <View style={styles.ctaGlow} />
+            <View style={styles.ctaCopy}>
+              <Text style={styles.ctaTitle}>مع MenaFlow … أعمالك تنمو أكثر</Text>
+              <Text style={styles.ctaBody}>
+                انضم إلى أصحاب المتاجر الذين ينظّمون نشرهم ومحادثاتهم وطلباتهم
+                في مكان واحد.
+              </Text>
+            </View>
+            <Link href="/(auth)/sign-up" asChild>
+              <Pressable accessibilityRole="button" style={styles.ctaButton}>
+                <Text style={styles.ctaButtonText}>ابدأ الآن</Text>
+                <Icon name="chevron-left" size={17} color={palette.green} />
+              </Pressable>
+            </Link>
+          </View>
+
+          {/* Steps */}
+          <View style={styles.section}>
+            <Text style={styles.sectionEyebrow}>طريقة البدء</Text>
+            <Text style={styles.sectionTitle}>ثلاث خطوات للانطلاق</Text>
+            <Text style={styles.sectionBody}>
+              إعداد بسيط يعرّفك على مساحة العمل قبل البدء باستخدامها.
+            </Text>
+            <View style={styles.stepGrid}>
               {steps.map((step) => (
-                <View
-                  key={step.number}
-                  style={[
-                    styles.stepCard,
-                    compact && styles.stepCardCompact,
-                    compact
-                      ? styles.fullWidth
-                      : showThreeColumns
-                        ? styles.thirdWidth
-                        : styles.halfWidth,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.stepNumber, { color: colors.primary }]}>
-                    {step.number}
-                  </Text>
-                  <Text
-                    style={[styles.featureTitle, { color: colors.foreground }]}
-                  >
-                    {step.title}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.featureDescription,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    {step.description}
-                  </Text>
+                <View key={step.number} style={styles.stepCard}>
+                  <View style={styles.stepBadge}>
+                    <Text style={styles.stepBadgeText}>{step.number}</Text>
+                  </View>
+                  <Text style={styles.stepTitle}>{step.title}</Text>
+                  <Text style={styles.stepBody}>{step.description}</Text>
                 </View>
               ))}
             </View>
           </View>
 
+          {/* Pricing */}
           <View
-            style={[styles.section, compact && styles.sectionCompact]}
+            style={styles.section}
             nativeID="pricing"
-            onLayout={(event) => {
-              sectionOffsets.current["pricing"] = event.nativeEvent.layout.y;
-            }}
+            onLayout={trackSection("pricing")}
           >
-            <SectionHeading
-              compact={compact}
-              eyebrow="الأسعار"
-              title="اختر حدود الاستخدام المناسبة لك"
-              description="الأسعار الشهرية وحدود الاستخدام المعروضة مبنية على إعدادات الباقات الحالية."
-            />
-            <View style={[styles.planGrid, compact && styles.column]}>
-              {marketingPlans.map((plan, index) => (
+            <Text style={styles.sectionEyebrow}>الأسعار</Text>
+            <Text style={styles.sectionTitle}>اختر حدود الاستخدام المناسبة لك</Text>
+            <Text style={styles.sectionBody}>
+              ابدأ مجانًا، وارتقِ حين تحتاج حدودًا أعلى للنشر والتوليد.
+            </Text>
+            <View style={styles.planGrid}>
+              {marketingPlans.map((plan) => (
                 <View
                   key={plan.id}
                   style={[
                     styles.planCard,
-                    compact ? styles.fullWidth : styles.planWidth,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: index === 2 ? colors.primary : colors.border,
-                    },
+                    plan.id === "starter" && styles.planCardHighlight,
                   ]}
                 >
-                  <Text style={[styles.planName, { color: colors.foreground }]}>
-                    {plan.name}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.planDescription,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    {plan.description}
-                  </Text>
-                  <View style={styles.priceLine}>
-                    <Text style={[styles.price, { color: colors.foreground }]}>
-                      {`$${plan.monthlyPriceUsd}`}
+                  <Text style={styles.planName}>{plan.name}</Text>
+                  <View style={styles.planPriceRow}>
+                    <Text style={styles.planPrice}>
+                      {plan.monthlyPriceUsd === 0 ? "0" : `$${plan.monthlyPriceUsd}`}
                     </Text>
-                    <Text
-                      style={[
-                        styles.pricePeriod,
-                        { color: colors.mutedForeground },
-                      ]}
-                    >
-                      دولار أمريكي / شهر
-                    </Text>
+                    <Text style={styles.planPeriod}>/ شهريًا</Text>
                   </View>
+                  <Text style={styles.planDescription}>{plan.description}</Text>
                   <View style={styles.planLimits}>
                     {plan.limits.map((limit) => (
-                      <View key={limit} style={styles.limitRow}>
-                        <Icon name="check" size={16} color={colors.primary} />
-                        <Text
-                          style={[
-                            styles.limitText,
-                            { color: colors.foreground },
-                          ]}
-                        >
-                          {limit}
-                        </Text>
+                      <View key={limit} style={styles.planLimit}>
+                        <Icon name="check" size={14} color={palette.green} />
+                        <Text style={styles.planLimitText}>{limit}</Text>
                       </View>
                     ))}
                   </View>
                   <Link href="/(auth)/sign-up" asChild>
                     <Pressable
                       accessibilityRole="button"
-                      style={StyleSheet.flatten([
+                      style={[
                         styles.planButton,
-                        index === 2
-                          ? { backgroundColor: colors.primary }
-                          : { borderColor: colors.border },
-                      ])}
+                        plan.id === "starter"
+                          ? styles.planButtonPrimary
+                          : styles.planButtonSecondary,
+                      ]}
                     >
                       <Text
-                        style={[
-                          styles.planButtonText,
-                          {
-                            color:
-                              index === 2
-                                ? colors.primaryForeground
-                                : colors.foreground,
-                          },
-                        ]}
+                        style={
+                          plan.id === "starter"
+                            ? styles.planButtonPrimaryText
+                            : styles.planButtonSecondaryText
+                        }
                       >
-                        إنشاء حساب
+                        ابدأ بهذه الخطة
                       </Text>
                     </Pressable>
                   </Link>
                 </View>
               ))}
             </View>
-            <Text
-              style={[styles.pricingNotice, { color: colors.mutedForeground }]}
-            >
-              الأسعار بالدولار الأمريكي وفق الإعدادات الحالية. الدفع الإلكتروني
-              والاشتراكات المدفوعة غير مفعّلة حاليًا؛ الباقات المدفوعة معروضة
-              للتعريف بحدودها فقط.
-            </Text>
-            <Text
-              style={[styles.pricingNotice, { color: colors.mutedForeground }]}
-            >
-              {channelNote}
-            </Text>
+            <Text style={styles.channelNote}>{channelNote}</Text>
           </View>
 
+          {/* FAQ */}
           <View
-            style={[styles.section, compact && styles.sectionCompact]}
+            style={styles.section}
             nativeID="faq"
-            onLayout={(event) => {
-              sectionOffsets.current["faq"] = event.nativeEvent.layout.y;
-            }}
+            onLayout={trackSection("faq")}
           >
-            <SectionHeading
-              compact={compact}
-              eyebrow="الأسئلة الشائعة"
-              title="ما يُسأل عنه قبل البدء"
-              description="إجابات موجزة عن الربط والبيانات والبدء."
-            />
+            <Text style={styles.sectionEyebrow}>الأسئلة الشائعة</Text>
+            <Text style={styles.sectionTitle}>ما يُسأل عنه قبل البدء</Text>
             <View style={styles.faqList}>
               {faqs.map((item) => {
                 const open = openFaq === item.id;
                 return (
-                  <View
-                    key={item.id}
-                    style={[
-                      styles.faqItem,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: colors.border,
-                      },
-                    ]}
-                  >
+                  <View key={item.id} style={styles.faqItem}>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityState={{ expanded: open }}
-                      accessibilityLabel={item.question}
                       onPress={() => setOpenFaq(open ? null : item.id)}
-                      style={styles.faqQuestion}
+                      style={styles.faqHeading}
                     >
-                      <Text
-                        style={[
-                          styles.faqQuestionText,
-                          { color: colors.foreground },
-                        ]}
-                      >
-                        {item.question}
-                      </Text>
+                      <Text style={styles.faqQuestion}>{item.question}</Text>
                       <Icon
                         name={open ? "chevron-up" : "chevron-down"}
                         size={18}
-                        color={colors.mutedForeground}
+                        color={palette.green}
                       />
                     </Pressable>
                     {open ? (
-                      <Text
-                        style={[
-                          styles.faqAnswer,
-                          { color: colors.mutedForeground },
-                        ]}
-                      >
-                        {item.answer}
-                      </Text>
+                      <Text style={styles.faqAnswer}>{item.answer}</Text>
                     ) : null}
                   </View>
                 );
@@ -665,50 +526,39 @@ export function MarketingLandingPage() {
             </View>
           </View>
 
-          <View
-            style={[
-              styles.footer,
-              { borderTopColor: colors.border },
-              compact && styles.footerCompact,
-            ]}
-          >
-            <Text
-              style={[styles.footerText, { color: colors.mutedForeground }]}
-            >
+          {/* Footer */}
+          <View style={styles.footer}>
+            <View style={styles.footerBrand}>
+              <Image
+                source={require("../assets/images/icon.png")}
+                style={styles.footerIcon}
+                accessibilityLabel="شعار MenaFlow"
+              />
+              <Text style={styles.footerName}>MenaFlow</Text>
+            </View>
+            <Text style={styles.footerText}>
               MenaFlow — مساحة عمل لتنظيم المحتوى والمحادثات والطلبات.
             </Text>
             <View style={styles.footerLinks}>
-              <Link href="/(auth)/terms" asChild>
-                <Pressable
-                  accessibilityRole="link"
-                  style={styles.footerLinkTapTarget}
-                >
-                  <Text
-                    style={[
-                      styles.footerLink,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    الشروط والأحكام
-                  </Text>
+              <Link href="/(auth)/privacy" asChild>
+                <Pressable accessibilityRole="link">
+                  <Text style={styles.footerLink}>سياسة الخصوصية</Text>
                 </Pressable>
               </Link>
-              <Link href="/(auth)/privacy" asChild>
-                <Pressable
-                  accessibilityRole="link"
-                  style={styles.footerLinkTapTarget}
-                >
-                  <Text
-                    style={[
-                      styles.footerLink,
-                      { color: colors.mutedForeground },
-                    ]}
-                  >
-                    سياسة الخصوصية
-                  </Text>
+              <Link href="/(auth)/terms" asChild>
+                <Pressable accessibilityRole="link">
+                  <Text style={styles.footerLink}>الشروط والأحكام</Text>
+                </Pressable>
+              </Link>
+              <Link href="/(auth)/sign-in" asChild>
+                <Pressable accessibilityRole="link">
+                  <Text style={styles.footerLink}>تسجيل الدخول</Text>
                 </Pressable>
               </Link>
             </View>
+            <Text style={styles.footerCopyright}>
+              © {new Date().getFullYear()} MenaFlow. جميع الحقوق محفوظة.
+            </Text>
           </View>
         </View>
       </ScrollView>
@@ -716,316 +566,481 @@ export function MarketingLandingPage() {
   );
 }
 
-function SectionHeading({
-  eyebrow,
-  title,
-  description,
-  compact = false,
-}: {
-  eyebrow: string;
-  title: string;
-  description: string;
-  compact?: boolean;
-}) {
-  const colors = useColors();
-  return (
-    <View
-      style={[styles.sectionHeading, compact && styles.sectionHeadingCompact]}
-    >
-      <Text style={[styles.sectionEyebrow, { color: colors.primary }]}>
-        {eyebrow}
-      </Text>
-      <Text
-        accessibilityRole="header"
-        aria-level={2}
-        style={[
-          styles.sectionTitle,
-          compact && styles.sectionTitleCompact,
-          { color: colors.foreground },
-        ]}
-      >
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          compact && styles.sectionDescriptionCompact,
-          { color: colors.mutedForeground },
-        ]}
-      >
-        {description}
-      </Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  sectionNav: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingTop: 10,
-  },
-  sectionNavLink: { paddingHorizontal: 8, paddingVertical: 6 },
-  sectionNavText: { fontSize: 14, fontWeight: "600" },
-  faqList: { gap: 10, width: "100%" },
-  faqItem: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 10,
-  },
-  faqQuestion: {
+  page: { flex: 1, backgroundColor: palette.mintSoft },
+  scrollContent: { alignItems: "center", paddingBottom: 24 },
+  content: { gap: 18, paddingTop: 10 },
+
+  header: {
+    minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
   },
-  faqQuestionText: { flex: 1, fontSize: 15, fontWeight: "700" },
-  faqAnswer: { fontSize: 14, lineHeight: 24, textAlign: "right" },
-  page: { flex: 1, alignItems: "center" },
-  scrollContent: { width: "100%", alignItems: "center", paddingBottom: 24 },
-  content: { alignSelf: "center" },
-  header: {
-    minHeight: 76,
+  languagePill: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomWidth: 1,
-    gap: 14,
-  },
-  headerCompact: { minHeight: 72, flexWrap: "wrap", paddingVertical: 10 },
-  brand: { flexDirection: "row", alignItems: "center", gap: 9 },
-  brandIcon: { width: 35, height: 35, borderRadius: 10 },
-  brandName: { fontSize: 20, fontWeight: "900" },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: 9 },
-  headerActionsCompact: { gap: 7 },
-  headerLink: {
-    minHeight: 44,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 13,
-  },
-  headerPrimary: {
-    minHeight: 44,
-    justifyContent: "center",
-    alignItems: "center",
-    borderRadius: 12,
-    paddingHorizontal: 15,
-  },
-  headerLinkText: { fontSize: 13, fontWeight: "700" },
-  hero: {
-    marginTop: 24,
-    padding: 28,
-    borderWidth: 1,
-    borderRadius: 26,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 28,
-  },
-  heroCompact: {
-    marginTop: 16,
-    padding: 16,
-    flexDirection: "column",
-    alignItems: "stretch",
-    gap: 14,
-  },
-  heroCopy: { flex: 1, gap: 13 },
-  eyebrow: {
-    alignSelf: "flex-start",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  eyebrowText: { fontSize: 12, fontWeight: "800" },
-  heroTitle: { maxWidth: 650, fontSize: 38, lineHeight: 54, fontWeight: "900" },
-  heroTitleCompact: { fontSize: 30, lineHeight: 43 },
-  heroDescription: { maxWidth: 620, fontSize: 16, lineHeight: 28 },
-  heroDescriptionCompact: { fontSize: 14, lineHeight: 23 },
-  heroActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flexWrap: "wrap",
-  },
-  heroActionsCompact: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: 8,
-  },
-  primaryCta: {
-    minHeight: 48,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
     gap: 6,
-  },
-  secondaryCta: {
-    minHeight: 48,
+    backgroundColor: palette.white,
     borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    alignItems: "center",
-    justifyContent: "center",
+    borderColor: palette.border,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
   },
-  primaryCtaCompact: { flex: 1, minWidth: 0, paddingHorizontal: 10 },
-  secondaryCtaCompact: { flex: 1, minWidth: 0, paddingHorizontal: 8 },
-  ctaText: { fontSize: 14, fontWeight: "800" },
-  ctaTextCompact: { fontSize: 12 },
-  heroNote: { fontSize: 12, lineHeight: 20 },
-  heroNoteCompact: { fontSize: 12, lineHeight: 18 },
-  heroVisual: {
-    width: 300,
-    maxWidth: "100%",
-    borderRadius: 22,
-    borderWidth: 1,
-    padding: 13,
-    gap: 10,
-  },
-  heroVisualCompact: { width: "100%", padding: 10, gap: 7 },
-  visualTop: {
-    minHeight: 42,
-    borderRadius: 12,
+  languageText: { fontSize: 12, fontWeight: "700", color: palette.ink },
+  brand: { flexDirection: "row", alignItems: "center", gap: 8 },
+  brandIcon: { width: 34, height: 34, borderRadius: 11 },
+  brandName: { fontSize: 20, fontWeight: "800", color: palette.ink, letterSpacing: -0.4 },
+
+  navRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    gap: 8,
+    justifyContent: "flex-end",
+    gap: 18,
+    paddingVertical: 4,
   },
-  visualTopCompact: { minHeight: 36 },
-  visualDot: { width: 8, height: 8, borderRadius: 4 },
-  visualLabel: { fontSize: 13, fontWeight: "800" },
-  visualStats: { gap: 8 },
-  visualStatsCompact: { flexDirection: "row", gap: 6 },
-  visualStat: {
-    minHeight: 58,
-    borderRadius: 12,
-    justifyContent: "center",
-    paddingHorizontal: 12,
-    gap: 2,
+  navLink: { paddingVertical: 6 },
+  navText: { fontSize: 13, fontWeight: "700", color: palette.inkSoft },
+  navSignIn: {
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    backgroundColor: palette.white,
   },
-  visualStatCompact: {
-    flex: 1,
-    minHeight: 62,
+  navSignInText: { fontSize: 13, fontWeight: "800", color: palette.ink },
+
+  hero: {
+    backgroundColor: palette.mintArt,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 28,
+    padding: 18,
+    gap: 10,
+  },
+  heroWide: {
+    flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 3,
+    gap: 24,
+    padding: 28,
   },
-  visualStatLabel: { fontSize: 12 },
-  visualStatLabelCompact: { fontSize: 12, textAlign: "center" },
-  visualStatCaption: { fontSize: 13, fontWeight: "700" },
-  visualStatCaptionCompact: {
-    fontSize: 12,
-    lineHeight: 17,
+  heroArt: { alignItems: "center", justifyContent: "center" },
+  heroArtWide: { width: "44%" },
+  mascot: { width: "100%", height: 240 },
+  mascotNarrow: { height: 200 },
+  mascotWide: { height: 320 },
+  heroCopy: { flex: 1, gap: 10 },
+  heroTitle: {
+    fontSize: 28,
+    lineHeight: 40,
+    fontWeight: "800",
+    color: palette.ink,
+    textAlign: "right",
+  },
+  heroTitleAccent: {
+    fontSize: 28,
+    lineHeight: 40,
+    fontWeight: "800",
+    color: palette.green,
+    textAlign: "right",
+  },
+  heroBody: {
+    fontSize: 13,
+    lineHeight: 22,
+    color: palette.inkSoft,
+    textAlign: "right",
+  },
+  heroActions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 },
+  heroActionsNarrow: { flexDirection: "column", alignItems: "stretch" },
+  primaryCta: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: palette.green,
+    borderRadius: 999,
+    paddingHorizontal: 22,
+  },
+  primaryCtaText: { fontSize: 14, fontWeight: "800", color: palette.white },
+  secondaryCta: {
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: palette.white,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+  },
+  secondaryCtaText: { fontSize: 13, fontWeight: "800", color: palette.ink },
+
+  featuresPanel: {
+    backgroundColor: palette.white,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 28,
+    padding: 18,
+    gap: 16,
+  },
+  sectionRuleRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  sectionRule: { flex: 1, height: 1, backgroundColor: palette.border },
+  sectionRuleTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: palette.ink,
     textAlign: "center",
   },
-  section: { marginTop: 22, padding: 24, borderRadius: 24 },
-  sectionCompact: { marginTop: 16, padding: 18 },
-  sectionHeading: { alignItems: "center", gap: 7, marginBottom: 18 },
-  sectionHeadingCompact: { gap: 5, marginBottom: 14 },
-  sectionEyebrow: { fontSize: 12, fontWeight: "800" },
-  sectionTitle: {
-    fontSize: 25,
-    lineHeight: 36,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  sectionTitleCompact: { fontSize: 21, lineHeight: 30 },
-  sectionDescription: { fontSize: 14, lineHeight: 23, textAlign: "center" },
-  sectionDescriptionCompact: { fontSize: 13, lineHeight: 21 },
-  featureGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  column: { flexDirection: "column" },
+  featureGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   featureCard: {
     flexGrow: 1,
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 17,
-    gap: 9,
-  },
-  halfWidth: { width: "48%" },
-  fullWidth: { width: "100%" },
-  featureIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
+    flexBasis: "30%",
+    minWidth: 150,
     alignItems: "center",
-    justifyContent: "center",
-  },
-  featureTitle: { fontSize: 16, fontWeight: "800" },
-  featureDescription: { fontSize: 13, lineHeight: 22 },
-  stepGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  stepCard: {
-    flexGrow: 1,
-    borderWidth: 1,
-    borderRadius: 18,
-    padding: 16,
     gap: 8,
-  },
-  stepCardCompact: { padding: 14 },
-  thirdWidth: { width: "31%" },
-  stepNumber: { fontSize: 25, fontWeight: "900" },
-  planGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  planCard: {
-    flexGrow: 1,
-    minWidth: 220,
+    backgroundColor: palette.mintSoft,
     borderWidth: 1,
+    borderColor: palette.border,
     borderRadius: 18,
-    padding: 17,
-    gap: 11,
+    paddingVertical: 16,
+    paddingHorizontal: 10,
   },
-  planWidth: { width: "31%" },
-  planName: { fontSize: 18, fontWeight: "900" },
-  planDescription: { minHeight: 40, fontSize: 12, lineHeight: 20 },
-  priceLine: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 7,
-    flexWrap: "wrap",
-  },
-  price: { fontSize: 32, fontWeight: "900" },
-  pricePeriod: { fontSize: 12 },
-  planLimits: { gap: 9, flexGrow: 1, paddingVertical: 5 },
-  limitRow: { flexDirection: "row", alignItems: "flex-start", gap: 7 },
-  limitText: { flex: 1, fontSize: 12, lineHeight: 19 },
-  planButton: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: 12,
+  featureCardNarrow: { flexBasis: "45%", minWidth: 130 },
+  featureIcon: {
+    width: 42,
+    height: 42,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: palette.greenSoft,
+    borderRadius: 13,
   },
-  planButtonText: { fontSize: 13, fontWeight: "800" },
-  pricingNotice: {
-    marginTop: 13,
-    fontSize: 12,
-    lineHeight: 21,
+  featureTitle: {
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "800",
+    color: palette.ink,
     textAlign: "center",
   },
-  footer: {
-    marginTop: 20,
-    paddingTop: 16,
-    borderTopWidth: 1,
+  featureDescription: {
+    fontSize: 11,
+    lineHeight: 17,
+    color: palette.inkSoft,
+    textAlign: "center",
+  },
+
+  dashboard: { gap: 18, paddingVertical: 6 },
+  dashboardWide: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 28,
+    paddingVertical: 18,
+  },
+  phoneWrap: { alignItems: "center", justifyContent: "center", flex: 1 },
+  phone: {
+    width: 232,
+    backgroundColor: "#0F2437",
+    borderRadius: 34,
+    padding: 9,
+    gap: 8,
+  },
+  phoneNotch: {
+    alignSelf: "center",
+    width: 62,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#25415A",
+    marginBottom: 2,
+  },
+  phoneHeader: { flexDirection: "row", alignItems: "center", gap: 6 },
+  phoneBrandIcon: { width: 16, height: 16, borderRadius: 5 },
+  phoneBrand: { fontSize: 11, fontWeight: "800", color: palette.white },
+  phoneStats: { flexDirection: "row", gap: 6 },
+  phoneStat: {
+    flex: 1,
+    backgroundColor: palette.white,
+    borderRadius: 10,
+    paddingVertical: 7,
+    alignItems: "center",
+    gap: 1,
+  },
+  phoneStatValue: { fontSize: 13, fontWeight: "800", color: palette.ink },
+  phoneStatLabel: { fontSize: 7, color: palette.inkSoft },
+  phoneCard: {
+    backgroundColor: palette.white,
+    borderRadius: 12,
+    padding: 9,
+    gap: 7,
+  },
+  phoneCardHead: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
   },
-  footerCompact: { flexDirection: "column", alignItems: "stretch" },
-  footerText: { fontSize: 12, lineHeight: 20 },
-  footerLinks: {
+  phoneCardTitle: { fontSize: 9, fontWeight: "800", color: palette.ink },
+  phoneCardBadge: {
+    fontSize: 8,
+    fontWeight: "800",
+    color: palette.greenDark,
+    backgroundColor: palette.greenSoft,
+    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  chart: {
+    height: 78,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 5,
+  },
+  chartBar: { flex: 1, borderRadius: 4 },
+  phoneRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 15,
-    flexWrap: "wrap",
+    gap: 6,
+    backgroundColor: "#17324A",
+    borderRadius: 9,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
-  footerLinkTapTarget: {
-    minHeight: 44,
-    minWidth: 44,
+  phoneRowDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: palette.green,
+  },
+  phoneRowText: { fontSize: 8, color: "#C9DCEA", flex: 1 },
+
+  dashboardCopy: { flex: 1, gap: 10 },
+  dashboardTitle: {
+    fontSize: 22,
+    lineHeight: 34,
+    fontWeight: "800",
+    color: palette.ink,
+    textAlign: "right",
+  },
+  dashboardBody: {
+    fontSize: 13,
+    lineHeight: 22,
+    color: palette.inkSoft,
+    textAlign: "right",
+  },
+  dashboardPoints: {
+    gap: 8,
+    backgroundColor: palette.greenSoft,
+    borderRadius: 18,
+    padding: 14,
+  },
+  dashboardPoint: { flexDirection: "row", alignItems: "center", gap: 8 },
+  dashboardPointText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 19,
+    fontWeight: "700",
+    color: palette.ink,
+    textAlign: "right",
+  },
+
+  trustBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: palette.white,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+  },
+  trustDivider: { width: 1, alignSelf: "stretch", backgroundColor: palette.border },
+  trustItem: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "center",
+    gap: 6,
     paddingHorizontal: 4,
   },
-  footerLink: { fontSize: 12, textDecorationLine: "underline" },
+  trustIcon: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: palette.mintSoft,
+    borderRadius: 10,
+  },
+  trustCopy: { flexShrink: 1, gap: 1 },
+  trustTitle: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: palette.ink,
+    textAlign: "right",
+  },
+  trustNote: { fontSize: 8, color: palette.inkSoft, textAlign: "right" },
+
+  ctaBand: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    flexWrap: "wrap",
+    backgroundColor: palette.green,
+    borderRadius: 26,
+    padding: 20,
+    overflow: "hidden",
+  },
+  ctaGlow: {
+    position: "absolute",
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "#12B77F",
+    opacity: 0.55,
+    top: -90,
+    right: -60,
+  },
+  ctaCopy: { flex: 1, minWidth: 220, gap: 4 },
+  ctaTitle: { fontSize: 18, fontWeight: "800", color: palette.white, textAlign: "right" },
+  ctaBody: { fontSize: 12, lineHeight: 19, color: "#E4FBF2", textAlign: "right" },
+  ctaButton: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: palette.white,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+  },
+  ctaButtonText: { fontSize: 13, fontWeight: "800", color: palette.greenDark },
+
+  section: { gap: 8, paddingVertical: 10 },
+  sectionEyebrow: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: palette.green,
+    textAlign: "right",
+  },
+  sectionTitle: {
+    fontSize: 21,
+    lineHeight: 32,
+    fontWeight: "800",
+    color: palette.ink,
+    textAlign: "right",
+  },
+  sectionBody: {
+    fontSize: 12,
+    lineHeight: 20,
+    color: palette.inkSoft,
+    textAlign: "right",
+    marginBottom: 6,
+  },
+
+  stepGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  stepCard: {
+    flexGrow: 1,
+    flexBasis: "30%",
+    minWidth: 220,
+    gap: 6,
+    backgroundColor: palette.white,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 20,
+    padding: 16,
+  },
+  stepBadge: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: palette.greenSoft,
+    borderRadius: 9,
+  },
+  stepBadgeText: { fontSize: 13, fontWeight: "800", color: palette.greenDark },
+  stepTitle: { fontSize: 14, fontWeight: "800", color: palette.ink, textAlign: "right" },
+  stepBody: { fontSize: 12, lineHeight: 19, color: palette.inkSoft, textAlign: "right" },
+
+  planGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  planCard: {
+    flexGrow: 1,
+    flexBasis: "30%",
+    minWidth: 240,
+    gap: 8,
+    backgroundColor: palette.white,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 22,
+    padding: 16,
+  },
+  planCardHighlight: { borderColor: palette.green, borderWidth: 2 },
+  planName: { fontSize: 14, fontWeight: "800", color: palette.ink, textAlign: "right" },
+  planPriceRow: { flexDirection: "row", alignItems: "flex-end", gap: 4 },
+  planPrice: { fontSize: 26, fontWeight: "800", color: palette.ink },
+  planPeriod: { fontSize: 11, color: palette.inkSoft, marginBottom: 4 },
+  planDescription: {
+    fontSize: 12,
+    lineHeight: 19,
+    color: palette.inkSoft,
+    textAlign: "right",
+  },
+  planLimits: { gap: 6, marginTop: 2 },
+  planLimit: { flexDirection: "row", alignItems: "center", gap: 6 },
+  planLimitText: { fontSize: 11, color: palette.ink, textAlign: "right", flex: 1 },
+  planButton: {
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+    marginTop: 4,
+  },
+  planButtonPrimary: { backgroundColor: palette.green },
+  planButtonSecondary: {
+    backgroundColor: palette.white,
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  planButtonPrimaryText: { fontSize: 12, fontWeight: "800", color: palette.white },
+  planButtonSecondaryText: { fontSize: 12, fontWeight: "800", color: palette.ink },
+  channelNote: {
+    fontSize: 11,
+    lineHeight: 18,
+    color: palette.inkSoft,
+    textAlign: "right",
+    marginTop: 4,
+  },
+
+  faqList: { gap: 8 },
+  faqItem: {
+    backgroundColor: palette.white,
+    borderWidth: 1,
+    borderColor: palette.border,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  faqHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  faqQuestion: { flex: 1, fontSize: 13, fontWeight: "800", color: palette.ink, textAlign: "right" },
+  faqAnswer: { fontSize: 12, lineHeight: 20, color: palette.inkSoft, textAlign: "right" },
+
+  footer: {
+    gap: 8,
+    alignItems: "center",
+    paddingVertical: 20,
+    borderTopWidth: 1,
+    borderTopColor: palette.border,
+  },
+  footerBrand: { flexDirection: "row", alignItems: "center", gap: 6 },
+  footerIcon: { width: 24, height: 24, borderRadius: 8 },
+  footerName: { fontSize: 15, fontWeight: "800", color: palette.ink },
+  footerText: { fontSize: 11, color: palette.inkSoft, textAlign: "center" },
+  footerLinks: { flexDirection: "row", flexWrap: "wrap", gap: 14, justifyContent: "center" },
+  footerLink: { fontSize: 11, fontWeight: "700", color: palette.greenDark },
+  footerCopyright: { fontSize: 10, color: palette.inkSoft, textAlign: "center" },
 });
