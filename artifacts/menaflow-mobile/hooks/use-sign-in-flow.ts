@@ -2,7 +2,7 @@ import { useSignIn, useSSO } from "@clerk/expo";
 import { router } from "expo-router";
 import { useState } from "react";
 import { authStyles } from "@/components/AuthFrame";
-import { useColors } from "@/hooks/useColors";
+import { useAuthTheme } from "@/hooks/useAuthTheme";
 import { activateOAuthSession } from "@/lib/activate-oauth-session";
 import { getAuthErrorMessage } from "@/lib/auth-error-message";
 
@@ -30,7 +30,7 @@ function isUnknownIdentifier(error: unknown): boolean {
 }
 
 export function useSignInFlow() {
-  const colors = useColors();
+  const colors = useAuthTheme();
   const { signIn, fetchStatus } = useSignIn();
   const { startSSOFlow } = useSSO();
   const [emailAddress, setEmailAddress] = useState("");
@@ -54,7 +54,7 @@ export function useSignInFlow() {
     authStyles.inputRow,
     {
       borderColor: focusedField === field ? colors.primary : colors.border,
-      backgroundColor: colors.background,
+      backgroundColor: colors.inputSurface,
     },
     focusedField === field && authStyles.inputFocused,
   ];
@@ -445,12 +445,12 @@ export function useSignInFlow() {
       ? resetStep === "new-password"
         ? "كلمة مرور جديدة"
         : "استعادة كلمة المرور"
-      : "مرحباً بعودتك";
+      : "مرحبًا بعودتك";
   const subtitle = requiresSecondFactor
     ? "أكمل خطوة التحقق الإضافية للمتابعة."
     : resetStep
       ? ""
-      : "سجّل الدخول للوصول إلى مساحة عملك.";
+      : "سجل الدخول إلى حسابك لمتابعة الإدارة بكل سهولة";
 
   return {
     signIn,

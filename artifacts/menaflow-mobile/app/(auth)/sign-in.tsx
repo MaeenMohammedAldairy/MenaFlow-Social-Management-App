@@ -1,15 +1,18 @@
-import { Link } from 'expo-router';
-import React from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
-import { Eye, EyeOff, LockKeyhole, Mail, ArrowLeft } from 'lucide-react-native';
-import { CairoText as Text, CairoTextInput as TextInput } from '@/components/CairoTypography';
-import { AuthFrame, authStyles } from '@/components/AuthFrame';
-import { PasswordResetForm, SecondFactorForm } from '@/components/SignInAdditionalForms';
-import { useColors } from '@/hooks/useColors';
-import { useSignInFlow } from '@/hooks/use-sign-in-flow';
+import { Link } from "expo-router";
+import React from "react";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Check, Eye, EyeOff, LockKeyhole, Mail, ArrowLeft } from "lucide-react-native";
+import { CairoText as Text, CairoTextInput as TextInput } from "@/components/CairoTypography";
+import { AuthFrame, authStyles } from "@/components/AuthFrame";
+import { GoogleLogo } from "@/components/GoogleLogo";
+import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
+import { PasswordResetForm, SecondFactorForm } from "@/components/SignInAdditionalForms";
+import { useAuthTheme } from "@/hooks/useAuthTheme";
+import { useSignInFlow } from "@/hooks/use-sign-in-flow";
+import { readRememberedEmail, syncRememberedEmail } from "@/lib/remembered-email";
 
 export default function SignInScreen() {
-  const colors = useColors();
+  const theme = useAuthTheme();
   const {
     signIn,
     emailAddress,
@@ -52,8 +55,32 @@ export default function SignInScreen() {
     title,
     subtitle,
   } = useSignInFlow();
+
+  const [remember, setRemember] = React.useState(true);
+
+  React.useEffect(() => {
+    let active = true;
+    void readRememberedEmail().then((stored) => {
+      if (!active || !stored) return;
+      setEmailAddress((current) => (current.trim().length > 0 ? current : stored));
+    });
+    return () => {
+      active = false;
+    };
+  }, [setEmailAddress]);
+
+  const handleSubmit = () => {
+    void syncRememberedEmail(emailAddress, remember);
+    submit();
+  };
+
   return (
-    <AuthFrame mode="sign-in" title={title} subtitle={subtitle}>
+    <AuthFrame
+      mode="sign-in"
+      title={title}
+      subtitle={subtitle}
+      hero={!requiresSecondFactor && !resetStep}
+    >
       <View style={[authStyles.card, styles.panel]}>
         {requiresSecondFactor ? (
           <SecondFactorForm
@@ -94,9 +121,9 @@ export default function SignInScreen() {
           />
         ) : (
           <>
-            <Text style={[authStyles.label, { color: colors.foreground }]}>البريد الإلكتروني</Text>
-            <View style={inputRowStyle('email')}>
-              <Mail size={17} color={colors.mutedForeground} />
+            <Text style={[authStyles.label, { color: theme.foreground }]}>البريد الإلكتروني</Text>
+            <View style={inputRowStyle("email")}>
+              <Mail size={18} color={theme.icon} />
               <TextInput
                 value={emailAddress}
                 onChangeText={setEmailAddress}
@@ -104,21 +131,21 @@ export default function SignInScreen() {
                 autoComplete="email"
                 keyboardType="email-address"
                 textContentType="emailAddress"
-                placeholder="name@example.com"
-                placeholderTextColor={colors.mutedForeground}
+                placeholder="example@domain.com"
+                placeholderTextColor={theme.mutedForeground}
                 style={[
                   authStyles.input,
                   authStyles.ltrInput,
-                  !emailAddress && { textAlign: 'right' },
-                  { color: colors.foreground },
+                  !emailAddress && { textAlign: "right" },
+                  { color: theme.foreground },
                 ]}
                 accessibilityLabel="البريد الإلكتروني"
-                {...inputFocusProps('email')}
+                {...inputFocusProps("email")}
               />
             </View>
-            <Text style={[authStyles.label, { color: colors.foreground }]}>كلمة المرور</Text>
-            <View style={inputRowStyle('password')}>
-              <LockKeyhole size={17} color={colors.mutedForeground} />
+            <Text style={[authStyles.label, { color: theme.foreground }]}>كلمة المرور</Text>
+            <View style={inputRowStyle("password")}>
+              <LockKeyhole size={18} color={theme.icon} />
               <TextInput
                 value={password}
                 onChangeText={setPassword}
@@ -127,87 +154,153 @@ export default function SignInScreen() {
                 textContentType="password"
                 secureTextEntry={!showPassword}
                 placeholder="أدخل كلمة المرور"
-                placeholderTextColor={colors.mutedForeground}
+                placeholderTextColor={theme.mutedForeground}
                 style={[
                   authStyles.input,
                   authStyles.ltrInput,
-                  !password && { textAlign: 'right' },
-                  { color: colors.foreground },
+                  !password && { textAlign: "right" },
+                  { color: theme.foreground },
                 ]}
                 accessibilityLabel="كلمة المرور"
-                {...inputFocusProps('password')}
-                onSubmitEditing={submit}
+                {...inputFocusProps("password")}
+                onSubmitEditing={handleSubmit}
                 returnKeyType="go"
               />
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                accessibilityLabel={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                 onPress={() => setShowPassword((visible) => !visible)}
                 hitSlop={8}
               >
-                {showPassword ? <EyeOff size={17} color={colors.mutedForeground} /> : <Eye size={17} color={colors.mutedForeground} />}
+                {showPassword ? (
+                  <EyeOff size={18} color={theme.mutedForeground} />
+                ) : (
+                  <Eye size={18} color={theme.mutedForeground} />
+                )}
               </Pressable>
             </View>
-            <View style={styles.formLinks}>
-              <Pressable accessibilityRole="button" onPress={() => { setResetStep('email'); setErrorMessage(''); }}>
-                <Text style={[authStyles.linkText, { color: colors.primary }]}>نسيت كلمة المرور؟</Text>
+
+            <View style={styles.optionsRow}>
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityLabel="تذكرني في المرة القادمة"
+                accessibilityState={{ checked: remember }}
+                onPress={() => setRemember((value) => !value)}
+                style={styles.rememberButton}
+                hitSlop={6}
+              >
+                <View
+                  style={[
+                    styles.checkbox,
+                    {
+                      borderColor: remember ? theme.primary : theme.border,
+                      backgroundColor: remember ? theme.primary : theme.inputSurface,
+                    },
+                  ]}
+                >
+                  {remember ? (
+                    <Check size={12} color={theme.primaryForeground} strokeWidth={3} />
+                  ) : null}
+                </View>
+                <Text style={[styles.rememberLabel, { color: theme.foreground }]}>تذكرني</Text>
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => {
+                  setResetStep("email");
+                  setErrorMessage("");
+                }}
+                hitSlop={6}
+              >
+                <Text style={[styles.forgotLink, { color: theme.link }]}>نسيت كلمة المرور؟</Text>
               </Pressable>
             </View>
+
             <Pressable
               accessibilityRole="button"
-              onPress={submit}
+              onPress={handleSubmit}
               disabled={!emailAddress.trim() || !password || busy}
-              style={[authStyles.button, { backgroundColor: colors.primary, opacity: !emailAddress.trim() || !password || busy ? 0.55 : 1 }]}
+              style={[
+                authStyles.button,
+                {
+                  backgroundColor: theme.primary,
+                  opacity: !emailAddress.trim() || !password || busy ? 0.55 : 1,
+                },
+              ]}
             >
-              <Text style={[authStyles.buttonText, { color: colors.primaryForeground }]}>
-                {loading ? 'جارٍ تسجيل الدخول…' : 'تسجيل الدخول'}
+              <Text style={[authStyles.buttonText, { color: theme.primaryForeground }]}>
+                {loading ? "جارٍ تسجيل الدخول…" : "تسجيل الدخول"}
               </Text>
-              <ArrowLeft size={17} color={colors.primaryForeground} />
+              <ArrowLeft size={18} color={theme.primaryForeground} />
             </Pressable>
 
             <View style={styles.divider}>
-              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
-              <Text style={[authStyles.hint, { color: colors.mutedForeground }]}>أو سجّل الدخول باستخدام</Text>
-              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+              <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+              <Text style={[styles.dividerText, { color: theme.mutedForeground }]}>
+                أو سجل الدخول عبر
+              </Text>
+              <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
             </View>
+
             <View style={styles.socialRow}>
               <Pressable
                 accessibilityRole="button"
-                onPress={() => void signInWithProvider('oauth_google')}
-                accessibilityState={{ disabled: busy, busy: socialLoading === 'google' }}
+                onPress={() => void signInWithProvider("oauth_facebook")}
+                accessibilityState={{ disabled: busy, busy: socialLoading === "facebook" }}
                 disabled={busy}
-                style={[authStyles.secondaryButton, styles.socialButton, { borderColor: colors.border, backgroundColor: colors.card, opacity: busy && socialLoading !== 'google' ? 0.55 : 1 }]}
+                style={[
+                  authStyles.secondaryButton,
+                  styles.socialButton,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: theme.card,
+                    opacity: busy && socialLoading !== "facebook" ? 0.55 : 1,
+                  },
+                ]}
               >
-                <Text style={[styles.googleMark, { color: '#4285F4' }]}>G</Text>
-                <Text style={[authStyles.secondaryText, { color: colors.foreground }]}>
-                  {socialLoading === 'google' ? 'جارٍ المتابعة مع Google…' : 'Google'}
+                <SocialPlatformIcon platform="facebook" size={19} />
+                <Text style={[authStyles.secondaryText, { color: theme.foreground }]}>
+                  {socialLoading === "facebook" ? "جارٍ المتابعة…" : "Facebook"}
                 </Text>
               </Pressable>
               <Pressable
                 accessibilityRole="button"
-                onPress={() => void signInWithProvider('oauth_facebook')}
-                accessibilityState={{ disabled: busy, busy: socialLoading === 'facebook' }}
+                onPress={() => void signInWithProvider("oauth_google")}
+                accessibilityState={{ disabled: busy, busy: socialLoading === "google" }}
                 disabled={busy}
-                style={[authStyles.secondaryButton, styles.socialButton, { borderColor: colors.border, backgroundColor: colors.card, opacity: busy && socialLoading !== 'facebook' ? 0.55 : 1 }]}
+                style={[
+                  authStyles.secondaryButton,
+                  styles.socialButton,
+                  {
+                    borderColor: theme.border,
+                    backgroundColor: theme.card,
+                    opacity: busy && socialLoading !== "google" ? 0.55 : 1,
+                  },
+                ]}
               >
-                <Text style={[styles.facebookMark, { color: colors.facebook }]}>f</Text>
-                <Text style={[authStyles.secondaryText, { color: colors.foreground }]}>
-                  {socialLoading === 'facebook' ? 'جارٍ المتابعة مع Facebook…' : 'Facebook'}
+                <GoogleLogo size={19} />
+                <Text style={[authStyles.secondaryText, { color: theme.foreground }]}>
+                  {socialLoading === "google" ? "جارٍ المتابعة…" : "Google"}
                 </Text>
               </Pressable>
             </View>
           </>
         )}
+
         {errorMessage ? (
-          <Text accessibilityRole="alert" style={[authStyles.error, { color: colors.destructive }]}>
+          <Text accessibilityRole="alert" style={[authStyles.error, { color: theme.destructive }]}>
             {errorMessage}
           </Text>
         ) : null}
         {successMessage && !resetStep && requiresSecondFactor ? (
-          <Text accessibilityRole="alert" style={[authStyles.hint, { color: colors.primary, textAlign: 'center' }]}>
+          <Text
+            accessibilityRole="alert"
+            style={[authStyles.hint, { color: theme.primary, textAlign: "center" }]}
+          >
             {successMessage}
           </Text>
         ) : null}
+
         <View style={authStyles.linkRow}>
           {requiresSecondFactor ? (
             <Pressable
@@ -216,16 +309,18 @@ export default function SignInScreen() {
               disabled={loading || !emailAddress.trim()}
               onPress={() => void restartSignIn()}
             >
-              <Text style={[authStyles.linkText, { color: colors.primary }]}>
-                {loading ? 'جارٍ الرجوع…' : 'العودة لاختيار حساب أو طريقة دخول أخرى'}
+              <Text style={[authStyles.linkText, { color: theme.link }]}>
+                {loading ? "جارٍ الرجوع…" : "العودة لاختيار حساب أو طريقة دخول أخرى"}
               </Text>
             </Pressable>
           ) : resetStep ? null : (
             <>
-              <Text style={[authStyles.hint, { color: colors.mutedForeground }]}>ليس لديك حساب؟</Text>
+              <Text style={[styles.footerHint, { color: theme.mutedForeground }]}>
+                ليس لديك حساب؟
+              </Text>
               <Link href="/(auth)/sign-up" asChild>
                 <Pressable>
-                  <Text style={[authStyles.linkText, { color: colors.primary }]}>أنشئ حسابك الآن</Text>
+                  <Text style={[styles.footerLink, { color: theme.link }]}>إنشاء حساب جديد</Text>
                 </Pressable>
               </Link>
             </>
@@ -237,17 +332,36 @@ export default function SignInScreen() {
 }
 
 const styles = StyleSheet.create({
-  panel: { gap: 10 },
-  formLinks: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: -2,
+  panel: { gap: 9 },
+  optionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 2,
+    marginBottom: 2,
   },
-  divider: { flexDirection: 'row', alignItems: 'center', gap: 9, marginVertical: 1 },
+  rememberButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  checkbox: {
+    width: 19,
+    height: 19,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  rememberLabel: { fontSize: 13.5, fontWeight: "600" },
+  forgotLink: { fontSize: 13.5, fontWeight: "800" },
+  divider: { flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 3 },
   dividerLine: { flex: 1, height: 1 },
-  socialRow: { flexDirection: 'row', gap: 10 },
-  socialButton: { flex: 1, minHeight: 43 },
-  googleMark: { fontSize: 18, fontWeight: '900' },
-  facebookMark: { fontSize: 21, lineHeight: 23, fontWeight: '900' },
+  dividerText: { fontSize: 12.5 },
+  socialRow: { flexDirection: "row", gap: 10 },
+  // The brand names are Latin, so the mark sits to the left of the label even
+  // inside the RTL row — exactly like the reference artwork.
+  socialButton: { flex: 1, flexDirection: 'row-reverse' },
+  footerHint: { fontSize: 13.5 },
+  footerLink: { fontSize: 13.5, fontWeight: "800" },
 });
