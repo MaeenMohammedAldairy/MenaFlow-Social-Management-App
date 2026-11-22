@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyStyleObject,
-  installIndexedStyleGuard,
+  guardStyleProperty,
+  needsStyleGuard,
   styleDeclarations,
 } from "./web-style-safety.ts";
 
@@ -53,48 +54,86 @@ test("writes declarations onto a DOM-like style object", () => {
   ]);
 });
 
-test("an indexed setter that receives a style object no longer throws", () => {
-  const prototype = {
-    setProperty() {},
-  };
-  // Mimic WebKit: assigning an object to the index throws.
-  Object.defineProperty(prototype, "0", {
+function createGuardedElementClass() {
+  class FakeDeclaration {
+    constructor() {
+      this.properties = [];
+    }
+    setProperty(property, value) {
+      this.properties.push([property, value]);
+    }
+  }
+
+  class FakeElement {}
+
+  Object.defineProperty(FakeElement.prototype, "style", {
     configurable: true,
-    set() {
-      throw new TypeError(
-        "Failed to set an indexed property [0] on 'CSSStyleDeclaration'",
-      );
+    get() {
+      if (!this.declaration) this.declaration = new FakeDeclaration();
+      return this.declaration;
     },
   });
 
+  return { FakeElement, FakeDeclaration };
+}
+
+test("a style array written to an index becomes real declarations", () => {
+  const { FakeElement } = createGuardedElementClass();
   const repaired = [];
+
   assert.equal(
-    installIndexedStyleGuard(prototype, (index) => repaired.push(index)),
+    guardStyleProperty(FakeElement.prototype, (index) => repaired.push(index)),
     true,
   );
 
-  const element = { setProperty: () => {}, values: [] };
-  const descriptor = Object.getOwnPropertyDescriptor(prototype, "0");
-  assert.ok(descriptor?.set, "guard must define a setter");
-  descriptor.set.call(element, { color: "red" });
+  const element = new FakeElement();
+  // This is what React does when it receives `style={[a, b]}`.
+  element.style[0] = [{ color: "red" }, { marginTop: 4 }];
+  element.style[1] = { padding: 2 };
 
-  assert.deepEqual(repaired, ["0"]);
+  assert.deepEqual(repaired, ["0", "1"]);
+  assert.deepEqual(element.style.properties, [
+    ["color", "red"],
+    ["margin-top", "4px"],
+    ["padding", "2px"],
+  ]);
 });
 
-test("the guard still forwards primitive values to the native setter", () => {
-  const forwarded = [];
-  const prototype = {
-    setProperty() {},
+test("the guard still exposes the native declaration for everything else", () => {
+  const { FakeElement } = createGuardedElementClass();
+  guardStyleProperty(FakeElement.prototype);
+
+  const element = new FakeElement();
+  element.style.cssText = "color: red";
+  element.style.setProperty("width", "10px");
+
+  assert.equal(element.style.cssText, "color: red");
+  assert.deepEqual(element.style.properties, [["width", "10px"]]);
+});
+
+test("the guard is a no-op on a prototype without a style getter", () => {
+  assert.equal(guardStyleProperty({}, () => {}), false);
+});
+
+test("the capability probe detects an engine that throws on index writes", () => {
+  const throwingDocument = {
+    createElement: () => ({
+      get style() {
+        return new Proxy(
+          {},
+          {
+            set() {
+              throw new TypeError(
+                "Failed to set an indexed property [0] on 'CSSStyleDeclaration'",
+              );
+            },
+          },
+        );
+      },
+    }),
   };
-  Object.defineProperty(prototype, "1", {
-    configurable: true,
-    set(value) {
-      forwarded.push(value);
-    },
-  });
+  const benignDocument = { createElement: () => ({ style: {} }) };
 
-  installIndexedStyleGuard(prototype);
-  Object.getOwnPropertyDescriptor(prototype, "1").set.call({}, "inherit");
-
-  assert.deepEqual(forwarded, ["inherit"]);
+  assert.equal(needsStyleGuard(throwingDocument), true);
+  assert.equal(needsStyleGuard(benignDocument), false);
 });
