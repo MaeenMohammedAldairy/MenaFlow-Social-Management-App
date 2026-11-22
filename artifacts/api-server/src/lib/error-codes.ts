@@ -102,6 +102,12 @@ const errorDefinitions: Record<string, ErrorDefinition> = {
     messageKey: "ai.empty_response",
   },
 
+  AI_PROVIDER_ERROR: {
+    class: "retryable",
+    httpStatus: 502,
+    messageKey: "ai.provider_error",
+  },
+
   // A request may have reached the outside world; never retried automatically.
   META_SEND_RESULT_UNKNOWN: {
     class: "unknown_outcome",

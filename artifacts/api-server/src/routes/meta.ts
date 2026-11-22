@@ -23,6 +23,7 @@ import {
   requestWorkspaceContext,
   requestWorkspaceId,
 } from "../lib/workspace-context";
+import { subscriptionDenial } from "../lib/subscription-denial.ts";
 import {
   canManageMetaConnections,
   grantedMetaPermissions,
@@ -364,12 +365,8 @@ router.post("/social/meta/connect", requireWorkspace, requireMetaConnectionManag
       requestedIntegration,
     );
     if (!channelAccess.allowed) {
-      res.status(403).json({
-        error: "بلغت الحد الأقصى لقنوات خطتك الحالية. تظهر خيارات الترقية قريبًا.",
-        code: "SUBSCRIPTION_LIMIT_REACHED",
-        usage: channelAccess.used,
-        limit: channelAccess.limit,
-      });
+      const denial = subscriptionDenial("channels", channelAccess);
+      res.status(denial.status).json(denial.body);
       return;
     }
 
