@@ -70,6 +70,7 @@ export const ListWorkspacesResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "businessType": zod.string().nullish(),
+  "timezone": zod.string().optional().describe('IANA timezone used to display and capture scheduled times.'),
   "role": zod.string()
 }))
 })
@@ -83,17 +84,21 @@ export const updateWorkspaceCurrentBodyNameMax = 80;
 
 export const updateWorkspaceCurrentBodyBusinessTypeMax = 40;
 
+export const updateWorkspaceCurrentBodyTimezoneMax = 64;
+
 
 
 export const UpdateWorkspaceCurrentBody = zod.object({
   "name": zod.string().min(1).max(updateWorkspaceCurrentBodyNameMax).optional(),
-  "businessType": zod.string().min(1).max(updateWorkspaceCurrentBodyBusinessTypeMax).optional()
+  "businessType": zod.string().min(1).max(updateWorkspaceCurrentBodyBusinessTypeMax).optional(),
+  "timezone": zod.string().min(1).max(updateWorkspaceCurrentBodyTimezoneMax).optional().describe('IANA timezone name, e.g. "Asia/Aden".')
 })
 
 export const UpdateWorkspaceCurrentResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "businessType": zod.string().nullish(),
+  "timezone": zod.string().optional().describe('IANA timezone used to display and capture scheduled times.'),
   "role": zod.string()
 })
 
@@ -466,6 +471,7 @@ export const GetPostsResponseItem = zod.object({
   "metadata": zod.record(zod.string(), zod.unknown()).optional(),
   "mediaUrls": zod.array(zod.string()).optional(),
   "mediaPreviewUrls": zod.array(zod.string()).optional(),
+  "scheduledAt": zod.coerce.date().nullish().describe('Due time for posts with status "scheduled"; null otherwise.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional()
 })
@@ -482,7 +488,8 @@ export const CreatePostBody = zod.object({
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
   "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
   "metadata": zod.record(zod.string(), zod.unknown()).optional(),
-  "mediaUrls": zod.array(zod.string()).optional()
+  "mediaUrls": zod.array(zod.string()).optional(),
+  "scheduledAt": zod.coerce.date().optional().describe('Required (future instant) when status is "scheduled".')
 })
 
 export const CreatePostResponse = zod.object({
@@ -494,6 +501,7 @@ export const CreatePostResponse = zod.object({
   "metadata": zod.record(zod.string(), zod.unknown()).optional(),
   "mediaUrls": zod.array(zod.string()).optional(),
   "mediaPreviewUrls": zod.array(zod.string()).optional(),
+  "scheduledAt": zod.coerce.date().nullish().describe('Due time for posts with status "scheduled"; null otherwise.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional()
 })
@@ -522,6 +530,7 @@ export const GetPostsPageResponse = zod.object({
   "metadata": zod.record(zod.string(), zod.unknown()).optional(),
   "mediaUrls": zod.array(zod.string()).optional(),
   "mediaPreviewUrls": zod.array(zod.string()).optional(),
+  "scheduledAt": zod.coerce.date().nullish().describe('Due time for posts with status "scheduled"; null otherwise.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional()
 })),
@@ -580,7 +589,8 @@ export const UpdatePostBody = zod.object({
   "title": zod.string().optional(),
   "body": zod.string().optional(),
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])).optional(),
-  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']).optional()
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']).optional(),
+  "scheduledAt": zod.coerce.date().nullish().describe('Future instant required to move a post into "scheduled"; null clears it.')
 })
 
 export const UpdatePostResponse = zod.object({
@@ -592,6 +602,7 @@ export const UpdatePostResponse = zod.object({
   "metadata": zod.record(zod.string(), zod.unknown()).optional(),
   "mediaUrls": zod.array(zod.string()).optional(),
   "mediaPreviewUrls": zod.array(zod.string()).optional(),
+  "scheduledAt": zod.coerce.date().nullish().describe('Due time for posts with status "scheduled"; null otherwise.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional()
 })

@@ -17,4 +17,6 @@ export interface CreatePostInput {
   status: CreatePostInputStatus;
   metadata?: CreatePostInputMetadata;
   mediaUrls?: string[];
+  /** Required (future instant) when status is "scheduled". */
+  scheduledAt?: Date;
 }

@@ -16,6 +16,8 @@ export const workspaces = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     businessType: text("business_type"),
+    /** IANA timezone for displaying/capturing scheduled times; UTC by default. */
+    timezone: text("timezone").notNull().default("UTC"),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

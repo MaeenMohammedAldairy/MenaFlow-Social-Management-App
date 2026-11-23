@@ -388,9 +388,11 @@ export function ContentPostList({
                 { color: colors.mutedForeground },
               ]}
             >
-              {formatArabicDate(
-                post.sourceMessageDate ?? post.createdAt,
-              ) ?? "غير محدد"}
+              {post.status === "scheduled" && post.scheduledAt
+                ? `سيُنشر ${formatArabicDateTime(post.scheduledAt) ?? ""}`
+                : (formatArabicDate(
+                    post.sourceMessageDate ?? post.createdAt,
+                  ) ?? "غير محدد")}
             </Text>
           </View>
         </View>

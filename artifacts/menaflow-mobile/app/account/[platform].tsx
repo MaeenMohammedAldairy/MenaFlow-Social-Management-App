@@ -104,7 +104,7 @@ function activityLabel(eventType: string): string {
     post_edited: "تم تعديل المنشور",
     post_submitted_for_review: "بانتظار المراجعة",
     post_approved: "تمت الموافقة",
-    post_scheduled: "وُضع في قائمة مؤجلة بلا موعد",
+    post_scheduled: "حُدِّد موعد لنشره",
     publish_attempt_started: "بدأت محاولة النشر",
     publish_succeeded: "تم النشر بنجاح",
     publish_verified: "تم التحقق من النشر",
@@ -442,7 +442,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
               <View style={styles.metricsGrid}>
                 {[
                   { label: "منشورات منشورة", value: performance.publishedCount, tint: colors.facebook },
-                  { label: "مؤجلة دون موعد", value: performance.scheduledCount, tint: colors.primary },
+                  { label: "مجدولة", value: performance.scheduledCount, tint: colors.primary },
                   { label: "بانتظار المراجعة", value: performance.reviewCount, tint: colors.warning },
                   { label: "تحتاج مراجعة", value: performance.failedCount, tint: colors.destructive },
                 ].map(({ label, value, tint }) => (

@@ -12,7 +12,7 @@ export function statusInfo(status: PostStatus): {
     case "approved":
       return { label: "معتمد للنشر التلقائي", tone: "green" };
     case "scheduled":
-      return { label: "مؤجلة (دون موعد)", tone: "amber" };
+      return { label: "مجدولة", tone: "amber" };
     case "publishing":
       return { label: "قيد الإرسال", tone: "amber" };
     case "published":

@@ -89,6 +89,8 @@ export interface WorkspaceSummary {
   id: string;
   name: string;
   businessType?: string | null;
+  /** IANA timezone used to display and capture scheduled times. */
+  timezone?: string;
   role: string;
 }
 
@@ -107,6 +109,12 @@ export interface WorkspaceUpdateInput {
      * @maxLength 40
      */
   businessType?: string;
+  /**
+     * IANA timezone name, e.g. "Asia/Aden".
+     * @minLength 1
+     * @maxLength 64
+     */
+  timezone?: string;
 }
 
 export type WorkspaceDeletionRequestStatus = typeof WorkspaceDeletionRequestStatus[keyof typeof WorkspaceDeletionRequestStatus];
@@ -331,6 +339,8 @@ export interface PostItem {
   metadata?: PostItemMetadata;
   mediaUrls?: string[];
   mediaPreviewUrls?: string[];
+  /** Due time for posts with status "scheduled"; null otherwise. */
+  scheduledAt?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -365,6 +375,8 @@ export interface CreatePostInput {
   status: CreatePostInputStatus;
   metadata?: CreatePostInputMetadata;
   mediaUrls?: string[];
+  /** Required (future instant) when status is "scheduled". */
+  scheduledAt?: string;
 }
 
 export interface PostReportSummary {
@@ -406,6 +418,8 @@ export interface UpdatePostInput {
   body?: string;
   channels?: UpdatePostInputChannelsItem[];
   status?: UpdatePostInputStatus;
+  /** Future instant required to move a post into "scheduled"; null clears it. */
+  scheduledAt?: string | null;
 }
 
 export interface PostDeleteResult {

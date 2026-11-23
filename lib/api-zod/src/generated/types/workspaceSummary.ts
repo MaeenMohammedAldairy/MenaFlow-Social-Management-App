@@ -10,5 +10,7 @@ export interface WorkspaceSummary {
   id: string;
   name: string;
   businessType?: string | null;
+  /** IANA timezone used to display and capture scheduled times. */
+  timezone?: string;
   role: string;
 }

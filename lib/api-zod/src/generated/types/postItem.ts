@@ -18,6 +18,8 @@ export interface PostItem {
   metadata?: PostItemMetadata;
   mediaUrls?: string[];
   mediaPreviewUrls?: string[];
+  /** Due time for posts with status "scheduled"; null otherwise. */
+  scheduledAt?: Date | null;
   createdAt: Date;
   updatedAt?: Date;
 }

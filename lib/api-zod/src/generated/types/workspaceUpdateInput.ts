@@ -17,4 +17,10 @@ export interface WorkspaceUpdateInput {
      * @maxLength 40
      */
   businessType?: string;
+  /**
+     * IANA timezone name, e.g. "Asia/Aden".
+     * @minLength 1
+     * @maxLength 64
+     */
+  timezone?: string;
 }
