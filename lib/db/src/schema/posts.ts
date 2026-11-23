@@ -19,6 +19,8 @@ export const posts = pgTable("mena_posts", {
   autoPublish: boolean("auto_publish").notNull().default(false),
   autoPublishChannels: jsonb("auto_publish_channels").$type<string[]>().notNull().default([]),
   publishResults: jsonb("publish_results").$type<Record<string, unknown>>().notNull().default({}),
+  /** Due time for status='scheduled'; the worker publishes rows once it passes. */
+  scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
   error: text("error"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
@@ -28,6 +30,7 @@ export const posts = pgTable("mena_posts", {
     .defaultNow(),
 }, (table) => [
   index("mena_posts_workspace_created_idx").on(table.workspaceId, table.createdAt),
+  index("mena_posts_status_scheduled_at_idx").on(table.status, table.scheduledAt),
   uniqueIndex("mena_posts_workspace_id_key").on(table.workspaceId, table.id),
 ]);
 

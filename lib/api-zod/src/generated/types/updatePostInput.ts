@@ -13,4 +13,6 @@ export interface UpdatePostInput {
   body?: string;
   channels?: UpdatePostInputChannelsItem[];
   status?: UpdatePostInputStatus;
+  /** Future instant required to move a post into "scheduled"; null clears it. */
+  scheduledAt?: Date | null;
 }

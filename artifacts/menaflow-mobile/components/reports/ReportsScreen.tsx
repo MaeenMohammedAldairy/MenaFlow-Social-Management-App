@@ -327,7 +327,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
             { label: 'المسودات', value: displayCount(draft), tint: colors.blue, status: 'draft' },
             { label: 'قيد المراجعة', value: displayCount(review), tint: colors.warning, status: 'review' },
             { label: 'معتمدة', value: displayCount(approved), tint: colors.blue, status: 'approved' },
-            { label: 'مؤجلة دون موعد', value: displayCount(scheduled), tint: colors.instagram, status: 'scheduled' },
+            { label: 'مجدولة', value: displayCount(scheduled), tint: colors.instagram, status: 'scheduled' },
             { label: 'قيد النشر', value: displayCount(publishing), tint: colors.blue, status: 'publishing' },
             { label: 'تعذّر نشرها', value: displayCount(failed), tint: colors.warning, status: 'failed' },
             { label: 'منشورة', value: displayCount(published), tint: colors.primary, status: 'published' },

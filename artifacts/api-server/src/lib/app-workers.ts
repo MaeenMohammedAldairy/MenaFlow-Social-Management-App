@@ -17,6 +17,7 @@ import { processMetaAutoReplyQueue } from "./meta-auto-reply-worker";
 import { processMetaOrderConfirmationsQueue } from "./meta-order-confirmation-queue";
 import { markStaleWhatsAppAutoRepliesUnknown } from "./whatsapp-auto-reply-recovery";
 import { purgeExpiredWhatsAppDirectMessages } from "./whatsapp-direct-message-retention";
+import { processScheduledPostsQueue } from "./scheduled-posts";
 import {
   isPushDeliveryConfigured,
   processPushNotificationQueue,
@@ -24,6 +25,7 @@ import {
 } from "./push-notifications";
 
 type WorkerName =
+  | "scheduled-posts"
   | "auto-reply-recovery"
   | "meta-auto-replies"
   | "meta-order-confirmations"
@@ -53,6 +55,17 @@ export type AppWorkerLoops = {
 };
 
 const workers: WorkerDefinition[] = [
+  {
+    // Due scheduled posts (§4.7). 15s keeps "publish at 10:00" honest to the
+    // minute without Meta graph bursts; claiming uses SKIP LOCKED so several
+    // instances can poll safely.
+    name: "scheduled-posts",
+    intervalMs: 15_000,
+    enabled: () => process.env.SCHEDULED_POSTS_WORKER_ENABLED !== "false",
+    run: processScheduledPostsQueue,
+    disabledMessage: "Scheduled posts worker disabled",
+    errorMessage: "Scheduled posts queue poll failed",
+  },
   {
     name: "auto-reply-recovery",
     intervalMs: 60_000,

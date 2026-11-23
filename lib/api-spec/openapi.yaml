@@ -1207,6 +1207,9 @@ components:
         businessType:
           type: string
           nullable: true
+        timezone:
+          type: string
+          description: IANA timezone used to display and capture scheduled times.
         role:
           type: string
       required: [id, name, role]
@@ -1224,6 +1227,11 @@ components:
           type: string
           minLength: 1
           maxLength: 40
+        timezone:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: IANA timezone name, e.g. "Asia/Aden".
     WorkspaceDeletionRequest:
       type: object
       properties:
@@ -1468,6 +1476,11 @@ components:
           type: array
           items:
             type: string
+        scheduledAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Due time for posts with status "scheduled"; null otherwise.
         createdAt:
           type: string
           format: date-time
@@ -1499,6 +1512,10 @@ components:
           type: array
           items:
             type: string
+        scheduledAt:
+          type: string
+          format: date-time
+          description: Required (future instant) when status is "scheduled".
       required: [title, body, channels, status]
     PostReportSummary:
       type: object
@@ -1554,6 +1571,11 @@ components:
         status:
           type: string
           enum: [draft, review, approved, scheduled, published]
+        scheduledAt:
+          type: string
+          format: date-time
+          description: Future instant required to move a post into "scheduled"; null clears it.
+          nullable: true
     PostDeleteResult:
       type: object
       properties:

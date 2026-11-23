@@ -8,6 +8,7 @@ import {
   workspaces,
 } from "@workspace/db";
 import { UpdateWorkspaceCurrentBody } from "@workspace/api-zod";
+import { isValidTimezone } from "../lib/scheduling";
 import { requestOwnerId } from "../lib/owner-access";
 import {
   requireWorkspace,
@@ -42,6 +43,7 @@ router.get("/workspaces", async (req, res, next) => {
         id: workspaces.id,
         name: workspaces.name,
         businessType: workspaces.businessType,
+        timezone: workspaces.timezone,
         role: workspaceMembers.role,
       })
       .from(workspaceMembers)
@@ -80,9 +82,13 @@ router.patch(
       return;
     }
 
-    const { name, businessType } = input.data;
-    if (name === undefined && businessType === undefined) {
+    const { name, businessType, timezone } = input.data;
+    if (name === undefined && businessType === undefined && timezone === undefined) {
       res.status(400).json({ error: "لم يتم تحديد أي حقول للتحديث." });
+      return;
+    }
+    if (timezone !== undefined && !isValidTimezone(timezone)) {
+      res.status(422).json({ error: "المنطقة الزمنية غير صالحة." });
       return;
     }
 
@@ -94,12 +100,14 @@ router.patch(
           ...(businessType !== undefined
             ? { businessType: businessType.trim() }
             : {}),
+          ...(timezone !== undefined ? { timezone: timezone.trim() } : {}),
         })
         .where(eq(workspaces.id, context.workspaceId))
         .returning({
           id: workspaces.id,
           name: workspaces.name,
           businessType: workspaces.businessType,
+          timezone: workspaces.timezone,
         });
 
       if (!updated) {
@@ -111,6 +119,7 @@ router.patch(
         id: updated.id,
         name: updated.name,
         businessType: updated.businessType ?? null,
+        timezone: updated.timezone,
         role: context.role,
       });
     } catch (error) {

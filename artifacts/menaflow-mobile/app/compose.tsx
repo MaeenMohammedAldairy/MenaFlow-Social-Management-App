@@ -47,8 +47,33 @@ export default function ComposeScreen() {
   const [mediaUploading, setMediaUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  // Scheduling (§4.7): the merchant picks a local wall-clock time; it travels
+  // to the server as an absolute ISO instant, so no timezone guessing.
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduleError, setScheduleError] = useState('');
   const allowRemovalRef = useRef(false);
   const aiGeneration = useGenerateAiContent();
+
+  const localParts = (date: Date) => ({
+    date: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
+    time: `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`,
+  });
+  const applySchedulePreset = (preset: Date) => {
+    const parts = localParts(preset);
+    setHasUnsavedChanges(true);
+    setScheduleOpen(true);
+    setScheduleDate(parts.date);
+    setScheduleTime(parts.time);
+    setScheduleError('');
+  };
+  const scheduledInstant = (): Date | null => {
+    if (!scheduleDate || !scheduleTime) return null;
+    const date = new Date(`${scheduleDate}T${scheduleTime}:00`);
+    if (Number.isNaN(date.getTime())) return null;
+    return date;
+  };
 
   usePreventRemove(hasUnsavedChanges, ({ repeat }) => {
     if (allowRemovalRef.current) {
@@ -68,7 +93,7 @@ export default function ComposeScreen() {
     setSelected((current) => current.includes(channel) ? current.filter((item) => item !== channel) : [...current, channel]);
   };
 
-  const submit = async (status: 'draft' | 'review') => {
+  const submit = async (status: 'draft' | 'review' | 'scheduled') => {
     if (saving || mediaUploading) return;
     if (!body.trim()) {
       showAppNotice({ title: 'أضف نص المنشور', message: 'اكتب محتوى قبل حفظ المسودة.', tone: 'error' });
@@ -79,12 +104,28 @@ export default function ComposeScreen() {
       return;
     }
     if (
-      status === 'review' &&
+      (status === 'review' || status === 'scheduled') &&
       selected.some((channel) => channel === 'instagram' || channel === 'facebook') &&
       media.length === 0
     ) {
       showAppNotice({ title: 'أرفق وسائط', message: 'أرفق صورة أو فيديو قبل إرسال منشور إنستغرام أو فيسبوك للمراجعة.', tone: 'error' });
       return;
+    }
+    let scheduledAt: string | undefined;
+    if (status === 'scheduled') {
+      const instant = scheduledInstant();
+      if (!instant) {
+        setScheduleOpen(true);
+        setScheduleError('أدخل تاريخًا ووقتًا صالحين للجدولة.');
+        return;
+      }
+      if (instant.getTime() <= Date.now()) {
+        setScheduleOpen(true);
+        setScheduleError('اختر موعدًا في المستقبل؛ المواعيد الماضية لا يمكن جدولتها.');
+        return;
+      }
+      scheduledAt = instant.toISOString();
+      setScheduleError('');
     }
     setSaving(true);
     try {
@@ -94,6 +135,7 @@ export default function ComposeScreen() {
         channels: selected,
         mediaUrls: media.map((item) => item.id),
         status,
+        ...(scheduledAt ? { scheduledAt } : {}),
         ...(aiGeneratedAt
           ? {
               metadata: {
@@ -443,9 +485,102 @@ export default function ComposeScreen() {
             </View>
           ) : null}
         </View>
+        <View style={styles.scheduleSection}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: scheduleOpen }}
+            onPress={() => {
+              setHasUnsavedChanges(true);
+              setScheduleOpen((open) => !open);
+              setScheduleError('');
+            }}
+            style={[styles.scheduleToggle, { backgroundColor: scheduleOpen ? colors.accent : colors.background, borderColor: scheduleOpen ? colors.primary : colors.border }]}
+          >
+            <Icon name="clock" size={16} color={scheduleOpen ? colors.primary : colors.mutedForeground} />
+            <Text style={[styles.chipLabel, { color: scheduleOpen ? colors.primary : colors.foreground }]}>
+              جدولة النشر
+            </Text>
+            <Icon name={scheduleOpen ? 'chevron-up' : 'chevron-down'} size={15} color={colors.mutedForeground} />
+          </Pressable>
+          {scheduleOpen ? (
+            <View style={styles.scheduleBody}>
+              <View style={styles.channelChips}>
+                {([
+                  ['بعد ساعة', () => new Date(Date.now() + 60 * 60 * 1000)],
+                  ['اليوم 8:00 م', () => {
+                    const at = new Date();
+                    at.setHours(20, 0, 0, 0);
+                    if (at.getTime() <= Date.now()) at.setDate(at.getDate() + 1);
+                    return at;
+                  }],
+                  ['غدًا 9:00 ص', () => {
+                    const at = new Date();
+                    at.setDate(at.getDate() + 1);
+                    at.setHours(9, 0, 0, 0);
+                    return at;
+                  }],
+                ] as const).map(([label, preset]) => (
+                  <Pressable
+                    key={label}
+                    accessibilityRole="button"
+                    onPress={() => applySchedulePreset(preset())}
+                    style={[styles.channelChip, { backgroundColor: colors.background, borderColor: colors.border }]}
+                  >
+                    <Text style={[styles.chipLabel, { color: colors.primary }]}>{label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <View style={styles.scheduleFields}>
+                <View style={styles.scheduleField}>
+                  <Text style={[styles.fieldLabel, { color: colors.foreground }]}>التاريخ</Text>
+                  <TextInput
+                    value={scheduleDate}
+                    onChangeText={(value) => {
+                      setHasUnsavedChanges(true);
+                      setScheduleDate(value);
+                      setScheduleError('');
+                    }}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                    keyboardType={Platform.OS === 'web' ? 'default' : 'numbers-and-punctuation'}
+                    accessibilityLabel="تاريخ النشر المجدول"
+                    style={[styles.input, styles.scheduleInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                    textAlign="right"
+                  />
+                </View>
+                <View style={styles.scheduleField}>
+                  <Text style={[styles.fieldLabel, { color: colors.foreground }]}>الوقت</Text>
+                  <TextInput
+                    value={scheduleTime}
+                    onChangeText={(value) => {
+                      setHasUnsavedChanges(true);
+                      setScheduleTime(value);
+                      setScheduleError('');
+                    }}
+                    placeholder="HH:MM"
+                    placeholderTextColor={colors.mutedForeground}
+                    autoCapitalize="none"
+                    keyboardType={Platform.OS === 'web' ? 'default' : 'number-pad'}
+                    accessibilityLabel="وقت النشر المجدول"
+                    style={[styles.input, styles.scheduleInput, { backgroundColor: colors.background, borderColor: colors.border, color: colors.foreground }]}
+                    textAlign="right"
+                  />
+                </View>
+              </View>
+              <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                الوقت بتوقيت جهازك الحالي. سيُنشر المنشور تلقائيًا عند مرور الموعد.
+              </Text>
+              {scheduleError ? (
+                <Text accessibilityRole="alert" style={[styles.mediaError, { color: colors.destructive }]}>{scheduleError}</Text>
+              ) : null}
+            </View>
+          ) : null}
+        </View>
         <View style={styles.formActions}>
           <ActionButton label={saving ? 'جارٍ الحفظ…' : 'حفظ كمسودة'} icon="save" secondary onPress={() => submit('draft')} disabled={!body.trim() || saving || mediaUploading} />
           <ActionButton label={saving ? 'جارٍ الحفظ…' : 'إرسال للمراجعة'} icon="check" onPress={() => submit('review')} disabled={!body.trim() || saving || mediaUploading} />
+          <ActionButton label={saving ? 'جارٍ الحفظ…' : 'جدولة'} icon="clock" onPress={() => submit('scheduled')} disabled={!body.trim() || saving || mediaUploading} />
         </View>
         <View style={[styles.disclaimerBox, { backgroundColor: colors.secondary }]}>
           <Icon name="info" size={15} color={colors.mutedForeground} />
@@ -493,6 +628,12 @@ const styles = StyleSheet.create({
   channelChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   channelChip: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 7, borderWidth: 1, borderRadius: 13, paddingHorizontal: 12, paddingVertical: 8 },
   chipLabel: { fontSize: 12, fontWeight: '700' },
+  scheduleSection: { gap: 8 },
+  scheduleToggle: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 13, paddingHorizontal: 13 },
+  scheduleBody: { gap: 9 },
+  scheduleFields: { flexDirection: 'row', gap: 8 },
+  scheduleField: { flex: 1, gap: 6 },
+  scheduleInput: { minHeight: 44, fontSize: 13 },
   formActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   disclaimerBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, borderRadius: 12, padding: 11 },
   disclaimer: { flex: 1, fontSize: 12, textAlign: 'right', lineHeight: 17 },

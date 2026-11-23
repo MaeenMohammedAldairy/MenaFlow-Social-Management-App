@@ -18,6 +18,7 @@ import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import { recordOrEmpty as safeRecord } from "../lib/value-utils.ts";
 
 import { postReadinessMessage } from "../lib/post-readiness";
+import { parseScheduledAt } from "../lib/scheduling";
 
 import { notifyPostsChanged } from "../lib/post-events";
 
@@ -59,12 +60,18 @@ router.post("/posts", requireWorkspace, async (req, res) => {
       .json({ error: "النشر المباشر متاح لفيسبوك وإنستغرام فقط." });
     return;
   }
+  // Scheduling is live (§4.7): status "scheduled" requires a valid future
+  // instant; anything else is a 422 with an actionable message, not a silent
+  // downgrade to draft.
+  let scheduledAt: Date | null = null;
   if (data.status === "scheduled") {
-    res.status(422).json({
-      error:
-        "الجدولة الزمنية غير متاحة بعد؛ احفظ المنشور كمسودة أو أرسله للمراجعة.",
-    });
-    return;
+    scheduledAt = parseScheduledAt(data.scheduledAt);
+    if (!scheduledAt) {
+      res.status(422).json({
+        error: "حدد موعدًا مستقبليًا صالحًا للمنشور المجدول.",
+      });
+      return;
+    }
   }
   const postId =
     String(
@@ -116,6 +123,7 @@ router.post("/posts", requireWorkspace, async (req, res) => {
         (payload as Record<string, unknown>).autoPublishChannels,
       ),
       publishResults: {},
+      scheduledAt,
       error: null,
       updatedAt: new Date(),
     };
@@ -143,6 +151,7 @@ router.post("/posts", requireWorkspace, async (req, res) => {
       .limit(1);
     const eventTypes: PostActivityEventType[] = ["post_created"];
     if (saved.status === "review") eventTypes.push("post_submitted_for_review");
+    if (saved.status === "scheduled") eventTypes.push("post_scheduled");
     const events = postActivityEvents(
       ownerId,
       workspaceId,
@@ -205,14 +214,6 @@ router.patch("/posts/:id", requireWorkspace, async (req, res) => {
       .json({ error: "النشر المباشر متاح لفيسبوك وإنستغرام فقط." });
     return;
   }
-  if (updates.status === "scheduled") {
-    res.status(422).json({
-      error:
-        "الجدولة الزمنية غير متاحة بعد؛ احفظ المنشور كمسودة أو أرسله للمراجعة.",
-    });
-    return;
-  }
-
   try {
     const [current] = await db
       .select()
@@ -269,6 +270,47 @@ router.patch("/posts/:id", requireWorkspace, async (req, res) => {
       ) {
         updateValues.error = null;
       }
+    }
+    // An explicit scheduledAt wins over whatever the row carried; null clears
+    // it. Validation is a future instant, same rule as the create path.
+    if (updates.scheduledAt !== undefined) {
+      if (updates.scheduledAt === null) {
+        updateValues.scheduledAt = null;
+      } else {
+        const parsed = parseScheduledAt(updates.scheduledAt);
+        if (!parsed) {
+          res.status(422).json({
+            error: "موعد الجدولة غير صالح؛ حدد وقتًا مستقبليًا.",
+          });
+          return;
+        }
+        updateValues.scheduledAt = parsed;
+      }
+    }
+    const resultingStatus = String(
+      updateValues.status ?? current.status,
+    );
+    if (resultingStatus === "scheduled") {
+      // updateValues is a loose record; both sources are Date | null.
+      const due = (
+        updateValues.scheduledAt !== undefined
+          ? updateValues.scheduledAt
+          : current.scheduledAt
+      ) as Date | null;
+      if (!due || due.getTime() <= Date.now()) {
+        res.status(422).json({
+          error: "حدد موعدًا مستقبليًا صالحًا للمنشور المجدول.",
+        });
+        return;
+      }
+      updateValues.scheduledAt = due;
+    } else if (
+      current.status === "scheduled" &&
+      updateValues.scheduledAt === undefined
+    ) {
+      // Leaving "scheduled" clears the due time so a stale instant can never
+      // re-trigger the worker if the post is scheduled again later.
+      updateValues.scheduledAt = null;
     }
     const currentMetadata = safeRecord(current.metadata);
     if (Array.isArray(rawBody.mediaUrls)) {

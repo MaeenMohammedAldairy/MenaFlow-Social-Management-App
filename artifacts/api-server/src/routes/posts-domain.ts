@@ -444,6 +444,7 @@ export async function responseForRow(
       ? row.autoPublishChannels
       : [],
     publishResults: safeRecord(row.publishResults),
+    scheduledAt: toIso(row.scheduledAt ?? null),
     error: row.error ?? null,
     createdAt: toIso(row.createdAt) ?? new Date().toISOString(),
     updatedAt: toIso(row.updatedAt) ?? null,

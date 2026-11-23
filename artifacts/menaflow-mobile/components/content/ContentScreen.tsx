@@ -653,7 +653,7 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             },
             {
               key: "scheduled",
-              label: "مؤجلة (دون موعد)",
+              label: "مجدولة",
               count: statusCounts.scheduled ?? 0,
             },
           ]}

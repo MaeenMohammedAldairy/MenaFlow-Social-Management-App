@@ -77,6 +77,8 @@ export interface Post {
   autoPublish?: boolean;
   autoPublishChannels?: Channel[];
   publishResults?: Record<string, unknown>;
+  /** موعد النشر للمقالات المجدولة (ISO-8601)؛ null لغيرها. */
+  scheduledAt?: string | null;
   error?: string | null;
   createdAt: string;
   updatedAt?: string;
@@ -101,6 +103,11 @@ function mapApiPost(post: Record<string, any>): Post {
     autoPublish: Boolean(post.autoPublish),
     autoPublishChannels: Array.isArray(post.autoPublishChannels) ? post.autoPublishChannels as Channel[] : [],
     publishResults: post.publishResults ?? {},
+    scheduledAt: post.scheduledAt
+      ? typeof post.scheduledAt === 'string'
+        ? post.scheduledAt
+        : new Date(post.scheduledAt).toISOString()
+      : null,
     error: post.error ?? null,
     createdAt: typeof post.createdAt === 'string'
       ? post.createdAt
@@ -400,6 +407,7 @@ export function StudioProvider({
           status: createStatus === 'approved' ? 'review' : createStatus,
           metadata: post.metadata,
           mediaUrls: post.mediaUrls,
+          ...(post.scheduledAt ? { scheduledAt: post.scheduledAt } : {}),
         });
         if (saved && saved.id) {
           commit((current) => ({
@@ -443,6 +451,8 @@ export function StudioProvider({
           body: patch.body,
           channels: patch.channels,
           status: patch.status === undefined ? undefined : editableStatus(patch.status),
+          // undefined = untouched; null = clear the due time on the server.
+          scheduledAt: patch.scheduledAt,
         };
         if (patch.mediaUrls !== undefined) {
           const response = await fetchApiResponse(`/api/posts/${encodeURIComponent(id)}`, {
