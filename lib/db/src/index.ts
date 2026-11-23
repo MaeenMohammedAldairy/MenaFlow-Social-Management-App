@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
+import { parseDatabaseUrl } from "./connection-url";
 import path from "path";
 
 if (!process.env.DATABASE_URL) {
@@ -26,7 +27,11 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
-const databaseUrl = new URL(process.env.DATABASE_URL);
+// Parsed through a helper rather than `new URL()` directly: a password with
+// un-encoded special characters makes the bare constructor throw `ERR_INVALID_URL`
+// whose error object echoes the whole connection string — i.e. the password —
+// into the deployment log. The helper fails with guidance and without the secret.
+const databaseUrl = parseDatabaseUrl(process.env.DATABASE_URL);
 const isSupabaseHost =
   /(^|\.)supabase\.co$/i.test(databaseUrl.hostname) ||
   /(^|\.)pooler\.supabase\.com$/i.test(databaseUrl.hostname);
