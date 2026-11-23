@@ -63,6 +63,7 @@ import type {
   WhatsAppPairingCodeResponse,
   WorkspaceDeletionRequestCreatedResponse,
   WorkspaceDeletionRequestResponse,
+  WorkspaceExport,
   WorkspaceListResponse,
   WorkspaceSummary,
   WorkspaceUpdateInput
@@ -591,7 +592,7 @@ export const getCreateWorkspaceDeletionRequestUrl = () => {
 }
 
 /**
- * @summary Record an owner deletion request without deleting workspace data
+ * @summary Record an owner deletion request; the worker erases the workspace after a 30-day grace period
  */
 export const createWorkspaceDeletionRequest = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceDeletionRequestCreatedResponse> => {
 
@@ -643,7 +644,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
     /**
- * @summary Record an owner deletion request without deleting workspace data
+ * @summary Record an owner deletion request; the worker erases the workspace after a 30-day grace period
  */
 export const useCreateWorkspaceDeletionRequest = <TError = ErrorType<ApiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createWorkspaceDeletionRequest>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -655,6 +656,84 @@ export const useCreateWorkspaceDeletionRequest = <TError = ErrorType<ApiError>,
       > => {
       return useMutation(getCreateWorkspaceDeletionRequestMutationOptions(options));
     }
+
+export const getExportWorkspaceDataUrl = () => {
+
+
+
+
+  return `/api/workspaces/current/export`
+}
+
+/**
+ * Owner-only. Produces a single JSON document with the workspace profile, members, posts, products, orders, inbox conversations and subscription state. Secrets (Meta/WhatsApp tokens) are never included — connections appear as masked metadata only.
+ * @summary Export the current workspace's merchant data as a JSON download
+ */
+export const exportWorkspaceData = async ( options?: Parameters<typeof customFetch>[1]): Promise<WorkspaceExport> => {
+
+  return customFetch<WorkspaceExport>(getExportWorkspaceDataUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportWorkspaceDataQueryKey = () => {
+    return [
+    `/api/workspaces/current/export`
+    ] as const;
+    }
+
+
+export const getExportWorkspaceDataQueryOptions = <TData = Awaited<ReturnType<typeof exportWorkspaceData>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportWorkspaceData>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportWorkspaceDataQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportWorkspaceData>>> = ({ signal }) => exportWorkspaceData({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportWorkspaceData>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportWorkspaceDataQueryResult = NonNullable<Awaited<ReturnType<typeof exportWorkspaceData>>>
+export type ExportWorkspaceDataQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Export the current workspace's merchant data as a JSON download
+ */
+
+export function useExportWorkspaceData<TData = Awaited<ReturnType<typeof exportWorkspaceData>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportWorkspaceData>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportWorkspaceDataQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetSubscriptionUrl = () => {
 

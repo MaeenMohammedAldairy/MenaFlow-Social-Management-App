@@ -22,6 +22,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { signOutAndClearQueryCache } from "@/lib/sign-out";
 import { unregisterDeviceForPush } from "@/lib/push-notifications";
+import { downloadWorkspaceExport } from "@/lib/download-workspace-export";
 import {
   getGetSubscriptionQueryKey,
   fetchApiResponse,
@@ -331,7 +332,8 @@ function SettingsContent({
       setDeletionRequestStatus("pending");
       showAppNotice({
         title: "تم تسجيل الطلب",
-        message: "سُجل طلب حذف مساحة العمل. لم يبدأ حذف البيانات أو الوسائط.",
+        message:
+          "سُجل طلب حذف مساحة العمل. سيُنفَّذ الحذف النهائي للبيانات والوسائط بعد 30 يومًا.",
         tone: "success",
       });
     } catch (error) {
@@ -348,7 +350,7 @@ function SettingsContent({
   const confirmWorkspaceDeletionRequest = () => {
     if (!canRequestWorkspaceDeletion || submittingDeletionRequest) return;
     const message =
-      "سيُسجل طلب للمراجعة فقط. لن تُحذف البيانات أو الوسائط تلقائيًا.";
+      "بعد 30 يومًا من تسجيل الطلب ستُحذف مساحة العمل نهائيًا: المنشورات والمنتجات والطلبات والمحادثات والوسائط وربط واتساب وفيسبوك. صدّر نسخة من بياناتك قبل الحذف.";
     Alert.alert("طلب حذف مساحة العمل", message, [
       { text: "إلغاء", style: "cancel" },
       {
@@ -357,6 +359,24 @@ function SettingsContent({
         onPress: () => void submitWorkspaceDeletionRequest(),
       },
     ]);
+  };
+  const [exportingWorkspaceData, setExportingWorkspaceData] = useState(false);
+  const exportWorkspaceDataNow = async () => {
+    if (!activeWorkspace || exportingWorkspaceData) return;
+    setExportingWorkspaceData(true);
+    try {
+      const message = await downloadWorkspaceExport(activeWorkspace.id);
+      showAppNotice({ title: "تصدير البيانات", message, tone: "success" });
+    } catch (error) {
+      console.error("Unable to export workspace data:", error);
+      showAppNotice({
+        title: "تعذر تصدير البيانات",
+        message: "تحقق من اتصالك ثم حاول مرة أخرى.",
+        tone: "error",
+      });
+    } finally {
+      setExportingWorkspaceData(false);
+    }
   };
   return (
     <Page>
@@ -487,12 +507,12 @@ function SettingsContent({
                 ]}
               >
                 {deletionRequestStatus === "pending"
-                  ? "تم تسجيل طلب الحذف. لا تُحذف البيانات أو الوسائط تلقائيًا."
+                  ? "طلب الحذف مسجّل. بعد 30 يومًا ستُحذف مساحة العمل وبياناتها ووسائطها نهائيًا."
                   : deletionRequestStatus === "loading"
                     ? "جارٍ التحقق من طلب الحذف السابق..."
                     : deletionRequestStatus === "error"
                       ? "تعذر التحقق من طلب سابق؛ يمكنك إعادة تسجيل الطلب بأمان."
-                      : "تسجيل الطلب لا يحذف البيانات أو الوسائط تلقائيًا."}
+                      : "بعد 30 يومًا من تسجيل الطلب تُحذف البيانات والوسائط وربط القنوات نهائيًا."}
               </Text>
               {deletionRequestStatus !== "pending" ? (
                 <Pressable
@@ -530,6 +550,34 @@ function SettingsContent({
                   </Text>
                 </Pressable>
               ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="تصدير نسخة JSON من بيانات مساحة العمل"
+                accessibilityState={{
+                  disabled: exportingWorkspaceData,
+                  busy: exportingWorkspaceData,
+                }}
+                disabled={exportingWorkspaceData}
+                onPress={() => void exportWorkspaceDataNow()}
+                style={({ pressed }) => ({
+                  opacity: exportingWorkspaceData
+                    ? 0.55
+                    : pressed
+                      ? 0.72
+                      : 1,
+                })}
+              >
+                <Text
+                  style={[
+                    styles.deletionRequestAction,
+                    { color: colors.primary },
+                  ]}
+                >
+                  {exportingWorkspaceData
+                    ? "جارٍ تجهيز التصدير..."
+                    : "تصدير نسخة من بياناتي (JSON)"}
+                </Text>
+              </Pressable>
             </View>
           ) : null}
         </Panel>

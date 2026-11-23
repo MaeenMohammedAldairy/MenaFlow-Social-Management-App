@@ -11,4 +11,6 @@ export type WorkspaceDeletionRequestStatus = typeof WorkspaceDeletionRequestStat
 
 export const WorkspaceDeletionRequestStatus = {
   pending: 'pending',
+  completed: 'completed',
+  failed: 'failed',
 } as const;
