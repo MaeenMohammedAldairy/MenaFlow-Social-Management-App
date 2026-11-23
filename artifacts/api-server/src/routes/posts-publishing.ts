@@ -430,7 +430,7 @@ router.post("/posts/:id/publish", requireWorkspace, async (req, res) => {
       res.status(400).json({ error: message, results: latestResults });
     }
   } catch (error) {
-    console.error("Error publishing post:", error);
+    logger.error({ error }, "Error publishing post");
     const message = error instanceof Error ? error.message : "تعذر النشر.";
     await db
       .update(posts)

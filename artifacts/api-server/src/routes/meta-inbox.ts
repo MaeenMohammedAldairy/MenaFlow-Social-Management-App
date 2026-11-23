@@ -16,6 +16,7 @@ import {
   encodeMetaInboxCursor,
   parseMetaInboxCursor,
 } from "../lib/meta-inbox-pagination";
+import { logger } from "../lib/logger.ts";
 
 const router = Router();
 const MAX_PROFILE_LOOKUPS_PER_REQUEST = 10;
@@ -43,10 +44,13 @@ async function resolveMissingActorNames(
   try {
     accessToken = await metaConnectionAccessToken(connection);
   } catch (error) {
-    console.warn("Unable to read Meta token for inbox participant names.", {
-      workspaceId,
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+    logger.warn(
+      {
+        workspaceId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+      "Unable to read Meta token for inbox participant names.",
+    );
     return;
   }
 
@@ -71,10 +75,13 @@ async function resolveMissingActorNames(
         });
         const profile: unknown = await response.json();
         if (!response.ok || !profile || typeof profile !== "object") {
-          console.warn("Meta did not return an inbox participant profile.", {
-            platform,
-            status: response.status,
-          });
+          logger.warn(
+            {
+              platform,
+              status: response.status,
+            },
+            "Meta did not return an inbox participant profile.",
+          );
           return;
         }
 
@@ -104,10 +111,13 @@ async function resolveMissingActorNames(
           }
         }
       } catch (error) {
-        console.warn("Unable to resolve a Meta inbox participant name.", {
-          platform,
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+        logger.warn(
+          {
+            platform,
+            error: error instanceof Error ? error.message : "Unknown error",
+          },
+          "Unable to resolve a Meta inbox participant name.",
+        );
       }
     }),
   );

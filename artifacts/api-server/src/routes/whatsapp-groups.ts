@@ -14,6 +14,7 @@ import {
 } from "../lib/whatsapp-evolution";
 import { reconcileWhatsAppGroupDirectory } from "../lib/whatsapp-group-identity";
 import { evolutionErrorResponse } from "./whatsapp-route-errors";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 
@@ -46,19 +47,25 @@ export async function freshWhatsAppGroups(
     phase = "normalize";
     const normalizeStartedAt = performance.now();
     const groups = normalizeEvolutionGroups(payload);
-    console.info("WhatsApp group directory fetched", {
-      groupCount: groups.length,
-      requestDurationMs,
-      normalizeDurationMs: Math.round(performance.now() - normalizeStartedAt),
-    });
+    logger.info(
+      {
+        groupCount: groups.length,
+        requestDurationMs,
+        normalizeDurationMs: Math.round(performance.now() - normalizeStartedAt),
+      },
+      "WhatsApp group directory fetched",
+    );
     return groups;
   } catch (error) {
     if (signal?.aborted) throw error;
-    console.warn("WhatsApp group directory fetch failed", {
-      phase,
-      durationMs: Math.round(performance.now() - startedAt),
-      reason: error instanceof Error ? error.message : "UNKNOWN_ERROR",
-    });
+    logger.warn(
+      {
+        phase,
+        durationMs: Math.round(performance.now() - startedAt),
+        reason: error instanceof Error ? error.message : "UNKNOWN_ERROR",
+      },
+      "WhatsApp group directory fetch failed",
+    );
     if (error instanceof Error && error.message === "EVOLUTION_API_INVALID_GROUPS_RESPONSE") {
       throw new EvolutionApiError(502, error.message);
     }
@@ -130,27 +137,33 @@ router.get("/social/whatsapp/groups", requireWorkspace, async (req, res) => {
       };
     });
 
-    console.info("WhatsApp group directory response prepared", {
-      groupCount: groups.length,
-      selectedCount: selectedJids.size,
-      selectionsReadDurationMs,
-      totalDurationMs: Math.round(performance.now() - requestStartedAt),
-    });
+    logger.info(
+      {
+        groupCount: groups.length,
+        selectedCount: selectedJids.size,
+        selectionsReadDurationMs,
+        totalDurationMs: Math.round(performance.now() - requestStartedAt),
+      },
+      "WhatsApp group directory response prepared",
+    );
     res.json({
       groups: responseGroups,
     });
   } catch (error) {
     if (upstreamController.signal.aborted || res.destroyed) return;
-    console.warn("WhatsApp group directory response failed", {
-      totalDurationMs: Math.round(performance.now() - requestStartedAt),
-      failureCode:
-        error instanceof EvolutionApiError ? error.message : "INTERNAL_ERROR",
-    });
+    logger.warn(
+      {
+        totalDurationMs: Math.round(performance.now() - requestStartedAt),
+        failureCode:
+          error instanceof EvolutionApiError ? error.message : "INTERNAL_ERROR",
+      },
+      "WhatsApp group directory response failed",
+    );
     if (error instanceof EvolutionApiError) {
       evolutionErrorResponse(res, error, "Error fetching WhatsApp groups");
       return;
     }
-    console.error("Error fetching WhatsApp groups:", error);
+    logger.error({ error }, "Error fetching WhatsApp groups");
     res.status(500).json({ error: "تعذر تحميل مجموعات واتساب." });
   } finally {
     res.off("close", abortUpstreamOnDisconnect);

@@ -14,6 +14,7 @@ import {
   isProductPublicationActionRequired,
   isVerifiedActiveProduct,
 } from "./product-publishing-logic.ts";
+import { logger } from "./logger.ts";
 
 type PublicationJob = typeof productPublicationJobs.$inferSelect;
 
@@ -271,13 +272,16 @@ export async function processProductPublicationQueue(): Promise<void> {
           lastError: reason,
           completedAt: new Date(),
         });
-        console.error("Product publication job failed", {
-          jobId: job.id,
-          workspaceId: job.workspaceId,
-          productId: job.productId,
-          channel: job.channel,
-          reason,
-        });
+        logger.error(
+          {
+            jobId: job.id,
+            workspaceId: job.workspaceId,
+            productId: job.productId,
+            channel: job.channel,
+            reason,
+          },
+          "Product publication job failed",
+        );
       }
     }
   } finally {

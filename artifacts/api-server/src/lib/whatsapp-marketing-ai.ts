@@ -2,6 +2,7 @@ import type {
   AiProviderCallOptions,
   AiProviderResult,
 } from "./ai-provider.ts";
+import { logger } from "./logger.ts";
 
 export type AiDraft = {
   eligible: boolean;
@@ -69,7 +70,10 @@ export async function generateDraft(
   if (!content) throw new Error("AI_EMPTY_RESPONSE");
   // Log a short, safe excerpt of AI output for debugging JSON parsing issues (no secrets)
   try {
-    console.debug("AI raw content excerpt:", String(content).slice(0, 1000));
+    logger.debug(
+      { excerpt: String(content).slice(0, 1000) },
+      "AI raw content excerpt",
+    );
   } catch {}
   const tryParseJsonWithSanitizer = (raw: string): Partial<AiDraft> => {
     // First attempt: strict parse
@@ -135,7 +139,9 @@ export async function generateDraft(
         content = repaired.content;
         model = repaired.model;
         result = tryParseJsonWithSanitizer(content) as Partial<AiDraft>;
-        console.warn("AI response repaired via Gemini fallback for JSON validity");
+        logger.warn(
+          "AI response repaired via Gemini fallback for JSON validity",
+        );
       } catch (err) {
         throw new Error("AI_INVALID_JSON_RESPONSE");
       }

@@ -42,6 +42,7 @@ import {
   pairingQrBase64From,
 } from "../lib/whatsapp-pairing";
 import { canConnectChannel } from "../lib/subscriptions";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const MAX_WHATSAPP_GROUP_SELECTIONS = 500;
@@ -109,10 +110,14 @@ router.get("/social/connections", requireWorkspace, async (req, res) => {
       if (err instanceof EvolutionApiError && err.statusCode === 404) {
         whatsappState = "missing";
       } else {
-        console.warn("Unable to verify WhatsApp connection state", {
-          workspaceId,
-          statusCode: err instanceof EvolutionApiError ? err.statusCode : null,
-        });
+        logger.warn(
+          {
+            workspaceId,
+            statusCode:
+              err instanceof EvolutionApiError ? err.statusCode : null,
+          },
+          "Unable to verify WhatsApp connection state",
+        );
         whatsappState =
           waConnection.status === "failed" ? "failed" : "unavailable";
       }
@@ -217,7 +222,10 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
           );
         }
       } catch (unlockError) {
-        console.error("Failed to release WhatsApp pairing lock:", unlockError);
+        logger.error(
+          { unlockError },
+          "Failed to release WhatsApp pairing lock",
+        );
       } finally {
         lockClient.release();
       }
@@ -379,14 +387,17 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
     }
     if (!pairingCode) {
       const responseBody = asRecord(pairingResponse);
-      console.error("Evolution API did not return a WhatsApp pairing code", {
-        responseKeys: Object.keys(responseBody ?? {}),
-        hasQrCode: Boolean(pairingQrBase64),
-        count:
-          typeof responseBody?.count === "number"
-            ? responseBody.count
-            : undefined,
-      });
+      logger.error(
+        {
+          responseKeys: Object.keys(responseBody ?? {}),
+          hasQrCode: Boolean(pairingQrBase64),
+          count:
+            typeof responseBody?.count === "number"
+              ? responseBody.count
+              : undefined,
+        },
+        "Evolution API did not return a WhatsApp pairing code",
+      );
       throw new EvolutionApiError(
         422,
         "EVOLUTION_API_PAIRING_CODE_UNAVAILABLE",
@@ -411,14 +422,17 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
           !(cleanupError instanceof EvolutionApiError &&
             cleanupError.statusCode === 404)
         ) {
-          console.error("Unable to clean failed WhatsApp pairing instance", {
-            workspaceId,
-            instanceName: pairingInstanceName,
-            error:
-              cleanupError instanceof Error
-                ? cleanupError.message
-                : "UNKNOWN_ERROR",
-          });
+          logger.error(
+            {
+              workspaceId,
+              instanceName: pairingInstanceName,
+              error:
+                cleanupError instanceof Error
+                  ? cleanupError.message
+                  : "UNKNOWN_ERROR",
+            },
+            "Unable to clean failed WhatsApp pairing instance",
+          );
         }
       }
       try {
@@ -433,11 +447,14 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
             ),
           );
       } catch (statusError) {
-        console.error("Unable to mark WhatsApp pairing as failed", {
-          workspaceId,
-          instanceName: pairingInstanceName,
-          error: statusError,
-        });
+        logger.error(
+          {
+            workspaceId,
+            instanceName: pairingInstanceName,
+            error: statusError,
+          },
+          "Unable to mark WhatsApp pairing as failed",
+        );
       }
     }
     evolutionErrorResponse(res, err, "Error starting WhatsApp pairing");
@@ -601,7 +618,7 @@ router.get(
         })),
       });
     } catch (error) {
-      console.error("Error fetching saved WhatsApp groups:", error);
+      logger.error({ error }, "Error fetching saved WhatsApp groups");
       res.status(500).json({ error: "تعذر تحميل المجموعات المحفوظة." });
     }
   },
@@ -740,7 +757,7 @@ router.put(
         evolutionErrorResponse(res, error, "Error saving WhatsApp groups");
         return;
       }
-      console.error("Error saving WhatsApp groups:", error);
+      logger.error({ error }, "Error saving WhatsApp groups");
       res.status(500).json({ error: "تعذر حفظ مجموعات واتساب المحددة." });
     }
   },

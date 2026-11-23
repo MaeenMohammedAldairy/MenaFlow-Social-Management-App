@@ -6,6 +6,7 @@ import {
 } from "../lib/whatsapp-content-associations";
 import { requeueWhatsAppProductMessage } from "../lib/whatsapp-product-extraction";
 import { requireWorkspace, requestWorkspaceId, requestWorkspaceUserId } from "../lib/workspace-context";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 
@@ -75,7 +76,10 @@ router.post(
         });
         return;
       }
-      console.error("Failed to save WhatsApp content association decision:", error);
+      logger.error(
+        { error },
+        "Failed to save WhatsApp content association decision",
+      );
       res.status(500).json({ error: "تعذّر حفظ قرار ارتباط الرسائل." });
     }
   },

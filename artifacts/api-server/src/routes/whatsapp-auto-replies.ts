@@ -24,6 +24,7 @@ import {
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import { isRecord } from "../lib/value-utils.ts";
 import { evolutionErrorResponse } from "./whatsapp-route-errors";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const testRequestTimes = new Map<string, number[]>();
@@ -130,9 +131,12 @@ function aiErrorResponse(
     });
     return;
   }
-  console.error("WhatsApp auto-reply generation failed", {
-    reason: reason.slice(0, 80),
-  });
+  logger.error(
+    {
+      reason: reason.slice(0, 80),
+    },
+    "WhatsApp auto-reply generation failed",
+  );
   if (/OPENAI_HTTP_401|OPENAI_HTTP_403/.test(reason) && /GEMINI_HTTP_5\d\d/.test(reason)) {
     res.status(502).json({
       error: "مفتاح OpenAI المهيأ مرفوض، وخدمة Gemini الاحتياطية غير متاحة مؤقتًا. صحّح مفتاح OpenAI في إعدادات الخادم ثم أعد المحاولة لاحقًا.",

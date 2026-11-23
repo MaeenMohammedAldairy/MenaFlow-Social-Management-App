@@ -287,12 +287,15 @@ async function graphJsonResponse(
       cause && "code" in cause && typeof cause.code === "string"
         ? cause.code
         : undefined;
-    console.warn("Meta Graph network request failed:", {
-      stage,
-      errorName: failure?.name ?? typeof error,
-      errorCode,
-      causeCode,
-    });
+    logger.warn(
+      {
+        stage,
+        errorName: failure?.name ?? typeof error,
+        errorCode,
+        causeCode,
+      },
+      "Meta Graph network request failed",
+    );
     throw new MetaGraphRequestError(stage, undefined, undefined, true);
   }
 
@@ -319,10 +322,13 @@ async function graphJsonResponse(
     );
   }
   if (stage === "list_pages") {
-    console.info("Meta OAuth page-list response:", {
-      httpStatus: status,
-      ...pageDiagnostics,
-    });
+    logger.info(
+      {
+        httpStatus: status,
+        ...pageDiagnostics,
+      },
+      "Meta OAuth page-list response",
+    );
   }
   return { status, payload };
 }
@@ -409,7 +415,7 @@ router.post("/social/meta/connect", requireWorkspace, requireMetaConnectionManag
       }),
     );
   } catch (err) {
-    console.error("Error setting up Meta connect:", err);
+    logger.error({ err }, "Error setting up Meta connect");
     res
       .status(503)
       .json({ error: "تعذر تجهيز ربط Meta. تحقق من إعداد عنوان العودة." });
@@ -538,10 +544,13 @@ router.get("/social/meta/callback", async (req, res) => {
       },
     );
     let page = pageLookup.page;
-    console.info("Meta OAuth Facebook page lookup:", {
-      attempts: pageLookup.attempts,
-      pageFound: Boolean(page),
-    });
+    logger.info(
+      {
+        attempts: pageLookup.attempts,
+        pageFound: Boolean(page),
+      },
+      "Meta OAuth Facebook page lookup",
+    );
 
     let selectedPageError: MetaGraphRequestError | undefined;
     let debugTokenIsValid: boolean | undefined;
@@ -568,11 +577,14 @@ router.get("/social/meta/callback", async (req, res) => {
             ? grantedFacebookPageIds(debugToken)
             : [];
         grantedPageCount = pageIds.length;
-        console.info("Meta OAuth granted-page diagnostics:", {
-          tokenValid: debugTokenIsValid,
-          appIdMatches: debugTokenMatchesApp,
-          grantedPageCount: pageIds.length,
-        });
+        logger.info(
+          {
+            tokenValid: debugTokenIsValid,
+            appIdMatches: debugTokenMatchesApp,
+            grantedPageCount: pageIds.length,
+          },
+          "Meta OAuth granted-page diagnostics",
+        );
 
         for (let index = 0; index < pageIds.length && !page; index += 5) {
           const batch = pageIds.slice(index, index + 5);
@@ -604,12 +616,15 @@ router.get("/social/meta/callback", async (req, res) => {
         }
       } catch (error) {
         if (error instanceof MetaGraphRequestError) {
-          console.error("Meta OAuth granted-page lookup failed:", {
-            stage: error.stage,
-            status: error.status,
-            networkFailure: error.networkFailure,
-            ...error.details,
-          });
+          logger.error(
+            {
+              stage: error.stage,
+              status: error.status,
+              networkFailure: error.networkFailure,
+              ...error.details,
+            },
+            "Meta OAuth granted-page lookup failed",
+          );
         } else {
           throw error;
         }
@@ -709,14 +724,17 @@ router.get("/social/meta/callback", async (req, res) => {
         instagramAccountData = result.instagram_business_account;
       }
     } catch (error) {
-      console.warn("Unable to fetch the linked Instagram business account:", {
-        error:
-          error instanceof MetaGraphRequestError
-            ? { stage: error.stage, status: error.status, ...error.details }
-            : error instanceof Error
-              ? error.message
-              : "Unknown Graph API error",
-      });
+      logger.warn(
+        {
+          error:
+            error instanceof MetaGraphRequestError
+              ? { stage: error.stage, status: error.status, ...error.details }
+              : error instanceof Error
+                ? error.message
+                : "Unknown Graph API error",
+        },
+        "Unable to fetch the linked Instagram business account",
+      );
     }
 
     const instagramAccountId = normalizeMetaAccountId(
@@ -860,14 +878,17 @@ router.get("/social/meta/callback", async (req, res) => {
     );
   } catch (err) {
     if (err instanceof MetaGraphRequestError) {
-      console.error("Meta OAuth Graph request failed:", {
-        stage: err.stage,
-        status: err.status,
-        hasData: err.hasData,
-        pageCount: err.pageCount,
-        networkFailure: err.networkFailure,
-        ...err.details,
-      });
+      logger.error(
+        {
+          stage: err.stage,
+          status: err.status,
+          hasData: err.hasData,
+          pageCount: err.pageCount,
+          networkFailure: err.networkFailure,
+          ...err.details,
+        },
+        "Meta OAuth Graph request failed",
+      );
       appRedirect(
         res,
         "error",
@@ -901,7 +922,7 @@ router.get("/social/meta/callback", async (req, res) => {
       );
       return;
     }
-    console.error("Meta OAuth callback failed:", err);
+    logger.error({ err }, "Meta OAuth callback failed");
     appRedirect(res, "error", "connection_failed", returnOrigin);
   }
 });

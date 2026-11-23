@@ -25,6 +25,7 @@ import {
   missingMetaIntegrationPermissions,
   type MetaIntegration,
 } from "../lib/meta-oauth";
+import { logger } from "../lib/logger.ts";
 
 const router = Router();
 
@@ -328,10 +329,13 @@ router.post(
         await restoreAutomaticReply(workspaceId, item.id);
       }
       if (manualSendAccepted) {
-        console.warn("Meta inbox reply accepted but local save failed:", {
-          platform: item.platform,
-          kind: item.kind,
-        });
+        logger.warn(
+          {
+            platform: item.platform,
+            kind: item.kind,
+          },
+          "Meta inbox reply accepted but local save failed",
+        );
         res.status(502).json({
           error:
             "أرسلت Meta الرد، لكن تعذر حفظه محليًا. تحقق من المحادثة قبل إعادة المحاولة.",
@@ -340,13 +344,16 @@ router.post(
         return;
       }
       if (error instanceof MetaInboxGraphError) {
-        console.warn("Meta inbox reply failed:", {
-          platform: item.platform,
-          kind: item.kind,
-          status: error.status,
-          code: error.code,
-          networkFailure: error.networkFailure,
-        });
+        logger.warn(
+          {
+            platform: item.platform,
+            kind: item.kind,
+            status: error.status,
+            code: error.code,
+            networkFailure: error.networkFailure,
+          },
+          "Meta inbox reply failed",
+        );
         const resultUnknown =
           error.networkFailure ||
           error.status === undefined ||

@@ -18,6 +18,7 @@ import { getMetaGraphVersion } from "../lib/meta-graph-config";
 import { EvolutionApiError, evolutionConnectionState } from "../lib/whatsapp-evolution";
 import { evolutionErrorResponse } from "./whatsapp-route-errors";
 import { buildFacebookPerformance } from "../lib/facebook-performance";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const GRAPH_VERSION = getMetaGraphVersion();
@@ -286,10 +287,13 @@ async function facebookDetailsWithFallback(
     return await facebookDetails(connection);
   } catch (error) {
     const issue = facebookReadIssue(error, "تعذّر التحقق من بيانات صفحة Facebook.");
-    console.error("Unable to refresh Facebook profile details:", {
-      pageId: connection.pageId,
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+    logger.error(
+      {
+        pageId: connection.pageId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+      "Unable to refresh Facebook profile details",
+    );
     return {
       platform: "facebook" as const,
       accountId: connection.pageId,
@@ -460,10 +464,14 @@ async function whatsappDetails(workspaceId: string) {
     if (error instanceof EvolutionApiError && error.statusCode === 404) {
       providerState = "missing";
     } else {
-      console.warn("Unable to verify WhatsApp account details", {
-        workspaceId,
-        statusCode: error instanceof EvolutionApiError ? error.statusCode : null,
-      });
+      logger.warn(
+        {
+          workspaceId,
+          statusCode:
+            error instanceof EvolutionApiError ? error.statusCode : null,
+        },
+        "Unable to verify WhatsApp account details",
+      );
       providerState = "unavailable";
     }
   }
@@ -617,10 +625,13 @@ router.get("/social/account-details/:platform", requireWorkspace, async (req, re
       typeof error.statusCode === "number"
         ? error.statusCode
         : 502;
-    console.error("Error loading social account details:", {
-      platform,
-      error: error instanceof Error ? error.message : "Unknown error",
-    });
+    logger.error(
+      {
+        platform,
+        error: error instanceof Error ? error.message : "Unknown error",
+      },
+      "Error loading social account details",
+    );
     res.status(statusCode).json({
       error: error instanceof Error ? error.message : "تعذّر تحميل تفاصيل الحساب.",
     });

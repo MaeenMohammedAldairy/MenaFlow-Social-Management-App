@@ -18,6 +18,8 @@
  *   // result.model   — resolved model name (for logging)
  */
 
+import { logger } from "./logger.ts";
+
 export type OpenAiMessage = {
   role: "system" | "user" | "assistant";
   content: string;
@@ -281,10 +283,13 @@ async function callGemini(
         lastError.message === "GEMINI_INCOMPLETE_RESPONSE" ||
         /GEMINI_HTTP_(404|429|500|502|503|504)/.test(lastError.message);
       if (model !== models.at(-1) && retryable) {
-        console.warn("Gemini model unavailable; trying fallback", {
-          failedModel: model,
-          reason: lastError.message,
-        });
+        logger.warn(
+          {
+            failedModel: model,
+            reason: lastError.message,
+          },
+          "Gemini model unavailable; trying fallback",
+        );
         continue;
       }
       throw lastError;
@@ -320,10 +325,13 @@ export async function callAiProvider(
       return await tryOpenAI();
     } catch (error) {
       if (!geminiKey) throw error;
-      console.warn("AI provider (openai) failed; trying Gemini fallback", {
-        reason:
-          error instanceof Error ? error.message : "OPENAI_REQUEST_FAILED",
-      });
+      logger.warn(
+        {
+          reason:
+            error instanceof Error ? error.message : "OPENAI_REQUEST_FAILED",
+        },
+        "AI provider (openai) failed; trying Gemini fallback",
+      );
       return tryGemini();
     }
   }

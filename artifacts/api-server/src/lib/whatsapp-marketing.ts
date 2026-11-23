@@ -40,6 +40,7 @@ import { getWhatsAppContentBundle } from "./whatsapp-content-associations";
 import { retryWhatsAppMediaDownload } from "./whatsapp-media-download";
 import { extractWhatsAppAlbumAssociation } from "./whatsapp-message-scope";
 import { saveDraft, safePublishResults } from "./whatsapp-marketing-drafts";
+import { logger } from "./logger.ts";
 
 type ProcessOptions = {
   allowAutoPublish?: boolean;
@@ -82,9 +83,12 @@ async function processWhatsAppMessageUnlocked(
   if (!message || message.messageStatus === "deleted") return { outcome: "skipped", reason: "MESSAGE_NOT_AVAILABLE" };
   const ownerId = message.ownerId;
   if (message.messageType === "albumMediaUnresolved") {
-    console.error("WhatsApp album media has no parent key and was withheld from individual publishing", {
-      reason: "WHATSAPP_ALBUM_PARENT_KEY_MISSING_REQUIRES_REVIEW",
-    });
+    logger.error(
+      {
+        reason: "WHATSAPP_ALBUM_PARENT_KEY_MISSING_REQUIRES_REVIEW",
+      },
+      "WhatsApp album media has no parent key and was withheld from individual publishing",
+    );
     return { outcome: "skipped", reason: "WHATSAPP_ALBUM_PARENT_KEY_MISSING_REQUIRES_REVIEW" };
   }
 
@@ -363,13 +367,16 @@ async function processWhatsAppMessageUnlocked(
   const timedOutIncompleteReview = incompleteReview && !manualIncompleteReview;
   if (shouldWaitForAlbum && !incompleteReview) {
     const retryAt = new Date(Date.now() + (hasPendingDownload ? 30_000 : settleMs));
-    console.info("WhatsApp album is waiting for all expected media", {
-      sourceMessageId,
-      expectedCount,
-      storedCount: readyMedia.length,
-      mediaDownloadPending: hasPendingDownload,
-      retryAt: retryAt.toISOString(),
-    });
+    logger.info(
+      {
+        sourceMessageId,
+        expectedCount,
+        storedCount: readyMedia.length,
+        mediaDownloadPending: hasPendingDownload,
+        retryAt: retryAt.toISOString(),
+      },
+      "WhatsApp album is waiting for all expected media",
+    );
     return {
       outcome: "deferred",
       reason: hasPendingDownload
@@ -379,20 +386,26 @@ async function processWhatsAppMessageUnlocked(
     };
   }
   if (timedOutIncompleteReview) {
-    console.error("WhatsApp album completion timed out and was sent for manual review", {
-      sourceMessageId,
-      expectedCount,
-      storedCount: readyMedia.length,
-      firstSeenAt: new Date(firstReceivedAt).toISOString(),
-      reason: "WHATSAPP_ALBUM_COMPLETION_UNCONFIRMED_REQUIRES_REVIEW",
-    });
+    logger.error(
+      {
+        sourceMessageId,
+        expectedCount,
+        storedCount: readyMedia.length,
+        firstSeenAt: new Date(firstReceivedAt).toISOString(),
+        reason: "WHATSAPP_ALBUM_COMPLETION_UNCONFIRMED_REQUIRES_REVIEW",
+      },
+      "WhatsApp album completion timed out and was sent for manual review",
+    );
   } else if (manualIncompleteReview) {
-    console.info("WhatsApp incomplete album was explicitly sent for manual review", {
-      sourceMessageId,
-      expectedCount,
-      storedCount: readyMedia.length,
-      reason: "WHATSAPP_ALBUM_MANUAL_REVIEW_INCOMPLETE",
-    });
+    logger.info(
+      {
+        sourceMessageId,
+        expectedCount,
+        storedCount: readyMedia.length,
+        reason: "WHATSAPP_ALBUM_MANUAL_REVIEW_INCOMPLETE",
+      },
+      "WhatsApp incomplete album was explicitly sent for manual review",
+    );
   }
   if (unresolvedAlbumContainer && !incompleteReview) {
     return {
@@ -418,10 +431,13 @@ async function processWhatsAppMessageUnlocked(
       existingIndividualPosts.map((post) => post.sourceMessageId),
     );
     if (hasPreviouslyProcessedItems && !existingPost) {
-      console.warn("WhatsApp album has prior individual posts; automatic reprocessing was blocked", {
-        sourceMessageId,
-        existingPostCount: existingIndividualPosts.length,
-      });
+      logger.warn(
+        {
+          sourceMessageId,
+          existingPostCount: existingIndividualPosts.length,
+        },
+        "WhatsApp album has prior individual posts; automatic reprocessing was blocked",
+      );
       return {
         outcome: "skipped",
         reason: "WHATSAPP_ALBUM_HAS_EXISTING_POSTS_REQUIRES_MANUAL_REVIEW",
@@ -925,13 +941,16 @@ export async function processWhatsAppMarketingQueue(): Promise<void> {
             eq(menaContentJobs.id, job.id),
             eq(menaContentJobs.workspaceId, job.workspaceId),
           ));
-        console.info("WhatsApp content job completed", {
-          jobId: job.id,
-          messageId: job.messageId,
-          outcome: result.outcome,
-          postId: result.postId ?? null,
-          reason: result.reason ?? null,
-        });
+        logger.info(
+          {
+            jobId: job.id,
+            messageId: job.messageId,
+            outcome: result.outcome,
+            postId: result.postId ?? null,
+            reason: result.reason ?? null,
+          },
+          "WhatsApp content job completed",
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : "WHATSAPP_CONTENT_PROCESSING_FAILED";
         const retry = job.attempts < 3 && isRetryableContentError(error);
@@ -947,13 +966,16 @@ export async function processWhatsAppMarketingQueue(): Promise<void> {
             eq(menaContentJobs.id, job.id),
             eq(menaContentJobs.workspaceId, job.workspaceId),
           ));
-        console.error("WhatsApp content job failed", {
-          jobId: job.id,
-          messageId: job.messageId,
-          attempt: job.attempts,
-          retry,
-          reason: message,
-        });
+        logger.error(
+          {
+            jobId: job.id,
+            messageId: job.messageId,
+            attempt: job.attempts,
+            retry,
+            reason: message,
+          },
+          "WhatsApp content job failed",
+        );
       }
     }
   } finally {
