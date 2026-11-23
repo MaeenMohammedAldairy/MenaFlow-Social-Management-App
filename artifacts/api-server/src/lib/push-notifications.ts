@@ -11,6 +11,7 @@ import {
   buildNotificationContent,
   type NotificationDraft,
   type NotificationEventType,
+  type SubscriptionMeterName,
 } from "./notification-content";
 import {
   chunkPushMessages,
@@ -321,6 +322,120 @@ export async function enqueueNotification(
 
   if (inserted.length === 0) return { status: "deduplicated" };
   return { status: "enqueued", id: inserted[0].id };
+}
+
+// ---------------------------------------------------------------------------
+// Trigger helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Enqueues an alert without ever throwing.
+ *
+ * A notification is advisory. If the outbox insert fails — the database is
+ * overloaded, a constraint rejects the row, the connection drops — the
+ * merchant's order, reply or publish must still succeed. Every call site below
+ * goes through here so that guarantee lives in one place instead of being
+ * re-implemented (and eventually forgotten) at four of them.
+ *
+ * Must be called *outside* any open transaction: it writes through the shared
+ * pool, so calling it from inside `db.transaction` would run on a different
+ * connection and could deadlock against the row locks the caller holds.
+ */
+export async function enqueueNotificationSafely(
+  input: EnqueueNotificationInput,
+  context: string,
+): Promise<void> {
+  try {
+    const result = await enqueueNotification(input);
+    if (result.status !== "enqueued") {
+      // Deduplicated and not-configured are both expected outcomes, not faults.
+      logger.debug(
+        { workspaceId: input.workspaceId, status: result.status, context },
+        "Push notification not enqueued",
+      );
+    }
+  } catch (error) {
+    logger.warn(
+      { err: error, workspaceId: input.workspaceId, context },
+      "Failed to enqueue a push notification; the operation itself is unaffected",
+    );
+  }
+}
+
+/** A customer sent a message and nobody has answered it yet. */
+export async function notifyCustomerMessage(input: {
+  workspaceId: string;
+  conversationId?: string | null;
+  platform?: string | null;
+  customerName?: string | null;
+  preview?: string | null;
+}): Promise<void> {
+  const { workspaceId, ...draft } = input;
+  await enqueueNotificationSafely(
+    {
+      workspaceId,
+      draft: { eventType: "customer_message", at: new Date(), ...draft },
+    },
+    "customer_message",
+  );
+}
+
+/** A product failed to publish to a social channel. */
+export async function notifyPublishFailure(input: {
+  workspaceId: string;
+  productName: string;
+  reason?: string | null;
+  jobId?: string | null;
+}): Promise<void> {
+  const { workspaceId, ...draft } = input;
+  await enqueueNotificationSafely(
+    {
+      workspaceId,
+      draft: { eventType: "publish_failure", at: new Date(), ...draft },
+    },
+    "publish_failure",
+  );
+}
+
+/** A customer placed an order. */
+export async function notifyNewOrder(input: {
+  workspaceId: string;
+  orderId: string;
+  customerName?: string | null;
+  totalLabel?: string | null;
+}): Promise<void> {
+  const { workspaceId, ...draft } = input;
+  await enqueueNotificationSafely(
+    {
+      workspaceId,
+      draft: { eventType: "new_order", at: new Date(), ...draft },
+    },
+    "new_order",
+  );
+}
+
+/**
+ * The workspace hit a plan limit.
+ *
+ * `periodKey` is what makes this fire once per billing period instead of once
+ * per blocked action: without it a merchant who keeps trying after exhaustion
+ * gets an alert for every attempt.
+ */
+export async function notifyQuotaExhausted(input: {
+  workspaceId: string;
+  meter: SubscriptionMeterName;
+  used: number;
+  limit: number;
+  periodKey: string;
+}): Promise<void> {
+  const { workspaceId, ...draft } = input;
+  await enqueueNotificationSafely(
+    {
+      workspaceId,
+      draft: { eventType: "quota_exhausted", at: new Date(), ...draft },
+    },
+    "quota_exhausted",
+  );
 }
 
 // ---------------------------------------------------------------------------

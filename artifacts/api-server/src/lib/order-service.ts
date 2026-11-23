@@ -11,6 +11,8 @@ import {
   products,
 } from "@workspace/db";
 import { calculateOrder, type CreateOrderInput } from "./order-validation";
+import { notifyNewOrder } from "./push-notifications";
+import { formatMetaOrderAmount } from "./meta-order-messages";
 
 export type CreateOrderError =
   | "PRODUCT_NOT_FOUND"
@@ -26,7 +28,23 @@ export async function createWorkspaceOrder(
   ownerId: string,
   workspaceId: string,
 ) {
-  return db.transaction(async (transaction) => {
+  // Set only on the branch that inserts a genuinely new order. Two of this
+  // function's three exits are idempotency replays of a request that already
+  // created the order, and announcing it again would tell the merchant about a
+  // sale that happened earlier.
+  // Held in an object rather than a `let`: TypeScript narrows a variable that
+  // is only ever assigned inside a closure to `null`, which would type the
+  // check below as unreachable. Property narrowing is reset by the awaited call.
+  const created: {
+    order: {
+      id: string;
+      customerName: string;
+      total: string;
+      currency: string;
+    } | null;
+  } = { order: null };
+
+  const result = await db.transaction(async (transaction) => {
     const [existingOrder] = await transaction
       .select()
       .from(menaOrders)
@@ -258,6 +276,26 @@ export async function createWorkspaceOrder(
         createdAt: now,
       })
       .returning();
+    created.order = {
+      id: order.id,
+      customerName: order.customerName,
+      total: order.total,
+      currency: order.currency,
+    };
     return { order, items: createdItems, events: [event] };
   });
+
+  const newOrder = created.order;
+  if (newOrder) {
+    // After the commit, and never throwing: an order that was created must not
+    // be reported as failed because the alert could not be queued.
+    await notifyNewOrder({
+      workspaceId,
+      orderId: newOrder.id,
+      customerName: newOrder.customerName,
+      totalLabel: formatMetaOrderAmount(newOrder.total, newOrder.currency),
+    });
+  }
+
+  return result;
 }

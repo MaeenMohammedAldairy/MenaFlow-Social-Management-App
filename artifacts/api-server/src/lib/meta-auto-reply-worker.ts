@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { isUnansweredMetaReply } from "./notification-content";
+import { notifyCustomerMessage } from "./push-notifications";
 import {
   and,
   asc,
@@ -374,6 +376,36 @@ function accountContactInfo(
   return "يمكن التواصل عبر الرسائل الخاصة لحساب Instagram المرتبط.";
 }
 
+/**
+ * The inbox item behind an auto-reply job, for the alert body.
+ *
+ * Returns null when the item is gone (a retention purge deleted it while the
+ * job was queued), in which case the alert falls back to generic wording rather
+ * than not being sent at all.
+ */
+async function findInboxItemForJob(id: string, workspaceId: string) {
+  const [row] = await db
+    .select({
+      conversationId: menaMetaInboxItems.conversationId,
+      platform: menaMetaInboxItems.platform,
+      actorName: menaMetaInboxItems.actorName,
+      text: menaMetaInboxItems.text,
+    })
+    .from(menaMetaAutoReplyJobs)
+    .innerJoin(
+      menaMetaInboxItems,
+      eq(menaMetaAutoReplyJobs.inboxItemId, menaMetaInboxItems.id),
+    )
+    .where(
+      and(
+        eq(menaMetaAutoReplyJobs.id, id),
+        eq(menaMetaAutoReplyJobs.workspaceId, workspaceId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 async function markJob(
   id: string,
   workspaceId: string,
@@ -396,6 +428,29 @@ async function markJob(
         eq(menaMetaAutoReplyJobs.workspaceId, workspaceId),
       ),
     );
+
+  // Hooked at the single settlement point so all 22 call sites are covered, and
+  // so a future one cannot forget. Safe here because no caller of `markJob` runs
+  // inside a transaction — the only one in this file is inside `claimNextJob`.
+  //
+  // `isUnansweredMetaReply` is what keeps the alert honest: outcomes that mean
+  // the customer was already answered, that a human is answering, or whose
+  // result is genuinely unknown must not produce a "waiting for your reply"
+  // notification.
+  if (isUnansweredMetaReply(status, errorCode)) {
+    const item = await findInboxItemForJob(id, workspaceId);
+    // Unlike the WhatsApp path this includes the customer's name and a preview:
+    // Meta inbox text and actor names are stored in plaintext here, so the alert
+    // does not expose anything the database is not already holding. WhatsApp
+    // bodies and JIDs are encrypted at rest, which is why that path sends neither.
+    await notifyCustomerMessage({
+      workspaceId,
+      conversationId: item?.conversationId ?? null,
+      platform: item?.platform ?? null,
+      customerName: item?.actorName ?? null,
+      preview: item?.text ?? null,
+    });
+  }
 }
 
 async function claimNextJob() {

@@ -5,6 +5,8 @@ import {
   MAX_TITLE_LENGTH,
   buildNotificationContent,
   hourBucket,
+  isUnansweredMetaReply,
+  publishFailureLabel,
   truncateText,
 } from "./notification-content.ts";
 
@@ -265,4 +267,77 @@ test("the notification limits are the ones the code enforces", () => {
 
   assert.ok([...content.title].length <= MAX_TITLE_LENGTH);
   assert.ok([...content.body].length <= MAX_BODY_LENGTH);
+});
+
+test("a Meta reply that already happened never claims the customer is waiting", () => {
+  // Every one of these would be a false alert: the merchant opens the app and
+  // finds the customer already answered, which is how notifications get ignored.
+  const silent = [
+    ["sent", null],
+    ["sent", "ITEM_ALREADY_REPLIED"],
+    ["skipped", "ITEM_ALREADY_REPLIED"],
+    ["skipped", "MANUAL_REPLY_IN_PROGRESS"],
+    ["skipped", "OWN_COMMENT"],
+    ["skipped", "COMMENT_ACTOR_UNAVAILABLE"],
+    ["skipped", "META_MESSAGE_WINDOW_EXPIRED"],
+    // The send result could not be determined, so it may well have arrived.
+    ["unknown", "META_SEND_RESULT_UNKNOWN"],
+    ["unknown", null],
+  ];
+  for (const [status, code] of silent) {
+    assert.equal(isUnansweredMetaReply(status, code), false, `${status}/${code}`);
+  }
+});
+
+test("a Meta reply that will not happen alerts, including unknown future codes", () => {
+  const alerting = [
+    ["skipped", "AUTOMATION_DISABLED"],
+    ["skipped", "META_TOKEN_EXPIRED"],
+    ["skipped", "META_ACCOUNT_MISMATCH"],
+    ["skipped", "META_PERMISSION_REQUIRED"],
+    ["failed", "WORKER_PROCESSING_FAILED"],
+    ["failed", null],
+    ["skipped", null],
+    // A code nobody has written yet must alert by default: staying silent about
+    // a new way of not answering is the worse failure.
+    ["failed", "SOME_BRAND_NEW_FAILURE_CODE"],
+  ];
+  for (const [status, code] of alerting) {
+    assert.equal(isUnansweredMetaReply(status, code), true, `${status}/${code}`);
+  }
+});
+
+test("publication reasons are translated and unknown ones do not leak a code", () => {
+  assert.equal(
+    publishFailureLabel("INSTAGRAM_MEDIA_REQUIRED"),
+    "إنستغرام يتطلب صورة أو فيديو",
+  );
+  assert.equal(publishFailureLabel("META_ACCOUNT_NOT_CONNECTED"), "حساب التواصل غير متصل");
+  assert.equal(publishFailureLabel("PUBLISH_RESULT_UNCERTAIN"), "نتيجة النشر غير مؤكدة، تحقّق من الحساب");
+
+  // A verbatim Meta API error must not reach a merchant's lock screen.
+  assert.equal(publishFailureLabel("(#100) Invalid parameter"), null);
+  assert.equal(publishFailureLabel(""), null);
+  assert.equal(publishFailureLabel(null), null);
+});
+
+test("a translated reason reaches the body and an unknown one falls back", () => {
+  const at = new Date("2026-11-22T10:00:00Z");
+  const known = buildNotificationContent({
+    eventType: "publish_failure",
+    productName: "قميص",
+    reason: "INSTAGRAM_IMAGE_JPEG_REQUIRED",
+    at,
+  });
+  const unknown = buildNotificationContent({
+    eventType: "publish_failure",
+    productName: "قميص",
+    reason: "(#100) Invalid parameter",
+    at,
+  });
+
+  assert.match(known.body, /إنستغرام يتطلب صورة بصيغة JPEG/);
+  assert.ok(!known.body.includes("INSTAGRAM_IMAGE_JPEG_REQUIRED"));
+  assert.ok(!unknown.body.includes("(#100)"), "لا يسرّب رسالة المنصة الخام");
+  assert.match(unknown.body, /لم يُنشر/);
 });

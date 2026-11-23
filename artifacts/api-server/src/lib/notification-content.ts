@@ -89,6 +89,87 @@ const METER_LABELS: Record<SubscriptionMeterName, string> = {
 };
 
 /**
+ * Publication failure reasons are machine codes produced by
+ * `product-publishing.ts` and `isProductPublicationActionRequired`.
+ *
+ * They are translated here rather than shown raw: the app is Arabic-first and
+ * `INSTAGRAM_MEDIA_REQUIRED` is not something to put on a merchant's lock
+ * screen. An unrecognised reason — including verbatim Meta API errors — falls
+ * back to the generic wording instead of leaking a code, and the raw value
+ * still reaches `last_error` and the logs for whoever debugs it.
+ */
+const PUBLISH_FAILURE_REASONS: Record<string, string> = {
+  PRODUCT_NOT_AVAILABLE: "المنتج غير متاح أو غير مُعتمد",
+  PRODUCT_POST_SOURCE_UNAVAILABLE: "مصدر منشور المنتج غير متاح",
+  PRODUCT_POST_CONTENT_REQUIRED: "محتوى المنشور مطلوب",
+  PRODUCT_MEDIA_UNAVAILABLE: "وسائط المنتج غير متاحة",
+  PRODUCT_EXTERNAL_MEDIA_NOT_SUPPORTED: "الوسائط الخارجية غير مدعومة",
+  META_ACCOUNT_NOT_CONNECTED: "حساب التواصل غير متصل",
+  INSTAGRAM_MEDIA_REQUIRED: "إنستغرام يتطلب صورة أو فيديو",
+  INSTAGRAM_CAROUSEL_REQUIRES_2_TO_10_ITEMS: "الألبوم في إنستغرام يتطلب من 2 إلى 10 عناصر",
+  INSTAGRAM_MEDIA_TYPE_UNSUPPORTED: "نوع الوسائط غير مدعوم في إنستغرام",
+  INSTAGRAM_IMAGE_JPEG_REQUIRED: "إنستغرام يتطلب صورة بصيغة JPEG",
+  INSTAGRAM_VIDEO_MP4_REQUIRED: "إنستغرام يتطلب فيديو بصيغة MP4",
+  FACEBOOK_NO_SUPPORTED_MEDIA: "لا توجد وسائط مدعومة لفيسبوك",
+  WHATSAPP_POST_MEDIA_UNAVAILABLE: "وسائط منشور واتساب غير متاحة",
+  PUBLISH_RESULT_UNCERTAIN: "نتيجة النشر غير مؤكدة، تحقّق من الحساب",
+  META_PUBLISH_RESULT_MISSING: "لم تصل نتيجة النشر من المنصة",
+  META_PUBLISH_FAILED: "رفضت المنصة إتمام النشر",
+  PRODUCT_PUBLISH_FAILED: "تعذّر إتمام النشر",
+};
+
+/**
+ * Translates a publication failure reason for display, or returns null when the
+ * reason is not one this server produced.
+ */
+export function publishFailureLabel(reason: string | null | undefined): string | null {
+  const key = reason?.trim();
+  if (!key) return null;
+  return PUBLISH_FAILURE_REASONS[key] ?? null;
+}
+
+/**
+ * Meta auto-reply outcomes that mean **no alert is owed**.
+ *
+ * These are the codes where telling the merchant "a customer is waiting for
+ * your reply" would be false:
+ *
+ *   ITEM_ALREADY_REPLIED        the answer already went out
+ *   MANUAL_REPLY_IN_PROGRESS    a human is typing it right now
+ *   OWN_COMMENT                 the merchant's own comment, not a customer's
+ *   COMMENT_ACTOR_UNAVAILABLE   nobody identifiable to answer
+ *   META_MESSAGE_WINDOW_EXPIRED Meta no longer permits a reply, and the message
+ *                               is old; the alert would be unactionable
+ *
+ * Deliberately a denylist rather than an allowlist: a failure code added later
+ * should alert by default, because staying silent about a new way of not
+ * answering is the worse error.
+ */
+const META_OUTCOMES_NEEDING_NO_ALERT = new Set([
+  "ITEM_ALREADY_REPLIED",
+  "MANUAL_REPLY_IN_PROGRESS",
+  "OWN_COMMENT",
+  "COMMENT_ACTOR_UNAVAILABLE",
+  "META_MESSAGE_WINDOW_EXPIRED",
+]);
+
+/**
+ * Whether a Meta auto-reply outcome leaves a customer genuinely unanswered.
+ *
+ * `unknown` is excluded on purpose. It means the send result could not be
+ * determined, so the reply may well have arrived; a merchant who opens the app
+ * to find the customer already answered stops trusting every later alert.
+ */
+export function isUnansweredMetaReply(
+  status: "sent" | "failed" | "skipped" | "unknown",
+  errorCode: string | null,
+): boolean {
+  if (status === "sent" || status === "unknown") return false;
+  const code = errorCode?.trim();
+  return code ? !META_OUTCOMES_NEEDING_NO_ALERT.has(code) : true;
+}
+
+/**
  * Truncates on a character boundary and strips a trailing partial word, so an
  * Arabic body never ends in the middle of a letter join.
  */
@@ -167,7 +248,7 @@ export function buildNotificationContent(
     }
 
     case "publish_failure": {
-      const reason = draft.reason?.trim();
+      const reason = publishFailureLabel(draft.reason);
       return {
         eventType: draft.eventType,
         title: truncateText("فشل نشر منتج", MAX_TITLE_LENGTH),

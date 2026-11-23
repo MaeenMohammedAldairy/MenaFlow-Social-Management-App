@@ -91,6 +91,7 @@ import {
   retryMetaAutoReplyGeneration,
 } from "../lib/meta-auto-reply";
 import { isDirectIncomingWhatsAppMessage } from "../lib/whatsapp-auto-reply-policy";
+import { notifyCustomerMessage } from "./push-notifications";
 import {
   buildWhatsAppDirectMessageContext,
   decryptWhatsAppDirectMessageValue,
@@ -2128,6 +2129,31 @@ export async function processWebhookEvent(
           .onConflictDoNothing();
       }
     }
+  } else if (
+    // A direct customer message that no automatic reply will answer, which is
+    // exactly when the merchant has to be told: either automatic replies are
+    // switched off for this connection, or this customer asked for a human.
+    eventName === "MESSAGES_UPSERT" &&
+    isDirectIncoming &&
+    isWhatsAppDirectPhoneJid(directRemoteJid) &&
+    Boolean(incomingMessageCandidate) &&
+    // Excludes messages too old to auto-reply. Those arrive from a backlog sync,
+    // where the customer is not sitting there waiting, and alerting on them
+    // turns one reconnect into a wall of notifications.
+    incomingWithinAutoReplyWindow &&
+    (!connection.autoReplyEnabled || customerOptedOut)
+  ) {
+    // `directConversationKey` is an HMAC-SHA256 of workspace, instance and JID
+    // keyed by ENCRYPTION_KEY, so it identifies the conversation for throttling
+    // without revealing the phone number. Message text is deliberately not
+    // included: WhatsApp bodies and JIDs are encrypted at rest in this schema,
+    // and copying plaintext into an alert that travels through Expo's servers
+    // would undo that. Meta inbox text is stored in plaintext, which is why the
+    // Meta path does include a preview.
+    await notifyCustomerMessage({
+      workspaceId: connection.workspaceId,
+      conversationId: directConversationKey,
+    });
   }
 
   if (!connection.autoSyncEnabled) return;
