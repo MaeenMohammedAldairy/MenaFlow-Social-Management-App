@@ -16,6 +16,14 @@ type SourceDefinition = {
   description: string;
 };
 
+// Onboarding copy from the approved setup design (shown only in the
+// onboarding variant; the regular sources view keeps its own descriptions).
+const onboardingDescriptions: Record<SourceKey, string> = {
+  facebook: "ربط حساب فيسبوك لإدارة صفحاتك والنشر عليها",
+  instagram: "ربط حساب إنستجرام لمشاركة محتواك تلقائيًا",
+  whatsapp: "ربط حساب واتساب للرد على العملاء وتأكيد الطلبيات",
+};
+
 const sources: SourceDefinition[] = [
   {
     key: "facebook",
@@ -244,7 +252,7 @@ export function SourcesConnectionsPanel({
                     { color: colors.secondaryForeground },
                   ]}
                 >
-                  {detail ?? source.description}
+                  {detail ?? (onboarding ? onboardingDescriptions[source.key] : source.description)}
                 </Text>
               </View>
             </Pressable>
