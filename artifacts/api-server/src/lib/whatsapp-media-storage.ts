@@ -6,6 +6,19 @@ import sharp from "sharp";
 const DEFAULT_BUCKET = "whatsapp-media";
 const MAX_THUMBNAIL_EDGE = 640;
 
+/**
+ * Ceiling on decoded pixels for any inbound media buffer (≈5000×5000).
+ *
+ * sharp's own default is 268402689 and this file used 100_000_000 — far above
+ * anything a phone camera or a WhatsApp attachment produces, which makes a
+ * small crafted file expand into a very large allocation before the resize
+ * happens (a decompression bomb). Real inputs are well under this cap: the
+ * thumbnail target is 640px and Instagram publishing resizes to the platform's
+ * own limits, so legitimate media is unaffected while the worst-case decode
+ * cost is bounded.
+ */
+const MAX_MEDIA_INPUT_PIXELS = 25_000_000;
+
 type SupabaseStorageConfig = {
   baseUrl: string;
   serviceRoleKey: string;
@@ -139,7 +152,7 @@ export async function hasMediaObject(objectPath: string): Promise<boolean> {
 }
 
 export async function createMediaThumbnail(buffer: Buffer): Promise<Buffer> {
-  return sharp(buffer, { failOn: "error", limitInputPixels: 100_000_000 })
+  return sharp(buffer, { failOn: "error", limitInputPixels: MAX_MEDIA_INPUT_PIXELS })
     .rotate()
     .resize({
       width: MAX_THUMBNAIL_EDGE,
@@ -152,7 +165,7 @@ export async function createMediaThumbnail(buffer: Buffer): Promise<Buffer> {
 }
 
 export async function createMediaJpeg(buffer: Buffer): Promise<Buffer> {
-  return sharp(buffer, { failOn: "error", limitInputPixels: 100_000_000 })
+  return sharp(buffer, { failOn: "error", limitInputPixels: MAX_MEDIA_INPUT_PIXELS })
     .rotate()
     .flatten({ background: "#ffffff" })
     .jpeg({ quality: 90 })
