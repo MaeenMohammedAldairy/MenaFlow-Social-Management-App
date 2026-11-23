@@ -312,7 +312,7 @@ function AuthenticatedSetup() {
 
                 <View style={styles.field}>
                   <Text style={[styles.fieldLabel, { color: theme.foreground }]}>
-                    اسم النشاط
+                    اسم النشاط <Text accessibilityLabel="حقل إلزامي" style={{ color: theme.destructive }}>*</Text>
                   </Text>
                   <TextInput
                     value={name}
@@ -339,7 +339,7 @@ function AuthenticatedSetup() {
 
                 <View style={styles.field}>
                   <Text style={[styles.fieldLabel, { color: theme.foreground }]}>
-                    نوع النشاط
+                    نوع النشاط <Text style={{ color: theme.mutedForeground, fontWeight: "600" }}>(اختياري)</Text>
                   </Text>
                   <Pressable
                     accessibilityRole="button"
