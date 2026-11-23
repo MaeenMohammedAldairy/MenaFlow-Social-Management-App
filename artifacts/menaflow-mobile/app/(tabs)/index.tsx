@@ -17,6 +17,7 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { useStudio, type Post } from "@/context/StudioContext";
 import { useWorkspace } from "@/context/WorkspaceContext";
+import { canEditBusinessInfo as canEditBusinessInfoFor } from "@/lib/setup-flow";
 import {
   consumeSetupCompleted,
   dismissSetupChecklist,
@@ -344,9 +345,22 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       onPress: () => router.push("/publishing-settings"),
     },
   ];
+  // `PATCH /workspaces/current` is owner-only, so a member opening the
+  // business-info form would hit a 403 and never be able to complete the step —
+  // an impossible item pinned in their checklist forever. Hide it from them
+  // rather than showing it pre-checked (which would be a small lie). While the
+  // workspace list is still loading the role is unknown, so the step stays.
+  // Today every member is the owner (invitations are deferred to audit item
+  // 7ب), which makes this a guard for that work rather than a live fix.
+  const canEditBusinessInfo = canEditBusinessInfoFor(activeWorkspace, {
+    isLocalAuthDisabled,
+  });
+  const visibleSetupSteps = setupSteps.filter(
+    (step) => step.key !== "business-info" || canEditBusinessInfo,
+  );
   // Auto-publish is a recommendation, not a requirement, so it never keeps the
   // card alive on its own.
-  const requiredSetupSteps = setupSteps.filter(
+  const requiredSetupSteps = visibleSetupSteps.filter(
     (step) => step.key !== "auto-publish",
   );
   const completedSetupSteps = requiredSetupSteps.filter(
@@ -579,7 +593,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
               <Icon name="x" size={16} color={colors.mutedForeground} />
             </Pressable>
           </View>
-          {setupSteps.map((step) => (
+          {visibleSetupSteps.map((step) => (
             <Pressable
               key={step.key}
               accessibilityRole="button"

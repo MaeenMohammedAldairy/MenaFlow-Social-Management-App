@@ -19,6 +19,7 @@ import {
   LayoutDashboard,
   Radio,
   Store,
+  X,
 } from "lucide-react-native";
 import React from "react";
 import {
@@ -41,6 +42,7 @@ import { useAuthTheme } from "@/hooks/useAuthTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { useWorkspace } from "@/context/WorkspaceContext";
+import { canEditBusinessInfo } from "@/lib/setup-flow";
 import { CountryPickerModal } from "@/components/sources/CountryPickerModal";
 import { getCountries, type CountryCode } from "libphonenumber-js";
 
@@ -254,7 +256,11 @@ function AuthenticatedSetup() {
 
   const wide = width >= 900;
   const trimmedName = name.trim();
-  const canSave = trimmedName.length > 0 && trimmedName.length <= 80 && !save.isPending && !finishSetup.isPending;
+  // `PATCH /workspaces/current` is owner-only. The checklist step is hidden
+  // from members, but `/setup` is reachable by path too — say so plainly
+  // instead of letting the save fail with a generic server error.
+  const readOnly = !canEditBusinessInfo(activeWorkspace);
+  const canSave = trimmedName.length > 0 && trimmedName.length <= 80 && !save.isPending && !finishSetup.isPending && !readOnly;
   // In edit mode (onboarding already completed) only the form is shown.
   const activeIndex = step === "business" ? 0 : step === "channel" ? 1 : step === "automation" ? 2 : 3;
   const busy = save.isPending || finishSetup.isPending || finishAutomation.isPending;
@@ -298,6 +304,35 @@ function AuthenticatedSetup() {
             <BrandMark height={26} />
           </View>
 
+          {completed && step === "business" ? (
+            // Edit mode is pushed from the dashboard checklist (or from the
+            // connection screen's "العودة إلى بيانات النشاط"), and nothing on
+            // screen said so: the only way out was Save or a system gesture.
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إغلاق بيانات النشاط"
+              disabled={busy}
+              onPress={() => {
+                if (busy) return;
+                if (router.canGoBack()) router.back();
+                else router.replace("/(tabs)");
+              }}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.closeRow,
+                {
+                  backgroundColor: pressed ? theme.background : theme.card,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <X size={15} color={theme.icon} />
+              <Text style={[styles.closeRowText, { color: theme.foreground }]}>
+                إغلاق
+              </Text>
+            </Pressable>
+          ) : null}
+
           <View style={styles.stepContent}>
             {(!completed || step === "success" || step === "automation") ? <OnboardingStepper activeIndex={activeIndex} /> : null}
 
@@ -318,6 +353,15 @@ function AuthenticatedSetup() {
                     : "أخبرنا عن نشاطك لنساعدك في إعداد منصتك."}
                 </Text>
 
+                {readOnly ? (
+                  <Text
+                    accessibilityRole="alert"
+                    style={[styles.readOnlyNote, { color: theme.mutedForeground }]}
+                  >
+                    تعديل بيانات النشاط متاح لمالك المساحة فقط.
+                  </Text>
+                ) : null}
+
                 <View style={styles.field}>
                   <Text style={[styles.fieldLabel, { color: theme.foreground }]}>
                     اسم النشاط <Text accessibilityLabel="حقل إلزامي" style={{ color: theme.destructive }}>*</Text>
@@ -331,7 +375,7 @@ function AuthenticatedSetup() {
                     maxLength={80}
                     placeholder="مثال: متجر للبرمجيات"
                     placeholderTextColor={theme.mutedForeground}
-                    editable={!busy}
+                    editable={!busy && !readOnly}
                     accessibilityLabel="اسم النشاط التجاري"
                     style={[
                       styles.input,
@@ -352,8 +396,8 @@ function AuthenticatedSetup() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="نوع النشاط"
-                    accessibilityState={{ expanded: typeOpen, disabled: busy }}
-                    disabled={busy}
+                    accessibilityState={{ expanded: typeOpen, disabled: busy || readOnly }}
+                    disabled={busy || readOnly}
                     onPress={() => setTypeOpen((open) => !open)}
                     style={[styles.select, { backgroundColor: theme.inputSurface, borderColor: theme.border }]}
                   >
@@ -368,8 +412,8 @@ function AuthenticatedSetup() {
                         <Pressable
                           key={type}
                           accessibilityRole="button"
-                          accessibilityState={{ selected: businessType === type, disabled: busy }}
-                          disabled={busy}
+                          accessibilityState={{ selected: businessType === type, disabled: busy || readOnly }}
+                          disabled={busy || readOnly}
                           onPress={() => { setBusinessType(type); setTypeOpen(false); }}
                           style={styles.typeOption}
                         >
@@ -382,7 +426,7 @@ function AuthenticatedSetup() {
 
                 <View style={styles.field}>
                   <Text style={[styles.fieldLabel, { color: theme.foreground }]}>البلد</Text>
-                  <Pressable accessibilityRole="button" accessibilityLabel="اختر بلد النشاط" disabled={busy}
+                  <Pressable accessibilityRole="button" accessibilityLabel="اختر بلد النشاط" disabled={busy || readOnly}
                     onPress={() => setCountryOpen(true)}
                     style={[styles.select, { backgroundColor: theme.inputSurface, borderColor: theme.border }]}>
                     <ChevronDown size={19} color={theme.icon} />
@@ -637,6 +681,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   retryInlineLabel: { fontSize: 14, fontWeight: "700" },
+  closeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  closeRowText: { fontSize: 13, fontWeight: "700" },
+  readOnlyNote: { fontSize: 13, lineHeight: 21, fontWeight: "600" },
   blob: { position: "absolute", borderRadius: 400 },
   blobTop: { width: 420, height: 420, top: -260, end: -150, opacity: 0.9 },
   blobBottom: {

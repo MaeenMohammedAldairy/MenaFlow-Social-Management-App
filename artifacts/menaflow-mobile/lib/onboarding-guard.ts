@@ -17,10 +17,11 @@
  *   the dashboard remains blocked until the user finishes or defers setup.
  * - `completed === true`, `socialAccountsCompleted === false`: the merchant still
  *   owes one connected platform. The funnel screens stay reachable, and so does
- *   the dashboard — "أكمل لاحقًا" means exactly that, and the tab layout already
- *   degrades gracefully for this state by hiding the tab bar until a platform is
- *   connected (`app/(tabs)/_layout.tsx`). Everything else is sent to
- *   `/connect-accounts`.
+ *   the dashboard — "أكمل لاحقًا" means exactly that. The tab bar stays visible
+ *   in this state (it used to be hidden until a platform was connected, which
+ *   contradicted the concise-setup promise that the product is usable before
+ *   setup completes; the dashboard checklist guides instead). Everything else
+ *   is sent to `/connect-accounts`.
  *
  * Returns `null` when the current pathname is acceptable, i.e. no redirect.
  */
@@ -38,8 +39,10 @@ export type OnboardingRedirect = "/setup" | "/connect-accounts";
  *
  * The dashboard `"/"` (the `(tabs)` group index resolves to the root path) is
  * matched separately and exactly, so "أكمل لاحقًا" works: deferring social setup
- * lands on the dashboard, which shows the setup prompt and hides the tab bar
- * until a platform is connected. The list below holds the funnel's own screens —
+ * lands on the dashboard, which shows the setup checklist. The tab bar stays
+ * visible there (it used to hide until a platform was connected, which
+ * contradicted the promise that the product is usable before setup completes).
+ * The list below holds the funnel's own screens —
  * sources, publishing accounts, channels, reply settings and the WhatsApp setup
  * sheet — plus `/connect-accounts` itself, so the funnel never redirects to
  * itself, and `/setup`: the dashboard checklist's "أكمل بيانات النشاط" step must

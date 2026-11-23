@@ -7,15 +7,6 @@ import { Tabs } from "expo-router";
 import { NativeTabs } from "expo-router/native-tabs";
 import { SymbolView } from "expo-symbols";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
-import { useAuth } from "@clerk/expo";
-import { useQuery } from "@tanstack/react-query";
-import {
-  getGetSocialConnectionsQueryKey,
-  getOnboardingStatus,
-  getOnboardingStatusQueryKey,
-  getSocialConnections,
-} from "@workspace/api-client-react";
-import { hasEligibleSocialConnection } from "@workspace/api-zod";
 import { isLocalAuthDisabled } from "@/constants/auth";
 
 // IMPORTANT: iOS 26 uses NativeTabs for native tabs with liquid glass support.
@@ -171,33 +162,14 @@ export default function TabLayout() {
 }
 
 function AuthenticatedTabNavigation() {
-  const { userId } = useAuth();
-  const onboarding = useQuery({
-    queryKey: getOnboardingStatusQueryKey(userId ?? null),
-    queryFn: () => getOnboardingStatus(),
-    enabled: Boolean(userId),
-    retry: false,
-  });
-  const connections = useQuery({
-    queryKey: [...getGetSocialConnectionsQueryKey(), userId ?? "signed-out"],
-    queryFn: () => getSocialConnections(),
-    enabled: Boolean(userId),
-    retry: false,
-  });
-  const hasConnectedSocialAccount = connections.data
-    ? hasEligibleSocialConnection(connections.data)
-    : false;
-  const setupIncomplete =
-    onboarding.data?.completed === true &&
-    !onboarding.data.socialAccountsCompleted;
-
-  return (
-    <TabNavigation
-      hidden={
-        setupIncomplete && (connections.isPending || !hasConnectedSocialAccount)
-      }
-    />
-  );
+  // The bar used to hide while a merchant still owed a connected platform
+  // (onboarding completed, socialAccountsCompleted false, no eligible
+  // connection). That predates the concise-setup redesign and now contradicts
+  // its core promise: the product stays usable before setup is complete, with
+  // the dashboard checklist ("خطوات البدء") doing the guiding instead of a
+  // wall. Hiding navigation blocked المنتجات/المنشورات/المحادثات/المزيد
+  // outright, so the bar is always visible.
+  return <TabNavigation hidden={false} />;
 }
 
 function TabNavigation({ hidden }: { hidden: boolean }) {
