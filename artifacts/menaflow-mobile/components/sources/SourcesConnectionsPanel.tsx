@@ -92,7 +92,7 @@ export function SourcesConnectionsPanel({
       : connectionError);
 
   return (
-    <Panel style={[styles.panel, onboarding && { backgroundColor: theme.card, borderColor: theme.border, borderRadius: 26 } ]}>
+    <Panel style={[styles.panel, onboarding && { backgroundColor: "transparent", borderWidth: 0, padding: 0, shadowOpacity: 0, elevation: 0 } ]}>
       {sectionTitle ? (
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleGroup}>
@@ -199,7 +199,7 @@ export function SourcesConnectionsPanel({
               compactLayout && !onboarding && styles.sourceCardCompact,
               onboarding && styles.onboardingCard,
               {
-                backgroundColor: onboarding ? theme.inputSurface : colors.background,
+                backgroundColor: onboarding ? theme.card : colors.background,
                 borderColor: connected
                   ? colors.primary
                   : connectionNeedsAttention
@@ -224,12 +224,12 @@ export function SourcesConnectionsPanel({
               ]}
             >
               <View
-                style={[styles.sourceIcon, { backgroundColor: colors.accent }]}
+                style={[styles.sourceIcon, { backgroundColor: onboarding ? "transparent" : colors.accent }]}
               >
                 <SocialPlatformIcon platform={source.key} size={onboarding ? 38 : 28} />
               </View>
-              <View style={styles.sourceCopy}>
-                <View style={styles.sourceTitleLine}>
+              <View style={[styles.sourceCopy, onboarding && { alignItems: "flex-end" }]}>
+                <View style={[styles.sourceTitleLine, onboarding && { justifyContent: "flex-end" }]}>
                   <Text
                     style={[styles.sourceName, { color: colors.foreground }]}
                   >
@@ -397,8 +397,8 @@ export function SourcesConnectionsPanel({
                 style={[
                   styles.connectButton,
                   {
-                    borderColor: onboarding ? theme.primarySoft : colors.primary,
-                    backgroundColor: onboarding ? theme.primarySoft : colors.primary,
+                    borderColor: onboarding ? "#DAE5FF" : colors.primary,
+                    backgroundColor: onboarding ? "#DAE5FF" : colors.primary,
                     opacity: sourceBusy ? 0.6 : 1,
                   },
                 ]}
@@ -406,15 +406,15 @@ export function SourcesConnectionsPanel({
                 {sourceBusy ? (
                   <ActivityIndicator
                     size="small"
-                    color={onboarding ? theme.primary : colors.primaryForeground}
+                    color={onboarding ? "#0A2A63" : colors.primaryForeground}
                   />
                 ) : (
-                  <Icon name="link" size={14} color={onboarding ? theme.primary : colors.primaryForeground} />
+                  <Icon name="link" size={14} color={onboarding ? "#0A2A63" : colors.primaryForeground} />
                 )}
                 <Text
                   style={[
                     styles.connectLabel,
-                    { color: onboarding ? theme.primary : colors.primaryForeground },
+                    { color: onboarding ? "#0A2A63" : colors.primaryForeground },
                   ]}
                 >
                   {buttonLabel(source.key)}
@@ -481,8 +481,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 9,
   },
-  onboardingCard: { flexDirection: "row-reverse", borderRadius: 18 },
-  onboardingIdentity: { flexDirection: "row-reverse" },
+  onboardingCard: { flexDirection: "row", borderRadius: 22, minHeight: 104 },
+  onboardingIdentity: { flexDirection: "row" },
   sourceCardCompact: {
     flexDirection: "column",
     alignItems: "stretch",
