@@ -18,6 +18,7 @@ import {
   verifyMetaWebhookSignature,
 } from "../lib/meta-webhook";
 import { metaString } from "../lib/meta-inbox-utils";
+import { logger } from "../lib/logger.ts";
 
 const router = Router();
 
@@ -111,9 +112,9 @@ router.post("/social/meta/webhook", async (req, res) => {
     const connection = resolveUniqueMetaConnection(connections);
     if (!connection) {
       if (connections.length > 1) {
-        console.error(
-          "Meta webhook account matched multiple workspaces; event skipped.",
+        logger.error(
           { platform },
+          "Meta webhook account matched multiple workspaces; event skipped.",
         );
       }
       continue;

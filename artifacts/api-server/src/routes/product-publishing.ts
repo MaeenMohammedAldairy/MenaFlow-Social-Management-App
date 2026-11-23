@@ -12,6 +12,7 @@ import { buildProductPublicationMatrix, type ProductPublicationTarget } from "..
 import { requireWorkspace, requestWorkspaceId, requestWorkspaceUserId } from "../lib/workspace-context";
 import { requestOwnerId } from "../lib/owner-access";
 import { processProductPublicationQueue } from "../lib/product-publishing";
+import { logger } from "../lib/logger.ts";
 
 const router = Router();
 const MAX_PUBLISH_PRODUCTS = 50;
@@ -205,10 +206,16 @@ router.post("/social/products/publish", requireWorkspace, async (req, res) => {
     summary: publicationSummary(jobs),
   });
   void processProductPublicationQueue().catch((error) => {
-    console.error("Initial product publication queue processing failed", {
-      workspaceId,
-      reason: error instanceof Error ? error.message : "PRODUCT_PUBLISH_QUEUE_FAILED",
-    });
+    logger.error(
+      {
+        workspaceId,
+        reason:
+          error instanceof Error
+            ? error.message
+            : "PRODUCT_PUBLISH_QUEUE_FAILED",
+      },
+      "Initial product publication queue processing failed",
+    );
   });
 });
 
@@ -294,10 +301,16 @@ router.post("/social/products/publish-jobs/retry", requireWorkspace, async (req,
     summary: publicationSummary(jobs),
   });
   void processProductPublicationQueue().catch((error) => {
-    console.error("Retried product publication queue processing failed", {
-      workspaceId,
-      reason: error instanceof Error ? error.message : "PRODUCT_PUBLISH_QUEUE_FAILED",
-    });
+    logger.error(
+      {
+        workspaceId,
+        reason:
+          error instanceof Error
+            ? error.message
+            : "PRODUCT_PUBLISH_QUEUE_FAILED",
+      },
+      "Retried product publication queue processing failed",
+    );
   });
 });
 

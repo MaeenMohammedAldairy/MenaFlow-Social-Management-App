@@ -17,6 +17,11 @@ import { processMetaAutoReplyQueue } from "./meta-auto-reply-worker";
 import { processMetaOrderConfirmationsQueue } from "./meta-order-confirmation-queue";
 import { markStaleWhatsAppAutoRepliesUnknown } from "./whatsapp-auto-reply-recovery";
 import { purgeExpiredWhatsAppDirectMessages } from "./whatsapp-direct-message-retention";
+import {
+  isPushDeliveryConfigured,
+  processPushNotificationQueue,
+  purgeSettledPushNotifications,
+} from "./push-notifications";
 
 type WorkerName =
   | "auto-reply-recovery"
@@ -30,6 +35,8 @@ type WorkerName =
   | "product-publication"
   | "media-download"
   | "media-thumbnails"
+  | "push-notifications"
+  | "push-notification-retention"
   | "whatsapp-marketing";
 
 type WorkerDefinition = {
@@ -140,6 +147,33 @@ const workers: WorkerDefinition[] = [
     run: processWhatsAppMediaThumbnailQueue,
     disabledMessage: "WhatsApp thumbnail worker disabled",
     errorMessage: "WhatsApp thumbnail worker poll failed",
+  },
+  {
+    // Push alerts are the only channel that reaches a merchant who is not
+    // looking at the app, so this polls as often as the customer-facing queues.
+    // Disabled without EXPO_PUSH_ACCESS_TOKEN: every send would fail, and
+    // enqueueing is suppressed too, so nothing accumulates while it is off.
+    name: "push-notifications",
+    intervalMs: 3_000,
+    enabled: () =>
+      process.env.PUSH_NOTIFICATION_WORKER_ENABLED !== "false" &&
+      isPushDeliveryConfigured(),
+    run: processPushNotificationQueue,
+    disabledMessage:
+      "Push notification worker disabled because EXPO_PUSH_ACCESS_TOKEN is not configured",
+    errorMessage: "Push notification queue poll failed",
+  },
+  {
+    // Settled rows are kept only so a repeated dedupe bucket still collides;
+    // purging them hourly is what keeps that constraint from growing forever.
+    name: "push-notification-retention",
+    intervalMs: 60 * 60 * 1000,
+    enabled: () =>
+      process.env.PUSH_NOTIFICATION_WORKER_ENABLED !== "false" &&
+      isPushDeliveryConfigured(),
+    run: purgeSettledPushNotifications,
+    disabledMessage: "",
+    errorMessage: "Push notification retention purge failed",
   },
   {
     name: "whatsapp-marketing",

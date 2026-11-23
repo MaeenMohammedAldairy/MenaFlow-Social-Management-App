@@ -1,5 +1,6 @@
 import type { Response } from "express";
 import { EvolutionApiError } from "../lib/whatsapp-evolution";
+import { logger } from "../lib/logger.ts";
 
 export function evolutionErrorResponse(
   res: Response,
@@ -8,7 +9,7 @@ export function evolutionErrorResponse(
 ): void {
   if (error instanceof EvolutionApiError) {
     if (error.statusCode >= 500) {
-      console.error(`${operation}: ${error.message}`);
+      logger.error(`${operation}: ${error.message}`);
     }
     const message =
       error.message === "WHATSAPP_CONNECTED_DURING_CODE_REFRESH"
@@ -27,6 +28,6 @@ export function evolutionErrorResponse(
     res.status(error.statusCode).json({ error: message });
     return;
   }
-  console.error(`${operation}:`, error);
+  logger.error({ error }, operation);
   res.status(500).json({ error: "تعذر إكمال ربط واتساب." });
 }

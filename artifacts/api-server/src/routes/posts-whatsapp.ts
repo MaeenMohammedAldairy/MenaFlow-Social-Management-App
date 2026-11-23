@@ -11,6 +11,7 @@ import { notifyPostsChanged } from "../lib/post-events";
 
 const router: IRouter = Router();
 import { sendPostQuotaError, responseForRow } from "./posts-domain";
+import { logger } from "../lib/logger.ts";
 
 router.post("/posts/from-message", requireWorkspace, async (req, res) => {
   const ownerId = requestOwnerId(req);
@@ -59,7 +60,7 @@ router.post("/posts/from-message", requireWorkspace, async (req, res) => {
       );
   } catch (error) {
     if (sendPostQuotaError(res, error)) return;
-    console.error("Error creating post from WhatsApp message:", error);
+    logger.error({ error }, "Error creating post from WhatsApp message");
     res.status(500).json({ error: "تعذر إنشاء المنشور من الرسالة المختارة." });
   }
 });
@@ -95,7 +96,7 @@ router.delete("/posts/:id", requireWorkspace, async (req, res) => {
     notifyPostsChanged(workspaceId);
     res.json({ success: true });
   } catch (error) {
-    console.error("Error deleting post:", error);
+    logger.error({ error }, "Error deleting post");
     res.status(500).json({ error: "تعذر حذف المنشور." });
   }
 });

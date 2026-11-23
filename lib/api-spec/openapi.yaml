@@ -18,6 +18,8 @@ tags:
     description: Social account connections
   - name: posts
     description: Post management and synchronization
+  - name: notifications
+    description: Push notification device registration
 paths:
   /healthz:
     get:
@@ -989,6 +991,101 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /notifications/push-token:
+    post:
+      operationId: registerPushToken
+      tags: [notifications]
+      security:
+        - bearerAuth: []
+      summary: Register this device for push notifications
+      description: >-
+        Records an Expo push token for the signed-in user. Idempotent by design:
+        the client re-registers on every cold start, so an existing token
+        refreshes its last-seen timestamp instead of creating a second row. At
+        most ten devices are kept per user and the least recently seen is
+        evicted, because every alert fans out to all of a recipient's tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenInput"
+      responses:
+        "201":
+          description: Token recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushTokenRegisteredResponse"
+        "400":
+          description: Token or platform rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    delete:
+      operationId: unregisterPushToken
+      tags: [notifications]
+      security:
+        - bearerAuth: []
+      summary: Remove a push token belonging to the signed-in user
+      description: >-
+        Called on sign-out. A user can only remove their own tokens; removing
+        somebody else's is refused by scoping the delete to the caller.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The token string to remove
+          schema:
+            type: string
+            minLength: 20
+            maxLength: 200
+      responses:
+        "200":
+          description: Removal result; removed is false when no such token existed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushTokenRemovedResponse"
+        "400":
+          description: Token missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /notifications/push-tokens:
+    get:
+      operationId: listPushTokens
+      tags: [notifications]
+      security:
+        - bearerAuth: []
+      summary: List the devices registered to the signed-in user
+      responses:
+        "200":
+          description: Registered devices, most recently seen first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushTokenListResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   securitySchemes:
     bearerAuth:
@@ -1563,3 +1660,65 @@ components:
         evolutionInstanceDeleted:
           type: boolean
       required: [disconnected]
+    PushTokenInput:
+      type: object
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          minLength: 20
+          maxLength: 200
+          description: >-
+            Expo push token. The prefix is deliberately not pattern-matched, so
+            a future Expo token format keeps working without a spec change.
+        platform:
+          type: string
+          enum: [ios, android, web]
+        deviceId:
+          type: [string, "null"]
+          maxLength: 200
+          description: Expo installation id when the client can supply it
+      required: [token, platform]
+    PushTokenRegisteredResponse:
+      type: object
+      properties:
+        registered:
+          type: boolean
+        token:
+          type: string
+      required: [registered, token]
+    PushTokenSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        token:
+          type: string
+        platform:
+          type: string
+          enum: [ios, android, web]
+        deviceId:
+          type: [string, "null"]
+        enabled:
+          type: boolean
+          description: >-
+            False once Expo reports DeviceNotRegistered, meaning the app was
+            uninstalled or notifications were turned off for it.
+        lastSeenAt:
+          type: string
+          format: date-time
+      required: [id, token, platform, enabled, lastSeenAt]
+    PushTokenListResponse:
+      type: object
+      properties:
+        tokens:
+          type: array
+          items:
+            $ref: "#/components/schemas/PushTokenSummary"
+      required: [tokens]
+    PushTokenRemovedResponse:
+      type: object
+      properties:
+        removed:
+          type: boolean
+      required: [removed]

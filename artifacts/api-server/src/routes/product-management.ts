@@ -31,6 +31,7 @@ import {
   mediaRequestOrigin,
   catalogProductResponse,
 } from "./product-route-helpers";
+import { logger } from "../lib/logger.ts";
 
 type ImportedMetaPost = {
   platform: "facebook" | "instagram";
@@ -159,10 +160,13 @@ router.post(
     } catch (error) {
       const reason =
         error instanceof Error ? error.message : "AI_EXTRACTION_FAILED";
-      console.error("Scanned post product extraction failed", {
-        workspaceId,
-        reason,
-      });
+      logger.error(
+        {
+          workspaceId,
+          reason,
+        },
+        "Scanned post product extraction failed",
+      );
       const configurationMissing = reason.startsWith("MISSING_");
       const reasonCode = /^[A-Z][A-Z0-9_.:-]{0,99}$/.test(reason)
         ? reason
@@ -285,12 +289,15 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
         importedMetaPost.imageUrl,
       );
     } catch (error) {
-      console.error("Unable to store imported Meta post media", {
-        workspaceId,
-        platform: importedMetaPost.platform,
-        postId: importedMetaPost.id,
-        reason: error instanceof Error ? error.message : "UNKNOWN_ERROR",
-      });
+      logger.error(
+        {
+          workspaceId,
+          platform: importedMetaPost.platform,
+          postId: importedMetaPost.id,
+          reason: error instanceof Error ? error.message : "UNKNOWN_ERROR",
+        },
+        "Unable to store imported Meta post media",
+      );
       res.status(502).json({
         error:
           "تعذّر حفظ صورة المنشور في مساحة العمل. حدّث بيانات المنشور ثم أعد المحاولة.",
@@ -624,11 +631,14 @@ router.post(
           ),
         );
       } catch (error) {
-        console.error("Unable to store published Meta post media", {
-          workspaceId,
-          postId,
-          reason: error instanceof Error ? error.message : "UNKNOWN_ERROR",
-        });
+        logger.error(
+          {
+            workspaceId,
+            postId,
+            reason: error instanceof Error ? error.message : "UNKNOWN_ERROR",
+          },
+          "Unable to store published Meta post media",
+        );
         res.status(502).json({
           error:
             "تعذّر حفظ وسائط المنشور في مساحة العمل. حدّث بيانات المنشور ثم أعد المحاولة.",
@@ -659,11 +669,14 @@ router.post(
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "AI_EXTRACTION_FAILED";
-        console.error("Published post product extraction failed", {
-          workspaceId,
-          postId,
-          reason,
-        });
+        logger.error(
+          {
+            workspaceId,
+            postId,
+            reason,
+          },
+          "Published post product extraction failed",
+        );
         const configurationMissing = reason.startsWith("MISSING_");
         const reasonCode = /^[A-Z][A-Z0-9_.:-]{0,99}$/.test(reason)
           ? reason

@@ -11,6 +11,7 @@ import { processWhatsAppBacklog } from "../lib/whatsapp-marketing";
 
 const router: IRouter = Router();
 import { normalizeChannels, publishApprovedPosts } from "./posts-domain";
+import { logger } from "../lib/logger.ts";
 
 router.get(
   "/posts/auto-publish-settings",
@@ -38,7 +39,7 @@ router.get(
           : null,
       });
     } catch (error) {
-      console.error("Error loading auto-publish settings:", error);
+      logger.error({ error }, "Error loading auto-publish settings");
       res.status(500).json({ error: "تعذر تحميل إعدادات النشر التلقائي." });
     }
   },
@@ -130,7 +131,7 @@ router.put(
         ...(initialPublish ? { initialPublish } : {}),
       });
     } catch (error) {
-      console.error("Error saving auto-publish settings:", error);
+      logger.error({ error }, "Error saving auto-publish settings");
       res.status(500).json({ error: "تعذر حفظ إعدادات النشر التلقائي." });
     }
   },
@@ -161,7 +162,7 @@ router.post(
       const result = await processWhatsAppBacklog(workspaceId, requestedLimit);
       res.json(result);
     } catch (error) {
-      console.error("Error processing WhatsApp backlog:", error);
+      logger.error({ error }, "Error processing WhatsApp backlog");
       res.status(500).json({ error: "تعذر تحليل الرسائل القديمة." });
     }
   },

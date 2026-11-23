@@ -28,6 +28,7 @@ import {
   DEFAULT_WHATSAPP_HISTORY_IMPORT_LIMIT,
   MAX_WHATSAPP_HISTORY_IMPORT_LIMIT,
 } from "../lib/whatsapp-sync";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const syncSettingKeys = [
@@ -250,12 +251,15 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
             error instanceof Error
               ? error.message.slice(0, 160)
               : "WHATSAPP_HISTORY_SYNC_FAILED";
-          console.error("WhatsApp historical sync failed before processing", {
-            workspaceId,
-            instanceName: connection.instanceName,
-            groupJid: group.groupJid,
-            reason,
-          });
+          logger.error(
+            {
+              workspaceId,
+              instanceName: connection.instanceName,
+              groupJid: group.groupJid,
+              reason,
+            },
+            "WhatsApp historical sync failed before processing",
+          );
           try {
             await ensureSyncState(
               workspaceId,
@@ -276,8 +280,7 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
               },
             );
           } catch (stateError) {
-            console.error(
-              "Could not persist WhatsApp historical sync failure",
+            logger.error(
               {
                 workspaceId,
                 instanceName: connection.instanceName,
@@ -287,18 +290,22 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
                     ? stateError.message.slice(0, 160)
                     : "SYNC_STATE_UPDATE_FAILED",
               },
+              "Could not persist WhatsApp historical sync failure",
             );
           }
         }
       }),
     ).catch((error: unknown) => {
-      console.error("WhatsApp historical sync task batch failed", {
-        workspaceId,
-        reason:
-          error instanceof Error
-            ? error.message.slice(0, 160)
-            : "SYNC_BATCH_FAILED",
-      });
+      logger.error(
+        {
+          workspaceId,
+          reason:
+            error instanceof Error
+              ? error.message.slice(0, 160)
+              : "SYNC_BATCH_FAILED",
+        },
+        "WhatsApp historical sync task batch failed",
+      );
     });
 
     res.status(202).json({
@@ -310,7 +317,7 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error("Error starting WhatsApp sync:", error);
+    logger.error({ error }, "Error starting WhatsApp sync");
     res.status(500).json({ error: "تعذر بدء مزامنة واتساب." });
   }
 });
@@ -461,7 +468,7 @@ router.get(
         })),
       });
     } catch (error) {
-      console.error("Error fetching WhatsApp sync status:", error);
+      logger.error({ error }, "Error fetching WhatsApp sync status");
       res.status(500).json({ error: "تعذر جلب حالة المزامنة." });
     }
   },
@@ -526,7 +533,7 @@ router.put(
 
       res.json(connection);
     } catch (error) {
-      console.error("Error updating WhatsApp sync settings:", error);
+      logger.error({ error }, "Error updating WhatsApp sync settings");
       res.status(500).json({ error: "تعذر حفظ إعداد المزامنة التلقائية." });
     }
   },
@@ -544,7 +551,7 @@ router.post("/social/whatsapp/webhook", async (req, res) => {
     });
     res.status(200).json({ ok: true });
   } catch (error) {
-    console.error("Evolution webhook processing failed:", error);
+    logger.error({ error }, "Evolution webhook processing failed");
     res.status(500).json({ ok: false });
   }
 });

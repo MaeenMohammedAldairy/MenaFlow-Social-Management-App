@@ -29,6 +29,7 @@ import {
   productMediaUrl,
   catalogProductResponse,
 } from "./product-route-helpers";
+import { logger } from "../lib/logger.ts";
 
 router.get(
   "/social/products/whatsapp-extractions",
@@ -249,10 +250,14 @@ router.post(
         queuedMessages,
       });
     } catch (error) {
-      console.error("Failed to queue WhatsApp product extraction", {
-        workspaceId,
-        reason: error instanceof Error ? error.message : "PRODUCT_QUEUE_FAILED",
-      });
+      logger.error(
+        {
+          workspaceId,
+          reason:
+            error instanceof Error ? error.message : "PRODUCT_QUEUE_FAILED",
+        },
+        "Failed to queue WhatsApp product extraction",
+      );
       res.status(500).json({
         error: "تعذر جدولة معالجة الرسائل. أعد المحاولة بعد قليل.",
       });

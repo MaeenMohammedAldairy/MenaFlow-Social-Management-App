@@ -25,6 +25,7 @@ import {
   requestWorkspaceId,
   requestWorkspaceUserId,
 } from "../lib/workspace-context";
+import { logger } from "../lib/logger.ts";
 
 const router = Router();
 
@@ -186,13 +187,16 @@ router.post(
             ) {
               whatsappState = "missing";
             } else {
-              console.warn("Unable to verify WhatsApp for onboarding completion", {
-                workspaceId,
-                statusCode:
-                  error instanceof EvolutionApiError
-                    ? error.statusCode
-                    : null,
-              });
+              logger.warn(
+                {
+                  workspaceId,
+                  statusCode:
+                    error instanceof EvolutionApiError
+                      ? error.statusCode
+                      : null,
+                },
+                "Unable to verify WhatsApp for onboarding completion",
+              );
               res.status(503).json({
                 error:
                   "تعذر التحقق من اتصال WhatsApp الآن. حاول مرة أخرى بعد استقرار الخدمة.",

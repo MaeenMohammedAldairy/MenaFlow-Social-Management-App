@@ -73,7 +73,7 @@ router.get("/posts", requireWorkspace, async (req, res) => {
       ),
     );
   } catch (error) {
-    console.error("Error fetching posts:", error);
+    logger.error({ error }, "Error fetching posts");
     res.status(500).json({ error: "تعذر تحميل المنشورات." });
   }
 });
@@ -111,7 +111,7 @@ router.post("/posts/known-ids", requireWorkspace, async (req, res) => {
       .where(and(eq(posts.workspaceId, workspaceId), inArray(posts.id, ids)));
     res.json({ ids: rows.map((row) => row.id) });
   } catch (error) {
-    console.error("Error checking cached post IDs:", error);
+    logger.error({ error }, "Error checking cached post IDs");
     res.status(500).json({ error: "تعذر التحقق من المنشورات المحفوظة." });
   }
 });
@@ -264,7 +264,7 @@ router.get("/posts/page", requireWorkspace, async (req, res) => {
         : null;
     res.json({ items, nextCursor });
   } catch (error) {
-    console.error("Error fetching posts page:", error);
+    logger.error({ error }, "Error fetching posts page");
     res.status(500).json({ error: "تعذر تحميل المنشورات." });
   }
 });

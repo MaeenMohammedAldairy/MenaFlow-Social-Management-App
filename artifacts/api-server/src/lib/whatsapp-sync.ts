@@ -91,6 +91,7 @@ import {
   retryMetaAutoReplyGeneration,
 } from "../lib/meta-auto-reply";
 import { isDirectIncomingWhatsAppMessage } from "../lib/whatsapp-auto-reply-policy";
+import { notifyCustomerMessage } from "./push-notifications";
 import {
   buildWhatsAppDirectMessageContext,
   decryptWhatsAppDirectMessageValue,
@@ -104,6 +105,7 @@ import {
 } from "../lib/whatsapp-direct-messages";
 import { asRecord, queryString } from "./value-utils.ts";
 import { resolveMessageSenderId } from "../lib/whatsapp-marketing-safety";
+import { logger } from "./logger.ts";
 
 export const WHATSAPP_SYNC_STALE_THRESHOLD_MS = 10 * 60 * 1000;
 export const DEFAULT_WHATSAPP_HISTORY_IMPORT_LIMIT = 500;
@@ -488,19 +490,22 @@ async function persistImportedMessage(
     hasAlbumAssociation ||
     albumSource.mediaGroupExpectedCount !== null
   ) {
-    console.info("WhatsApp message sync metadata received", {
-      source: payload.source === "webhook" ? "webhook" : "history",
-      mediaTypes: [...new Set(mediaItems.map((item) => item.mediaType))],
-      observedMediaCount: mediaItems.length,
-      expectedMediaCount: albumSource.mediaGroupExpectedCount,
-      mediaAlbumAssociation: hasAlbumAssociation,
-      parentMessageKeyPresent: Boolean(albumAssociation),
-      messageIndex: albumAssociation?.messageIndex ?? null,
-      groupKeyResolved: Boolean(albumSource.mediaGroupId),
-      albumContainer: isWhatsAppAlbumContainer(message),
-      hasCaptionOrText: Boolean(textBody || caption),
-      mediaDownloadStatus: mediaItems.length > 0 ? "pending" : "not_required",
-    });
+    logger.info(
+      {
+        source: payload.source === "webhook" ? "webhook" : "history",
+        mediaTypes: [...new Set(mediaItems.map((item) => item.mediaType))],
+        observedMediaCount: mediaItems.length,
+        expectedMediaCount: albumSource.mediaGroupExpectedCount,
+        mediaAlbumAssociation: hasAlbumAssociation,
+        parentMessageKeyPresent: Boolean(albumAssociation),
+        messageIndex: albumAssociation?.messageIndex ?? null,
+        groupKeyResolved: Boolean(albumSource.mediaGroupId),
+        albumContainer: isWhatsAppAlbumContainer(message),
+        hasCaptionOrText: Boolean(textBody || caption),
+        mediaDownloadStatus: mediaItems.length > 0 ? "pending" : "not_required",
+      },
+      "WhatsApp message sync metadata received",
+    );
   }
   const sourceMediaPayload = mediaItems.map((item, mediaIndex) => {
     const sourceMessageKey = asRecord(item.sourceMessage.key) ?? {};
@@ -1023,18 +1028,21 @@ export async function syncGroupHistory(
   let fetchedHistoryCount = 0;
   let alreadyPersistedCount = 0;
   const logSyncResult = (fetchedCount: number) => {
-    console.info("WhatsApp historical sync completed", {
-      workspaceId,
-      instanceName,
-      groupJid,
-      status: stats.status,
-      fetchedCount,
-      alreadyPersistedCount,
-      importedCount: stats.imported,
-      skippedCount: stats.skipped,
-      failedCount: stats.failed,
-      durationMs: Date.now() - runStartedAt,
-    });
+    logger.info(
+      {
+        workspaceId,
+        instanceName,
+        groupJid,
+        status: stats.status,
+        fetchedCount,
+        alreadyPersistedCount,
+        importedCount: stats.imported,
+        skippedCount: stats.skipped,
+        failedCount: stats.failed,
+        durationMs: Date.now() - runStartedAt,
+      },
+      "WhatsApp historical sync completed",
+    );
   };
   const cancelIfAutoSyncDisabled = async (): Promise<boolean> => {
     if (
@@ -1162,12 +1170,15 @@ export async function syncGroupHistory(
           stats.failed += 1;
           const failureCode = historyImportFailureCode(error);
           firstFailureCode ??= failureCode;
-          console.error("WhatsApp historical message import failed", {
-            workspaceId,
-            instanceName,
-            groupJid,
-            failureCode,
-          });
+          logger.error(
+            {
+              workspaceId,
+              instanceName,
+              groupJid,
+              failureCode,
+            },
+            "WhatsApp historical message import failed",
+          );
         }
       }
       if ((index + 1) % 10 === 0 || index === messages.length - 1) {
@@ -1225,13 +1236,16 @@ export async function syncGroupHistory(
       completedAt: new Date(),
     });
     stats.status = "failed";
-    console.error("WhatsApp historical sync failed", {
-      workspaceId,
-      instanceName,
-      groupJid,
-      reason: message,
-      durationMs: Date.now() - runStartedAt,
-    });
+    logger.error(
+      {
+        workspaceId,
+        instanceName,
+        groupJid,
+        reason: message,
+        durationMs: Date.now() - runStartedAt,
+      },
+      "WhatsApp historical sync failed",
+    );
     return stats;
   } finally {
     const activeCount = activeWhatsAppSyncCounts.get(syncState.id) ?? 0;
@@ -1460,7 +1474,10 @@ async function processWhatsAppAutoReplyAsync(input: {
         })),
       );
     } catch (contextError) {
-      console.warn("Failed to fetch previous WhatsApp conversation history for auto reply", contextError);
+      logger.warn(
+        { contextError },
+        "Failed to fetch previous WhatsApp conversation history for auto reply",
+      );
     }
 
     let matchingProduct = null;
@@ -1493,9 +1510,9 @@ async function processWhatsAppAutoReplyAsync(input: {
         };
       }
     } catch (productError) {
-      console.warn(
+      logger.warn(
+        { productError },
         "Failed to query catalog products for WhatsApp auto reply",
-        productError,
       );
     }
 
@@ -1586,11 +1603,14 @@ async function processWhatsAppAutoReplyAsync(input: {
         : error instanceof Error
           ? error.name.slice(0, 80)
           : "AUTO_REPLY_FAILED";
-    console.error("WhatsApp automatic reply failed", {
-      workspaceId: input.connection.workspaceId,
-      instanceName: input.instanceName,
-      errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
-    });
+    logger.error(
+      {
+        workspaceId: input.connection.workspaceId,
+        instanceName: input.instanceName,
+        errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
+      },
+      "WhatsApp automatic reply failed",
+    );
     const retry =
       !sendStarted && retryMetaAutoReplyGeneration(error, input.attempts);
     await db
@@ -1959,9 +1979,12 @@ export async function processWebhookEvent(
     .limit(2);
   if (matchingConnections.length !== 1) {
     if (matchingConnections.length > 1) {
-      console.error("WhatsApp webhook instance is ambiguous in the database", {
-        instanceName,
-      });
+      logger.error(
+        {
+          instanceName,
+        },
+        "WhatsApp webhook instance is ambiguous in the database",
+      );
     }
     return;
   }
@@ -2106,6 +2129,31 @@ export async function processWebhookEvent(
           .onConflictDoNothing();
       }
     }
+  } else if (
+    // A direct customer message that no automatic reply will answer, which is
+    // exactly when the merchant has to be told: either automatic replies are
+    // switched off for this connection, or this customer asked for a human.
+    eventName === "MESSAGES_UPSERT" &&
+    isDirectIncoming &&
+    isWhatsAppDirectPhoneJid(directRemoteJid) &&
+    Boolean(incomingMessageCandidate) &&
+    // Excludes messages too old to auto-reply. Those arrive from a backlog sync,
+    // where the customer is not sitting there waiting, and alerting on them
+    // turns one reconnect into a wall of notifications.
+    incomingWithinAutoReplyWindow &&
+    (!connection.autoReplyEnabled || customerOptedOut)
+  ) {
+    // `directConversationKey` is an HMAC-SHA256 of workspace, instance and JID
+    // keyed by ENCRYPTION_KEY, so it identifies the conversation for throttling
+    // without revealing the phone number. Message text is deliberately not
+    // included: WhatsApp bodies and JIDs are encrypted at rest in this schema,
+    // and copying plaintext into an alert that travels through Expo's servers
+    // would undo that. Meta inbox text is stored in plaintext, which is why the
+    // Meta path does include a preview.
+    await notifyCustomerMessage({
+      workspaceId: connection.workspaceId,
+      conversationId: directConversationKey,
+    });
   }
 
   if (!connection.autoSyncEnabled) return;
@@ -2212,12 +2260,15 @@ export async function processWebhookEvent(
   );
 
   if (!persisted.imported) {
-    console.warn("Ignored webhook event outside allowed group scope", {
-      instanceName,
-      ownerId: connection.ownerId,
-      remoteJid,
-      reason: persisted.reason,
-    });
+    logger.warn(
+      {
+        instanceName,
+        ownerId: connection.ownerId,
+        remoteJid,
+        reason: persisted.reason,
+      },
+      "Ignored webhook event outside allowed group scope",
+    );
     return;
   }
   if (persisted.messageId) {

@@ -19,6 +19,7 @@ import {
   type SubscriptionStatus,
 } from "./entitlements.ts";
 import { ensureSubscription } from "./entitlement-store.ts";
+import { notifyQuotaExhausted } from "./push-notifications";
 
 export {
   subscriptionPlans,
@@ -97,7 +98,7 @@ export async function consumeSubscriptionUsage(
   // A missing row is a self-healing condition, not a 500 for the merchant.
   await ensureSubscription(workspaceId);
 
-  return db.transaction(async (transaction) => {
+  const outcome = await db.transaction(async (transaction) => {
     const [subscription] = await transaction
       .select()
       .from(workspaceSubscriptions)
@@ -179,6 +180,24 @@ export async function consumeSubscriptionUsage(
 
     return { allowed: true, used: usage.used, limit, periodKey };
   });
+
+  if (!outcome.allowed) {
+    // Enqueued after the transaction commits, not inside it: the insert goes
+    // through the shared pool, so running it here would write on a different
+    // connection while this one still holds the subscription row lock.
+    //
+    // `notifyQuotaExhausted` never throws, so a failed alert cannot turn a
+    // quota denial into a 500 for the merchant.
+    await notifyQuotaExhausted({
+      workspaceId,
+      meter,
+      used: outcome.used,
+      limit: outcome.limit,
+      periodKey: outcome.periodKey,
+    });
+  }
+
+  return outcome;
 }
 
 export async function releaseSubscriptionUsage(

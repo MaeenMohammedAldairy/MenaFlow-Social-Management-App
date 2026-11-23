@@ -14,8 +14,26 @@ import {
   isProductPublicationActionRequired,
   isVerifiedActiveProduct,
 } from "./product-publishing-logic.ts";
+import { logger } from "./logger.ts";
+import { notifyPublishFailure } from "./push-notifications";
 
 type PublicationJob = typeof productPublicationJobs.$inferSelect;
+
+/**
+ * The product name for an alert body. Returns null when the product is gone,
+ * in which case the notification falls back to generic wording.
+ */
+async function resolveProductName(job: PublicationJob): Promise<string | null> {
+  const [product] = await db
+    .select({ name: products.name })
+    .from(products)
+    .where(and(
+      eq(products.id, job.productId),
+      eq(products.workspaceId, job.workspaceId),
+    ))
+    .limit(1);
+  return product?.name ?? null;
+}
 
 async function updateJob(
   job: PublicationJob,
@@ -28,6 +46,24 @@ async function updateJob(
       eq(productPublicationJobs.id, job.id),
       eq(productPublicationJobs.workspaceId, job.workspaceId),
     ));
+
+  // Hooked here rather than at each failure branch, so the four existing ones —
+  // and any branch added later — cannot forget to tell the merchant. A job that
+  // needs action is alerted about too: `action_required` means publishing
+  // stopped and only the merchant can restart it, which is exactly the case
+  // where silence is most expensive.
+  //
+  // Safe to call from here because no `updateJob` caller runs inside a
+  // transaction; `notifyPublishFailure` writes through the shared pool and
+  // never throws.
+  if (values.status === "failed" || values.status === "action_required") {
+    await notifyPublishFailure({
+      workspaceId: job.workspaceId,
+      productName: (await resolveProductName(job)) ?? "منتج",
+      reason: values.lastError ?? null,
+      jobId: job.id,
+    });
+  }
 }
 
 async function markActionRequired(
@@ -233,6 +269,15 @@ export async function processProductPublicationQueue(): Promise<void> {
           .set({ status: "failed", error: "PUBLISH_RESULT_UNCERTAIN", updatedAt: new Date() })
           .where(and(eq(posts.id, job.postId), eq(posts.workspaceId, job.workspaceId)));
       }
+      // This bulk recovery updates jobs directly instead of through updateJob,
+      // so it alerts separately. A job stuck for ten minutes is precisely the
+      // one the merchant has stopped watching the screen for.
+      await notifyPublishFailure({
+        workspaceId: job.workspaceId,
+        productName: (await resolveProductName(job)) ?? "منتج",
+        reason: "PUBLISH_RESULT_UNCERTAIN",
+        jobId: job.id,
+      });
     }
 
     const jobs = await db.transaction(async (transaction) => {
@@ -271,13 +316,16 @@ export async function processProductPublicationQueue(): Promise<void> {
           lastError: reason,
           completedAt: new Date(),
         });
-        console.error("Product publication job failed", {
-          jobId: job.id,
-          workspaceId: job.workspaceId,
-          productId: job.productId,
-          channel: job.channel,
-          reason,
-        });
+        logger.error(
+          {
+            jobId: job.id,
+            workspaceId: job.workspaceId,
+            productId: job.productId,
+            channel: job.channel,
+            reason,
+          },
+          "Product publication job failed",
+        );
       }
     }
   } finally {

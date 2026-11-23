@@ -37,6 +37,7 @@ import {
 } from "./whatsapp-media-storage";
 import { requeueWhatsAppProductMessage } from "./whatsapp-product-extraction";
 import { asRecord } from "./value-utils.ts";
+import { logger } from "./logger.ts";
 
 const MEDIA_ROOT = resolveWhatsAppMediaStorageRoot();
 const MAX_DOWNLOAD_ATTEMPTS = 5;
@@ -409,16 +410,19 @@ async function storeMedia(
       .returning({ id: menaWhatsAppMessageMedia.id });
     if (!stored) throw new Error("MEDIA_STORAGE_CONFLICT_WORKSPACE_MISMATCH");
     await requeueWhatsAppProductMessage(message.workspaceId, message.id);
-    console.info("WhatsApp media stored", {
-      messageId: message.id,
-      mediaIndex,
-      bytes: downloadedBytes,
-      provider,
-      downloadMs,
-      uploadMs,
-      localWriteMs,
-      totalMs: Math.round(performance.now() - startedAt),
-    });
+    logger.info(
+      {
+        messageId: message.id,
+        mediaIndex,
+        bytes: downloadedBytes,
+        provider,
+        downloadMs,
+        uploadMs,
+        localWriteMs,
+        totalMs: Math.round(performance.now() - startedAt),
+      },
+      "WhatsApp media stored",
+    );
     return "stored";
   } catch (error) {
     const errorCode = mediaErrorCode(error);
@@ -435,19 +439,22 @@ async function storeMedia(
         updatedAt: new Date(),
       })
       .where(identity);
-    console.error("WhatsApp media download attempt failed", {
-      messageId: message.id,
-      mediaIndex,
-      attempt: attempt.downloadAttempts,
-      retryAt: retryAt?.toISOString() ?? null,
-      reason: errorCode,
-      bytes: downloadedBytes,
-      provider: storageProvider,
-      downloadMs,
-      uploadMs,
-      localWriteMs,
-      totalMs: Math.round(performance.now() - startedAt),
-    });
+    logger.error(
+      {
+        messageId: message.id,
+        mediaIndex,
+        attempt: attempt.downloadAttempts,
+        retryAt: retryAt?.toISOString() ?? null,
+        reason: errorCode,
+        bytes: downloadedBytes,
+        provider: storageProvider,
+        downloadMs,
+        uploadMs,
+        localWriteMs,
+        totalMs: Math.round(performance.now() - startedAt),
+      },
+      "WhatsApp media download attempt failed",
+    );
     return retry ? "pending" : "failed";
   }
 }
@@ -579,10 +586,13 @@ export async function retryWhatsAppMediaDownload(message: WhatsAppMessage): Prom
     const entry = asRecord(value);
     if (!entry) {
       outcomes.push("failed");
-      console.error("WhatsApp media source entry is invalid", {
-        messageId: message.id,
-        reason: "MEDIA_SOURCE_INVALID",
-      });
+      logger.error(
+        {
+          messageId: message.id,
+          reason: "MEDIA_SOURCE_INVALID",
+        },
+        "WhatsApp media source entry is invalid",
+      );
       continue;
     }
     outcomes.push(await storeMedia(persistedMessage, entry));
@@ -651,10 +661,13 @@ export async function processWhatsAppMediaDownloadQueue(): Promise<number> {
         try {
           return await retryWhatsAppMediaDownload(message);
         } catch (error) {
-          console.error("WhatsApp media queue item failed", {
-            messageId: message.id,
-            reason: mediaErrorCode(error),
-          });
+          logger.error(
+            {
+              messageId: message.id,
+              reason: mediaErrorCode(error),
+            },
+            "WhatsApp media queue item failed",
+          );
           return false;
         }
       }));
@@ -662,11 +675,14 @@ export async function processWhatsAppMediaDownloadQueue(): Promise<number> {
     }
 
     if (messages.length > 0) {
-      console.info("WhatsApp media queue batch completed", {
-        selected: messages.length,
-        completed,
-        totalMs: Math.round(performance.now() - startedAt),
-      });
+      logger.info(
+        {
+          selected: messages.length,
+          completed,
+          totalMs: Math.round(performance.now() - startedAt),
+        },
+        "WhatsApp media queue batch completed",
+      );
     }
     return completed;
   } finally {
@@ -719,11 +735,14 @@ export async function processWhatsAppMediaThumbnailQueue(): Promise<number> {
           ));
         completed += 1;
       } catch (error) {
-        console.error("WhatsApp thumbnail job failed", {
-          mediaId: media.id,
-          workspaceId: media.workspaceId,
-          error: mediaErrorCode(error),
-        });
+        logger.error(
+          {
+            mediaId: media.id,
+            workspaceId: media.workspaceId,
+            error: mediaErrorCode(error),
+          },
+          "WhatsApp thumbnail job failed",
+        );
         await db
           .update(menaWhatsAppMessageMedia)
           .set({ thumbnailPath: "failed", updatedAt: new Date() })

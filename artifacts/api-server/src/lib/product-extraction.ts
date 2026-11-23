@@ -5,6 +5,7 @@ import {
   asRecord as record,
   boundedString as extractedString,
 } from "./value-utils.ts";
+import { logger } from "./logger.ts";
 
 export type ProductExtractionSource = {
   id: string;
@@ -574,12 +575,15 @@ export async function extractWhatsAppProductCandidates(
         : Boolean(process.env.GEMINI_API_KEY);
     if (!alternateConfigured) throw error;
 
-    console.warn("Product extraction response was invalid; retrying with alternate provider", {
-      provider: result.provider,
-      model: result.model,
-      reason: error.message,
-      sourceCount: sources.length,
-    });
+    logger.warn(
+      {
+        provider: result.provider,
+        model: result.model,
+        reason: error.message,
+        sourceCount: sources.length,
+      },
+      "Product extraction response was invalid; retrying with alternate provider",
+    );
     const fallbackResult = await callMeteredAiProvider(workspaceId, {
       ...providerOptions,
       preferredProvider: alternateProvider,

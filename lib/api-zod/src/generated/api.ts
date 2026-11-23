@@ -585,3 +585,59 @@ export const DeletePostResponse = zod.object({
 })
 
 
+/**
+ * Records an Expo push token for the signed-in user. Idempotent by design: the client re-registers on every cold start, so an existing token refreshes its last-seen timestamp instead of creating a second row. At most ten devices are kept per user and the least recently seen is evicted, because every alert fans out to all of a recipient's tokens.
+ * @summary Register this device for push notifications
+ */
+export const registerPushTokenBodyTokenMin = 20;
+export const registerPushTokenBodyTokenMax = 200;
+
+export const registerPushTokenBodyDeviceIdMax = 200;
+
+
+
+export const RegisterPushTokenBody = zod.object({
+  "token": zod.string().min(registerPushTokenBodyTokenMin).max(registerPushTokenBodyTokenMax).describe('Expo push token. The prefix is deliberately not pattern-matched, so a future Expo token format keeps working without a spec change.'),
+  "platform": zod.enum(['ios', 'android', 'web']),
+  "deviceId": zod.string().max(registerPushTokenBodyDeviceIdMax).nullish().describe('Expo installation id when the client can supply it')
+})
+
+export const RegisterPushTokenResponse = zod.object({
+  "registered": zod.boolean(),
+  "token": zod.string()
+})
+
+
+/**
+ * Called on sign-out. A user can only remove their own tokens; removing somebody else's is refused by scoping the delete to the caller.
+ * @summary Remove a push token belonging to the signed-in user
+ */
+export const unregisterPushTokenQueryTokenMin = 20;
+export const unregisterPushTokenQueryTokenMax = 200;
+
+
+
+export const UnregisterPushTokenQueryParams = zod.object({
+  "token": zod.coerce.string().min(unregisterPushTokenQueryTokenMin).max(unregisterPushTokenQueryTokenMax).describe('The token string to remove')
+})
+
+export const UnregisterPushTokenResponse = zod.object({
+  "removed": zod.boolean()
+})
+
+
+/**
+ * @summary List the devices registered to the signed-in user
+ */
+export const ListPushTokensResponse = zod.object({
+  "tokens": zod.array(zod.object({
+  "id": zod.string(),
+  "token": zod.string(),
+  "platform": zod.enum(['ios', 'android', 'web']),
+  "deviceId": zod.string().nullish(),
+  "enabled": zod.boolean().describe('False once Expo reports DeviceNotRegistered, meaning the app was uninstalled or notifications were turned off for it.'),
+  "lastSeenAt": zod.coerce.date()
+}))
+})
+
+

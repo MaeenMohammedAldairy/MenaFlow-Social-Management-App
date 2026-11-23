@@ -39,6 +39,7 @@ import {
   type WhatsAppContentAssociationDecision,
 } from "../lib/whatsapp-content-associations";
 import { isConfirmedWhatsAppMediaGroupSource } from "../lib/whatsapp-album-relations";
+import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 
@@ -850,7 +851,7 @@ router.get(
         messages,
       });
     } catch (error) {
-      console.error("Error fetching WhatsApp group messages:", error);
+      logger.error({ error }, "Error fetching WhatsApp group messages");
       res.status(500).json({ error: "تعذّر جلب رسائل المجموعة." });
     }
   },
@@ -892,7 +893,7 @@ router.get(
         ),
       });
     } catch (error) {
-      console.error("Error refreshing signed WhatsApp media URL:", error);
+      logger.error({ error }, "Error refreshing signed WhatsApp media URL");
       res.status(500).json({ error: "تعذّر تحديث رابط الوسائط." });
     }
   },
@@ -931,7 +932,7 @@ router.get("/social/whatsapp/public-media/:mediaId", async (req, res) => {
     res.setHeader("Cache-Control", "private, max-age=300");
     await sendMediaResponse(res, file);
   } catch (error) {
-    console.error("Error serving signed WhatsApp media:", error);
+    logger.error({ error }, "Error serving signed WhatsApp media");
     if (res.headersSent) {
       res.destroy(error instanceof Error ? error : undefined);
       return;
@@ -965,7 +966,7 @@ router.get(
       const file = await mediaResponse(media, "original");
       await sendMediaResponse(res, file);
     } catch (error) {
-      console.error("Error serving WhatsApp media:", error);
+      logger.error({ error }, "Error serving WhatsApp media");
       if (res.headersSent) {
         res.destroy(error instanceof Error ? error : undefined);
         return;

@@ -36,6 +36,7 @@ import {
 import { findWhatsAppAssociationSuggestions } from "./whatsapp-association-suggestions.ts";
 import type { ProductAvailability } from "./product-validation.ts";
 import { normalizedProductName } from "./product-utils.ts";
+import { logger } from "./logger.ts";
 
 function extractionProductInput(candidate: ProductExtractionCandidate) {
   const hasVerifiedPricePair = Boolean(
@@ -602,14 +603,18 @@ async function processProductExtractionJob(
   });
 
   await updateJob(job, { status: "complete", stage: "persistence", lastError: null });
-  console.info("WhatsApp product extraction completed", {
-    workspaceId: job.workspaceId,
-    messageId: job.messageId,
-    sourceMessageCount: sourceMessageIds.length,
-    completeCandidateCount: extraction.candidates.filter((candidate) =>
-      candidate.classification === "product" && candidate.complete,
-    ).length,
-  });
+  logger.info(
+    {
+      workspaceId: job.workspaceId,
+      messageId: job.messageId,
+      sourceMessageCount: sourceMessageIds.length,
+      completeCandidateCount: extraction.candidates.filter(
+        (candidate) =>
+          candidate.classification === "product" && candidate.complete,
+      ).length,
+    },
+    "WhatsApp product extraction completed",
+  );
 }
 
 let productQueueRunning = false;
@@ -671,13 +676,16 @@ export async function processWhatsAppProductExtractionQueue(): Promise<void> {
           lastError: reason,
           nextRunAt: new Date(Date.now() + (retry ? delayMs : 0)),
         });
-        console.error("WhatsApp product extraction job failed", {
-          workspaceId: job.workspaceId,
-          messageId: job.messageId,
-          attempt: job.attempts,
-          retry,
-          reason,
-        });
+        logger.error(
+          {
+            workspaceId: job.workspaceId,
+            messageId: job.messageId,
+            attempt: job.attempts,
+            retry,
+            reason,
+          },
+          "WhatsApp product extraction job failed",
+        );
       }
     }
   } finally {

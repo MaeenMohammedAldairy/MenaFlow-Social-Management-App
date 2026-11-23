@@ -35,6 +35,7 @@ import {
   postReadinessIssueForRow,
   responseForRow,
 } from "./posts-domain";
+import { logger } from "../lib/logger.ts";
 
 router.post("/posts", requireWorkspace, async (req, res) => {
   const ownerId = requestOwnerId(req);
@@ -170,7 +171,7 @@ router.post("/posts", requireWorkspace, async (req, res) => {
       );
   } catch (error) {
     if (sendPostQuotaError(res, error)) return;
-    console.error("Error creating post:", error);
+    logger.error({ error }, "Error creating post");
     res.status(500).json({ error: "تعذر حفظ المنشور في الخادم." });
   }
 });
@@ -417,7 +418,7 @@ router.patch("/posts/:id", requireWorkspace, async (req, res) => {
       ),
     );
   } catch (error) {
-    console.error("Error updating post:", error);
+    logger.error({ error }, "Error updating post");
     res.status(500).json({ error: "تعذر تحديث المنشور." });
   }
 });

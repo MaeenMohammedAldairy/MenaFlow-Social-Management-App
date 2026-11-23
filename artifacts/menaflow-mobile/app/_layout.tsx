@@ -59,6 +59,12 @@ import { Platform, I18nManager } from "react-native";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { applyAppearanceMode, readAppearanceMode } from "@/lib/appearance";
 import { signOutAndClearQueryCache } from "@/lib/sign-out";
+import {
+  installAlertNavigation,
+  installForegroundAlertBehaviour,
+  registerDeviceForPush,
+  unregisterDeviceForPush,
+} from "@/lib/push-notifications";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { useColors } from "@/hooks/useColors";
 import { WebFocusRing } from "@/components/WebFocusRing";
@@ -428,6 +434,34 @@ function AuthenticatedAppNavigator() {
     return () => setWorkspaceIdGetter(null);
   }, []);
 
+  // Alerts must display and navigate even while the app is already open, and a
+  // tap that cold-starts it is read from the stored last response, so both are
+  // installed once for the whole app rather than per screen.
+  useEffect(() => {
+    installForegroundAlertBehaviour();
+    return installAlertNavigation();
+  }, []);
+
+  // Registers this device once per sign-in. Deliberately best-effort:
+  // `registerDeviceForPush` never throws, because push is an enhancement and a
+  // device that cannot receive notifications must still sign in normally.
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    void registerDeviceForPush().then((outcome) => {
+      if (cancelled) return;
+      if (outcome.status === "registered") {
+        console.log("Push notifications registered for this device");
+      } else if (outcome.status === "failed") {
+        // Offline at launch is the common cause; the next cold start retries.
+        console.error("Push registration failed:", outcome.reason);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
   useEffect(() => {
     apiErrorListener = setApiErrorNotice;
     return () => {
@@ -437,7 +471,7 @@ function AuthenticatedAppNavigator() {
 
   const reauthenticate = async () => {
     try {
-      await signOutAndClearQueryCache(queryClient, signOut);
+      await signOutAndClearQueryCache(queryClient, signOut, unregisterDeviceForPush);
       router.replace("/(auth)/sign-in");
     } catch (error) {
       console.error("Unable to end the rejected session:", error);
