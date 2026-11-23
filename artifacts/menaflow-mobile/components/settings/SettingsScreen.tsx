@@ -21,6 +21,7 @@ import { useClerk, useUser } from "@clerk/expo";
 import { useQueryClient } from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { signOutAndClearQueryCache } from "@/lib/sign-out";
+import { unregisterDeviceForPush } from "@/lib/push-notifications";
 import {
   getGetSubscriptionQueryKey,
   fetchApiResponse,
@@ -184,7 +185,7 @@ function AuthenticatedSettingsScreen() {
       userName={user?.fullName || profileDisplayName || "الملف الشخصي"}
       userEmail={user?.primaryEmailAddress?.emailAddress || "حساب مالك النشاط"}
       onSignOut={async () => {
-        await signOutAndClearQueryCache(queryClient, signOut);
+        await signOutAndClearQueryCache(queryClient, signOut, unregisterDeviceForPush);
         router.replace("/(auth)/sign-in");
       }}
     />

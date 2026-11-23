@@ -39,6 +39,14 @@
       ],
       "expo-secure-store",
       "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#087F68",
+          "defaultChannel": "menaflow-alerts"
+        }
+      ],
       "./plugins/with-preview-api-network-security"
     ],
     "experiments": {
