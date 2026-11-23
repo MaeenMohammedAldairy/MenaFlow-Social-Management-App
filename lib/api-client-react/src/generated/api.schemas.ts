@@ -122,13 +122,21 @@ export type WorkspaceDeletionRequestStatus = typeof WorkspaceDeletionRequestStat
 
 export const WorkspaceDeletionRequestStatus = {
   pending: 'pending',
+  completed: 'completed',
+  failed: 'failed',
 } as const;
 
 export interface WorkspaceDeletionRequest {
   id: string;
   status: WorkspaceDeletionRequestStatus;
   requestedAt: string;
+  completedAt?: string | null;
 }
+
+export interface WorkspaceExport {
+  exportedAt: string;
+  [key: string]: unknown;
+ }
 
 export interface WorkspaceDeletionRequestResponse {
   request: WorkspaceDeletionRequest | null;

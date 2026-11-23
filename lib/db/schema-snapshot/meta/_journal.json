@@ -29,6 +29,13 @@
       "when": 1795457941328,
       "tag": "0003_post_scheduling",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795459604646,
+      "tag": "0004_workspace_deletion_worker",
+      "breakpoints": true
     }
   ]
 }

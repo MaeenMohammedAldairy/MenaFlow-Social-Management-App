@@ -92,7 +92,15 @@ export const workspaceDeletionRequests = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: "restrict" }),
     requestedBy: text("requested_by").notNull(),
+    /**
+     * pending → (30-day grace, worker) → completed → row deleted with the
+     * workspace; 'failed' keeps the row with the reason after the retry
+     * budget is exhausted.
+     */
     status: text("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    lastError: text("last_error"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
     requestedAt: timestamp("requested_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -101,9 +109,13 @@ export const workspaceDeletionRequests = pgTable(
     uniqueIndex("mena_workspace_deletion_requests_workspace_key").on(
       table.workspaceId,
     ),
+    index("mena_workspace_deletion_requests_due_idx").on(
+      table.status,
+      table.requestedAt,
+    ),
     check(
       "mena_workspace_deletion_requests_status_check",
-      sql`${table.status} = 'pending'`,
+      sql`${table.status} IN ('pending', 'completed', 'failed')`,
     ),
   ],
 );

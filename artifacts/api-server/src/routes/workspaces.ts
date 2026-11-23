@@ -9,6 +9,7 @@ import {
 } from "@workspace/db";
 import { UpdateWorkspaceCurrentBody } from "@workspace/api-zod";
 import { isValidTimezone } from "../lib/scheduling";
+import { buildWorkspaceExport } from "../lib/workspace-export";
 import { requestOwnerId } from "../lib/owner-access";
 import {
   requireWorkspace,
@@ -129,6 +130,31 @@ router.patch(
 );
 
 router.get(
+  "/workspaces/current/export",
+  requireWorkspace,
+  async (req, res, next) => {
+    const context = requireWorkspaceOwner(req, res);
+    if (!context) return;
+
+    try {
+      const payload = await buildWorkspaceExport(context.workspaceId);
+      if (!payload) {
+        res.status(404).json({ error: "مساحة العمل غير موجودة." });
+        return;
+      }
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="menaflow-export-${context.workspaceId}.json"`,
+      );
+      res.json(payload);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+router.get(
   "/workspaces/current/deletion-request",
   requireWorkspace,
   async (req, res, next) => {
@@ -141,6 +167,7 @@ router.get(
           id: workspaceDeletionRequests.id,
           status: workspaceDeletionRequests.status,
           requestedAt: workspaceDeletionRequests.requestedAt,
+          completedAt: workspaceDeletionRequests.completedAt,
         })
         .from(workspaceDeletionRequests)
         .where(eq(workspaceDeletionRequests.workspaceId, context.workspaceId))
@@ -174,6 +201,7 @@ router.post(
           id: workspaceDeletionRequests.id,
           status: workspaceDeletionRequests.status,
           requestedAt: workspaceDeletionRequests.requestedAt,
+          completedAt: workspaceDeletionRequests.completedAt,
         });
       if (created) {
         res.status(201).json({ request: created });
@@ -185,6 +213,7 @@ router.post(
           id: workspaceDeletionRequests.id,
           status: workspaceDeletionRequests.status,
           requestedAt: workspaceDeletionRequests.requestedAt,
+          completedAt: workspaceDeletionRequests.completedAt,
         })
         .from(workspaceDeletionRequests)
         .where(eq(workspaceDeletionRequests.workspaceId, context.workspaceId))

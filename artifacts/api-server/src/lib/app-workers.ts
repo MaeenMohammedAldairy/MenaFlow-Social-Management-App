@@ -18,6 +18,7 @@ import { processMetaOrderConfirmationsQueue } from "./meta-order-confirmation-qu
 import { markStaleWhatsAppAutoRepliesUnknown } from "./whatsapp-auto-reply-recovery";
 import { purgeExpiredWhatsAppDirectMessages } from "./whatsapp-direct-message-retention";
 import { processScheduledPostsQueue } from "./scheduled-posts";
+import { processWorkspaceDeletionQueue } from "./workspace-deletion";
 import {
   isPushDeliveryConfigured,
   processPushNotificationQueue,
@@ -26,6 +27,7 @@ import {
 
 type WorkerName =
   | "scheduled-posts"
+  | "workspace-deletion"
   | "auto-reply-recovery"
   | "meta-auto-replies"
   | "meta-order-confirmations"
@@ -65,6 +67,17 @@ const workers: WorkerDefinition[] = [
     run: processScheduledPostsQueue,
     disabledMessage: "Scheduled posts worker disabled",
     errorMessage: "Scheduled posts queue poll failed",
+  },
+  {
+    // Requests past the 30-day grace period are erased (§3.4). Hourly polling
+    // is plenty for a grace measured in weeks, and keeps a merchant's data
+    // recoverable by support for the whole grace window.
+    name: "workspace-deletion",
+    intervalMs: 60 * 60 * 1000,
+    enabled: () => process.env.WORKSPACE_DELETION_WORKER_ENABLED !== "false",
+    run: processWorkspaceDeletionQueue,
+    disabledMessage: "Workspace deletion worker disabled",
+    errorMessage: "Workspace deletion queue poll failed",
   },
   {
     name: "auto-reply-recovery",

@@ -11,4 +11,5 @@ export interface WorkspaceDeletionRequest {
   id: string;
   status: WorkspaceDeletionRequestStatus;
   requestedAt: Date;
+  completedAt?: Date | null;
 }

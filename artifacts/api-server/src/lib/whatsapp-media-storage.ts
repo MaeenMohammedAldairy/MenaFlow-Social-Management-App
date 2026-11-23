@@ -1,3 +1,4 @@
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import sharp from "sharp";
@@ -161,4 +162,64 @@ export async function createMediaJpeg(buffer: Buffer): Promise<Buffer> {
 export function thumbnailObjectPath(objectPath: string): string {
   const extension = path.posix.extname(objectPath);
   return `${objectPath.slice(0, -extension.length)}.thumb.webp`;
+}
+
+/**
+ * Bulk-deletes every stored object under the given prefixes (workspace
+ * teardown, §3.4). Mirrors `storeMediaObject`'s provider selection: Supabase
+ * Storage's bulk delete endpoint when configured, the local disk root
+ * otherwise (development).
+ *
+ * Prefixes are validated hard — an empty or root prefix would erase the whole
+ * bucket, and traversal segments would escape the local root. A missing local
+ * directory is not an error (idempotent teardown); a failing Supabase call is
+ * (the deletion worker retries rather than dropping rows while media lives).
+ */
+export async function deleteMediaObjectsByPrefixes(
+  prefixes: string[],
+): Promise<"supabase" | "local"> {
+  // Trailing slashes are normalized away: both providers treat a prefix as a
+  // folder path, and an empty trailing segment would fail validation.
+  const cleaned = prefixes
+    .map((prefix) => prefix.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  if (cleaned.length === 0) throw new Error("EMPTY_MEDIA_DELETE_PREFIXES");
+  for (const prefix of cleaned) {
+    if (
+      prefix.startsWith("/") ||
+      prefix.split("/").some((segment) => segment === "" || segment === "." || segment === "..")
+    ) {
+      throw new Error("INVALID_MEDIA_DELETE_PREFIX");
+    }
+  }
+
+  const config = storageConfig();
+  if (!config) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("SUPABASE_STORAGE_CONFIGURATION_REQUIRED");
+    }
+    const root = resolveWhatsAppMediaStorageRoot();
+    for (const prefix of cleaned) {
+      const resolved = path.resolve(root, prefix);
+      if (resolved !== root && !resolved.startsWith(`${root}${path.sep}`)) {
+        throw new Error("INVALID_MEDIA_DELETE_PREFIX");
+      }
+      await rm(resolved, { recursive: true, force: true });
+    }
+    return "local";
+  }
+
+  const response = await fetch(
+    `${config.baseUrl}/storage/v1/object/${encodeURIComponent(config.bucket)}`,
+    {
+      method: "POST",
+      headers: storageHeaders(config, "application/json"),
+      body: JSON.stringify({ prefixes: cleaned }),
+      signal: AbortSignal.timeout(120_000),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`SUPABASE_STORAGE_DELETE_HTTP_${response.status}`);
+  }
+  return "supabase";
 }

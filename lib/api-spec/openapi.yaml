@@ -201,7 +201,7 @@ paths:
       tags: [auth]
       security:
         - bearerAuth: []
-      summary: Record an owner deletion request without deleting workspace data
+      summary: Record an owner deletion request; the worker erases the workspace after a 30-day grace period
       responses:
         "201":
           description: Request recorded
@@ -215,6 +215,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkspaceDeletionRequestCreatedResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Owner role required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /workspaces/current/export:
+    get:
+      operationId: exportWorkspaceData
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: Export the current workspace's merchant data as a JSON download
+      description: >-
+        Owner-only. Produces a single JSON document with the workspace profile,
+        members, posts, products, orders, inbox conversations and subscription
+        state. Secrets (Meta/WhatsApp tokens) are never included — connections
+        appear as masked metadata only.
+      responses:
+        "200":
+          description: The workspace export document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceExport"
         "401":
           description: Authentication required
           content:
@@ -1239,11 +1270,25 @@ components:
           type: string
         status:
           type: string
-          enum: [pending]
+          enum: [pending, completed, failed]
         requestedAt:
           type: string
           format: date-time
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
       required: [id, status, requestedAt]
+    # Deliberately loose: the export document grows sections over time and
+    # clients treat it as a downloadable artifact, not a typed contract.
+    WorkspaceExport:
+      type: object
+      additionalProperties: true
+      properties:
+        exportedAt:
+          type: string
+          format: date-time
+      required: [exportedAt]
     WorkspaceDeletionRequestResponse:
       type: object
       properties:

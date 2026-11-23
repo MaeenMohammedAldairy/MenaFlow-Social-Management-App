@@ -109,21 +109,32 @@ export const UpdateWorkspaceCurrentResponse = zod.object({
 export const GetWorkspaceDeletionRequestResponse = zod.object({
   "request": zod.union([zod.object({
   "id": zod.string(),
-  "status": zod.enum(['pending']),
-  "requestedAt": zod.coerce.date()
+  "status": zod.enum(['pending', 'completed', 'failed']),
+  "requestedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullish()
 }),zod.null()])
 })
 
 
 /**
- * @summary Record an owner deletion request without deleting workspace data
+ * @summary Record an owner deletion request; the worker erases the workspace after a 30-day grace period
  */
 export const CreateWorkspaceDeletionRequestResponse = zod.object({
   "request": zod.object({
   "id": zod.string(),
-  "status": zod.enum(['pending']),
-  "requestedAt": zod.coerce.date()
+  "status": zod.enum(['pending', 'completed', 'failed']),
+  "requestedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullish()
 })
+})
+
+
+/**
+ * Owner-only. Produces a single JSON document with the workspace profile, members, posts, products, orders, inbox conversations and subscription state. Secrets (Meta/WhatsApp tokens) are never included — connections appear as masked metadata only.
+ * @summary Export the current workspace's merchant data as a JSON download
+ */
+export const ExportWorkspaceDataResponse = zod.object({
+  "exportedAt": zod.coerce.date()
 })
 
 

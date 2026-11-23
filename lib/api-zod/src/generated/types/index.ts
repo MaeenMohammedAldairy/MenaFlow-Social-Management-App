@@ -92,6 +92,7 @@ export * from './workspaceDeletionRequest';
 export * from './workspaceDeletionRequestCreatedResponse';
 export * from './workspaceDeletionRequestResponse';
 export * from './workspaceDeletionRequestStatus';
+export * from './workspaceExport';
 export * from './workspaceListResponse';
 export * from './workspaceSummary';
 export * from './workspaceUpdateInput';
