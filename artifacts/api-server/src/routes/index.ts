@@ -24,6 +24,7 @@ import subscriptionsRouter from "./subscriptions";
 import ordersRouter from "./orders";
 import ownerRouter from "./owner";
 import plansRouter from "./plans";
+import pushNotificationsRouter from "./push-notifications";
 
 const router: IRouter = Router();
 
@@ -53,5 +54,6 @@ router.use(workspacesRouter);
 router.use(onboardingRouter);
 router.use(subscriptionsRouter);
 router.use(ordersRouter);
+router.use(pushNotificationsRouter);
 
 export default router;

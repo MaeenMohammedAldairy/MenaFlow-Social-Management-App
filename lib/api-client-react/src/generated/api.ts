@@ -42,9 +42,14 @@ import type {
   PostDeleteResult,
   PostItem,
   PostReportSummary,
+  PushTokenInput,
+  PushTokenListResponse,
+  PushTokenRegisteredResponse,
+  PushTokenRemovedResponse,
   SocialConnectionsResponse,
   SubscriptionOverview,
   TestWhatsAppAutoReply200,
+  UnregisterPushTokenParams,
   UpdatePostInput,
   WhatsAppAutoReplySettings,
   WhatsAppAutoReplySettingsResponse,
@@ -2530,4 +2535,252 @@ export const useDeletePost = <TError = ErrorType<ApiError>,
       > => {
       return useMutation(getDeletePostMutationOptions(options));
     }
+
+export const getRegisterPushTokenUrl = () => {
+
+
+
+
+  return `/api/notifications/push-token`
+}
+
+/**
+ * Records an Expo push token for the signed-in user. Idempotent by design: the client re-registers on every cold start, so an existing token refreshes its last-seen timestamp instead of creating a second row. At most ten devices are kept per user and the least recently seen is evicted, because every alert fans out to all of a recipient's tokens.
+ * @summary Register this device for push notifications
+ */
+export const registerPushToken = async (pushTokenInput: PushTokenInput, options?: Parameters<typeof customFetch>[1]): Promise<PushTokenRegisteredResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PushTokenRegisteredResponse>(getRegisterPushTokenUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(pushTokenInput)
+  }
+);}
+
+
+
+
+
+export const getRegisterPushTokenMutationKey = () => ['registerPushToken'] as const;
+
+export const getRegisterPushTokenMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerPushToken>>, TError,RegisterPushTokenMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof registerPushToken>>, TError,RegisterPushTokenMutationVariables, TContext> => {
+
+const mutationKey = getRegisterPushTokenMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof registerPushToken>>, RegisterPushTokenMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  registerPushToken(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegisterPushTokenMutationResult = NonNullable<Awaited<ReturnType<typeof registerPushToken>>>
+    export type RegisterPushTokenMutationBody = BodyType<PushTokenInput>
+    export type RegisterPushTokenMutationError = ErrorType<ApiError>
+    export type RegisterPushTokenMutationVariables = {data: BodyType<PushTokenInput>}
+
+    /**
+ * @summary Register this device for push notifications
+ */
+export const useRegisterPushToken = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerPushToken>>, TError,RegisterPushTokenMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof registerPushToken>>,
+        TError,
+        RegisterPushTokenMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRegisterPushTokenMutationOptions(options));
+    }
+
+export const getUnregisterPushTokenUrl = (params: UnregisterPushTokenParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/notifications/push-token?${stringifiedParams}` : `/api/notifications/push-token`
+}
+
+/**
+ * Called on sign-out. A user can only remove their own tokens; removing somebody else's is refused by scoping the delete to the caller.
+ * @summary Remove a push token belonging to the signed-in user
+ */
+export const unregisterPushToken = async (params: UnregisterPushTokenParams, options?: Parameters<typeof customFetch>[1]): Promise<PushTokenRemovedResponse> => {
+
+  return customFetch<PushTokenRemovedResponse>(getUnregisterPushTokenUrl(params),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getUnregisterPushTokenMutationKey = () => ['unregisterPushToken'] as const;
+
+export const getUnregisterPushTokenMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unregisterPushToken>>, TError,UnregisterPushTokenMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unregisterPushToken>>, TError,UnregisterPushTokenMutationVariables, TContext> => {
+
+const mutationKey = getUnregisterPushTokenMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unregisterPushToken>>, UnregisterPushTokenMutationVariables> = (props) => {
+          const {params} = props ?? {};
+
+          return  unregisterPushToken(params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnregisterPushTokenMutationResult = NonNullable<Awaited<ReturnType<typeof unregisterPushToken>>>
+
+    export type UnregisterPushTokenMutationError = ErrorType<ApiError>
+    export type UnregisterPushTokenMutationVariables = {params: UnregisterPushTokenParams}
+
+    /**
+ * @summary Remove a push token belonging to the signed-in user
+ */
+export const useUnregisterPushToken = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unregisterPushToken>>, TError,UnregisterPushTokenMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unregisterPushToken>>,
+        TError,
+        UnregisterPushTokenMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUnregisterPushTokenMutationOptions(options));
+    }
+
+export const getListPushTokensUrl = () => {
+
+
+
+
+  return `/api/notifications/push-tokens`
+}
+
+/**
+ * @summary List the devices registered to the signed-in user
+ */
+export const listPushTokens = async ( options?: Parameters<typeof customFetch>[1]): Promise<PushTokenListResponse> => {
+
+  return customFetch<PushTokenListResponse>(getListPushTokensUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPushTokensQueryKey = () => {
+    return [
+    `/api/notifications/push-tokens`
+    ] as const;
+    }
+
+
+export const getListPushTokensQueryOptions = <TData = Awaited<ReturnType<typeof listPushTokens>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPushTokens>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPushTokensQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPushTokens>>> = ({ signal }) => listPushTokens({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPushTokens>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPushTokensQueryResult = NonNullable<Awaited<ReturnType<typeof listPushTokens>>>
+export type ListPushTokensQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary List the devices registered to the signed-in user
+ */
+
+export function useListPushTokens<TData = Awaited<ReturnType<typeof listPushTokens>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPushTokens>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPushTokensQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 

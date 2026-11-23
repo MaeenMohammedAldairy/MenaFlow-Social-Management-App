@@ -559,6 +559,64 @@ export interface WhatsAppDisconnectResult {
   evolutionInstanceDeleted?: boolean;
 }
 
+export type PushTokenInputPlatform = typeof PushTokenInputPlatform[keyof typeof PushTokenInputPlatform];
+
+
+export const PushTokenInputPlatform = {
+  ios: 'ios',
+  android: 'android',
+  web: 'web',
+} as const;
+
+export interface PushTokenInput {
+  /**
+     * Expo push token. The prefix is deliberately not pattern-matched, so a future Expo token format keeps working without a spec change.
+     * @minLength 20
+     * @maxLength 200
+     */
+  token: string;
+  platform: PushTokenInputPlatform;
+  /**
+     * Expo installation id when the client can supply it
+     * @maxLength 200
+     * @nullable
+     */
+  deviceId?: string | null;
+}
+
+export interface PushTokenRegisteredResponse {
+  registered: boolean;
+  token: string;
+}
+
+export type PushTokenSummaryPlatform = typeof PushTokenSummaryPlatform[keyof typeof PushTokenSummaryPlatform];
+
+
+export const PushTokenSummaryPlatform = {
+  ios: 'ios',
+  android: 'android',
+  web: 'web',
+} as const;
+
+export interface PushTokenSummary {
+  id: string;
+  token: string;
+  platform: PushTokenSummaryPlatform;
+  /** @nullable */
+  deviceId?: string | null;
+  /** False once Expo reports DeviceNotRegistered, meaning the app was uninstalled or notifications were turned off for it. */
+  enabled: boolean;
+  lastSeenAt: string;
+}
+
+export interface PushTokenListResponse {
+  tokens: PushTokenSummary[];
+}
+
+export interface PushTokenRemovedResponse {
+  removed: boolean;
+}
+
 export type DeleteMetaConnectionParams = {
 /**
  * Defaults to facebook for compatibility; disconnecting Facebook also removes its linked Instagram account.
@@ -618,5 +676,14 @@ export const GetPostReportSummaryRange = {
 
 export type GetKnownPostIds200 = {
   ids: string[];
+};
+
+export type UnregisterPushTokenParams = {
+/**
+ * The token string to remove
+ * @minLength 20
+ * @maxLength 200
+ */
+token: string;
 };
 
