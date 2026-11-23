@@ -1,0 +1,1 @@
+ALTER TABLE "mena_workspaces" ADD COLUMN "business_type" text;

@@ -15,6 +15,13 @@
       "when": 1795394097308,
       "tag": "0001_push_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795456624716,
+      "tag": "0002_workspace_business_type",
+      "breakpoints": true
     }
   ]
 }

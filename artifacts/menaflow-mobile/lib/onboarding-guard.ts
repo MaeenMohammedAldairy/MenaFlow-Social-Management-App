@@ -12,8 +12,9 @@
  *
  * The two stages, mirroring the server's onboarding progress:
  *
- * - `completed === false`: the introductory slides have not been finished. Only
- *   `/onboarding` itself is reachable; everything else is sent back to it.
+ * - `completed === false`: the concise setup (business name/type, then the
+ *   optional channel hand-off) has not been finished. Only `/setup` itself is
+ *   reachable; everything else is sent back to it.
  * - `completed === true`, `socialAccountsCompleted === false`: the merchant still
  *   owes one connected platform. The funnel screens stay reachable, and so does
  *   the dashboard — "أكمل لاحقًا" means exactly that, and the tab layout already
@@ -29,7 +30,7 @@ export type OnboardingRouteStatus = {
   socialAccountsCompleted: boolean;
 };
 
-export type OnboardingRedirect = "/onboarding" | "/connect-accounts";
+export type OnboardingRedirect = "/setup" | "/connect-accounts";
 
 /**
  * Screens a merchant may sit on while they still owe a connected platform.
@@ -40,10 +41,13 @@ export type OnboardingRedirect = "/onboarding" | "/connect-accounts";
  * until a platform is connected. The list below holds the funnel's own screens —
  * sources, publishing accounts, channels, reply settings and the WhatsApp setup
  * sheet — plus `/connect-accounts` itself, so the funnel never redirects to
- * itself.
+ * itself, and `/setup`: the dashboard checklist's "أكمل بيانات النشاط" step must
+ * stay reachable while a platform is still owed. Note `/whatsapp-setup` also
+ * ends with "/setup", which is harmless here — it is allowed anyway.
  */
 const ALLOWED_DURING_SOCIAL_SETUP: readonly string[] = [
   "/connect-accounts",
+  "/setup",
   "/more/sources",
   "/more/accounts",
   "/more/channels",
@@ -65,7 +69,10 @@ export function onboardingRedirectTarget(
   status: OnboardingRouteStatus,
 ): OnboardingRedirect | null {
   if (!status.completed) {
-    return pathname.endsWith("/onboarding") ? null : "/onboarding";
+    // Exact match on purpose: endsWith("/setup") would also accept
+    // "/whatsapp-setup", trapping the user on a sheet they cannot complete
+    // before the concise setup itself is done.
+    return pathname === "/setup" ? null : "/setup";
   }
   if (status.socialAccountsCompleted) return null;
   return isAllowedDuringSocialSetup(pathname) ? null : "/connect-accounts";

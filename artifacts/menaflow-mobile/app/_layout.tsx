@@ -133,7 +133,11 @@ function isWorkspaceSummary(value: unknown): value is WorkspaceSummary {
   return (
     typeof workspace.id === "string" &&
     typeof workspace.name === "string" &&
-    typeof workspace.role === "string"
+    typeof workspace.role === "string" &&
+    // Optional: null/absent until the merchant completes the concise setup.
+    (workspace.businessType === undefined ||
+      workspace.businessType === null ||
+      typeof workspace.businessType === "string")
   );
 }
 
@@ -237,7 +241,7 @@ function AppNavigator({ isSignedIn }: { isSignedIn: boolean }) {
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="product-catalog" options={{ headerShown: false }} />
         <Stack.Screen name="activities" options={{ headerShown: false }} />
-        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="setup" options={{ headerShown: false }} />
         <Stack.Screen name="connect-accounts" options={{ headerShown: false }} />
         <Stack.Screen name="whatsapp-setup" options={{ headerShown: false }} />
         <Stack.Screen name="publishing-settings" options={{ headerShown: false }} />

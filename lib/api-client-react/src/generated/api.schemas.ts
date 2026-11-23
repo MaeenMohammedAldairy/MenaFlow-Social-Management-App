@@ -88,11 +88,25 @@ export interface AuthAccessResponse {
 export interface WorkspaceSummary {
   id: string;
   name: string;
+  businessType?: string | null;
   role: string;
 }
 
 export interface WorkspaceListResponse {
   workspaces: WorkspaceSummary[];
+}
+
+export interface WorkspaceUpdateInput {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name?: string;
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  businessType?: string;
 }
 
 export type WorkspaceDeletionRequestStatus = typeof WorkspaceDeletionRequestStatus[keyof typeof WorkspaceDeletionRequestStatus];

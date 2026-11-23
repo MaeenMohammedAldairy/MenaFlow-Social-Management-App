@@ -7,6 +7,7 @@ import {
   workspaceMembers,
   workspaces,
 } from "@workspace/db";
+import { UpdateWorkspaceCurrentBody } from "@workspace/api-zod";
 import { requestOwnerId } from "../lib/owner-access";
 import {
   requireWorkspace,
@@ -40,6 +41,7 @@ router.get("/workspaces", async (req, res, next) => {
       .select({
         id: workspaces.id,
         name: workspaces.name,
+        businessType: workspaces.businessType,
         role: workspaceMembers.role,
       })
       .from(workspaceMembers)
@@ -64,6 +66,58 @@ router.get("/workspaces/current", requireWorkspace, (req, res) => {
     role: context.role,
   });
 });
+
+router.patch(
+  "/workspaces/current",
+  requireWorkspace,
+  async (req, res, next) => {
+    const context = requireWorkspaceOwner(req, res);
+    if (!context) return;
+
+    const input = UpdateWorkspaceCurrentBody.safeParse(req.body);
+    if (!input.success) {
+      res.status(400).json({ error: "بيانات تحديث مساحة العمل غير صالحة." });
+      return;
+    }
+
+    const { name, businessType } = input.data;
+    if (name === undefined && businessType === undefined) {
+      res.status(400).json({ error: "لم يتم تحديد أي حقول للتحديث." });
+      return;
+    }
+
+    try {
+      const [updated] = await db
+        .update(workspaces)
+        .set({
+          ...(name !== undefined ? { name: name.trim() } : {}),
+          ...(businessType !== undefined
+            ? { businessType: businessType.trim() }
+            : {}),
+        })
+        .where(eq(workspaces.id, context.workspaceId))
+        .returning({
+          id: workspaces.id,
+          name: workspaces.name,
+          businessType: workspaces.businessType,
+        });
+
+      if (!updated) {
+        res.status(404).json({ error: "مساحة العمل غير موجودة." });
+        return;
+      }
+
+      res.json({
+        id: updated.id,
+        name: updated.name,
+        businessType: updated.businessType ?? null,
+        role: context.role,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 router.get(
   "/workspaces/current/deletion-request",

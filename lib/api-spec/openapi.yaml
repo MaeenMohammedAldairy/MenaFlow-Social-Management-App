@@ -131,6 +131,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /workspaces/current:
+    patch:
+      operationId: updateWorkspaceCurrent
+      tags: [auth]
+      security:
+        - bearerAuth: []
+      summary: Update the current workspace's business name and type
+      description: Owner-only. Backs the concise post-signup setup and the dashboard checklist edit path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceUpdateInput"
+      responses:
+        "200":
+          description: The updated workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceSummary"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not the workspace owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /workspaces/current/deletion-request:
     get:
       operationId: getWorkspaceDeletionRequest
@@ -1165,9 +1204,26 @@ components:
           type: string
         name:
           type: string
+        businessType:
+          type: string
+          nullable: true
         role:
           type: string
       required: [id, name, role]
+    # Named to avoid orval's operation-derived zod const names
+    # (updateWorkspaceCurrent => UpdateWorkspaceCurrentBody/Response); a component
+    # sharing those exact names collides with the generated consts on re-export.
+    WorkspaceUpdateInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        businessType:
+          type: string
+          minLength: 1
+          maxLength: 40
     WorkspaceDeletionRequest:
       type: object
       properties:

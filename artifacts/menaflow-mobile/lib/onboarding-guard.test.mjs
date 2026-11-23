@@ -6,10 +6,17 @@ const INTRO = { completed: false, socialAccountsCompleted: false };
 const SOCIAL_DUE = { completed: true, socialAccountsCompleted: false };
 const DONE = { completed: true, socialAccountsCompleted: true };
 
-test("before the slides are finished, only /onboarding is reachable", () => {
-  assert.equal(onboardingRedirectTarget("/onboarding", INTRO), null);
-  assert.equal(onboardingRedirectTarget("/", INTRO), "/onboarding");
-  assert.equal(onboardingRedirectTarget("/more/sources", INTRO), "/onboarding");
+test("before the concise setup is finished, only /setup is reachable", () => {
+  assert.equal(onboardingRedirectTarget("/setup", INTRO), null);
+  assert.equal(onboardingRedirectTarget("/", INTRO), "/setup");
+  assert.equal(onboardingRedirectTarget("/more/sources", INTRO), "/setup");
+});
+
+test("the intro stage matches /setup exactly, never by suffix", () => {
+  // Regression guard: endsWith("/setup") would accept "/whatsapp-setup",
+  // trapping a brand-new merchant on a sheet that presupposes a connected
+  // WhatsApp account.
+  assert.equal(onboardingRedirectTarget("/whatsapp-setup", INTRO), "/setup");
 });
 
 test("once everything is done, nothing redirects", () => {
@@ -21,6 +28,7 @@ test("once everything is done, nothing redirects", () => {
 test("the funnel screens stay reachable while a platform is still owed", () => {
   for (const pathname of [
     "/connect-accounts",
+    "/setup",
     "/more/sources",
     "/more/accounts",
     "/more/channels",

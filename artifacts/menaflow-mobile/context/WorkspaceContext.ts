@@ -3,6 +3,8 @@ import { createContext, useContext } from "react";
 export type WorkspaceSummary = {
   id: string;
   name: string;
+  /** نوع النشاط التجاري؛ null حتى يكمله التاجر من شاشة الإعداد. */
+  businessType?: string | null;
   role: string;
 };
 
