@@ -18,6 +18,11 @@ export interface WorkspaceUpdateInput {
      */
   businessType?: string;
   /**
+     * ISO 3166-1 alpha-2 country code.
+     * @pattern ^[A-Z]{2}$
+     */
+  country?: string;
+  /**
      * IANA timezone name, e.g. "Asia/Aden".
      * @minLength 1
      * @maxLength 64

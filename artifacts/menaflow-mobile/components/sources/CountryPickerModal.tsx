@@ -19,6 +19,7 @@ interface CountryPickerModalProps {
   selectedCountry: CountryCode;
   onSelectCountry: (country: CountryCode) => void;
   onClose: () => void;
+  businessCountry?: boolean;
 }
 
 export function CountryPickerModal({
@@ -26,6 +27,7 @@ export function CountryPickerModal({
   selectedCountry,
   onSelectCountry,
   onClose,
+  businessCountry = false,
 }: CountryPickerModalProps) {
   const colors = useColors();
   const [countrySearch, setCountrySearch] = useState("");
@@ -76,11 +78,11 @@ export function CountryPickerModal({
           ]}
         >
           <Text style={[styles.dialogTitle, { color: colors.foreground }]}>
-            اختر بلد رقم واتساب
+            {businessCountry ? "اختر بلد النشاط" : "اختر بلد رقم واتساب"}
           </Text>
           <CairoTextInput
             accessibilityLabel="البحث عن بلد"
-            placeholder="ابحث عن البلد أو مفتاح الدولة"
+            placeholder={businessCountry ? "ابحث عن البلد" : "ابحث عن البلد أو مفتاح الدولة"}
             placeholderTextColor={colors.mutedForeground}
             value={countrySearch}
             onChangeText={setCountrySearch}
@@ -125,14 +127,14 @@ export function CountryPickerModal({
                     },
                   ]}
                 >
-                  <Text
+                  {!businessCountry ? <Text
                     style={[
                       styles.countryCallingCode,
                       { color: colors.primary },
                     ]}
                   >
                     +{callingCode}
-                  </Text>
+                  </Text> : null}
                   <Text
                     style={[
                       styles.countryName,

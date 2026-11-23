@@ -16,10 +16,14 @@ export function getOnboardingStatusQueryKey(userId: string | null) {
 
 export function saveOnboardingProgress(
   action: OnboardingAction,
+  options?: Parameters<typeof sendOnboardingProgress>[1],
+  expectedStep?: number,
 ): Promise<OnboardingStatus> {
-  return sendOnboardingProgress({ action });
+  return sendOnboardingProgress({ action, ...(expectedStep === undefined ? {} : { expectedStep }) }, options);
 }
 
-export function markSocialAccountsSetupComplete(): Promise<OnboardingStatus> {
-  return completeSocialAccountsSetup();
+export function markSocialAccountsSetupComplete(
+  options?: Parameters<typeof completeSocialAccountsSetup>[0],
+): Promise<OnboardingStatus> {
+  return completeSocialAccountsSetup(options);
 }

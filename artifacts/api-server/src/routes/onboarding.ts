@@ -51,7 +51,7 @@ router.post(
       res.status(400).json({ error: "إجراء التقدم غير صالح." });
       return;
     }
-    const { action } = input.data;
+    const { action, expectedStep } = input.data;
 
     try {
       const workspaceId = requestWorkspaceId(req);
@@ -78,15 +78,16 @@ router.post(
             step: 3,
             completed: true,
             socialAccountsCompleted: true,
+            changed: false,
           };
         }
 
-        const next = transitionOnboardingProgress(current, action);
+        const next = transitionOnboardingProgress(current, action, expectedStep);
         if (
           next.step === current.step &&
           next.completed === current.completed
         ) {
-          return { ...current, ...next };
+          return { ...current, ...next, changed: false };
         }
 
         const [updated] = await transaction
@@ -109,7 +110,7 @@ router.post(
               workspaceOnboarding.socialAccountsCompleted,
           });
 
-        return updated ?? null;
+        return updated ? { ...updated, changed: true } : null;
       });
 
       if (!progress) {
@@ -117,6 +118,10 @@ router.post(
         return;
       }
 
+      if (progress.changed) {
+        // Aggregate funnel metrics without names, account identifiers or tokens.
+        logger.info({ event: "onboarding_progress", action, step: progress.step, completed: progress.completed }, "Onboarding progress changed");
+      }
       res.json(
         UpdateOnboardingProgressResponse.parse({
           started: !progress.completed,

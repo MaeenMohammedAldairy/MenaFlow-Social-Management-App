@@ -9,4 +9,10 @@ import type { OnboardingProgressInputAction } from './onboardingProgressInputAct
 
 export interface OnboardingProgressInput {
   action: OnboardingProgressInputAction;
+  /**
+     * Apply the action only if the current step matches, for safe retries.
+     * @minimum 0
+     * @maximum 3
+     */
+  expectedStep?: number;
 }

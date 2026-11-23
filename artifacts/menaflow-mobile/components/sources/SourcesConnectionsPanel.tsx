@@ -6,6 +6,7 @@ import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, Panel, SectionTitle, StatusPill } from "@/components/Ui";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { useColors } from "@/hooks/useColors";
+import { useAuthTheme } from "@/hooks/useAuthTheme";
 
 export type SourceKey = "instagram" | "facebook" | "whatsapp";
 
@@ -35,6 +36,7 @@ const sources: SourceDefinition[] = [
 
 interface SourcesConnectionsPanelProps {
   compactLayout: boolean;
+  onboarding?: boolean;
   sourceKeys: SourceKey[];
   /** Omitted when the page title already names what the cards below are. */
   sectionTitle?: string;
@@ -58,6 +60,7 @@ interface SourcesConnectionsPanelProps {
 
 export function SourcesConnectionsPanel({
   compactLayout,
+  onboarding = false,
   sourceKeys,
   sectionTitle,
   refreshLabel,
@@ -78,6 +81,7 @@ export function SourcesConnectionsPanel({
   onRefresh,
 }: SourcesConnectionsPanelProps) {
   const colors = useColors();
+  const theme = useAuthTheme();
   const visibleSources = sources.filter((source) =>
     sourceKeys.includes(source.key),
   );
@@ -88,7 +92,7 @@ export function SourcesConnectionsPanel({
       : connectionError);
 
   return (
-    <Panel style={styles.panel}>
+    <Panel style={[styles.panel, onboarding && { backgroundColor: theme.card, borderColor: theme.border, borderRadius: 26 } ]}>
       {sectionTitle ? (
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleGroup}>
@@ -192,9 +196,10 @@ export function SourcesConnectionsPanel({
             key={source.key}
             style={[
               styles.sourceCard,
-              compactLayout && styles.sourceCardCompact,
+              compactLayout && !onboarding && styles.sourceCardCompact,
+              onboarding && styles.onboardingCard,
               {
-                backgroundColor: colors.background,
+                backgroundColor: onboarding ? theme.inputSurface : colors.background,
                 borderColor: connected
                   ? colors.primary
                   : connectionNeedsAttention
@@ -213,14 +218,15 @@ export function SourcesConnectionsPanel({
               disabled={sourceBusy}
               style={[
                 styles.sourceIdentity,
-                compactLayout && styles.sourceIdentityCompact,
+                compactLayout && !onboarding && styles.sourceIdentityCompact,
+                onboarding && styles.onboardingIdentity,
                 sourceBusy && styles.disabledSource,
               ]}
             >
               <View
                 style={[styles.sourceIcon, { backgroundColor: colors.accent }]}
               >
-                <SocialPlatformIcon platform={source.key} size={28} />
+                <SocialPlatformIcon platform={source.key} size={onboarding ? 38 : 28} />
               </View>
               <View style={styles.sourceCopy}>
                 <View style={styles.sourceTitleLine}>
@@ -391,8 +397,8 @@ export function SourcesConnectionsPanel({
                 style={[
                   styles.connectButton,
                   {
-                    borderColor: colors.primary,
-                    backgroundColor: colors.primary,
+                    borderColor: onboarding ? theme.primarySoft : colors.primary,
+                    backgroundColor: onboarding ? theme.primarySoft : colors.primary,
                     opacity: sourceBusy ? 0.6 : 1,
                   },
                 ]}
@@ -400,15 +406,15 @@ export function SourcesConnectionsPanel({
                 {sourceBusy ? (
                   <ActivityIndicator
                     size="small"
-                    color={colors.primaryForeground}
+                    color={onboarding ? theme.primary : colors.primaryForeground}
                   />
                 ) : (
-                  <Icon name="link" size={14} color={colors.primaryForeground} />
+                  <Icon name="link" size={14} color={onboarding ? theme.primary : colors.primaryForeground} />
                 )}
                 <Text
                   style={[
                     styles.connectLabel,
-                    { color: colors.primaryForeground },
+                    { color: onboarding ? theme.primary : colors.primaryForeground },
                   ]}
                 >
                   {buttonLabel(source.key)}
@@ -475,6 +481,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 9,
   },
+  onboardingCard: { flexDirection: "row-reverse", borderRadius: 18 },
+  onboardingIdentity: { flexDirection: "row-reverse" },
   sourceCardCompact: {
     flexDirection: "column",
     alignItems: "stretch",

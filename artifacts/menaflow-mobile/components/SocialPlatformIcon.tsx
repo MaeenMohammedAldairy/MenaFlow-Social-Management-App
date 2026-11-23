@@ -1,5 +1,5 @@
 import React from "react";
-import Svg, { Circle, Path } from "react-native-svg";
+import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 
 type SocialPlatform = "facebook" | "instagram" | "whatsapp";
 
@@ -25,7 +25,15 @@ export function SocialPlatformIcon({
   if (platform === "instagram") {
     return (
       <Svg width={size} height={size} viewBox="0 0 32 32" accessibilityLabel="Instagram">
-        <Circle cx="16" cy="16" r="16" fill="#C13584" />
+        <Defs>
+          <LinearGradient id="instagram-gradient" x1="0" y1="32" x2="32" y2="0" gradientUnits="userSpaceOnUse">
+            <Stop offset="0" stopColor="#FFDC80" />
+            <Stop offset="0.35" stopColor="#F77737" />
+            <Stop offset="0.65" stopColor="#C13584" />
+            <Stop offset="1" stopColor="#405DE6" />
+          </LinearGradient>
+        </Defs>
+        <Rect width="32" height="32" rx="9" fill="url(#instagram-gradient)" />
         <Path
           d="M11.1 8.5h9.8a3.6 3.6 0 0 1 3.6 3.6v7.8a3.6 3.6 0 0 1-3.6 3.6h-9.8a3.6 3.6 0 0 1-3.6-3.6v-7.8a3.6 3.6 0 0 1 3.6-3.6Z"
           fill="none"

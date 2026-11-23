@@ -44,6 +44,7 @@ router.get("/workspaces", async (req, res, next) => {
         id: workspaces.id,
         name: workspaces.name,
         businessType: workspaces.businessType,
+        country: workspaces.country,
         timezone: workspaces.timezone,
         role: workspaceMembers.role,
       })
@@ -83,9 +84,13 @@ router.patch(
       return;
     }
 
-    const { name, businessType, timezone } = input.data;
-    if (name === undefined && businessType === undefined && timezone === undefined) {
+    const { name, businessType, country, timezone } = input.data;
+    if (name === undefined && businessType === undefined && country === undefined && timezone === undefined) {
       res.status(400).json({ error: "لم يتم تحديد أي حقول للتحديث." });
+      return;
+    }
+    if (country !== undefined && new Intl.DisplayNames(["en"], { type: "region" }).of(country) === country) {
+      res.status(422).json({ error: "رمز البلد غير صالح." });
       return;
     }
     if (timezone !== undefined && !isValidTimezone(timezone)) {
@@ -101,6 +106,7 @@ router.patch(
           ...(businessType !== undefined
             ? { businessType: businessType.trim() }
             : {}),
+          ...(country !== undefined ? { country } : {}),
           ...(timezone !== undefined ? { timezone: timezone.trim() } : {}),
         })
         .where(eq(workspaces.id, context.workspaceId))
@@ -108,6 +114,7 @@ router.patch(
           id: workspaces.id,
           name: workspaces.name,
           businessType: workspaces.businessType,
+          country: workspaces.country,
           timezone: workspaces.timezone,
         });
 
@@ -120,6 +127,7 @@ router.patch(
         id: updated.id,
         name: updated.name,
         businessType: updated.businessType ?? null,
+        country: updated.country ?? null,
         timezone: updated.timezone,
         role: context.role,
       });

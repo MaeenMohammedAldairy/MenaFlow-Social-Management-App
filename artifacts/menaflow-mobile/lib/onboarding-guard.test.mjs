@@ -66,3 +66,24 @@ test("anything else funnels to connect-accounts while a platform is owed", () =>
     );
   }
 });
+
+
+test("the account linking subflow is reachable after the business step", () => {
+  const inProgress = { ...INTRO, currentStep: 1 };
+  for (const path of ["/setup", "/connect-accounts", "/whatsapp-setup", "/inbox/reply-settings"]) {
+    assert.equal(onboardingRedirectTarget(path, inProgress), null, path);
+  }
+  assert.equal(onboardingRedirectTarget("/", inProgress), "/setup");
+  assert.equal(onboardingRedirectTarget("/inbox/x", inProgress), "/setup");
+});
+
+
+test("linked account details are reachable without opening unrelated account routes", () => {
+  for (const status of [{ ...INTRO, currentStep: 1 }, SOCIAL_DUE]) {
+    for (const platform of ["facebook", "instagram", "whatsapp"]) {
+      assert.equal(onboardingRedirectTarget(`/account/${platform}`, status), null);
+    }
+    assert.notEqual(onboardingRedirectTarget("/account/profile", status), null);
+  }
+  assert.equal(onboardingRedirectTarget("/account/facebook", INTRO), "/setup");
+});

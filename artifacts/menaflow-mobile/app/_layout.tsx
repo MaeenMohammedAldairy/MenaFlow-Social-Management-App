@@ -137,7 +137,8 @@ function isWorkspaceSummary(value: unknown): value is WorkspaceSummary {
     // Optional: null/absent until the merchant completes the concise setup.
     (workspace.businessType === undefined ||
       workspace.businessType === null ||
-      typeof workspace.businessType === "string")
+      typeof workspace.businessType === "string") &&
+    (workspace.country === undefined || workspace.country === null || typeof workspace.country === "string")
   );
 }
 
