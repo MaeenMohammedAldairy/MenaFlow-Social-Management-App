@@ -1,1 +1,2 @@
 - [MenaFlow workspace scope](menaflow-workspace-scope.md) — one business owner plus 2–3 staff in a single workspace; roles are `owner`/`admin`/`member`, staff join by invitation only, and connection management stays owner-only.
+- [MenaFlow database schema source of truth](menaflow-schema-source-of-truth.md) — `supabase/migrations/` is the only DDL applied; Drizzle is the app's view of it, `lib/db/schema-snapshot/` is a generated CI baseline that is never applied, and `drizzle-kit push` must not touch a shared database.

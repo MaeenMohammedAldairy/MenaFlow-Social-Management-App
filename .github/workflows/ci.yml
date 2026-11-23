@@ -21,6 +21,20 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
+      # Regenerating from lib/db/src/schema must produce nothing new. If it does,
+      # the Drizzle schema moved and supabase/migrations/ — the only DDL that is
+      # applied — has no matching change yet, which is how a query for a column
+      # that does not exist reaches production. See section 4.1 of
+      # docs/audit/menaflow-recommendations-2026-11-22.md.
+      - name: Schema drift gate
+        run: |
+          pnpm --filter @workspace/db run generate
+          git add -N lib/db/schema-snapshot
+          if ! git diff --exit-code lib/db/schema-snapshot; then
+            echo "::error::lib/db/src/schema changed without a matching migration."
+            echo "Run 'pnpm --filter @workspace/db run generate', commit lib/db/schema-snapshot, and write the matching supabase/migrations/*.sql."
+            exit 1
+          fi
       - run: pnpm test
       - run: pnpm run typecheck
       - run: pnpm --filter @workspace/api-server run build
