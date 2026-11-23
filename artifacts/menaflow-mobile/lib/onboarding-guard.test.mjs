@@ -6,6 +6,25 @@ const INTRO = { completed: false, socialAccountsCompleted: false };
 const SOCIAL_DUE = { completed: true, socialAccountsCompleted: false };
 const DONE = { completed: true, socialAccountsCompleted: true };
 
+// The product's own screens. During the signup funnel these are walled off;
+// once setup is completed they must all be reachable, connected platform or
+// not.
+const PRODUCT_SCREENS = [
+  "/",
+  "/products",
+  "/content",
+  "/inbox",
+  "/more",
+  "/compose",
+  "/activities",
+  "/more/orders",
+  "/more/reports",
+  "/more/settings",
+  "/account/profile",
+  "/inbox/x",
+  "/inbox/whatsapp",
+];
+
 test("before the concise setup is finished, only /setup is reachable", () => {
   assert.equal(onboardingRedirectTarget("/setup", INTRO), null);
   assert.equal(onboardingRedirectTarget("/", INTRO), "/setup");
@@ -50,23 +69,35 @@ test("the dashboard is reachable while a platform is still owed (the skip button
   assert.equal(onboardingRedirectTarget("/", SOCIAL_DUE), null);
 });
 
-test("a trailing-slash path is not mistaken for the dashboard", () => {
-  // The exact-match on "/" must not become a suffix match: "/inbox/" is not the
-  // dashboard and must keep funnelling to connect-accounts.
-  assert.equal(onboardingRedirectTarget("/inbox/", SOCIAL_DUE), "/connect-accounts");
-  assert.equal(onboardingRedirectTarget("/more/", SOCIAL_DUE), "/connect-accounts");
-});
-
-test("anything else funnels to connect-accounts while a platform is owed", () => {
-  for (const pathname of ["/inbox/x", "/more/orders", "/products", "/activities"]) {
+test("the whole product stays usable while a platform is still owed", () => {
+  // Regression — reported as "anywhere I tap takes me to the connect-accounts
+  // page". `socialAccountsCompleted` only flips true once a platform is really
+  // connected (the server answers 409 otherwise), so walling the product on it
+  // was not a transient nudge: it lasted until the merchant linked an account.
+  // Four of the five tabs bounced, and so did /more/settings — which holds the
+  // data export and the account-deletion request (§3.4).
+  for (const pathname of PRODUCT_SCREENS) {
     assert.equal(
       onboardingRedirectTarget(pathname, SOCIAL_DUE),
-      "/connect-accounts",
-      pathname,
+      null,
+      `لم يكن يجب تحويل ${pathname} إلى شاشة الربط`,
     );
   }
 });
 
+test("nothing is ever bounced to /connect-accounts once setup is completed", () => {
+  // The redirect target no longer exists in the guard's vocabulary: deferring a
+  // platform is guidance (dashboard checklist + hero CTA), not a gate.
+  for (const status of [SOCIAL_DUE, DONE]) {
+    for (const pathname of [...PRODUCT_SCREENS, "/connect-accounts", "/setup"]) {
+      assert.notEqual(
+        onboardingRedirectTarget(pathname, status),
+        "/connect-accounts",
+        pathname,
+      );
+    }
+  }
+});
 
 test("the account linking subflow is reachable after the business step", () => {
   const inProgress = { ...INTRO, currentStep: 1 };
@@ -77,13 +108,27 @@ test("the account linking subflow is reachable after the business step", () => {
   assert.equal(onboardingRedirectTarget("/inbox/x", inProgress), "/setup");
 });
 
-
 test("linked account details are reachable without opening unrelated account routes", () => {
   for (const status of [{ ...INTRO, currentStep: 1 }, SOCIAL_DUE]) {
     for (const platform of ["facebook", "instagram", "whatsapp"]) {
       assert.equal(onboardingRedirectTarget(`/account/${platform}`, status), null);
     }
-    assert.notEqual(onboardingRedirectTarget("/account/profile", status), null);
   }
+  // During the funnel the product screens (including the profile) still lead
+  // back to /setup; once setup is completed they are free.
+  assert.equal(
+    onboardingRedirectTarget("/account/profile", { ...INTRO, currentStep: 1 }),
+    "/setup",
+  );
+  assert.equal(onboardingRedirectTarget("/account/profile", SOCIAL_DUE), null);
   assert.equal(onboardingRedirectTarget("/account/facebook", INTRO), "/setup");
+});
+
+test("a trailing-slash path is not mistaken for the dashboard during the funnel", () => {
+  // The exact-match on "/" must not become a suffix match: "/inbox/" is not the
+  // dashboard, so during the funnel it goes back to /setup like any other
+  // product screen.
+  const inProgress = { ...INTRO, currentStep: 1 };
+  assert.equal(onboardingRedirectTarget("/inbox/", inProgress), "/setup");
+  assert.equal(onboardingRedirectTarget("/more/", inProgress), "/setup");
 });
