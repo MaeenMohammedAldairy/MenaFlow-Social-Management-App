@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   Radio,
   Store,
+  X,
 } from "lucide-react-native";
 import React from "react";
 import {
@@ -33,6 +34,12 @@ import { useAuthTheme } from "@/hooks/useAuthTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { useWorkspace } from "@/context/WorkspaceContext";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import {
+  canEditBusinessInfo,
+  shouldArmSkipRetry,
+  shouldReplayPendingSkip,
+} from "@/lib/setup-flow";
 
 /**
  * The concise post-signup setup that replaced the three intro slides.
@@ -80,7 +87,13 @@ function AuthenticatedSetup() {
   const { width, height } = useWindowDimensions();
   const { isLoaded, userId } = useAuth();
   const queryClient = useQueryClient();
-  const { workspaces, activeWorkspaceId } = useWorkspace();
+  const {
+    workspaces,
+    activeWorkspaceId,
+    isLoading: workspacesLoading,
+    isError: workspacesError,
+  } = useWorkspace();
+  const isOffline = useNetworkStatus();
   const activeWorkspace =
     workspaces.find((workspace) => workspace.id === activeWorkspaceId) ??
     workspaces[0] ??
@@ -100,10 +113,15 @@ function AuthenticatedSetup() {
   const [businessType, setBusinessType] = React.useState<string | null>(null);
   const [nameTouched, setNameTouched] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
-  // Which exit the pending "skip" action should navigate to on success.
+  // Which exit the pending "skip" action should navigate to on success. It is
+  // kept on failure too, so an automatic retry still knows where to land.
   const [pendingExit, setPendingExit] = React.useState<
     "connect" | "dashboard" | null
   >(null);
+  // Set when `skip` failed *while offline*: the guard holds the merchant on
+  // this screen until it lands, so the error copy promising an automatic retry
+  // has to be true.
+  const [awaitingRetry, setAwaitingRetry] = React.useState(false);
 
   // Prefill from the workspace once the list arrives; never overwrite input
   // the merchant already typed.
@@ -118,6 +136,17 @@ function AuthenticatedSetup() {
       queryKey: ["workspace-list", userId ?? null],
     });
   }, [queryClient, userId]);
+
+  // The form prefills from the workspace row (name + business type). While
+  // that row is still on its way — or if the list query failed — an empty
+  // form with an enabled-looking Save button is a trap: it looks as if the
+  // merchant's business info had vanished. Show the honest state instead.
+  const prefillPending = !activeWorkspace && workspacesLoading;
+  const prefillFailed = !activeWorkspace && workspacesError;
+  const retryWorkspaceList = React.useCallback(() => {
+    setFormError(null);
+    invalidateWorkspaceList();
+  }, [invalidateWorkspaceList]);
 
   const save = useMutation({
     mutationFn: () =>
@@ -153,22 +182,71 @@ function AuthenticatedSetup() {
       router.replace(exit === "connect" ? "/connect-accounts" : "/(tabs)");
     },
     onError: () => {
-      setPendingExit(null);
+      // Only an offline failure is retried automatically — a server rejection
+      // while online would otherwise retry in a loop. The exit buttons stay
+      // enabled as the manual retry path in that case.
+      setAwaitingRetry(shouldArmSkipRetry(isOffline));
       setFormError(
-        "تعذّر إنهاء الإعداد على الخادم. سنعيد المحاولة؛ بياناتك لم تتغير.",
+        isOffline
+          ? "لا يوجد اتصال الآن. سنُكمل الإعداد تلقائيًا فور عودة الشبكة؛ بياناتك لم تتغير."
+          : "تعذّر إنهاء الإعداد على الخادم. اضغط الزر مرة أخرى للمحاولة؛ بياناتك لم تتغير.",
       );
     },
   });
+
+  // Honour that promise: replay the pending exit once the device comes back.
+  const wasOffline = React.useRef(false);
+  React.useEffect(() => {
+    if (isOffline) {
+      wasOffline.current = true;
+      return;
+    }
+    const replay = shouldReplayPendingSkip({
+      isOffline: false,
+      wasOffline: wasOffline.current,
+      awaitingRetry,
+      pendingExit,
+      requestInFlight: finishSetup.isPending,
+    });
+    if (!replay) {
+      // A manual retry may already be in flight — keep the transition armed so
+      // this effect replays it when that request settles. Drop the flag only
+      // once there is genuinely nothing left to replay, so it cannot fire
+      // spuriously much later.
+      if (!finishSetup.isPending && !awaitingRetry) wasOffline.current = false;
+      return;
+    }
+    wasOffline.current = false;
+    setAwaitingRetry(false);
+    setFormError(null);
+    finishSetup.mutate();
+  }, [isOffline, awaitingRetry, pendingExit, finishSetup]);
 
   if (!isLoaded || status.isLoading) return <LoadingScreen />;
 
   const compact = width < 400 || height < 700;
   const wide = width >= 900;
   const trimmedName = name.trim();
-  const canSave = trimmedName.length > 0 && trimmedName.length <= 80 && !save.isPending;
+  // `PATCH /workspaces/current` is owner-only. The checklist step is hidden
+  // from members, but `/setup` is reachable by path too — say so plainly
+  // instead of letting the save fail with a generic server error.
+  const readOnly = !canEditBusinessInfo(activeWorkspace);
+  const canSave =
+    trimmedName.length > 0 &&
+    trimmedName.length <= 80 &&
+    !save.isPending &&
+    !readOnly;
   // In edit mode (onboarding already completed) only the form is shown.
   const activeIndex = completed ? 0 : step === "business" ? 0 : 1;
   const busy = save.isPending || finishSetup.isPending;
+
+  // Edit mode is pushed from the dashboard checklist, and nothing on screen
+  // said so: the only way out was the Save button or the system gesture.
+  const handleCloseEdit = () => {
+    if (busy) return;
+    if (router.canGoBack()) router.back();
+    else router.replace("/(tabs)");
+  };
 
   const handleExit = (exit: "connect" | "dashboard") => {
     if (busy) return;
@@ -206,6 +284,28 @@ function AuthenticatedSetup() {
             </Text>
           </View>
 
+          {completed ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="إغلاق بيانات النشاط"
+              disabled={busy}
+              onPress={handleCloseEdit}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.closeRow,
+                {
+                  backgroundColor: pressed ? theme.background : theme.card,
+                  borderColor: theme.border,
+                },
+              ]}
+            >
+              <X size={15} color={theme.foreground} />
+              <Text style={[styles.closeRowText, { color: theme.foreground }]}>
+                إغلاق
+              </Text>
+            </Pressable>
+          ) : null}
+
           <View
             style={[
               styles.card,
@@ -230,116 +330,183 @@ function AuthenticatedSetup() {
                     : "خطوتان فقط: أخبرنا عن نشاطك، ثم اربط قناتك الأولى أو ادخل مباشرة."}
                 </Text>
 
-                <View style={styles.field}>
-                  <Text style={[styles.fieldLabel, { color: theme.foreground }]}>
-                    اسم النشاط
-                  </Text>
-                  <TextInput
-                    value={name}
-                    onChangeText={(next) => {
-                      setNameTouched(true);
-                      setName(next);
-                    }}
-                    maxLength={80}
-                    placeholder="مثال: كافيه الريحان"
-                    placeholderTextColor={theme.mutedForeground}
-                    editable={!busy}
-                    accessibilityLabel="اسم النشاط التجاري"
-                    style={[
-                      styles.input,
-                      {
-                        color: theme.foreground,
-                        backgroundColor: theme.background,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                  />
-                </View>
-
-                <View style={styles.field}>
-                  <Text style={[styles.fieldLabel, { color: theme.foreground }]}>
-                    نوع النشاط
-                  </Text>
-                  <View style={styles.chips}>
-                    {BUSINESS_TYPES.map((type) => {
-                      const selected = businessType === type;
-                      return (
-                        <Pressable
-                          key={type}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected, disabled: busy }}
-                          disabled={busy}
-                          onPress={() => setBusinessType(type)}
-                          style={[
-                            styles.chip,
-                            {
-                              backgroundColor: selected
-                                ? theme.primary
-                                : theme.background,
-                              borderColor: selected
-                                ? theme.primary
-                                : theme.border,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.chipText,
-                              {
-                                color: selected
-                                  ? theme.primaryForeground
-                                  : theme.foreground,
-                              },
-                            ]}
-                          >
-                            {type}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
+                {prefillPending ? (
+                  <View style={styles.prefillState}>
+                    <ActivityIndicator size="small" color={theme.primary} />
+                    <Text
+                      style={[
+                        styles.prefillText,
+                        { color: theme.mutedForeground },
+                      ]}
+                    >
+                      جارٍ تحميل بيانات نشاطك…
+                    </Text>
                   </View>
-                </View>
+                ) : prefillFailed ? (
+                  <View style={styles.prefillState}>
+                    <Text
+                      accessibilityRole="alert"
+                      style={[styles.prefillText, { color: theme.destructive }]}
+                    >
+                      تعذّر تحميل بيانات نشاطك. تحقق من اتصالك ثم أعد المحاولة.
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="إعادة محاولة تحميل بيانات النشاط"
+                      onPress={retryWorkspaceList}
+                      style={({ pressed }) => [
+                        styles.secondaryButton,
+                        {
+                          backgroundColor: theme.card,
+                          borderColor: theme.border,
+                          opacity: pressed ? 0.72 : 1,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.secondaryButtonText,
+                          { color: theme.foreground },
+                        ]}
+                      >
+                        إعادة المحاولة
+                      </Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <>
+                    {readOnly ? (
+                      <Text
+                        accessibilityRole="alert"
+                        style={[
+                          styles.prefillText,
+                          { color: theme.mutedForeground },
+                        ]}
+                      >
+                        تعديل بيانات النشاط متاح لمالك المساحة فقط.
+                      </Text>
+                    ) : null}
 
-                {formError ? (
-                  <Text
-                    accessibilityRole="alert"
-                    style={[styles.error, { color: theme.destructive }]}
-                  >
-                    {formError}
-                  </Text>
-                ) : null}
+                    <View style={styles.field}>
+                      <Text style={[styles.fieldLabel, { color: theme.foreground }]}>
+                        اسم النشاط
+                      </Text>
+                      <TextInput
+                        value={name}
+                        onChangeText={(next) => {
+                          setNameTouched(true);
+                          setName(next);
+                        }}
+                        maxLength={80}
+                        placeholder="مثال: كافيه الريحان"
+                        placeholderTextColor={theme.mutedForeground}
+                        editable={!busy && !readOnly}
+                        accessibilityLabel="اسم النشاط التجاري"
+                        style={[
+                          styles.input,
+                          {
+                            color: theme.foreground,
+                            backgroundColor: theme.background,
+                            borderColor: theme.border,
+                          },
+                        ]}
+                      />
+                    </View>
 
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ busy: save.isPending, disabled: !canSave }}
-                  disabled={!canSave}
-                  onPress={() => {
-                    setFormError(null);
-                    save.mutate();
-                  }}
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    {
-                      backgroundColor: theme.primary,
-                      opacity: !canSave ? 0.55 : pressed ? 0.88 : 1,
-                      shadowColor: theme.primary,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.primaryButtonText,
-                      { color: theme.primaryForeground },
-                    ]}
-                  >
-                    {save.isPending
-                      ? "جارٍ الحفظ…"
-                      : completed
-                        ? "حفظ التغييرات"
-                        : "حفظ ومتابعة"}
-                  </Text>
-                  <ArrowLeft size={18} color={theme.primaryForeground} />
-                </Pressable>
+                    <View style={styles.field}>
+                      <Text style={[styles.fieldLabel, { color: theme.foreground }]}>
+                        نوع النشاط
+                      </Text>
+                      <View style={styles.chips}>
+                        {BUSINESS_TYPES.map((type) => {
+                          const selected = businessType === type;
+                          return (
+                            <Pressable
+                              key={type}
+                              accessibilityRole="button"
+                              accessibilityState={{
+                                selected,
+                                disabled: busy || readOnly,
+                              }}
+                              disabled={busy || readOnly}
+                              onPress={() => setBusinessType(type)}
+                              style={[
+                                styles.chip,
+                                {
+                                  backgroundColor: selected
+                                    ? theme.primary
+                                    : theme.background,
+                                  borderColor: selected
+                                    ? theme.primary
+                                    : theme.border,
+                                },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.chipText,
+                                  {
+                                    color: selected
+                                      ? theme.primaryForeground
+                                      : theme.foreground,
+                                  },
+                                ]}
+                              >
+                                {type}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+
+                    {formError ? (
+                      <Text
+                        accessibilityRole="alert"
+                        style={[styles.error, { color: theme.destructive }]}
+                      >
+                        {formError}
+                      </Text>
+                    ) : null}
+
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ busy: save.isPending, disabled: !canSave }}
+                      accessibilityLabel={
+                        readOnly
+                          ? "حفظ التغييرات (متاح للمالك فقط)"
+                          : "حفظ بيانات النشاط"
+                      }
+                      disabled={!canSave}
+                      onPress={() => {
+                        setFormError(null);
+                        save.mutate();
+                      }}
+                      style={({ pressed }) => [
+                        styles.primaryButton,
+                        {
+                          backgroundColor: theme.primary,
+                          opacity: !canSave ? 0.55 : pressed ? 0.88 : 1,
+                          shadowColor: theme.primary,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.primaryButtonText,
+                          { color: theme.primaryForeground },
+                        ]}
+                      >
+                        {save.isPending
+                          ? "جارٍ الحفظ…"
+                          : completed
+                            ? "حفظ التغييرات"
+                            : "حفظ ومتابعة"}
+                      </Text>
+                      <ArrowLeft size={18} color={theme.primaryForeground} />
+                    </Pressable>
+                  </>
+                )}
               </View>
             ) : (
               <View style={styles.formStep}>
@@ -656,6 +823,31 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   secondaryButtonText: { fontSize: 14.5, fontWeight: "800" },
+  closeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    marginBottom: 12,
+  },
+  closeRowText: {
+    fontFamily: "Cairo_600SemiBold",
+    fontSize: 13,
+  },
+  prefillState: {
+    alignItems: "flex-start",
+    gap: 12,
+    paddingVertical: 6,
+  },
+  prefillText: {
+    fontFamily: "Cairo_500Medium",
+    fontSize: 13,
+    lineHeight: 21,
+  },
   backRow: {
     flexDirection: "row",
     alignItems: "center",
