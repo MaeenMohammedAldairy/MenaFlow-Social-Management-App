@@ -17,10 +17,11 @@
  *   reachable; everything else is sent back to it.
  * - `completed === true`, `socialAccountsCompleted === false`: the merchant still
  *   owes one connected platform. The funnel screens stay reachable, and so does
- *   the dashboard — "أكمل لاحقًا" means exactly that, and the tab layout already
- *   degrades gracefully for this state by hiding the tab bar until a platform is
- *   connected (`app/(tabs)/_layout.tsx`). Everything else is sent to
- *   `/connect-accounts`.
+ *   the dashboard — "أكمل لاحقًا" means exactly that. The tab bar stays visible
+ *   in this state (it used to be hidden until a platform was connected, which
+ *   contradicted the concise-setup promise that the product is usable before
+ *   setup completes; the dashboard checklist guides instead). Everything else
+ *   is sent to `/connect-accounts`.
  *
  * Returns `null` when the current pathname is acceptable, i.e. no redirect.
  */
