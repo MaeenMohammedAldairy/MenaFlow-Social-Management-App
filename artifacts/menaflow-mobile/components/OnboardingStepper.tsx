@@ -31,5 +31,5 @@ const styles = StyleSheet.create({
   item: { flex: 1, alignItems: "center", gap: 4 },
   line: { width: 12, height: 2, marginTop: 15 },
   circle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: "center", alignItems: "center" },
-  label: { fontSize: 10, lineHeight: 15, textAlign: "center", fontWeight: "700" },
+  label: { fontSize: 12, lineHeight: 17, textAlign: "center", fontWeight: "700" },
 });

@@ -69,8 +69,17 @@ export function MetaInboxMedia({ media }: { media: MetaInboxMediaItem[] }) {
                   }
                 />
                 {isVideo ? (
-                  <View style={styles.videoBadge}>
-                    <Icon name="play" size={20} color="#FFFFFF" />
+                  <View
+                    style={[
+                      styles.videoBadge,
+                      { backgroundColor: colors.mediaOverlay },
+                    ]}
+                  >
+                    <Icon
+                      name="play"
+                      size={20}
+                      color={colors.mediaOverlayForeground}
+                    />
                   </View>
                 ) : null}
               </Pressable>
@@ -158,7 +167,6 @@ const styles = StyleSheet.create({
     left: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.18)",
   },
   filePreview: {
     alignSelf: "flex-end",

@@ -108,7 +108,10 @@ export function WhatsAppSyncStatusPanel({
         ? "غير متاح"
         : null;
     return (
-      <View key={setting} style={styles.autoSyncToggleRow}>
+      <View
+        key={setting}
+        style={[styles.autoSyncToggleRow, { borderBottomColor: colors.border }]}
+      >
         <Text style={[styles.autoSyncToggleLabel, { color: colors.foreground }]}>
           {label}
         </Text>
@@ -307,7 +310,12 @@ export function WhatsAppSyncStatusPanel({
           </Pressable>
           {historyOptionsOpen ? (
             <View style={styles.historyOptions}>
-              <View style={styles.autoSyncToggleRow}>
+              <View
+                style={[
+                  styles.autoSyncToggleRow,
+                  { borderBottomColor: colors.border },
+                ]}
+              >
                 <Text
                   style={[
                     styles.autoSyncToggleLabel,
@@ -533,14 +541,13 @@ const styles = StyleSheet.create({
     gap: 12,
     minHeight: 52,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(127, 127, 127, 0.25)",
   },
-  settingState: { fontSize: 12, fontWeight: "700" },
+  settingState: { fontSize: 13, fontWeight: "700" },
   manageGroupsButton: {
-    minHeight: 34,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
-    paddingHorizontal: 9,
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -558,10 +565,10 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   summaryValue: { fontSize: 17, fontWeight: "800" },
-  summaryRecent: { fontSize: 12, fontWeight: "700", textAlign: "right" },
-  summaryLabel: { fontSize: 12, fontWeight: "600" },
+  summaryRecent: { fontSize: 12.5, fontWeight: "700", textAlign: "right" },
+  summaryLabel: { fontSize: 12.5, fontWeight: "600" },
   sectionCaption: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
     textAlign: "right",
     marginTop: 4,
@@ -576,7 +583,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: 8,
   },
-  noticeText: { flex: 1, fontSize: 12, lineHeight: 17, textAlign: "right" },
+  noticeText: { flex: 1, fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   historyLimitContainer: { gap: 7 },
   collapsibleHeader: {
     minHeight: 52,
@@ -591,7 +598,7 @@ const styles = StyleSheet.create({
   collapsibleCopy: { flex: 1, alignItems: "flex-start", gap: 2 },
   historyOptions: { gap: 8 },
   historyLimitInput: {
-    minHeight: 42,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -601,7 +608,7 @@ const styles = StyleSheet.create({
   },
   autoSyncToggleLabel: {
     flex: 1,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "700",
     textAlign: "right",
   },
@@ -610,8 +617,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  secondaryActionLabel: { fontSize: 12, fontWeight: "800" },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  secondaryActionLabel: { fontSize: 13, fontWeight: "800" },
+  error: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   syncStatusLine: {
     flexDirection: "row",
     alignItems: "center",
@@ -619,7 +626,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 8,
   },
-  syncStatusText: { fontSize: 12, lineHeight: 17, textAlign: "right" },
+  syncStatusText: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   syncStatusList: { gap: 8 },
   syncStatusItem: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 6 },
   groupRow: {
@@ -635,10 +642,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   syncStatusGroup: {
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: "800",
     textAlign: "right",
     flexShrink: 1,
   },
-  syncStatusError: { fontSize: 12, lineHeight: 15, textAlign: "right" },
+  syncStatusError: { fontSize: 13, lineHeight: 19, textAlign: "right" },
 });

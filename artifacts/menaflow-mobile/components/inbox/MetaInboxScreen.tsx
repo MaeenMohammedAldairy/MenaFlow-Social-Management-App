@@ -737,9 +737,9 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingVertical: 14,
   },
-  loadOlderLoadingText: { fontSize: 12, fontWeight: "700" },
-  loadOlderRetry: { alignItems: "center", paddingVertical: 14 },
-  loadOlderRetryText: { fontSize: 12, fontWeight: "700", textAlign: "center" },
+  loadOlderLoadingText: { fontSize: 13, fontWeight: "700" },
+  loadOlderRetry: { minHeight: 44, justifyContent: "center", alignItems: "center", paddingVertical: 14 },
+  loadOlderRetryText: { fontSize: 13.5, fontWeight: "700", textAlign: "center" },
   loadError: { alignItems: "center", gap: 10, paddingVertical: 20 },
   loadErrorIcon: {
     width: 52,
@@ -751,8 +751,8 @@ const styles = StyleSheet.create({
   loadErrorTitle: { fontSize: 16, fontWeight: "800", textAlign: "center" },
   loadErrorText: {
     maxWidth: 420,
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 21,
     textAlign: "center",
   },
   inboxMeta: {
@@ -762,7 +762,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
-  resultCount: { fontSize: 12, fontWeight: "700" },
+  resultCount: { fontSize: 13, fontWeight: "700" },
   searchInput: {
     flex: 1,
     minHeight: 46,
@@ -797,7 +797,7 @@ const styles = StyleSheet.create({
   },
   conversationTitle: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "800",
     textAlign: "right",
   },
@@ -807,7 +807,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 7,
   },
-  conversationPreview: { flex: 1, fontSize: 12, textAlign: "right" },
+  conversationPreview: { flex: 1, fontSize: 13.5, textAlign: "right" },
   conversationBottomLine: {
     flexDirection: "row",
     alignItems: "center",
@@ -825,6 +825,6 @@ const styles = StyleSheet.create({
   platformLabel: { fontSize: 12, fontWeight: "700" },
   conversationCounts: { flexDirection: "row", alignItems: "center", gap: 10 },
   countItem: { flexDirection: "row", alignItems: "center", gap: 4 },
-  conversationMeta: { fontSize: 12 },
-  lastEvent: { fontSize: 12, textAlign: "right" },
+  conversationMeta: { fontSize: 12.5 },
+  lastEvent: { fontSize: 13, textAlign: "right" },
 });

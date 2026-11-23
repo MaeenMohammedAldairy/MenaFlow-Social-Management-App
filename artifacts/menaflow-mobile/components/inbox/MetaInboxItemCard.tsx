@@ -138,13 +138,29 @@ export function MetaInboxItemCard({
                 styles.autoReplyRetry,
                 {
                   borderColor: colors.border,
-                  backgroundColor: colors.secondary,
-                  opacity: retryingAutoReply ? 0.6 : 1,
+                  backgroundColor: retryingAutoReply
+                    ? colors.disabled
+                    : colors.secondary,
                 },
               ]}
             >
-              <Icon name="refresh-cw" size={13} color={colors.primary} />
-              <Text style={[styles.autoReplyRetryText, { color: colors.primary }]}>
+              <Icon
+                name="refresh-cw"
+                size={13}
+                color={
+                  retryingAutoReply ? colors.disabledForeground : colors.primary
+                }
+              />
+              <Text
+                style={[
+                  styles.autoReplyRetryText,
+                  {
+                    color: retryingAutoReply
+                      ? colors.disabledForeground
+                      : colors.primary,
+                  },
+                ]}
+              >
                 {retryingAutoReply ? "جارٍ الإعادة..." : "إعادة المحاولة"}
               </Text>
             </Pressable>
@@ -208,13 +224,19 @@ export function MetaInboxItemCard({
               style={[
                 styles.confirmRetryButton,
                 {
-                  backgroundColor: colors.primary,
-                  opacity: confirmingUnknown ? 0.55 : 1,
+                  backgroundColor: confirmingUnknown
+                    ? colors.disabled
+                    : colors.primary,
                 },
               ]}
             >
               <Text
-                style={{ color: colors.primaryForeground, textAlign: "center" }}
+                style={{
+                  color: confirmingUnknown
+                    ? colors.disabledForeground
+                    : colors.primaryForeground,
+                  textAlign: "center",
+                }}
               >
                 {confirmingUnknown
                   ? "جارٍ التحقق..."
@@ -284,8 +306,8 @@ const styles = StyleSheet.create({
   card: { gap: 10, padding: 12, borderRadius: 16 },
   header: { flexDirection: "row", alignItems: "center", gap: 12 },
   labels: { flex: 1, gap: 3 },
-  actor: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  meta: { fontSize: 12, textAlign: "right" },
+  actor: { fontSize: 14.5, fontWeight: "700", textAlign: "right" },
+  meta: { fontSize: 12.5, textAlign: "right" },
   incomingBubble: {
     alignSelf: "flex-end",
     width: "100%",
@@ -294,7 +316,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 4,
     padding: 11,
   },
-  message: { fontSize: 14, lineHeight: 23, textAlign: "right" },
+  message: { fontSize: 14.5, lineHeight: 23, textAlign: "right" },
   replyRow: { flexDirection: "row", alignItems: "flex-end", gap: 8 },
   input: {
     flex: 1,
@@ -330,15 +352,18 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   replyDate: { marginLeft: "auto", fontSize: 12 },
-  publicReplyHint: { fontSize: 12, textAlign: "right" },
+  publicReplyHint: { fontSize: 13, textAlign: "right" },
   confirmRetryButton: {
+    minHeight: 44,
+    justifyContent: "center",
     borderRadius: 10,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 9,
   },
-  sentLabel: { fontSize: 12, fontWeight: "700", textAlign: "right" },
+  sentLabel: { fontSize: 13, fontWeight: "700", textAlign: "right" },
   autoReplyStatus: { borderWidth: 1, borderRadius: 10, padding: 10 },
   autoReplyRetry: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -350,5 +375,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
   },
-  autoReplyRetryText: { fontSize: 12, fontWeight: "700" },
+  autoReplyRetryText: { fontSize: 13, fontWeight: "700" },
 });

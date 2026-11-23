@@ -67,7 +67,7 @@ export function WhatsAppPairingModal({
     >
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.modalOverlay}
+        style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}
       >
         <View
           style={[
@@ -169,7 +169,10 @@ export function WhatsAppPairingModal({
                             : `data:image/png;base64,${input.qrCodeBase64}`,
                         }}
                         resizeMode="contain"
-                        style={styles.pairingQr}
+                        style={[
+                          styles.pairingQr,
+                          { backgroundColor: colors.qrSurface },
+                        ]}
                       />
                     </>
                   ) : null}
@@ -349,13 +352,16 @@ export function WhatsAppPairingModal({
               onPress={onClose}
               style={[
                 styles.dialogButton,
-                { borderColor: colors.border, opacity: busy ? 0.6 : 1 },
+                {
+                  borderColor: colors.border,
+                  backgroundColor: busy ? colors.disabled : "transparent",
+                },
               ]}
             >
               <Text
                 style={[
                   styles.dialogButtonLabel,
-                  { color: colors.foreground },
+                  { color: busy ? colors.disabledForeground : colors.foreground },
                 ]}
               >
                 {busy
@@ -373,16 +379,15 @@ export function WhatsAppPairingModal({
                 style={[
                   styles.dialogButton,
                   {
-                    backgroundColor: colors.primary,
-                    borderColor: colors.primary,
-                    opacity: busy ? 0.6 : 1,
+                    backgroundColor: busy ? colors.disabled : colors.primary,
+                    borderColor: busy ? colors.border : colors.primary,
                   },
                 ]}
               >
                 <Text
                   style={[
                     styles.dialogButtonLabel,
-                    { color: colors.primaryForeground },
+                    { color: busy ? colors.disabledForeground : colors.primaryForeground },
                   ]}
                 >
                   {busy ? "جارٍ الإرسال…" : "إرسال الرمز"}
@@ -403,7 +408,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
   },
   whatsappDialog: {
     width: "100%",
@@ -414,9 +418,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   dialogContent: { gap: 12, padding: 20 },
-  fieldLabel: { fontSize: 12, fontWeight: "700", textAlign: "right" },
+  fieldLabel: { fontSize: 14, fontWeight: "700", textAlign: "right" },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  dialogDescription: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   pairingCode: {
     paddingVertical: 16,
     paddingHorizontal: 20,
@@ -426,16 +430,15 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 3,
   },
-  pairingPhoneNumber: { fontSize: 12, lineHeight: 19, textAlign: "center" },
+  pairingPhoneNumber: { fontSize: 13, lineHeight: 20, textAlign: "center" },
   pairingQr: {
     width: 220,
     height: 220,
     alignSelf: "center",
-    backgroundColor: "#ffffff",
     borderRadius: 12,
   },
   pairingRefresh: { alignSelf: "center", paddingVertical: 8 },
-  connectionProgress: { fontSize: 13, fontWeight: "700", textAlign: "center" },
+  connectionProgress: { fontSize: 14, fontWeight: "700", textAlign: "center" },
   phoneFieldRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   countryCodeButton: {
     minWidth: 92,
@@ -455,13 +458,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     textAlign: "right",
-    fontSize: 14,
+    fontSize: 15,
   },
   phoneInput: { flex: 1, textAlign: "right", writingDirection: "ltr" },
-  phoneNumberHint: { fontSize: 12, lineHeight: 17, textAlign: "right" },
+  phoneNumberHint: { fontSize: 13, lineHeight: 19, textAlign: "right" },
   existingNumberNote: { borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  existingNumberNoteText: { fontSize: 12, lineHeight: 17, textAlign: "right" },
-  dialogError: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  existingNumberNoteText: { fontSize: 13, lineHeight: 19, textAlign: "right" },
+  dialogError: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   dialogActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   dialogButton: {
     flex: 1,
@@ -472,6 +475,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  dialogButtonLabel: { fontSize: 13, fontWeight: "800" },
-  secondaryActionLabel: { fontSize: 12, fontWeight: "700" },
+  dialogButtonLabel: { fontSize: 14, fontWeight: "800" },
+  secondaryActionLabel: { fontSize: 13, fontWeight: "700" },
 });

@@ -294,7 +294,7 @@ function BrandHeaderContent({
         animationType="fade"
         onRequestClose={() => setNotificationsVisible(false)}
       >
-        <View style={styles.notificationOverlay}>
+        <View style={[styles.notificationOverlay, { backgroundColor: colors.overlay }]}>
           <Pressable
             accessibilityLabel="إغلاق مركز الإشعارات"
             onPress={() => setNotificationsVisible(false)}
@@ -427,7 +427,15 @@ export function Panel({
   return (
     <View
       accessibilityLabel={accessibilityLabel}
-      style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.border }, style]}
+      style={[
+        styles.panel,
+        {
+          backgroundColor: colors.card,
+          borderColor: colors.border,
+          shadowColor: colors.shadow,
+        },
+        style,
+      ]}
     >
       {children}
     </View>
@@ -446,6 +454,21 @@ export function SectionTitle({ title, action }: { title: string; action?: React.
 
 export function ActionButton({ label, icon, onPress, secondary = false, disabled = false, compact = false }: { label: string; icon: LucideIconName; onPress: () => void; secondary?: boolean; disabled?: boolean; compact?: boolean }) {
   const colors = useColors();
+  const backgroundColor = disabled
+    ? colors.disabled
+    : secondary
+      ? colors.card
+      : colors.primary;
+  const borderColor = disabled
+    ? colors.border
+    : secondary
+      ? colors.border
+      : colors.primary;
+  const foregroundColor = disabled
+    ? colors.disabledForeground
+    : secondary
+      ? colors.primary
+      : colors.primaryForeground;
   return (
     <Pressable
       accessibilityRole="button"
@@ -455,11 +478,11 @@ export function ActionButton({ label, icon, onPress, secondary = false, disabled
       style={({ pressed }) => [
         styles.actionButton,
         compact && styles.actionButtonCompact,
-        { backgroundColor: secondary ? colors.card : colors.primary, borderColor: secondary ? colors.border : colors.primary, opacity: disabled ? 0.5 : pressed ? 0.82 : 1 },
+        { backgroundColor, borderColor, opacity: !disabled && pressed ? 0.82 : 1 },
       ]}
     >
-      <Icon name={icon} size={compact ? 14 : 16} color={secondary ? colors.primary : colors.primaryForeground} />
-      <Text style={[styles.actionLabel, compact && styles.actionLabelCompact, { color: secondary ? colors.primary : colors.primaryForeground }]}>{label}</Text>
+      <Icon name={icon} size={compact ? 14 : 16} color={foregroundColor} />
+      <Text style={[styles.actionLabel, compact && styles.actionLabelCompact, { color: foregroundColor }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -532,45 +555,45 @@ const styles = StyleSheet.create({
   constrainedContent: { width: '100%', alignSelf: 'center' },
   pageHeader: { width: '100%', alignSelf: 'stretch', flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', minHeight: 50, gap: 10 },
   pageHeaderTitle: { flexShrink: 1, fontSize: 20, fontWeight: '800', textAlign: 'right' },
-  pageHeaderSubtitle: { flexShrink: 1, fontSize: 12, lineHeight: 18, textAlign: 'right' },
+  pageHeaderSubtitle: { flexShrink: 1, fontSize: 13, lineHeight: 19, textAlign: 'right' },
   brandMarkSmall: { width: 30, height: 30, borderRadius: 10 },
-  compactBackButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 12 },
+  compactBackButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 12 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   brandLockup: { flexShrink: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandCopy: { flexShrink: 1, gap: 2 },
-  headerIconButton: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  headerIconButton: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   iconOnly: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  notificationDot: { position: 'absolute', width: 7, height: 7, borderRadius: 4, top: 7, end: 7 },
-  notificationOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 18, backgroundColor: 'rgba(0,0,0,0.42)' },
+  notificationDot: { position: 'absolute', width: 7, height: 7, borderRadius: 4, top: 8, end: 8 },
+  notificationOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 18 },
   notificationDialog: { width: '100%', maxWidth: 480, borderWidth: 1, borderRadius: 18, padding: 18, gap: 16 },
   notificationHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   notificationHeadingCopy: { alignItems: 'flex-start', gap: 4 },
   notificationTitle: { fontSize: 18, fontWeight: '800', textAlign: 'right' },
-  notificationSubtitle: { fontSize: 12, lineHeight: 18, textAlign: 'right' },
+  notificationSubtitle: { fontSize: 13, lineHeight: 19, textAlign: 'right' },
   notificationList: { gap: 9 },
   notificationItem: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 11 },
   notificationItemIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   notificationItemCopy: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 3 },
-  notificationItemTitle: { fontSize: 13, fontWeight: '800', textAlign: 'right' },
+  notificationItemTitle: { fontSize: 14, fontWeight: '800', textAlign: 'right' },
   notificationEmpty: { minHeight: 110, alignItems: 'center', justifyContent: 'center', gap: 10 },
-  panel: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 14, shadowColor: '#0A2540', shadowOpacity: 0.035, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 1 },
+  panel: { borderRadius: 20, borderWidth: 1, padding: 16, gap: 14, shadowOpacity: 0.035, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 1 },
   sectionTitle: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   sectionText: { fontSize: 16, fontWeight: '800', textAlign: 'right' },
   actionButton: { minHeight: 46, borderRadius: 15, borderWidth: 1, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  actionButtonCompact: { minHeight: 40, borderRadius: 12, paddingHorizontal: 10, gap: 6 },
+  actionButtonCompact: { minHeight: 44, borderRadius: 12, paddingHorizontal: 12, gap: 6 },
   actionLabel: { fontSize: 14, fontWeight: '700' },
-  actionLabelCompact: { fontSize: 12 },
+  actionLabelCompact: { fontSize: 13 },
   emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 22, paddingHorizontal: 18, gap: 8 },
   emptyIcon: { width: 50, height: 50, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
   emptyTitle: { fontSize: 15, fontWeight: '800', textAlign: 'center' },
   emptyBody: {
     alignSelf: 'stretch',
-    fontSize: 13,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 21,
     textAlign: 'right',
   },
   errorBanner: { borderRadius: 12, padding: 12 },
-  errorText: { fontSize: 12, textAlign: 'right', lineHeight: 18 },
+  errorText: { fontSize: 13.5, textAlign: 'right', lineHeight: 20 },
   pill: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6, alignSelf: 'flex-start' },
   pillDot: { width: 6, height: 6, borderRadius: 3 },
   pillText: { fontSize: 12, fontWeight: '700' },

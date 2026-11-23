@@ -199,23 +199,28 @@ export default function SignUpScreen() {
             </View>
             {errorMessage ? <AuthAlert message={errorMessage} /> : null}
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={verifyCode}
-              disabled={!code.trim() || loading}
-              style={[
-                authStyles.button,
-                {
-                  backgroundColor: theme.primary,
-                  opacity: !code.trim() || loading ? 0.55 : 1,
-                },
-              ]}
-            >
-              <Text style={[authStyles.buttonText, { color: theme.primaryForeground }]}>
-                {loading ? "جارٍ التحقق…" : "تأكيد البريد"}
-              </Text>
-              <ArrowLeft size={18} color={theme.primaryForeground} />
-            </Pressable>
+            {(() => {
+              const verifyDisabled = !code.trim() || loading;
+              const verifyFg = verifyDisabled ? theme.disabledForeground : theme.primaryForeground;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={verifyCode}
+                  disabled={verifyDisabled}
+                  style={[
+                    authStyles.button,
+                    {
+                      backgroundColor: verifyDisabled ? theme.disabled : theme.primary,
+                    },
+                  ]}
+                >
+                  <Text style={[authStyles.buttonText, { color: verifyFg }]}>
+                    {loading ? "جارٍ التحقق…" : "تأكيد البريد"}
+                  </Text>
+                  <ArrowLeft size={18} color={verifyFg} />
+                </Pressable>
+              );
+            })()}
             <Pressable
               accessibilityRole="button"
               accessibilityState={{
@@ -226,11 +231,32 @@ export default function SignUpScreen() {
               disabled={loading || isResendingCode}
               style={[
                 authStyles.secondaryButton,
-                { borderColor: theme.border, backgroundColor: theme.card },
+                {
+                  borderColor: theme.border,
+                  backgroundColor:
+                    loading || isResendingCode ? theme.disabled : theme.card,
+                },
               ]}
             >
-              <Mail size={16} color={theme.primary} />
-              <Text style={[authStyles.secondaryText, { color: theme.primary }]}>
+              <Mail
+                size={16}
+                color={
+                  loading || isResendingCode
+                    ? theme.disabledForeground
+                    : theme.primary
+                }
+              />
+              <Text
+                style={[
+                  authStyles.secondaryText,
+                  {
+                    color:
+                      loading || isResendingCode
+                        ? theme.disabledForeground
+                        : theme.primary,
+                  },
+                ]}
+              >
                 {loading || isResendingCode ? "جارٍ إرسال الرمز…" : "إرسال رمز جديد"}
               </Text>
             </Pressable>
@@ -314,7 +340,7 @@ export default function SignUpScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                 onPress={() => setShowPassword((visible) => !visible)}
-                hitSlop={8}
+                hitSlop={12}
               >
                 {showPassword ? (
                   <EyeOff size={18} color={theme.mutedForeground} />
@@ -360,7 +386,7 @@ export default function SignUpScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={showConfirmPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                 onPress={() => setShowConfirmPassword((visible) => !visible)}
-                hitSlop={8}
+                hitSlop={12}
               >
                 {showConfirmPassword ? (
                   <EyeOff size={18} color={theme.mutedForeground} />
@@ -382,7 +408,7 @@ export default function SignUpScreen() {
                 accessibilityState={{ checked: acceptedTerms }}
                 onPress={() => setAcceptedTerms((accepted) => !accepted)}
                 style={styles.checkboxButton}
-                hitSlop={6}
+                hitSlop={12}
               >
                 <View
                   style={[
@@ -430,13 +456,21 @@ export default function SignUpScreen() {
               disabled={!canCreate}
               style={[
                 authStyles.button,
-                { backgroundColor: theme.primary, opacity: canCreate ? 1 : 0.55 },
+                { backgroundColor: canCreate ? theme.primary : theme.disabled },
               ]}
             >
-              <Text style={[authStyles.buttonText, { color: theme.primaryForeground }]}>
+              <Text
+                style={[
+                  authStyles.buttonText,
+                  { color: canCreate ? theme.primaryForeground : theme.disabledForeground },
+                ]}
+              >
                 {loading ? "جارٍ إنشاء الحساب…" : "إنشاء حساب"}
               </Text>
-              <ArrowLeft size={18} color={theme.primaryForeground} />
+              <ArrowLeft
+                size={18}
+                color={canCreate ? theme.primaryForeground : theme.disabledForeground}
+              />
             </Pressable>
           </>
         )}
@@ -446,7 +480,7 @@ export default function SignUpScreen() {
             لديك حساب بالفعل؟
           </Text>
           <Link href="/(auth)/sign-in" asChild>
-            <Pressable disabled={loading}>
+            <Pressable disabled={loading} style={styles.footerLinkButton}>
               <Text style={[styles.footerLink, { color: theme.link }]}>تسجيل الدخول</Text>
             </Pressable>
           </Link>
@@ -476,21 +510,31 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   emailCopy: { flex: 1, gap: 2 },
-  emailCaption: { fontSize: 12.5, lineHeight: 19 },
+  emailCaption: { fontSize: 13.5, lineHeight: 20 },
   emailAddress: {
-    fontSize: 13.5,
+    fontSize: 14,
     fontWeight: "700",
     textAlign: "right",
     writingDirection: "ltr",
   },
   termsRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 9,
-    marginTop: 4,
+    alignItems: "center",
+    gap: 4,
+    marginTop: 2,
     marginBottom: 2,
   },
-  checkboxButton: { paddingTop: 1 },
+  checkboxButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  footerLinkButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
   checkbox: {
     width: 19,
     height: 19,
@@ -499,7 +543,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  termsText: { flex: 1, fontSize: 12.5, lineHeight: 20, textAlign: "right" },
+  termsText: { flex: 1, fontSize: 13.5, lineHeight: 21, textAlign: "right" },
   legalLink: { fontWeight: "800" },
   footerHint: { fontSize: 13.5 },
   footerLink: { fontSize: 13.5, fontWeight: "800" },

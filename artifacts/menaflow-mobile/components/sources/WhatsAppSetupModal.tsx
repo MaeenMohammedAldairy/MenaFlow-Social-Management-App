@@ -53,7 +53,7 @@ export function WhatsAppSetupModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
+      <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
         <View
           style={[
             styles.whatsappSetupDialog,
@@ -170,16 +170,29 @@ export function WhatsAppSetupModal({
             style={[
               styles.primaryAction,
               {
-                backgroundColor: colors.primary,
-                opacity: !initialized || loading ? 0.5 : 1,
+                backgroundColor:
+                  !initialized || loading ? colors.disabled : colors.primary,
               },
             ]}
           >
-            <Icon name="plus" size={16} color={colors.primaryForeground} />
+            <Icon
+              name="plus"
+              size={16}
+              color={
+                !initialized || loading
+                  ? colors.disabledForeground
+                  : colors.primaryForeground
+              }
+            />
             <Text
               style={[
                 styles.primaryActionLabel,
-                { color: colors.primaryForeground },
+                {
+                  color:
+                    !initialized || loading
+                      ? colors.disabledForeground
+                      : colors.primaryForeground,
+                },
               ]}
             >
               اختر مصدر البيانات
@@ -200,13 +213,16 @@ export function WhatsAppSetupModal({
               onPress={onClose}
               style={[
                 styles.dialogButton,
-                { borderColor: colors.border, opacity: busy ? 0.6 : 1 },
+                {
+                  borderColor: colors.border,
+                  backgroundColor: busy ? colors.disabled : "transparent",
+                },
               ]}
             >
               <Text
                 style={[
                   styles.dialogButtonLabel,
-                  { color: colors.foreground },
+                  { color: busy ? colors.disabledForeground : colors.foreground },
                 ]}
               >
                 إغلاق
@@ -219,16 +235,26 @@ export function WhatsAppSetupModal({
               style={[
                 styles.dialogButton,
                 {
-                  backgroundColor: colors.primary,
-                  borderColor: colors.primary,
-                  opacity: busy || !initialized || loading ? 0.5 : 1,
+                  backgroundColor:
+                    busy || !initialized || loading
+                      ? colors.disabled
+                      : colors.primary,
+                  borderColor:
+                    busy || !initialized || loading
+                      ? colors.border
+                      : colors.primary,
                 },
               ]}
             >
               <Text
                 style={[
                   styles.dialogButtonLabel,
-                  { color: colors.primaryForeground },
+                  {
+                    color:
+                      busy || !initialized || loading
+                        ? colors.disabledForeground
+                        : colors.primaryForeground,
+                  },
                 ]}
               >
                 {busy ? "جارٍ الحفظ…" : "حفظ إعدادات واتساب"}
@@ -247,7 +273,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
   },
   whatsappSetupDialog: {
     width: "100%",
@@ -259,7 +284,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  dialogDescription: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   setupSectionTitle: { fontSize: 15, fontWeight: "800", textAlign: "right" },
   loadingRow: {
     flexDirection: "row",
@@ -268,16 +293,16 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
   },
-  loadingLabel: { fontSize: 13, fontWeight: "700" },
+  loadingLabel: { fontSize: 14, fontWeight: "700" },
   setupEmptyState: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 24,
     gap: 10,
   },
-  emptyMessage: { fontSize: 13, textAlign: "center", lineHeight: 20 },
+  emptyMessage: { fontSize: 14, textAlign: "center", lineHeight: 21 },
   secondaryAction: {
-    minHeight: 38,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -285,7 +310,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  secondaryActionLabel: { fontSize: 12, fontWeight: "700" },
+  secondaryActionLabel: { fontSize: 13.5, fontWeight: "700" },
   selectedGroupList: { maxHeight: 220 },
   selectedGroupCard: {
     borderWidth: 1,
@@ -297,8 +322,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   selectedGroupCopy: { flex: 1, alignItems: "flex-start", gap: 4 },
-  selectedGroupName: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  removeGroupButton: { padding: 6 },
+  selectedGroupName: { fontSize: 14, fontWeight: "700", textAlign: "right" },
+  removeGroupButton: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", padding: 6 },
   primaryAction: {
     minHeight: 44,
     borderRadius: 12,
@@ -308,7 +333,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   primaryActionLabel: { fontSize: 14, fontWeight: "800" },
-  dialogError: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  dialogError: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   dialogActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   dialogButton: {
     flex: 1,
@@ -319,5 +344,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  dialogButtonLabel: { fontSize: 13, fontWeight: "800" },
+  dialogButtonLabel: { fontSize: 14, fontWeight: "800" },
 });

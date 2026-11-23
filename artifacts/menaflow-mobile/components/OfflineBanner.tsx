@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  message: { flex: 1, fontSize: 12, textAlign: "right" },
-  retry: { paddingHorizontal: 4, paddingVertical: 2 },
-  retryLabel: { fontSize: 12, fontWeight: "700" },
+  message: { flex: 1, fontSize: 13.5, textAlign: "right" },
+  retry: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8, paddingVertical: 4 },
+  retryLabel: { fontSize: 13.5, fontWeight: "700" },
 });

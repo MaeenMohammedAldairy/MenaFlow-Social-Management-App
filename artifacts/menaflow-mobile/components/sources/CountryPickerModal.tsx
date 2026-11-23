@@ -70,7 +70,7 @@ export function CountryPickerModal({
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
+      <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
         <View
           style={[
             styles.countryPickerDialog,
@@ -186,7 +186,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
   },
   countryPickerDialog: {
     width: "100%",
@@ -218,15 +217,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
   },
-  countryName: { flex: 1, fontSize: 13, textAlign: "right" },
+  countryName: { flex: 1, fontSize: 14, textAlign: "right" },
   countryCallingCode: {
     minWidth: 48,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "800",
     textAlign: "right",
     writingDirection: "ltr",
   },
-  phoneNumberHint: { fontSize: 12, lineHeight: 17, textAlign: "right" },
+  phoneNumberHint: { fontSize: 13, lineHeight: 19, textAlign: "right" },
   dialogButton: {
     minHeight: 44,
     borderWidth: 1,
@@ -235,5 +234,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  dialogButtonLabel: { fontSize: 13, fontWeight: "800" },
+  dialogButtonLabel: { fontSize: 14, fontWeight: "800" },
 });

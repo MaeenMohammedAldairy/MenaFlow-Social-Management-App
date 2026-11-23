@@ -229,17 +229,22 @@ export function WhatsAppMessageGroupCard({
           style={[
             styles.convertAction,
             {
-              borderColor: colors.primary,
-              opacity: converting ? 0.5 : 1,
+              borderColor: converting ? colors.border : colors.primary,
+              backgroundColor: converting ? colors.disabled : "transparent",
             },
           ]}
         >
           {converting ? (
-            <ActivityIndicator size="small" color={colors.primary} />
+            <ActivityIndicator size="small" color={colors.disabledForeground} />
           ) : (
             <Icon name="file-plus" size={14} color={colors.primary} />
           )}
-          <Text style={[styles.convertActionLabel, { color: colors.primary }]}>
+          <Text
+            style={[
+              styles.convertActionLabel,
+              { color: converting ? colors.disabledForeground : colors.primary },
+            ]}
+          >
             إضافة إلى مراجعة المنتجات
           </Text>
         </Pressable>
@@ -256,25 +261,25 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   senderWrap: { flex: 1, alignItems: "flex-start", gap: 3 },
   groupStatus: { flexShrink: 0 },
-  sender: { fontSize: 12, fontWeight: "800", textAlign: "right", flexShrink: 1 },
-  body: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  sender: { fontSize: 13.5, fontWeight: "800", textAlign: "right", flexShrink: 1 },
+  body: { fontSize: 14, lineHeight: 22, textAlign: "right" },
   suggestionList: { alignItems: "flex-start", gap: 8 },
   suggestion: { alignItems: "flex-start", gap: 5 },
   candidateMediaList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   suggestionActions: { flexDirection: "row", gap: 8, flexWrap: "wrap" },
   suggestionAction: {
-    minHeight: 36,
+    minHeight: 44,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    paddingHorizontal: 10,
+    borderRadius: 10,
+    paddingHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  meta: { fontSize: 12, textAlign: "right" },
+  meta: { fontSize: 12.5, textAlign: "right" },
   mediaList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   mediaThumbnail: { width: 76, height: 76, borderRadius: 8 },
   mediaPlaceholder: { width: 76, height: 76, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  mediaType: { fontSize: 12, fontWeight: "700" },
-  convertAction: { minHeight: 40, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
-  convertActionLabel: { fontSize: 12, fontWeight: "800" },
+  mediaType: { fontSize: 12.5, fontWeight: "700" },
+  convertAction: { minHeight: 44, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7 },
+  convertActionLabel: { fontSize: 13.5, fontWeight: "800" },
 });

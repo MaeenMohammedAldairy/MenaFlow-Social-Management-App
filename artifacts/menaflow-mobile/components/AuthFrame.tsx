@@ -14,6 +14,7 @@ import { BrandMark } from "@/components/BrandMark";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import colors from "@/constants/colors";
 import { useAuthTheme } from "@/hooks/useAuthTheme";
 import { useAppearanceMode } from "@/lib/appearance";
 import { useColorScheme } from "react-native";
@@ -221,7 +222,7 @@ export const authStyles = StyleSheet.create({
   },
   inputFocused: {
     borderWidth: 1.5,
-    shadowColor: "#02A362",
+    shadowColor: colors.light.primary,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.18,
     shadowRadius: 6,
@@ -253,7 +254,7 @@ export const authStyles = StyleSheet.create({
     marginTop: 4,
     flexDirection: "row",
     gap: 8,
-    shadowColor: "#02A362",
+    shadowColor: colors.light.primary,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
@@ -278,8 +279,8 @@ export const authStyles = StyleSheet.create({
     gap: 6,
     marginTop: 6,
   },
-  linkText: { fontSize: 13, fontWeight: "800" },
-  hint: { fontSize: 13, lineHeight: 20, textAlign: "right" },
+  linkText: { fontSize: 14, fontWeight: "800" },
+  hint: { fontSize: 14, lineHeight: 21, textAlign: "right" },
 });
 
 const styles = StyleSheet.create({
@@ -342,10 +343,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: -6,
   },
-  topBarSpacer: { width: 38, height: 38 },
+  topBarSpacer: { width: 44, height: 44 },
   backButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",

@@ -546,7 +546,7 @@ export function MetaAutoReplySettingsPanel({
                               color: selected
                                 ? colors.primaryForeground
                                 : colors.foreground,
-                              fontSize: 12,
+                              fontSize: 13.5,
                               fontWeight: "700",
                             }}
                           >
@@ -732,7 +732,7 @@ export function MetaAutoReplySettingsPanel({
           }
         }}
       >
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View
             style={[
               styles.dialog,
@@ -879,6 +879,7 @@ export function MetaAutoReplySettingsPanel({
                         accessibilityRole="button"
                         disabled={queueHistoricalComments.isPending}
                         onPress={selectAvailableHistoricalPosts}
+                        style={styles.historicalSelectionAction}
                       >
                         <Text style={{ color: colors.primary }}>
                           تحديد دفعة حتى 20
@@ -891,6 +892,7 @@ export function MetaAutoReplySettingsPanel({
                         accessibilityRole="button"
                         disabled={queueHistoricalComments.isPending}
                         onPress={() => setSelectedHistoricalPostIds(new Set())}
+                        style={styles.historicalSelectionAction}
                       >
                         <Text style={{ color: colors.primary }}>
                           إلغاء التحديد
@@ -1094,7 +1096,7 @@ export function MetaAutoReplySettingsPanel({
           }
         }}
       >
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View
             accessibilityRole="alert"
             style={[
@@ -1279,7 +1281,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
-    backgroundColor: "rgba(10, 37, 64, 0.55)",
   },
   dialog: {
     width: "100%",
@@ -1301,9 +1302,9 @@ const styles = StyleSheet.create({
   modalHeading: { flex: 1, gap: 4, alignItems: "flex-start" },
   modalTitle: { fontSize: 17, fontWeight: "700", textAlign: "right" },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1328,8 +1329,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderTopWidth: 1,
   },
-  body: { fontSize: 13, lineHeight: 21, textAlign: "right" },
-  bodySmall: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  body: { fontSize: 14, lineHeight: 22, textAlign: "right" },
+  bodySmall: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   platform: {
     gap: 10,
     borderWidth: 1,
@@ -1337,7 +1338,7 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   platformChoiceCopy: { flex: 1, gap: 2, alignItems: "flex-start" },
-  platformChoiceLabel: { fontSize: 13, fontWeight: "600" },
+  platformChoiceLabel: { fontSize: 14, fontWeight: "600" },
   switchBlock: { gap: 3 },
   switchRow: {
     flexDirection: "row",
@@ -1359,7 +1360,7 @@ const styles = StyleSheet.create({
   choiceRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   testTargetGroup: { gap: 8 },
   testTargetOption: {
-    minHeight: 40,
+    minHeight: 44,
     flexGrow: 1,
     flexBasis: "40%",
     borderWidth: 1,
@@ -1410,6 +1411,10 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 12,
   },
+  historicalSelectionAction: {
+    minHeight: 44,
+    justifyContent: "center",
+  },
   historicalCheckbox: {
     width: 20,
     height: 20,
@@ -1419,12 +1424,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   choice: {
+    minHeight: 44,
+    textAlignVertical: "center",
     overflow: "hidden",
     borderWidth: 1,
     borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    fontSize: 13,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    fontSize: 13.5,
   },
   testSimulatorBlock: {
     borderWidth: 1,
@@ -1439,7 +1446,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   testSimulatorTitle: {
-    fontSize: 14,
+    fontSize: 14.5,
     fontWeight: "700",
     textAlign: "right",
   },
@@ -1448,7 +1455,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 13,
+    fontSize: 14,
     minHeight: 44,
     textAlign: "right",
   },
@@ -1465,7 +1472,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   testReplyLabel: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "600",
   },
   presetChipsRow: {
@@ -1477,9 +1484,9 @@ const styles = StyleSheet.create({
   presetChip: {
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    fontSize: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    fontSize: 13,
     overflow: "hidden",
   },
 });

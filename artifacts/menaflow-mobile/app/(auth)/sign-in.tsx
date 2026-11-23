@@ -171,7 +171,7 @@ export default function SignInScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}
                 onPress={() => setShowPassword((visible) => !visible)}
-                hitSlop={8}
+                hitSlop={12}
               >
                 {showPassword ? (
                   <EyeOff size={18} color={theme.mutedForeground} />
@@ -188,7 +188,7 @@ export default function SignInScreen() {
                 accessibilityState={{ checked: remember }}
                 onPress={() => setRemember((value) => !value)}
                 style={styles.rememberButton}
-                hitSlop={6}
+                hitSlop={8}
               >
                 <View
                   style={[
@@ -211,7 +211,8 @@ export default function SignInScreen() {
                   setResetStep("email");
                   setErrorMessage("");
                 }}
-                hitSlop={6}
+                style={styles.inlineLinkButton}
+                hitSlop={8}
               >
                 <Text style={[styles.forgotLink, { color: theme.link }]}>نسيت كلمة المرور؟</Text>
               </Pressable>
@@ -219,23 +220,28 @@ export default function SignInScreen() {
 
             {errorMessage ? <AuthAlert message={errorMessage} /> : null}
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={handleSubmit}
-              disabled={!emailAddress.trim() || !password || busy}
-              style={[
-                authStyles.button,
-                {
-                  backgroundColor: theme.primary,
-                  opacity: !emailAddress.trim() || !password || busy ? 0.55 : 1,
-                },
-              ]}
-            >
-              <Text style={[authStyles.buttonText, { color: theme.primaryForeground }]}>
-                {loading ? "جارٍ تسجيل الدخول…" : "تسجيل الدخول"}
-              </Text>
-              <ArrowLeft size={18} color={theme.primaryForeground} />
-            </Pressable>
+            {(() => {
+              const submitDisabled = !emailAddress.trim() || !password || busy;
+              const submitFg = submitDisabled ? theme.disabledForeground : theme.primaryForeground;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={handleSubmit}
+                  disabled={submitDisabled}
+                  style={[
+                    authStyles.button,
+                    {
+                      backgroundColor: submitDisabled ? theme.disabled : theme.primary,
+                    },
+                  ]}
+                >
+                  <Text style={[authStyles.buttonText, { color: submitFg }]}>
+                    {loading ? "جارٍ تسجيل الدخول…" : "تسجيل الدخول"}
+                  </Text>
+                  <ArrowLeft size={18} color={submitFg} />
+                </Pressable>
+              );
+            })()}
 
             <View style={styles.divider}>
               <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
@@ -256,13 +262,23 @@ export default function SignInScreen() {
                   styles.socialButton,
                   {
                     borderColor: theme.border,
-                    backgroundColor: theme.card,
-                    opacity: busy && socialLoading !== "facebook" ? 0.55 : 1,
+                    backgroundColor:
+                      busy && socialLoading !== "facebook" ? theme.disabled : theme.card,
                   },
                 ]}
               >
                 <SocialPlatformIcon platform="facebook" size={19} />
-                <Text style={[authStyles.secondaryText, { color: theme.foreground }]}>
+                <Text
+                  style={[
+                    authStyles.secondaryText,
+                    {
+                      color:
+                        busy && socialLoading !== "facebook"
+                          ? theme.disabledForeground
+                          : theme.foreground,
+                    },
+                  ]}
+                >
                   {socialLoading === "facebook" ? "جارٍ المتابعة…" : "Facebook"}
                 </Text>
               </Pressable>
@@ -276,13 +292,23 @@ export default function SignInScreen() {
                   styles.socialButton,
                   {
                     borderColor: theme.border,
-                    backgroundColor: theme.card,
-                    opacity: busy && socialLoading !== "google" ? 0.55 : 1,
+                    backgroundColor:
+                      busy && socialLoading !== "google" ? theme.disabled : theme.card,
                   },
                 ]}
               >
                 <GoogleLogo size={19} />
-                <Text style={[authStyles.secondaryText, { color: theme.foreground }]}>
+                <Text
+                  style={[
+                    authStyles.secondaryText,
+                    {
+                      color:
+                        busy && socialLoading !== "google"
+                          ? theme.disabledForeground
+                          : theme.foreground,
+                    },
+                  ]}
+                >
                   {socialLoading === "google" ? "جارٍ المتابعة…" : "Google"}
                 </Text>
               </Pressable>
@@ -311,6 +337,7 @@ export default function SignInScreen() {
               accessibilityState={{ disabled: loading || !emailAddress.trim(), busy: loading }}
               disabled={loading || !emailAddress.trim()}
               onPress={() => void restartSignIn()}
+              style={styles.inlineLinkButton}
             >
               <Text style={[authStyles.linkText, { color: theme.link }]}>
                 {loading ? "جارٍ الرجوع…" : "العودة لاختيار حساب أو طريقة دخول أخرى"}
@@ -322,7 +349,7 @@ export default function SignInScreen() {
                 ليس لديك حساب؟
               </Text>
               <Link href="/(auth)/sign-up" asChild>
-                <Pressable>
+                <Pressable style={styles.inlineLinkButton}>
                   <Text style={[styles.footerLink, { color: theme.link }]}>إنشاء حساب جديد</Text>
                 </Pressable>
               </Link>
@@ -344,9 +371,15 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   rememberButton: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
+  },
+  inlineLinkButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 4,
   },
   checkbox: {
     width: 19,

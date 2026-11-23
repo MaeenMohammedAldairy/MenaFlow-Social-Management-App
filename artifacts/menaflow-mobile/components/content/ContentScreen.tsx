@@ -516,7 +516,11 @@ function ContentScreenContent({ userId }: { userId: string | null }) {
             </Text>
           </Pressable>
           {hasActiveFilters ? (
-            <Pressable accessibilityRole="button" onPress={clearContentFilters}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={clearContentFilters}
+              style={styles.expandContentButton}
+            >
               <Text style={[styles.reviewAction, { color: colors.primary }]}>
                 مسح التصفية
               </Text>

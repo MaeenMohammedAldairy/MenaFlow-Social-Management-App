@@ -1,5 +1,6 @@
 import React from "react";
 import { Image, Modal, Pressable, StyleSheet } from "react-native";
+import { useColors } from "@/hooks/useColors";
 import { mediaUrlForApp } from "@/lib/content-utils";
 
 interface MediaPreviewModalProps {
@@ -8,6 +9,7 @@ interface MediaPreviewModalProps {
 }
 
 export function MediaPreviewModal({ url, onClose }: MediaPreviewModalProps) {
+  const colors = useColors();
   return (
     <Modal
       visible={url !== null}
@@ -19,7 +21,7 @@ export function MediaPreviewModal({ url, onClose }: MediaPreviewModalProps) {
         accessibilityRole="button"
         accessibilityLabel="إغلاق معاينة الصورة"
         onPress={onClose}
-        style={styles.mediaPreviewOverlay}
+        style={[styles.mediaPreviewOverlay, { backgroundColor: colors.mediaLightbox }]}
       >
         {url ? (
           <Image
@@ -36,7 +38,6 @@ export function MediaPreviewModal({ url, onClose }: MediaPreviewModalProps) {
 const styles = StyleSheet.create({
   mediaPreviewOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.9)",
     justifyContent: "center",
     alignItems: "center",
     padding: 16,

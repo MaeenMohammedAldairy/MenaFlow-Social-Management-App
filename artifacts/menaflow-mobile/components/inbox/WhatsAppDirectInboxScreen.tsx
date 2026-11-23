@@ -467,10 +467,10 @@ function DirectMessageBubble({
       ]}
     >
       <View style={styles.messageHeader}>
-        <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
           {formatArabicDate(message.occurredAt, { dateStyle: "short" }) ?? ""}
         </Text>
-        <Text style={{ color: colors.mutedForeground, fontSize: 11 }}>
+        <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
           {formatArabicDate(message.occurredAt, { timeStyle: "short" }) ?? ""}
         </Text>
       </View>

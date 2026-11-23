@@ -224,8 +224,12 @@ function AuthenticatedSetup() {
       <View style={[styles.loadingRoot, { backgroundColor: theme.background }]}>
         <OfflineBanner />
         <Text accessibilityRole="alert" style={[styles.loadingText, { color: theme.foreground }]}>تعذّر تحميل مساحة العمل. تحقق من اتصالك ثم أعد المحاولة.</Text>
-        <Pressable accessibilityRole="button" onPress={() => invalidateWorkspaceList()}>
-          <Text style={{ color: theme.primary }}>إعادة المحاولة</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => invalidateWorkspaceList()}
+          style={styles.retryInlineButton}
+        >
+          <Text style={[styles.retryInlineLabel, { color: theme.primary }]}>إعادة المحاولة</Text>
         </Pressable>
       </View>
     );
@@ -237,8 +241,12 @@ function AuthenticatedSetup() {
         <Text accessibilityRole="alert" style={[styles.loadingText, { color: theme.foreground }]}>
           تعذّر تحميل حالة الإعداد. تحقق من اتصالك ثم أعد المحاولة.
         </Text>
-        <Pressable accessibilityRole="button" onPress={() => void status.refetch()}>
-          <Text style={{ color: theme.primary }}>إعادة المحاولة</Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void status.refetch()}
+          style={styles.retryInlineButton}
+        >
+          <Text style={[styles.retryInlineLabel, { color: theme.primary }]}>إعادة المحاولة</Text>
         </Pressable>
       </View>
     );
@@ -414,16 +422,22 @@ function AuthenticatedSetup() {
                   style={({ pressed }) => [
                     styles.primaryButton,
                     {
-                      backgroundColor: theme.primary,
-                      opacity: !canSave ? 0.55 : pressed ? 0.88 : 1,
+                      backgroundColor: !canSave ? theme.disabled : theme.primary,
+                      opacity: canSave && pressed ? 0.88 : 1,
                       shadowColor: theme.primary,
+                      shadowOpacity: !canSave ? 0 : 0.28,
+                      elevation: !canSave ? 0 : 5,
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.primaryButtonText,
-                      { color: theme.primaryForeground },
+                      {
+                        color: !canSave
+                          ? theme.disabledForeground
+                          : theme.primaryForeground,
+                      },
                     ]}
                   >
                     {save.isPending
@@ -432,7 +446,10 @@ function AuthenticatedSetup() {
                         ? "حفظ التغييرات"
                         : "حفظ ومتابعة"}
                   </Text>
-                  <ArrowLeft size={18} color={theme.primaryForeground} />
+                  <ArrowLeft
+                    size={18}
+                    color={!canSave ? theme.disabledForeground : theme.primaryForeground}
+                  />
                 </Pressable>
                 {!completed ? (
                   <Pressable
@@ -440,9 +457,22 @@ function AuthenticatedSetup() {
                     accessibilityState={{ disabled: busy, busy: finishSetup.isPending }}
                     disabled={busy}
                     onPress={() => handleExit("dashboard")}
-                    style={[styles.secondaryButton, { borderColor: theme.border, opacity: busy ? 0.55 : 1 }]}
+                    style={[
+                      styles.secondaryButton,
+                      {
+                        borderColor: theme.border,
+                        backgroundColor: busy ? theme.disabled : theme.card,
+                      },
+                    ]}
                   >
-                    <Text style={[styles.secondaryButtonText, { color: theme.foreground }]}>إكمال لاحقًا</Text>
+                    <Text
+                      style={[
+                        styles.secondaryButtonText,
+                        { color: busy ? theme.disabledForeground : theme.foreground },
+                      ]}
+                    >
+                      إكمال لاحقًا
+                    </Text>
                   </Pressable>
                 ) : null}
               </View>
@@ -479,21 +509,23 @@ function AuthenticatedSetup() {
                   style={({ pressed }) => [
                     styles.primaryButton,
                     {
-                      backgroundColor: theme.primary,
-                      opacity: busy ? 0.55 : pressed ? 0.88 : 1,
+                      backgroundColor: busy ? theme.disabled : theme.primary,
+                      opacity: !busy && pressed ? 0.88 : 1,
                       shadowColor: theme.primary,
+                      shadowOpacity: busy ? 0 : 0.28,
+                      elevation: busy ? 0 : 5,
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.primaryButtonText,
-                      { color: theme.primaryForeground },
+                      { color: busy ? theme.disabledForeground : theme.primaryForeground },
                     ]}
                   >
                     ربط الآن
                   </Text>
-                  <ArrowLeft size={18} color={theme.primaryForeground} />
+                  <ArrowLeft size={18} color={busy ? theme.disabledForeground : theme.primaryForeground} />
                 </Pressable>
 
                 <Pressable
@@ -504,14 +536,14 @@ function AuthenticatedSetup() {
                   style={({ pressed }) => [
                     styles.secondaryButton,
                     {
-                      backgroundColor: theme.card,
+                      backgroundColor: busy ? theme.disabled : theme.card,
                       borderColor: theme.border,
-                      opacity: busy ? 0.55 : pressed ? 0.72 : 1,
+                      opacity: !busy && pressed ? 0.72 : 1,
                     },
                   ]}
                 >
-                  <LayoutDashboard size={17} color={theme.foreground} />
-                  <Text style={[styles.secondaryButtonText, { color: theme.foreground }]}>
+                  <LayoutDashboard size={17} color={busy ? theme.disabledForeground : theme.foreground} />
+                  <Text style={[styles.secondaryButtonText, { color: busy ? theme.disabledForeground : theme.foreground }]}>
                     ادخل لوحة التحكم
                   </Text>
                 </Pressable>
@@ -545,8 +577,8 @@ function AuthenticatedSetup() {
                 <View style={[styles.infoBanner, { backgroundColor: theme.primarySoft }]}><Info size={18} color={theme.primary} /><Text style={[styles.infoText, { color: theme.foreground }]}>يمكنك تخصيص الردود حسب المنصة المستخدمة.</Text></View>
                 {formError ? <Text accessibilityRole="alert" style={[styles.error, { color: theme.destructive }]}>{formError}</Text> : null}
                 <Pressable accessibilityRole="button" disabled={busy} accessibilityState={{ disabled: busy, busy: finishAutomation.isPending }} onPress={() => { if (actionLock.current) return; actionLock.current = true; setFormError(null); finishAutomation.mutate(); }}
-                  style={[styles.primaryButton, { backgroundColor: theme.primary, opacity: busy ? 0.6 : 1 }]}>
-                  <Text style={[styles.primaryButtonText, { color: theme.primaryForeground }]}>{finishAutomation.isPending ? "جارٍ الحفظ…" : "متابعة"}</Text><ArrowLeft size={18} color={theme.primaryForeground} />
+                  style={[styles.primaryButton, { backgroundColor: busy ? theme.disabled : theme.primary, shadowColor: theme.primary, shadowOpacity: busy ? 0 : 0.28, elevation: busy ? 0 : 5 }]}>
+                  <Text style={[styles.primaryButtonText, { color: busy ? theme.disabledForeground : theme.primaryForeground }]}>{finishAutomation.isPending ? "جارٍ الحفظ…" : "متابعة"}</Text><ArrowLeft size={18} color={busy ? theme.disabledForeground : theme.primaryForeground} />
                 </Pressable>
                 <Pressable accessibilityRole="button" disabled={busy} onPress={() => handleExit("dashboard")} style={[styles.secondaryButton, { borderColor: theme.border }]}>
                   <Text style={[styles.secondaryButtonText, { color: theme.foreground }]}>إكمال لاحقًا</Text>
@@ -598,6 +630,13 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   loadingText: { fontSize: 15, lineHeight: 24, textAlign: "center" },
+  retryInlineButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 14,
+  },
+  retryInlineLabel: { fontSize: 14, fontWeight: "700" },
   blob: { position: "absolute", borderRadius: 400 },
   blobTop: { width: 420, height: 420, top: -260, end: -150, opacity: 0.9 },
   blobBottom: {
@@ -646,7 +685,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   stepNumber: { fontSize: 13, fontWeight: "800" },
-  stepLabel: { fontSize: 11, lineHeight: 16, textAlign: "center" },
+  stepLabel: { fontSize: 12, lineHeight: 17, textAlign: "center" },
   connector: {
     flex: 1,
     minWidth: 24,
@@ -669,7 +708,7 @@ const styles = StyleSheet.create({
     maxWidth: 360,
   },
   field: { width: "100%", gap: 8 },
-  fieldLabel: { fontSize: 13.5, fontWeight: "800" },
+  fieldLabel: { fontSize: 14, fontWeight: "800" },
   input: {
     width: "100%",
     minHeight: 50,
@@ -683,10 +722,10 @@ const styles = StyleSheet.create({
   select: { minHeight: 50, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10 },
   selectText: { flex: 1, fontSize: 14, textAlign: "right" },
   typeList: { borderWidth: 1, borderRadius: 14, overflow: "hidden" },
-  typeOption: { minHeight: 42, justifyContent: "center", paddingHorizontal: 14 },
+  typeOption: { minHeight: 44, justifyContent: "center", paddingHorizontal: 14 },
   infoBanner: { width: "100%", borderRadius: 12, padding: 12, flexDirection: "row-reverse", alignItems: "center", gap: 8 },
-  infoText: { flex: 1, fontSize: 12, lineHeight: 20, textAlign: "right" },
-  error: { fontSize: 12.5, lineHeight: 20, textAlign: "center" },
+  infoText: { flex: 1, fontSize: 14, lineHeight: 21, textAlign: "right" },
+  error: { fontSize: 13.5, lineHeight: 20, textAlign: "center" },
   primaryButton: {
     width: "100%",
     minHeight: 54,
@@ -717,8 +756,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 14,
   },
-  backText: { fontSize: 13, fontWeight: "700" },
+  backText: { fontSize: 14, fontWeight: "700" },
 });
