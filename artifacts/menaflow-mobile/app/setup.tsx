@@ -290,12 +290,7 @@ function AuthenticatedSetup() {
             <BrandMark height={26} />
           </View>
 
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: theme.card, borderColor: theme.border },
-            ]}
-          >
+          <View style={styles.stepContent}>
             {(!completed || step === "success" || step === "automation") ? <OnboardingStepper activeIndex={activeIndex} /> : null}
 
             {activeIndex === 0 ? (
@@ -626,20 +621,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 9,
   },
-  card: {
+  stepContent: {
     width: "100%",
     alignItems: "center",
     gap: 12,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 20,
-    borderRadius: 28,
-    borderWidth: 1,
-    shadowColor: "#0A2A63",
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.1,
-    shadowRadius: 30,
-    elevation: 6,
+    paddingHorizontal: 4,
+    paddingTop: 8,
   },
   formStep: { width: "100%", alignItems: "center", gap: 12 },
   stepper: {
@@ -667,7 +654,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 1,
   },
-  hero: { width: 140, height: 115 },
+  hero: { width: 112, height: 92 },
   title: {
     fontSize: 23,
     lineHeight: 34,
