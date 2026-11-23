@@ -12,6 +12,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
+import { POLL_AGGREGATE_MS, POLL_LIST_MS } from "@/lib/poll-intervals";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
@@ -160,14 +161,14 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
   const inbox = useQuery({
     queryKey,
     queryFn: () => getMetaInbox(),
-    refetchInterval: 15_000,
+    refetchInterval: POLL_LIST_MS,
     refetchOnWindowFocus: true,
   });
   const whatsappInbox = useQuery({
     queryKey: ["whatsapp-direct-inbox", userId ?? "local"],
     queryFn: getWhatsAppDirectConversations,
     enabled: showsWhatsApp && (isLocalAuthDisabled || Boolean(userId)),
-    refetchInterval: 15_000,
+    refetchInterval: POLL_LIST_MS,
     refetchOnWindowFocus: true,
   });
   const whatsappConversations = whatsappInbox.data?.conversations ?? [];

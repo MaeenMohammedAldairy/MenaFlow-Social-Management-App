@@ -16,6 +16,10 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
+import {
+  POLL_ACTIVE_CONVERSATION_MS,
+  POLL_LIST_MS,
+} from "@/lib/poll-intervals";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { Skeleton } from "@/components/Skeleton";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
@@ -127,7 +131,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
     queryKey: inboxKey,
     queryFn: getWhatsAppDirectConversations,
     enabled: isLocalAuthDisabled || Boolean(userId),
-    refetchInterval: 15_000,
+    refetchInterval: POLL_LIST_MS,
     refetchOnWindowFocus: true,
   });
   const messagesKey = [
@@ -142,7 +146,7 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
       getWhatsAppDirectMessages(selectedRemoteJid!, pageParam),
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: Boolean(selectedRemoteJid && (isLocalAuthDisabled || userId)),
-    refetchInterval: 10_000,
+    refetchInterval: POLL_ACTIVE_CONVERSATION_MS,
     refetchOnWindowFocus: true,
   });
   const reply = useMutation({

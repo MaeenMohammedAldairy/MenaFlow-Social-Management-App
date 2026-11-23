@@ -11,6 +11,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { useStudio } from '@/context/StudioContext';
 import { isLocalAuthDisabled } from '@/constants/auth';
 import { getOrderSummary } from '@/lib/orders-api';
+import { POLL_AGGREGATE_MS } from '@/lib/poll-intervals';
 import { router, type Href } from 'expo-router';
 
 export function navigateBack(fallbackHref: Href) {
@@ -181,7 +182,7 @@ function BrandHeaderContent({
     queryFn: getOrderSummary,
     enabled: showBell && (isLocalAuthDisabled || Boolean(userId)),
     staleTime: 30_000,
-    refetchInterval: 15_000,
+    refetchInterval: POLL_AGGREGATE_MS,
     refetchOnWindowFocus: true,
   });
   const metaOrderDrafts = orderSummaryQuery.data?.metaDrafts ?? 0;

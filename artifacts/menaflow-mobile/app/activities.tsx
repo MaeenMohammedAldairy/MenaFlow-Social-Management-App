@@ -10,6 +10,7 @@ import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
+import { POLL_LIST_MS } from "@/lib/poll-intervals";
 import { CairoText as Text } from "@/components/CairoTypography";
 import {
   LucideIcon as Icon,
@@ -113,7 +114,7 @@ function ActivitiesContent({ userId }: { userId: string | null }) {
     queryFn: () => getMetaInbox(),
     enabled: isLocalAuthDisabled || Boolean(userId),
     retry: false,
-    refetchInterval: 15_000,
+    refetchInterval: POLL_LIST_MS,
     refetchOnWindowFocus: true,
   });
   const catalogQuery = useQuery({
