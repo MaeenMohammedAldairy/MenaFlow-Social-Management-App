@@ -1,0 +1,54 @@
+# Dependabot was already enabled through repository settings (security alerts and
+# updates) before this file existed, which is why version-bump PRs appeared with no
+# configuration in the repository. What was missing was follow-up: five of them sat
+# unmerged for days while the default branch carried a critical advisory. This file
+# makes the cadence and the volume explicit so the PRs stay reviewable instead of
+# accumulating.
+#
+# `cooldown` delays a bump until the version has been published for N days. That is
+# the same supply-chain defence pnpm already enforces in this repository through
+# `minimumReleaseAge: 1440` in pnpm-workspace.yaml, and the two are complementary:
+# pnpm refuses to install a version younger than a day, while Dependabot does not
+# open the PR for it at all. Note that Dependabot has no `minimum_release_age` key —
+# that name belongs to pnpm, not to this file.
+#
+# Grouping keeps the PR count down: one PR for production dependencies and one for
+# development dependencies, rather than one per package.
+version: 2
+updates:
+  - package-ecosystem: npm
+    # The pnpm workspace root: pnpm-workspace.yaml covers artifacts/*, lib/* and
+    # scripts, so a single entry updates every package in the monorepo.
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+      # Major bumps change behaviour by definition, so they wait longer than the
+      # window that mainly defends against a compromised release.
+      semver-major-days: 7
+    groups:
+      production:
+        dependency-type: production
+        applies-to: version-updates
+      development:
+        dependency-type: development
+        applies-to: version-updates
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 3
+    groups:
+      actions:
+        patterns:
+          - "*"
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - ci
