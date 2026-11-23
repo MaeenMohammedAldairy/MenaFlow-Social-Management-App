@@ -12,44 +12,57 @@
  *
  * The two stages, mirroring the server's onboarding progress:
  *
- * - `completed === false`: `/setup` is always reachable. Once the business
- *   step is saved, account linking and its existing setup subflows are allowed;
- *   the dashboard remains blocked until the user finishes or defers setup.
- * - `completed === true`, `socialAccountsCompleted === false`: the merchant still
- *   owes one connected platform. The funnel screens stay reachable, and so does
- *   the dashboard — "أكمل لاحقًا" means exactly that. The tab bar stays visible
- *   in this state (it used to be hidden until a platform was connected, which
- *   contradicted the concise-setup promise that the product is usable before
- *   setup completes; the dashboard checklist guides instead). Everything else
- *   is sent to `/connect-accounts`.
+ * - `completed === false` — the signup funnel, and the **only** wall left.
+ *   `/setup` is always reachable. Once the business step is saved
+ *   (`currentStep > 0`), account linking and its existing setup subflows are
+ *   allowed too; everything else goes back to `/setup`. This wall is escapable
+ *   by design: "ادخل لوحة التحكم" on `/setup` and "أكمل لاحقًا" on
+ *   `/connect-accounts` both persist `skip`, which sets `completed`.
+ * - `completed === true`, `socialAccountsCompleted === false` — the merchant
+ *   deferred linking a platform. **No redirect at all.** That flag is a
+ *   checklist item, not an access permission: the product works with zero
+ *   connections (products, content, inbox, orders, settings all render empty
+ *   states), and the dashboard already carries the guidance — the "خطوات البدء"
+ *   checklist plus a hero CTA ("ابدأ من هنا · اربط حسابًا للنشر").
+ *
+ *   It used to funnel every non-allowlisted route to `/connect-accounts`, which
+ *   left a merchant who skipped setup able to sit on the dashboard and nowhere
+ *   else: all four other tabs, `/compose`, `/more/orders`, `/more/reports`,
+ *   `/account/profile` and — sharpest of all — `/more/settings`, where the data
+ *   export and the account-deletion request live (§3.4). Since
+ *   `socialAccountsCompleted` only flips true once a platform is genuinely
+ *   connected (the server answers 409 otherwise), that state was not transient:
+ *   it lasted until the merchant linked an account. Reported as "anywhere I tap
+ *   takes me to the connect-accounts page".
  *
  * Returns `null` when the current pathname is acceptable, i.e. no redirect.
  */
 
 export type OnboardingRouteStatus = {
   completed: boolean;
+  /**
+   * Whether a platform has been linked. Read by the dashboard checklist and the
+   * connect screen; deliberately *not* an access gate — see the stage-2 note
+   * above.
+   */
   socialAccountsCompleted: boolean;
   currentStep?: number;
 };
 
-export type OnboardingRedirect = "/setup" | "/connect-accounts";
+export type OnboardingRedirect = "/setup";
 
 /**
- * Screens a merchant may sit on while they still owe a connected platform.
+ * Screens a merchant may sit on during the signup funnel, once the business
+ * step has been saved.
  *
- * The dashboard `"/"` (the `(tabs)` group index resolves to the root path) is
- * matched separately and exactly, so "أكمل لاحقًا" works: deferring social setup
- * lands on the dashboard, which shows the setup checklist. The tab bar stays
- * visible there (it used to hide until a platform was connected, which
- * contradicted the promise that the product is usable before setup completes).
- * The list below holds the funnel's own screens —
- * sources, publishing accounts, channels, reply settings and the WhatsApp setup
- * sheet — plus `/connect-accounts` itself, so the funnel never redirects to
- * itself, and `/setup`: the dashboard checklist's "أكمل بيانات النشاط" step must
- * stay reachable while a platform is still owed. Note `/whatsapp-setup` also
- * ends with "/setup", which is harmless here — it is allowed anyway.
+ * These are the funnel's own screens — sources, publishing accounts, channels,
+ * reply settings and the WhatsApp setup sheet — plus `/connect-accounts`
+ * itself, so the funnel never redirects to itself, and `/setup`: the dashboard
+ * checklist's "أكمل بيانات النشاط" step must stay reachable. Note
+ * `/whatsapp-setup` also ends with "/setup", which is harmless here — it is
+ * allowed anyway.
  */
-const ALLOWED_DURING_SOCIAL_SETUP: readonly string[] = [
+const FUNNEL_SCREENS_DURING_SETUP: readonly string[] = [
   "/connect-accounts",
   "/setup",
   "/more/sources",
@@ -59,13 +72,15 @@ const ALLOWED_DURING_SOCIAL_SETUP: readonly string[] = [
   "/whatsapp-setup",
 ];
 
-function isAllowedDuringSocialSetup(pathname: string): boolean {
-  // The dashboard is matched exactly: an `endsWith` on "/" would accept any
-  // trailing-slash path, which is not a route this app serves.
+function isFunnelScreenDuringSetup(pathname: string): boolean {
+  // The dashboard `"/"` (the `(tabs)` group index resolves to the root path) is
+  // matched exactly: an `endsWith` on "/" would accept any trailing-slash path,
+  // and during the funnel the dashboard is deliberately *not* reachable — the
+  // merchant finishes or defers setup first.
   if (pathname === "/") return true;
   // Account cards open these exact detail routes during the funnel.
   if (/^\/account\/(facebook|instagram|whatsapp)$/.test(pathname)) return true;
-  return ALLOWED_DURING_SOCIAL_SETUP.some((allowed) =>
+  return FUNNEL_SCREENS_DURING_SETUP.some((allowed) =>
     pathname.endsWith(allowed),
   );
 }
@@ -81,9 +96,16 @@ export function onboardingRedirectTarget(
     if (pathname === "/setup") return null;
     // Account linking and its existing WhatsApp/reply-settings subflows are
     // reachable only once business information has been saved.
-    if ((status.currentStep ?? 0) > 0 && isAllowedDuringSocialSetup(pathname) && pathname !== "/") return null;
+    if (
+      (status.currentStep ?? 0) > 0 &&
+      isFunnelScreenDuringSetup(pathname) &&
+      pathname !== "/"
+    ) {
+      return null;
+    }
     return "/setup";
   }
-  if (status.socialAccountsCompleted) return null;
-  return isAllowedDuringSocialSetup(pathname) ? null : "/connect-accounts";
+  // Setup is completed. Whatever is still owed (a linked platform) is guidance,
+  // not a gate — see the stage-2 note in the header.
+  return null;
 }
