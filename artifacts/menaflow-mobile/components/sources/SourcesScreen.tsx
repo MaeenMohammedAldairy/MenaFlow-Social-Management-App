@@ -3,6 +3,7 @@ import {
   decideWhatsAppContentAssociation,
   deleteMetaConnectionForPlatform,
   markSocialAccountsSetupComplete,
+  saveOnboardingProgress,
   fetchApiResponse,
   getWhatsAppGroupMessages,
   getWhatsAppGroupSelections,
@@ -35,6 +36,7 @@ import {
 } from "libphonenumber-js";
 import {
   ActivityIndicator,
+  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -44,6 +46,8 @@ import {
 } from "react-native";
 import { showAppNotice } from "@/components/AppFeedback";
 import { CairoText as Text } from "@/components/CairoTypography";
+import { OnboardingStepper } from "@/components/OnboardingStepper";
+import { BrandMark } from "@/components/BrandMark";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   ActionButton,
@@ -416,15 +420,35 @@ function SourcesContent({
     : false;
   const onboardingQuery = useQuery({
     queryKey: getOnboardingStatusQueryKey(userId),
-    queryFn: () => getOnboardingStatus(),
+    queryFn: () => getOnboardingStatus({ timeoutMs: 20000 }),
     enabled: Boolean(userId),
     retry: false,
   });
+  const inOnboarding = includeWhatsApp && onboardingQuery.data?.completed === false;
   const socialSetupPending =
-    onboardingQuery.data?.completed === true &&
-    !onboardingQuery.data.socialAccountsCompleted;
+    (onboardingQuery.data?.completed === true && !onboardingQuery.data.socialAccountsCompleted) || inOnboarding;
+  const progressLock = useRef(false);
+  const progressSetup = useMutation({
+    mutationFn: async (action: "advance" | "skip") => {
+      const current = await getOnboardingStatus({ timeoutMs: 20000 });
+      if (current.completed || (action === "advance" && current.currentStep >= 2)) return current;
+      const next = await saveOnboardingProgress(action, { timeoutMs: 20000 }, action === "advance" ? 1 : undefined);
+      if (action === "advance" && !next.completed && next.currentStep < 2) throw new Error("Setup progress changed");
+      return next;
+    },
+    onSuccess: (status, action) => {
+      queryClient.setQueryData(getOnboardingStatusQueryKey(userId), status);
+      router.replace(action === "skip" ? "/(tabs)" : "/setup");
+    },
+    onSettled: () => { progressLock.current = false; },
+  });
+  const startProgress = (action: "advance" | "skip") => {
+    if (progressLock.current) return;
+    progressLock.current = true;
+    progressSetup.mutate(action);
+  };
   const completeSocialSetup = useMutation({
-    mutationFn: markSocialAccountsSetupComplete,
+    mutationFn: () => markSocialAccountsSetupComplete({ timeoutMs: 20000 }),
     onSuccess: (status) => {
       queryClient.setQueryData(getOnboardingStatusQueryKey(userId), status);
       // The dashboard shows a one-time confirmation for this flag.
@@ -510,10 +534,10 @@ function SourcesContent({
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.sessionStorage.setItem(
           META_OAUTH_RETURN_CONTEXT_KEY,
-          isPublishingAccounts
-            ? "publishing"
-            : includeWhatsApp
-              ? "onboarding"
+          includeWhatsApp
+            ? "onboarding"
+            : isPublishingAccounts
+              ? "publishing"
               : "sources",
         );
         window.location.assign(setup.authorizationUrl);
@@ -566,11 +590,10 @@ function SourcesContent({
           tone: "info",
         });
       }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "خطأ غير محدد";
+    } catch {
       showAppNotice({
         title: "تعذّر فتح صفحة الربط",
-        message: `تحقق من تشغيل الخادم على المنفذ 5000.\n\nالخطأ: ${message}`,
+        message: "تحقق من اتصالك بالإنترنت ثم أعد محاولة الربط.",
         tone: "error",
       });
     } finally {
@@ -1507,7 +1530,7 @@ function SourcesContent({
     if (isConnected(key)) {
       router.push({
         pathname: "/account/[platform]",
-        params: { platform: key },
+        params: { platform: key, ...(includeWhatsApp ? { returnTo: "onboarding" } : {}) },
       });
       return;
     }
@@ -1559,7 +1582,7 @@ function SourcesContent({
     if (isConnected(platform)) {
       router.replace({
         pathname: "/account/[platform]",
-        params: { platform },
+        params: { platform, ...(includeWhatsApp ? { returnTo: "onboarding" } : {}) },
       });
     } else {
       handlePress(platform);
@@ -1586,6 +1609,11 @@ function SourcesContent({
         socialSetupPending && !hasConnectedSocialAccount ? 24 : undefined
       }
     >
+      {includeWhatsApp ? <View style={{ alignItems: "center", gap: 12 }}>
+        <BrandMark height={28} />
+        <OnboardingStepper activeIndex={1} />
+        <Image source={require("@/assets/images/setup-accounts.png")} style={{ width: 150, height: 120 }} resizeMode="contain" />
+      </View> : null}
       <BrandHeader
         title={
           socialSetupPending && isPublishingAccounts
@@ -1673,7 +1701,7 @@ function SourcesContent({
             </Text>
             {socialSetupPending && isPublishingAccounts && (
               <>
-                {completeSocialSetup.isError && (
+                {(completeSocialSetup.isError || progressSetup.isError) && (
                   <Text
                     style={[
                       styles.error,
@@ -1687,9 +1715,9 @@ function SourcesContent({
                 {hasConnectedSocialAccount && !connectionsQuery.isError && (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityState={{ busy: completeSocialSetup.isPending }}
-                    disabled={completeSocialSetup.isPending}
-                    onPress={() => completeSocialSetup.mutate()}
+                    accessibilityState={{ busy: completeSocialSetup.isPending || progressSetup.isPending }}
+                    disabled={completeSocialSetup.isPending || progressSetup.isPending}
+                    onPress={() => inOnboarding ? startProgress("advance") : completeSocialSetup.mutate()}
                     style={[
                       styles.onboardingContinue,
                       {
@@ -1700,7 +1728,7 @@ function SourcesContent({
                       },
                     ]}
                   >
-                    {completeSocialSetup.isPending ? (
+                    {completeSocialSetup.isPending || progressSetup.isPending ? (
                       <ActivityIndicator color={colors.primaryForeground} />
                     ) : (
                       <Text
@@ -1709,7 +1737,7 @@ function SourcesContent({
                           { color: colors.primaryForeground },
                         ]}
                       >
-                        المتابعة إلى لوحة التحكم
+                        {inOnboarding ? "متابعة" : "المتابعة إلى لوحة التحكم"}
                       </Text>
                     )}
                   </Pressable>
@@ -1756,7 +1784,8 @@ function SourcesContent({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="متابعة الإعداد لاحقًا والانتقال إلى لوحة التحكم"
-          onPress={() => router.replace("/(tabs)")}
+          disabled={progressSetup.isPending || onboardingQuery.isPending || onboardingQuery.isError}
+          onPress={() => inOnboarding ? startProgress("skip") : router.replace("/(tabs)")}
           style={styles.onboardingSkip}
         >
           <Text style={[styles.onboardingSkipText, { color: colors.mutedForeground }]}>
@@ -1990,6 +2019,7 @@ function SourcesContent({
       {isPublishingAccounts || activeSection === "connections" ? (
         <SourcesConnectionsPanel
           compactLayout={compactLayout}
+          onboarding={includeWhatsApp && width >= 340}
           sourceKeys={
             isPublishingAccounts
               ? ["facebook", "instagram", "whatsapp"]

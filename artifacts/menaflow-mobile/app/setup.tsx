@@ -1,17 +1,21 @@
 import { useAuth } from "@clerk/expo";
 import {
   getOnboardingStatus,
+  getSocialConnections,
+  markSocialAccountsSetupComplete,
   getOnboardingStatusQueryKey,
   saveOnboardingProgress,
   updateWorkspaceCurrent,
   type OnboardingStatus,
 } from "@workspace/api-client-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Redirect, router } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import {
   ArrowLeft,
   ArrowRight,
   Check,
+  ChevronDown,
+  Info,
   LayoutDashboard,
   Radio,
   Store,
@@ -19,6 +23,7 @@ import {
 import React from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,27 +33,18 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { BrandMark } from "@/components/BrandMark";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { OnboardingStepper } from "@/components/OnboardingStepper";
+import { hasEligibleSocialConnection } from "@workspace/api-zod";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { useAuthTheme } from "@/hooks/useAuthTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { useWorkspace } from "@/context/WorkspaceContext";
+import { CountryPickerModal } from "@/components/sources/CountryPickerModal";
+import { getCountries, type CountryCode } from "libphonenumber-js";
 
-/**
- * The concise post-signup setup that replaced the three intro slides.
- *
- * Step 1 collects the business name and type (saved through
- * `PATCH /workspaces/current` into the existing `mena_workspaces` columns).
- * Step 2 hands off to the channel funnel — with two exits, because setup must
- * never wall the product off: "اربط حسابك الآن" goes to `/connect-accounts`,
- * and "ادخل لوحة التحكم" goes straight to the dashboard. Both exits mark the
- * server-side onboarding completed through the existing `skip` action, so the
- * backend state machine (`mena_workspace_onboarding`) is untouched by this
- * redesign and the remaining setup lives in the dashboard checklist.
- *
- * The same screen doubles as the checklist's edit path: when onboarding is
- * already completed it shows only the business-info form.
- */
+/** Setup reuses server onboarding progress and the existing account-linking flow. */
 const BUSINESS_TYPES = [
   "مطعم أو كافيه",
   "متجر إلكتروني",
@@ -62,16 +58,13 @@ const BUSINESS_TYPES = [
   "أخرى",
 ] as const;
 
-const steps = [
-  { key: "business", label: "بيانات النشاط", icon: Store },
-  { key: "channel", label: "ربط القنوات", icon: Radio },
-] as const;
-
-type StepKey = (typeof steps)[number]["key"];
+type StepKey = "business" | "channel" | "automation" | "success";
 
 export default function SetupRoute() {
+  const { activeWorkspaceId } = useWorkspace();
   if (isLocalAuthDisabled) return <Redirect href="/(tabs)" />;
-  return <AuthenticatedSetup />;
+  // Do not carry edited values or restoration state into a different workspace.
+  return <AuthenticatedSetup key={activeWorkspaceId ?? "no-workspace"} />;
 }
 
 function AuthenticatedSetup() {
@@ -79,18 +72,16 @@ function AuthenticatedSetup() {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const { isLoaded, userId } = useAuth();
+  const { result, edit } = useLocalSearchParams<{ result?: string; edit?: string }>();
   const queryClient = useQueryClient();
-  const { workspaces, activeWorkspaceId } = useWorkspace();
-  const activeWorkspace =
-    workspaces.find((workspace) => workspace.id === activeWorkspaceId) ??
-    workspaces[0] ??
-    null;
+  const { workspaces, activeWorkspaceId, isLoading: workspaceLoading } = useWorkspace();
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId) ?? null;
 
   const onboardingKey = getOnboardingStatusQueryKey(userId ?? null);
   const status = useQuery({
     queryKey: onboardingKey,
-    queryFn: () => getOnboardingStatus(),
-    enabled: Boolean(userId),
+    queryFn: () => getOnboardingStatus({ timeoutMs: 20000 }),
+    enabled: Boolean(userId && activeWorkspaceId),
     retry: false,
   });
   const completed = status.data?.completed === true;
@@ -99,11 +90,31 @@ function AuthenticatedSetup() {
   const [name, setName] = React.useState("");
   const [businessType, setBusinessType] = React.useState<string | null>(null);
   const [nameTouched, setNameTouched] = React.useState(false);
+  const [typeOpen, setTypeOpen] = React.useState(false);
+  const [country, setCountry] = React.useState<CountryCode>("YE");
+  const [countryTouched, setCountryTouched] = React.useState(false);
+  const [countryOpen, setCountryOpen] = React.useState(false);
+  const [summaryOpen, setSummaryOpen] = React.useState(false);
+  const actionLock = React.useRef(false);
   const [formError, setFormError] = React.useState<string | null>(null);
   // Which exit the pending "skip" action should navigate to on success.
   const [pendingExit, setPendingExit] = React.useState<
     "connect" | "dashboard" | null
   >(null);
+
+  // Restore only on initial load, not on subsequent query refreshes, so that
+  // navigating back to edit the form is not overridden by the server status.
+  const restoredWorkspace = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!activeWorkspaceId || !status.data || restoredWorkspace.current === activeWorkspaceId) return;
+    restoredWorkspace.current = activeWorkspaceId;
+    if (!status.data.completed && status.data.currentStep === 1 && edit !== "business") {
+      setStep("channel");
+      router.replace("/connect-accounts");
+      return;
+    }
+    setStep(status.data.completed ? (result === "success" ? "success" : "business") : edit === "business" ? "business" : status.data.currentStep >= 2 ? "automation" : "business");
+  }, [activeWorkspaceId, status.data, result, edit]);
 
   // Prefill from the workspace once the list arrives; never overwrite input
   // the merchant already typed.
@@ -111,7 +122,10 @@ function AuthenticatedSetup() {
     if (!activeWorkspace) return;
     if (!nameTouched) setName(activeWorkspace.name ?? "");
     setBusinessType((current) => current ?? activeWorkspace.businessType ?? null);
-  }, [activeWorkspace, nameTouched]);
+    if (!countryTouched && activeWorkspace.country && getCountries().includes(activeWorkspace.country as CountryCode)) {
+      setCountry(activeWorkspace.country as CountryCode);
+    }
+  }, [activeWorkspace, nameTouched, countryTouched]);
 
   const invalidateWorkspaceList = React.useCallback(() => {
     void queryClient.invalidateQueries({
@@ -120,11 +134,22 @@ function AuthenticatedSetup() {
   }, [queryClient, userId]);
 
   const save = useMutation({
-    mutationFn: () =>
-      updateWorkspaceCurrent({
+    mutationFn: async () => {
+      await updateWorkspaceCurrent({
         name: name.trim(),
+        country,
         ...(businessType ? { businessType } : {}),
-      }),
+      }, { timeoutMs: 20000 });
+      if (!completed) {
+        // Re-read before advancing: a previous request may have succeeded even
+        // if its response was lost. Never advance twice on a retry.
+        const current = await getOnboardingStatus({ timeoutMs: 20000 });
+        const next = !current.completed && current.currentStep === 0
+          ? await saveOnboardingProgress("advance", { timeoutMs: 20000 }, 0)
+          : current;
+        queryClient.setQueryData(onboardingKey, next);
+      }
+    },
     onSuccess: () => {
       setFormError(null);
       invalidateWorkspaceList();
@@ -135,16 +160,20 @@ function AuthenticatedSetup() {
         return;
       }
       setStep("channel");
+      router.replace("/connect-accounts");
     },
-    onError: () => {
+    onSettled: () => { actionLock.current = false; },
+    onError: (error) => {
       setFormError(
-        "تعذّر حفظ بيانات النشاط. تحقق من اتصالك ثم أعد المحاولة.",
+        error instanceof Error && error.name === "TimeoutError"
+          ? "استغرق الطلب وقتًا أطول من المتوقع. قد تكون البيانات حُفظت؛ أعد المحاولة للتحقق."
+          : "تعذّر تأكيد حفظ البيانات أو التقدم. تحقق من اتصالك ثم أعد المحاولة.",
       );
     },
   });
 
   const finishSetup = useMutation({
-    mutationFn: () => saveOnboardingProgress("skip"),
+    mutationFn: () => saveOnboardingProgress("skip", { timeoutMs: 20000 }),
     onSuccess: (next: OnboardingStatus) => {
       queryClient.setQueryData(onboardingKey, next);
       invalidateWorkspaceList();
@@ -152,27 +181,85 @@ function AuthenticatedSetup() {
       setPendingExit(null);
       router.replace(exit === "connect" ? "/connect-accounts" : "/(tabs)");
     },
-    onError: () => {
+    onSettled: () => { actionLock.current = false; },
+    onError: (error) => {
       setPendingExit(null);
       setFormError(
-        "تعذّر إنهاء الإعداد على الخادم. سنعيد المحاولة؛ بياناتك لم تتغير.",
+        error instanceof Error && error.name === "TimeoutError"
+          ? "استغرق الطلب وقتًا أطول من المتوقع. أعد المحاولة للتحقق من حالة الإعداد."
+          : "تعذّر تأكيد إنهاء الإعداد. تحقق من اتصالك ثم أعد المحاولة.",
       );
     },
   });
 
-  if (!isLoaded || status.isLoading) return <LoadingScreen />;
+  const finishAutomation = useMutation({
+    mutationFn: async () => {
+      let current = await getOnboardingStatus({ timeoutMs: 20000 });
+      if (!current.completed) {
+        if (current.currentStep < 2) throw new Error("Setup step is not ready");
+        current = await saveOnboardingProgress("advance", { timeoutMs: 20000 }, 2);
+      }
+      if (!current.completed) throw new Error("Setup progress changed");
+      // Preserve the existing server-side eligible-account check. A connection
+      // may have expired while the user was on this screen.
+      if (!current.socialAccountsCompleted) {
+        const connections = await getSocialConnections({ timeoutMs: 20000 });
+        if (hasEligibleSocialConnection(connections)) current = await markSocialAccountsSetupComplete({ timeoutMs: 20000 });
+      }
+      return current;
+    },
+    onSuccess: (next) => {
+      queryClient.setQueryData(onboardingKey, next);
+      setFormError(null);
+      setStep("success");
+      router.setParams({ result: "success" });
+    },
+    onSettled: () => { actionLock.current = false; },
+    onError: () => setFormError("تعذّر تأكيد إكمال الإعداد. تحقق من اتصالك ثم أعد المحاولة."),
+  });
+
+  if (!isLoaded || workspaceLoading || (!activeWorkspaceId && workspaces.length > 0) || (activeWorkspaceId && status.isLoading)) return <LoadingScreen />;
+  if (!activeWorkspace) {
+    return (
+      <View style={[styles.loadingRoot, { backgroundColor: theme.background }]}>
+        <OfflineBanner />
+        <Text accessibilityRole="alert" style={[styles.loadingText, { color: theme.foreground }]}>تعذّر تحميل مساحة العمل. تحقق من اتصالك ثم أعد المحاولة.</Text>
+        <Pressable accessibilityRole="button" onPress={() => invalidateWorkspaceList()}>
+          <Text style={{ color: theme.primary }}>إعادة المحاولة</Text>
+        </Pressable>
+      </View>
+    );
+  }
+  if (status.isError && !status.data) {
+    return (
+      <View style={[styles.loadingRoot, { backgroundColor: theme.background }]}>
+        <OfflineBanner />
+        <Text accessibilityRole="alert" style={[styles.loadingText, { color: theme.foreground }]}>
+          تعذّر تحميل حالة الإعداد. تحقق من اتصالك ثم أعد المحاولة.
+        </Text>
+        <Pressable accessibilityRole="button" onPress={() => void status.refetch()}>
+          <Text style={{ color: theme.primary }}>إعادة المحاولة</Text>
+        </Pressable>
+      </View>
+    );
+  }
 
   const compact = width < 400 || height < 700;
   const wide = width >= 900;
   const trimmedName = name.trim();
-  const canSave = trimmedName.length > 0 && trimmedName.length <= 80 && !save.isPending;
+  const canSave = trimmedName.length > 0 && trimmedName.length <= 80 && !save.isPending && !finishSetup.isPending;
   // In edit mode (onboarding already completed) only the form is shown.
-  const activeIndex = completed ? 0 : step === "business" ? 0 : 1;
-  const busy = save.isPending || finishSetup.isPending;
+  const activeIndex = step === "business" ? 0 : step === "channel" ? 1 : step === "automation" ? 2 : 3;
+  const busy = save.isPending || finishSetup.isPending || finishAutomation.isPending;
 
   const handleExit = (exit: "connect" | "dashboard") => {
-    if (busy) return;
+    if (busy || actionLock.current) return;
     setFormError(null);
+    if (exit === "connect") {
+      router.replace("/connect-accounts");
+      return;
+    }
+    actionLock.current = true;
     setPendingExit(exit);
     finishSetup.mutate();
   };
@@ -199,6 +286,7 @@ function AuthenticatedSetup() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={[styles.column, { maxWidth: wide ? 560 : 480 }]}>
+          <OfflineBanner />
           <View style={styles.brand}>
             <BrandMark height={compact ? 26 : 30} />
             <Text style={[styles.brandName, { color: theme.foreground }]}>
@@ -212,22 +300,23 @@ function AuthenticatedSetup() {
               { backgroundColor: theme.card, borderColor: theme.border },
             ]}
           >
-            {!completed ? <Stepper activeIndex={activeIndex} /> : null}
+            {(!completed || step === "success" || step === "automation") ? <OnboardingStepper activeIndex={activeIndex} /> : null}
 
             {activeIndex === 0 ? (
               <View style={styles.formStep}>
+                <Image source={require("@/assets/images/setup-business.png")} style={styles.hero} resizeMode="contain" accessibilityIgnoresInvertColors />
                 <Text
                   accessibilityRole="header"
                   style={[styles.title, { color: theme.foreground }]}
                 >
-                  {completed ? "بيانات نشاطك" : "أهلًا بك! لنجهّز نشاطك"}
+                  {completed ? "بيانات نشاطك" : "لنجهّز منصتك"}
                 </Text>
                 <Text
                   style={[styles.description, { color: theme.mutedForeground }]}
                 >
                   {completed
                     ? "يمكنك تعديل اسم النشاط ونوعه في أي وقت."
-                    : "خطوتان فقط: أخبرنا عن نشاطك، ثم اربط قناتك الأولى أو ادخل مباشرة."}
+                    : "أخبرنا عن نشاطك لنساعدك في إعداد منصتك."}
                 </Text>
 
                 <View style={styles.field}>
@@ -241,7 +330,7 @@ function AuthenticatedSetup() {
                       setName(next);
                     }}
                     maxLength={80}
-                    placeholder="مثال: كافيه الريحان"
+                    placeholder="مثال: متجر للبرمجيات"
                     placeholderTextColor={theme.mutedForeground}
                     editable={!busy}
                     accessibilityLabel="اسم النشاط التجاري"
@@ -254,50 +343,62 @@ function AuthenticatedSetup() {
                       },
                     ]}
                   />
+                  {nameTouched && !trimmedName ? <Text accessibilityRole="alert" style={[styles.error, { color: theme.destructive, textAlign: "right" }]}>يرجى إدخال اسم النشاط.</Text> : null}
                 </View>
 
                 <View style={styles.field}>
                   <Text style={[styles.fieldLabel, { color: theme.foreground }]}>
                     نوع النشاط
                   </Text>
-                  <View style={styles.chips}>
-                    {BUSINESS_TYPES.map((type) => {
-                      const selected = businessType === type;
-                      return (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="نوع النشاط"
+                    accessibilityState={{ expanded: typeOpen, disabled: busy }}
+                    disabled={busy}
+                    onPress={() => setTypeOpen((open) => !open)}
+                    style={[styles.select, { backgroundColor: theme.inputSurface, borderColor: theme.border }]}
+                  >
+                    <ChevronDown size={19} color={theme.icon} />
+                    <Text style={[styles.selectText, { color: businessType ? theme.foreground : theme.mutedForeground }]}>
+                      {businessType ?? "اختر مجال نشاطك"}
+                    </Text>
+                  </Pressable>
+                  {typeOpen ? (
+                    <View style={[styles.typeList, { backgroundColor: theme.inputSurface, borderColor: theme.border }]}>
+                      {BUSINESS_TYPES.map((type) => (
                         <Pressable
                           key={type}
                           accessibilityRole="button"
-                          accessibilityState={{ selected, disabled: busy }}
+                          accessibilityState={{ selected: businessType === type, disabled: busy }}
                           disabled={busy}
-                          onPress={() => setBusinessType(type)}
-                          style={[
-                            styles.chip,
-                            {
-                              backgroundColor: selected
-                                ? theme.primary
-                                : theme.background,
-                              borderColor: selected
-                                ? theme.primary
-                                : theme.border,
-                            },
-                          ]}
+                          onPress={() => { setBusinessType(type); setTypeOpen(false); }}
+                          style={styles.typeOption}
                         >
-                          <Text
-                            style={[
-                              styles.chipText,
-                              {
-                                color: selected
-                                  ? theme.primaryForeground
-                                  : theme.foreground,
-                              },
-                            ]}
-                          >
-                            {type}
-                          </Text>
+                          <Text style={[styles.selectText, { color: businessType === type ? theme.primary : theme.foreground }]}>{type}</Text>
                         </Pressable>
-                      );
-                    })}
-                  </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+
+                <View style={styles.field}>
+                  <Text style={[styles.fieldLabel, { color: theme.foreground }]}>البلد</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel="اختر بلد النشاط" disabled={busy}
+                    onPress={() => setCountryOpen(true)}
+                    style={[styles.select, { backgroundColor: theme.inputSurface, borderColor: theme.border }]}>
+                    <ChevronDown size={19} color={theme.icon} />
+                    <Text style={[styles.selectText, { color: theme.foreground }]}>
+                      {typeof Intl.DisplayNames === "function" ? new Intl.DisplayNames(["ar"], { type: "region" }).of(country) : country} {String.fromCodePoint(...[...country].map((c) => 127397 + c.charCodeAt(0)))}
+                    </Text>
+                  </Pressable>
+                </View>
+                <CountryPickerModal visible={countryOpen} selectedCountry={country} businessCountry
+                  onSelectCountry={(value) => { setCountryTouched(true); setCountry(value); }}
+                  onClose={() => setCountryOpen(false)} />
+
+                <View style={[styles.infoBanner, { backgroundColor: theme.primarySoft }]}>
+                  <Info size={18} color={theme.primary} />
+                  <Text style={[styles.infoText, { color: theme.foreground }]}>يمكنك تعديل هذه المعلومات لاحقًا من الإعدادات.</Text>
                 </View>
 
                 {formError ? (
@@ -314,6 +415,8 @@ function AuthenticatedSetup() {
                   accessibilityState={{ busy: save.isPending, disabled: !canSave }}
                   disabled={!canSave}
                   onPress={() => {
+                    if (actionLock.current) return;
+                    actionLock.current = true;
                     setFormError(null);
                     save.mutate();
                   }}
@@ -340,9 +443,21 @@ function AuthenticatedSetup() {
                   </Text>
                   <ArrowLeft size={18} color={theme.primaryForeground} />
                 </Pressable>
+                {!completed ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ disabled: busy, busy: finishSetup.isPending }}
+                    disabled={busy}
+                    onPress={() => handleExit("dashboard")}
+                    style={[styles.secondaryButton, { borderColor: theme.border, opacity: busy ? 0.55 : 1 }]}
+                  >
+                    <Text style={[styles.secondaryButtonText, { color: theme.foreground }]}>إكمال لاحقًا</Text>
+                  </Pressable>
+                ) : null}
               </View>
-            ) : (
+            ) : step === "channel" ? (
               <View style={styles.formStep}>
+                <Image source={require("@/assets/images/setup-accounts.png")} style={styles.hero} resizeMode="contain" />
                 <Text
                   accessibilityRole="header"
                   style={[styles.title, { color: theme.foreground }]}
@@ -424,88 +539,49 @@ function AuthenticatedSetup() {
                   </Text>
                 </Pressable>
               </View>
+            ) : step === "automation" ? (
+              <View style={styles.formStep}>
+                <Image source={require("@/assets/images/setup-automation.png")} style={styles.hero} resizeMode="contain" />
+                <Text accessibilityRole="header" style={[styles.title, { color: theme.foreground }]}>الأتمتة والردود</Text>
+                <Text style={[styles.description, { color: theme.mutedForeground }]}>يمكنك تخصيص إعدادات الردود من صفحة إعدادات المحادثات في أي وقت.</Text>
+                {["الأسئلة الشائعة", "الردود الذكية", "إعدادات المحادثات"].map((label) => (
+                  <Pressable key={label} accessibilityRole="button" onPress={() => router.push("/inbox/reply-settings")}
+                    style={[styles.select, { width: "100%", borderColor: theme.border, backgroundColor: theme.inputSurface }]}>
+                    <ArrowLeft size={17} color={theme.primary} />
+                    <Text style={[styles.selectText, { color: theme.foreground }]}>{label}</Text>
+                  </Pressable>
+                ))}
+                <View style={[styles.infoBanner, { backgroundColor: theme.primarySoft }]}><Info size={18} color={theme.primary} /><Text style={[styles.infoText, { color: theme.foreground }]}>يمكنك تخصيص الردود حسب المنصة المستخدمة.</Text></View>
+                {formError ? <Text accessibilityRole="alert" style={[styles.error, { color: theme.destructive }]}>{formError}</Text> : null}
+                <Pressable accessibilityRole="button" disabled={busy} accessibilityState={{ disabled: busy, busy: finishAutomation.isPending }} onPress={() => { if (actionLock.current) return; actionLock.current = true; setFormError(null); finishAutomation.mutate(); }}
+                  style={[styles.primaryButton, { backgroundColor: theme.primary, opacity: busy ? 0.6 : 1 }]}>
+                  <Text style={[styles.primaryButtonText, { color: theme.primaryForeground }]}>{finishAutomation.isPending ? "جارٍ الحفظ…" : "متابعة"}</Text><ArrowLeft size={18} color={theme.primaryForeground} />
+                </Pressable>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => handleExit("dashboard")} style={[styles.secondaryButton, { borderColor: theme.border }]}>
+                  <Text style={[styles.secondaryButtonText, { color: theme.foreground }]}>إكمال لاحقًا</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => router.replace("/connect-accounts")} style={styles.backRow}>
+                  <ArrowRight size={16} color={theme.mutedForeground} /><Text style={[styles.backText, { color: theme.mutedForeground }]}>السابق</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <View style={styles.formStep}>
+                <Image source={require("@/assets/images/setup-launch.png")} style={styles.hero} resizeMode="contain" />
+                <Text accessibilityRole="header" style={[styles.title, { color: theme.foreground }]}>جاهز للانطلاق!</Text>
+                <View style={[styles.infoBanner, { backgroundColor: theme.primarySoft }]}><Check size={20} color={theme.primary} /><Text style={[styles.infoText, { color: theme.foreground }]}>تم اكتمال الإعداد بنجاح</Text></View>
+                {!status.data?.socialAccountsCompleted ? <Text style={[styles.description, { color: theme.mutedForeground }]}>يمكنك إكمال ربط حساب مؤهل لاحقًا من لوحة التحكم.</Text> : null}
+                <Pressable accessibilityRole="button" onPress={() => router.replace("/(tabs)")} style={[styles.primaryButton, { backgroundColor: theme.primary }]}><Text style={[styles.primaryButtonText, { color: theme.primaryForeground }]}>الانتقال إلى لوحة التحكم</Text></Pressable>
+                <Pressable accessibilityRole="button" accessibilityState={{ expanded: summaryOpen }} onPress={() => setSummaryOpen((open) => !open)} style={[styles.secondaryButton, { borderColor: theme.border }]}><Text style={[styles.secondaryButtonText, { color: theme.foreground }]}>مشاهدة ملخص الإعداد</Text></Pressable>
+                {summaryOpen ? <View style={[styles.infoBanner, { backgroundColor: theme.inputSurface }]}><Text style={[styles.infoText, { color: theme.foreground }]}>{`النشاط: ${activeWorkspace?.name ?? name}
+نوع النشاط: ${activeWorkspace?.businessType ?? businessType ?? "لم يُحدد"}
+البلد: ${typeof Intl.DisplayNames === "function" ? new Intl.DisplayNames(["ar"], { type: "region" }).of(activeWorkspace?.country ?? country) : (activeWorkspace?.country ?? country)}
+الحسابات: ${status.data?.socialAccountsCompleted ? "مكتمل" : "يمكن إكمال الربط لاحقًا"}`}</Text></View> : null}
+              </View>
             )}
           </View>
         </View>
       </ScrollView>
     </LinearGradient>
-  );
-}
-
-function Stepper({ activeIndex }: { activeIndex: number }) {
-  const theme = useAuthTheme();
-  return (
-    <View
-      style={styles.stepper}
-      accessible
-      accessibilityRole="progressbar"
-      accessibilityLabel={`الخطوة ${activeIndex + 1} من ${steps.length}`}
-      accessibilityValue={{
-        min: 1,
-        max: steps.length,
-        now: activeIndex + 1,
-        text: `الخطوة ${activeIndex + 1} من ${steps.length}`,
-      }}
-    >
-      {steps.map((item, index) => {
-        const done = index < activeIndex;
-        const current = index === activeIndex;
-        return (
-          <React.Fragment key={item.key}>
-            {index > 0 ? (
-              <View
-                style={[
-                  styles.connector,
-                  {
-                    backgroundColor:
-                      index <= activeIndex ? theme.primary : theme.border,
-                  },
-                ]}
-              />
-            ) : null}
-            <View style={styles.stepItem}>
-              <View
-                style={[
-                  styles.stepCircle,
-                  done || current
-                    ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                    : { backgroundColor: theme.card, borderColor: theme.border },
-                ]}
-              >
-                {done ? (
-                  <Check size={14} color={theme.primaryForeground} strokeWidth={3.2} />
-                ) : (
-                  <Text
-                    style={[
-                      styles.stepNumber,
-                      {
-                        color: current
-                          ? theme.primaryForeground
-                          : theme.mutedForeground,
-                      },
-                    ]}
-                  >
-                    {index + 1}
-                  </Text>
-                )}
-              </View>
-              <Text
-                style={[
-                  styles.stepLabel,
-                  {
-                    color: done || current ? theme.foreground : theme.mutedForeground,
-                    fontWeight: current ? "800" : "600",
-                  },
-                ]}
-                numberOfLines={2}
-              >
-                {item.label}
-              </Text>
-            </View>
-          </React.Fragment>
-        );
-      })}
-    </View>
   );
 }
 
@@ -596,6 +672,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 1,
   },
+  hero: { width: 140, height: 115 },
   title: {
     fontSize: 23,
     lineHeight: 34,
@@ -621,14 +698,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     textAlign: "right",
   },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-  },
-  chipText: { fontSize: 13, fontWeight: "700" },
+  select: { minHeight: 50, borderRadius: 14, borderWidth: 1, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10 },
+  selectText: { flex: 1, fontSize: 14, textAlign: "right" },
+  typeList: { borderWidth: 1, borderRadius: 14, overflow: "hidden" },
+  typeOption: { minHeight: 42, justifyContent: "center", paddingHorizontal: 14 },
+  infoBanner: { width: "100%", borderRadius: 12, padding: 12, flexDirection: "row-reverse", alignItems: "center", gap: 8 },
+  infoText: { flex: 1, fontSize: 12, lineHeight: 20, textAlign: "right" },
   error: { fontSize: 12.5, lineHeight: 20, textAlign: "center" },
   primaryButton: {
     width: "100%",

@@ -127,7 +127,7 @@ function AuthenticatedAccountDetails() {
 function AccountDetailsContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const queryClient = useQueryClient();
-  const { platform: rawPlatform } = useLocalSearchParams<{ platform?: string }>();
+  const { platform: rawPlatform, returnTo } = useLocalSearchParams<{ platform?: string; returnTo?: string }>();
   const platform = platformFromParam(rawPlatform);
   const [actionError, setActionError] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
@@ -189,8 +189,9 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
     );
   };
 
-  const manageAccountsHref =
-    platform === "whatsapp"
+  const manageAccountsHref = returnTo === "onboarding"
+    ? ("/connect-accounts" as const)
+    : platform === "whatsapp"
       ? ("/(tabs)/more/sources" as const)
       : ("/(tabs)/more/accounts" as const);
 
@@ -261,7 +262,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
         back={{
           href: manageAccountsHref,
           label:
-            platform === "whatsapp"
+            returnTo === "onboarding" ? "العودة إلى ربط الحسابات" : platform === "whatsapp"
               ? "العودة إلى المصادر"
               : "العودة إلى حسابات النشر",
         }}

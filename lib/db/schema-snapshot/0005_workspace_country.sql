@@ -1,0 +1,2 @@
+ALTER TABLE "mena_workspaces" ADD COLUMN "country" text;--> statement-breakpoint
+ALTER TABLE "mena_workspaces" ADD CONSTRAINT "mena_workspaces_country_format" CHECK ("mena_workspaces"."country" IS NULL OR "mena_workspaces"."country" ~ '^[A-Z]{2}$');

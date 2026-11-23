@@ -10,6 +10,8 @@ export interface WorkspaceSummary {
   id: string;
   name: string;
   businessType?: string | null;
+  /** ISO 3166-1 alpha-2 country code. */
+  country?: string | null;
   /** IANA timezone used to display and capture scheduled times. */
   timezone?: string;
   role: string;

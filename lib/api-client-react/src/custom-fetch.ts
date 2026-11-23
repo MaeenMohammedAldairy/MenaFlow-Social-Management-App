@@ -1,5 +1,7 @@
 export type CustomFetchOptions = RequestInit & {
   responseType?: "json" | "text" | "blob" | "auto";
+  /** Optional deadline for this request, including reading the response. */
+  timeoutMs?: number;
 };
 
 export type ErrorType<T = unknown> = ApiError<T>;
@@ -72,6 +74,12 @@ export async function fetchApiResponse(
   if (_workspaceIdGetter && !headers.has("x-workspace-id")) {
     const workspaceId = await _workspaceIdGetter();
     if (workspaceId) headers.set("x-workspace-id", workspaceId);
+  }
+  const signal = init.signal ?? (isRequest(input) ? input.signal : undefined);
+  if (signal?.aborted) {
+    const error = new Error("Request aborted");
+    error.name = "AbortError";
+    throw error;
   }
   return fetch(input, { ...init, headers });
 }
@@ -359,7 +367,7 @@ export async function customFetch<T = unknown>(
   options: CustomFetchOptions = {},
 ): Promise<T> {
   input = applyBaseUrl(input);
-  const { responseType = "auto", headers: headersInit, ...init } = options;
+  const { responseType = "auto", timeoutMs, headers: headersInit, ...init } = options;
 
   const method = resolveMethod(input, init.method);
 
@@ -383,12 +391,48 @@ export async function customFetch<T = unknown>(
 
   const requestInfo = { method, url: resolveUrl(input) };
 
-  const response = await fetchApiResponse(input, { ...init, method, headers });
-
-  if (!response.ok) {
-    const errorData = await parseErrorBody(response, method);
-    throw new ApiError(response, errorData, requestInfo);
+  if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) {
+    throw new TypeError("customFetch: timeoutMs must be a positive finite number.");
   }
-
-  return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+  const controller = timeoutMs === undefined ? null : new AbortController();
+  const callerSignal = init.signal ?? (isRequest(input) ? input.signal : undefined);
+  let rejectCancellation: ((error: Error) => void) | undefined;
+  const cancellation = controller && callerSignal ? new Promise<never>((_resolve, reject) => {
+    rejectCancellation = reject;
+  }) : null;
+  const abortFromCaller = () => {
+    controller?.abort();
+    const error = new Error("Request aborted");
+    error.name = "AbortError";
+    rejectCancellation?.(error);
+  };
+  if (controller && callerSignal) {
+    if (callerSignal.aborted) abortFromCaller();
+    else callerSignal.addEventListener("abort", abortFromCaller, { once: true });
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = controller ? new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const timeout = new Error("Request timed out");
+      timeout.name = "TimeoutError";
+      controller.abort();
+      reject(timeout);
+    }, timeoutMs);
+  }) : null;
+  try {
+    const request = (async () => {
+      const response = await fetchApiResponse(input, {
+        ...init, method, headers, ...(controller ? { signal: controller.signal } : {}),
+      });
+      if (!response.ok) {
+        const errorData = await parseErrorBody(response, method);
+        throw new ApiError(response, errorData, requestInfo);
+      }
+      return (await parseSuccessBody(response, responseType, requestInfo)) as T;
+    })();
+    return await (deadline ? Promise.race(cancellation ? [request, deadline, cancellation] : [request, deadline]) : request);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
+  }
 }

@@ -89,6 +89,8 @@ export interface WorkspaceSummary {
   id: string;
   name: string;
   businessType?: string | null;
+  /** ISO 3166-1 alpha-2 country code. */
+  country?: string | null;
   /** IANA timezone used to display and capture scheduled times. */
   timezone?: string;
   role: string;
@@ -109,6 +111,11 @@ export interface WorkspaceUpdateInput {
      * @maxLength 40
      */
   businessType?: string;
+  /**
+     * ISO 3166-1 alpha-2 country code.
+     * @pattern ^[A-Z]{2}$
+     */
+  country?: string;
   /**
      * IANA timezone name, e.g. "Asia/Aden".
      * @minLength 1
@@ -224,6 +231,12 @@ export const OnboardingProgressInputAction = {
 
 export interface OnboardingProgressInput {
   action: OnboardingProgressInputAction;
+  /**
+     * Apply the action only if the current step matches, for safe retries.
+     * @minimum 0
+     * @maximum 3
+     */
+  expectedStep?: number;
 }
 
 export type SocialAccountStatusConnectionState = typeof SocialAccountStatusConnectionState[keyof typeof SocialAccountStatusConnectionState];

@@ -12,9 +12,9 @@
  *
  * The two stages, mirroring the server's onboarding progress:
  *
- * - `completed === false`: the concise setup (business name/type, then the
- *   optional channel hand-off) has not been finished. Only `/setup` itself is
- *   reachable; everything else is sent back to it.
+ * - `completed === false`: `/setup` is always reachable. Once the business
+ *   step is saved, account linking and its existing setup subflows are allowed;
+ *   the dashboard remains blocked until the user finishes or defers setup.
  * - `completed === true`, `socialAccountsCompleted === false`: the merchant still
  *   owes one connected platform. The funnel screens stay reachable, and so does
  *   the dashboard — "أكمل لاحقًا" means exactly that, and the tab layout already
@@ -28,6 +28,7 @@
 export type OnboardingRouteStatus = {
   completed: boolean;
   socialAccountsCompleted: boolean;
+  currentStep?: number;
 };
 
 export type OnboardingRedirect = "/setup" | "/connect-accounts";
@@ -59,6 +60,8 @@ function isAllowedDuringSocialSetup(pathname: string): boolean {
   // The dashboard is matched exactly: an `endsWith` on "/" would accept any
   // trailing-slash path, which is not a route this app serves.
   if (pathname === "/") return true;
+  // Account cards open these exact detail routes during the funnel.
+  if (/^\/account\/(facebook|instagram|whatsapp)$/.test(pathname)) return true;
   return ALLOWED_DURING_SOCIAL_SETUP.some((allowed) =>
     pathname.endsWith(allowed),
   );
@@ -72,7 +75,11 @@ export function onboardingRedirectTarget(
     // Exact match on purpose: endsWith("/setup") would also accept
     // "/whatsapp-setup", trapping the user on a sheet they cannot complete
     // before the concise setup itself is done.
-    return pathname === "/setup" ? null : "/setup";
+    if (pathname === "/setup") return null;
+    // Account linking and its existing WhatsApp/reply-settings subflows are
+    // reachable only once business information has been saved.
+    if ((status.currentStep ?? 0) > 0 && isAllowedDuringSocialSetup(pathname) && pathname !== "/") return null;
+    return "/setup";
   }
   if (status.socialAccountsCompleted) return null;
   return isAllowedDuringSocialSetup(pathname) ? null : "/connect-accounts";
