@@ -53,6 +53,21 @@ API and mobile changes that read or write these fields.
 
 Do not use `drizzle-kit push --force` against either database. The checked-in SQL files are the reviewed baseline for a new Supabase database and should be evolved as incremental migrations.
 
+Avoid plain `drizzle-kit push` as well. One table is created by a migration but is
+deliberately absent from `lib/db/src/schema/*`, because only
+`scripts/migrate-whatsapp-group-identities.mjs` touches it and that script issues raw
+SQL rather than going through the ORM:
+
+- `mena_whatsapp_group_identity_migration_issues` (from
+  `20261024000000_whatsapp_group_identity.sql`)
+
+`push` diffs the Drizzle schema against the live database, so it proposes dropping any
+table the schema does not declare — this one included. `generate` is safe: it reads only
+`src/schema/*` and never connects, which is why the CI drift gate can run it without a
+provisioned database. The consequence is that the drift gate proves the schema and the
+generated snapshot agree; it cannot prove that `supabase/migrations/` actually produces
+that schema. That second direction needs a real database (see §5).
+
 ## 3. Moving data from an existing PostgreSQL database
 
 Schema creation and data transfer are separate operations. Do not copy the local `.env` or upload it to Supabase. Before transferring anything:
@@ -89,6 +104,50 @@ Before pointing the API at Supabase:
 3. Verify row counts and representative workspace relationships against the source backup without logging token values or personal message contents.
 4. Start one API instance with the Supabase `DATABASE_URL`, run readiness (`/api/readyz`), and exercise authenticated read/write flows in a staging workspace.
 5. Verify a backup can be restored before switching production traffic. Keep a rollback path to the unchanged source.
+
+### Record: verification on a freshly provisioned project (2026-11-22)
+
+All 36 files in `supabase/migrations/` were applied, in filename order, to a new empty
+free-tier project (`qznbujvanjvkfxpehcbq`, ap-south-1, PostgreSQL 17.12, `public`
+schema empty beforehand). Result, measured from the catalogues rather than assumed:
+
+- **42** `mena_*` tables, **129** indexes, **78** check constraints, **24** unique
+  constraints, and the `mena_enforce_post_subscription_limit()` function with its
+  `mena_posts_subscription_limit` trigger attached.
+- **67** foreign keys: 35 `CASCADE`, 28 `RESTRICT`, 2 `SET NULL`, 2 `NO ACTION`.
+  **38** point at `mena_workspaces` — 21 `CASCADE` + 17 `RESTRICT`.
+- **Schema agrees with Drizzle in the direction CI cannot check.** A normalized
+  inventory of every table's columns, types and nullability hashed identically on the
+  live database and in `lib/db/schema-snapshot/meta/0001_snapshot.json`
+  (`6cfb4fe5…` over the 41 declared tables), as did the foreign-key inventory
+  including referenced tables, columns and delete/update rules (`fcbcce36…`, 67 keys).
+  The 42nd live table is the orphan documented in §2.
+- **Lockdown holds:** RLS is on for 42/42 tables and neither `anon` nor
+  `authenticated` retains any privilege on any of them (§5.2).
+- **Storage:** bucket `whatsapp-media` exists with `public = false` (§6).
+- **Behaviour, executed rather than read:** 11 assertions passed — a post with no
+  subscription row raises `SUBSCRIPTION_CONFIGURATION_MISSING`; ten posts insert on the
+  `free` plan; the eleventh raises `SUBSCRIPTION_LIMIT_REACHED:posts`; the usage counter
+  reads 10; a duplicate `(workspace_id, event_type, dedupe_key)` in
+  `mena_push_notification_outbox` is rejected while the same key under a different
+  `event_type` is accepted; invalid outbox `status` and token `platform` values are
+  rejected; deleting a workspace is refused while posts reference it (`RESTRICT`) and,
+  once they are gone, cascades to the outbox and the subscription. The test rows were
+  removed afterwards; all 42 tables hold 0 rows.
+- **Migration history was set to the repository's own 36 version/name pairs**
+  (`md5 43421b85…`), so `supabase db push --linked` reports nothing pending instead of
+  trying to re-apply every file.
+
+One defect was found and fixed by this exercise: `20261122001000_push_notifications.sql`
+originally created its two tables without the `ENABLE ROW LEVEL SECURITY` +
+`REVOKE … FROM anon, authenticated` pair that every other table-creating migration
+carries. Measured before the fix, both tables had RLS off and full `SELECT`/`INSERT`/
+`UPDATE`/`DELETE` granted to `anon` — and the anon key is public, because it ships
+inside every mobile and web build. That exposed device push tokens, which is enough to
+send a merchant arbitrary alerts, plus outbox titles and bodies carrying customer names
+and message previews. Note that Drizzle does not model this: `isRLSEnabled` is `false`
+for all 41 tables in the snapshot, so RLS lives only in `supabase/migrations/` and no
+generated artifact will flag its absence.
 
 Creating the Supabase database does not deploy the API or make it publicly reachable. Deploy the API separately on a host with persistent media storage and configure its HTTPS URL, CORS, Clerk, Meta callback, and webhook settings before building the Android app.
 

@@ -78,3 +78,15 @@ CREATE INDEX mena_push_notification_outbox_queue_idx
 
 CREATE INDEX mena_push_notification_outbox_workspace_time_idx
   ON public.mena_push_notification_outbox (workspace_id, created_at);
+
+-- Lock both tables down like every other application table. The API reaches
+-- them through a server-only connection as `postgres`; no Supabase client
+-- policy is intended (docs/SUPABASE_DATABASE_SETUP.md §2). Without this the
+-- tables default to RLS off with full CRUD granted to `anon`, and the anon key
+-- is public: it ships inside every mobile and web build. That would expose
+-- device push tokens -- enough to send a merchant arbitrary alerts -- plus the
+-- outbox titles and bodies, which carry customer names and message previews.
+ALTER TABLE public.mena_push_notification_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.mena_push_notification_outbox ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.mena_push_notification_tokens FROM anon, authenticated;
+REVOKE ALL ON TABLE public.mena_push_notification_outbox FROM anon, authenticated;
