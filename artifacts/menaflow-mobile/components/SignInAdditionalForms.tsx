@@ -104,28 +104,38 @@ export function SecondFactorForm({
               returnKeyType="go"
             />
           </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={verifySecondFactor}
-            disabled={!verificationCode.trim() || loading}
-            style={[
-              authStyles.button,
-              {
-                backgroundColor: colors.primary,
-                opacity: !verificationCode.trim() || loading ? 0.55 : 1,
-              },
-            ]}
-          >
-            <Text style={[authStyles.buttonText, { color: colors.primaryForeground }]}>
-              {loading ? 'جارٍ التحقق…' : 'تأكيد الرمز'}
-            </Text>
-          </Pressable>
+          {(() => {
+            const disabled = !verificationCode.trim() || loading;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                onPress={verifySecondFactor}
+                disabled={disabled}
+                style={[
+                  authStyles.button,
+                  {
+                    backgroundColor: disabled ? colors.disabled : colors.primary,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    authStyles.buttonText,
+                    { color: disabled ? colors.disabledForeground : colors.primaryForeground },
+                  ]}
+                >
+                  {loading ? 'جارٍ التحقق…' : 'تأكيد الرمز'}
+                </Text>
+              </Pressable>
+            );
+          })()}
           {secondFactor === 'email_code' || secondFactor === 'phone_code' ? (
             <Pressable
               accessibilityRole="button"
               accessibilityState={{ disabled: loading, busy: loading }}
               onPress={() => void resendSecondFactor()}
               disabled={loading}
+              style={styles.inlineLinkButton}
             >
               <Text style={[authStyles.linkText, { color: colors.primary, textAlign: 'center' }]}>
                 {loading ? 'جارٍ إرسال الرمز…' : 'إعادة إرسال رمز التحقق'}
@@ -224,22 +234,31 @@ export function PasswordResetForm({
               returnKeyType="go"
             />
           </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => void verifyPasswordResetCode()}
-            disabled={!verificationCode.trim() || loading}
-            style={[
-              authStyles.button,
-              {
-                backgroundColor: colors.primary,
-                opacity: !verificationCode.trim() || loading ? 0.55 : 1,
-              },
-            ]}
-          >
-            <Text style={[authStyles.buttonText, { color: colors.primaryForeground }]}>
-              {loading ? 'جارٍ التحقق…' : 'التحقق من الرمز'}
-            </Text>
-          </Pressable>
+          {(() => {
+            const disabled = !verificationCode.trim() || loading;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void verifyPasswordResetCode()}
+                disabled={disabled}
+                style={[
+                  authStyles.button,
+                  {
+                    backgroundColor: disabled ? colors.disabled : colors.primary,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    authStyles.buttonText,
+                    { color: disabled ? colors.disabledForeground : colors.primaryForeground },
+                  ]}
+                >
+                  {loading ? 'جارٍ التحقق…' : 'التحقق من الرمز'}
+                </Text>
+              </Pressable>
+            );
+          })()}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="إعادة إرسال رمز الاستعادة إلى البريد الإلكتروني"
@@ -249,14 +268,19 @@ export function PasswordResetForm({
             style={({ pressed }) => [
               styles.resendButton,
               {
-                backgroundColor: colors.card,
+                backgroundColor: loading ? colors.disabled : colors.card,
                 borderColor: colors.border,
-                opacity: loading ? 0.55 : pressed ? 0.75 : 1,
+                opacity: !loading && pressed ? 0.75 : 1,
               },
             ]}
           >
-            <RefreshCw size={15} color={colors.primary} />
-            <Text style={[authStyles.secondaryText, { color: colors.primary }]}>
+            <RefreshCw size={15} color={loading ? colors.disabledForeground : colors.primary} />
+            <Text
+              style={[
+                authStyles.secondaryText,
+                { color: loading ? colors.disabledForeground : colors.primary },
+              ]}
+            >
               {loading ? 'جارٍ إرسال الرمز…' : 'إعادة إرسال رمز الاستعادة'}
             </Text>
           </Pressable>
@@ -288,7 +312,7 @@ export function PasswordResetForm({
               accessibilityRole="button"
               accessibilityLabel={showNewPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
               onPress={() => setShowNewPassword((visible) => !visible)}
-              hitSlop={8}
+              hitSlop={12}
             >
               {showNewPassword ? (
                 <EyeOff size={17} color={colors.mutedForeground} />
@@ -297,22 +321,31 @@ export function PasswordResetForm({
               )}
             </Pressable>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => void finishPasswordReset()}
-            disabled={newPassword.length < 8 || loading}
-            style={[
-              authStyles.button,
-              {
-                backgroundColor: colors.primary,
-                opacity: newPassword.length < 8 || loading ? 0.55 : 1,
-              },
-            ]}
-          >
-            <Text style={[authStyles.buttonText, { color: colors.primaryForeground }]}>
-              {loading ? 'جارٍ الحفظ…' : 'حفظ كلمة المرور'}
-            </Text>
-          </Pressable>
+          {(() => {
+            const disabled = newPassword.length < 8 || loading;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void finishPasswordReset()}
+                disabled={disabled}
+                style={[
+                  authStyles.button,
+                  {
+                    backgroundColor: disabled ? colors.disabled : colors.primary,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    authStyles.buttonText,
+                    { color: disabled ? colors.disabledForeground : colors.primaryForeground },
+                  ]}
+                >
+                  {loading ? 'جارٍ الحفظ…' : 'حفظ كلمة المرور'}
+                </Text>
+              </Pressable>
+            );
+          })()}
         </>
       ) : (
         <>
@@ -356,22 +389,31 @@ export function PasswordResetForm({
               {...inputFocusProps('reset-email')}
             />
           </View>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => void startPasswordReset()}
-            disabled={!emailAddress.trim() || loading}
-            style={[
-              authStyles.button,
-              {
-                backgroundColor: colors.primary,
-                opacity: !emailAddress.trim() || loading ? 0.55 : 1,
-              },
-            ]}
-          >
-            <Text style={[authStyles.buttonText, { color: colors.primaryForeground }]}>
-              {loading ? 'جارٍ الإرسال…' : 'إرسال رمز الاستعادة'}
-            </Text>
-          </Pressable>
+          {(() => {
+            const disabled = !emailAddress.trim() || loading;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => void startPasswordReset()}
+                disabled={disabled}
+                style={[
+                  authStyles.button,
+                  {
+                    backgroundColor: disabled ? colors.disabled : colors.primary,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    authStyles.buttonText,
+                    { color: disabled ? colors.disabledForeground : colors.primaryForeground },
+                  ]}
+                >
+                  {loading ? 'جارٍ الإرسال…' : 'إرسال رمز الاستعادة'}
+                </Text>
+              </Pressable>
+            );
+          })()}
         </>
       )}
       <Pressable
@@ -382,6 +424,7 @@ export function PasswordResetForm({
           setErrorMessage('');
           setSuccessMessage('');
         }}
+        style={styles.inlineLinkButton}
       >
         <Text style={[authStyles.linkText, { color: colors.primary, textAlign: 'center' }]}>
           العودة لتسجيل الدخول
@@ -392,6 +435,11 @@ export function PasswordResetForm({
 }
 
 const styles = StyleSheet.create({
+  inlineLinkButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
   resetInfo: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -409,8 +457,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   resetCopy: { flex: 1, gap: 2 },
-  resetTitle: { fontSize: 14, fontWeight: '800', textAlign: 'right' },
-  resetDescription: { fontSize: 12, lineHeight: 18, textAlign: 'right' },
+  resetTitle: { fontSize: 14.5, fontWeight: '800', textAlign: 'right' },
+  resetDescription: { fontSize: 13.5, lineHeight: 20, textAlign: 'right' },
   resetCodeInput: {
     fontSize: 20,
     fontWeight: '700',
@@ -418,7 +466,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   resendButton: {
-    minHeight: 42,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',

@@ -13,25 +13,36 @@ import {
   LucideIcon as Icon,
   type LucideIconName,
 } from "@/components/LucideIcon";
+import colors from "@/constants/colors";
 import { channelNote, marketingPlans } from "@/constants/pricing";
 
 /**
  * Marketing landing page.
  *
- * Fixed light palette on purpose: this page mirrors the brand artwork (mint
- * background, navy headings, one green call to action) and must look the same
- * in the app's dark theme, like any public marketing site.
+ * Fixed light palette derived from `constants/colors.ts` so the public landing
+ * site uses the exact same MenaFlow color identity as the app and stays light
+ * even when the user's device prefers dark mode.
  */
 const palette = {
-  ink: "#0B2B45",
-  inkSoft: "#4A6478",
-  green: "#0E9F6E",
-  greenDark: "#0A7A55",
-  greenSoft: "#DFF4EA",
-  mintArt: "#DFF4EE",
-  mintSoft: "#F5FBF8",
-  border: "#DCEAE3",
-  white: "#FFFFFF",
+  ink: colors.light.foreground,
+  inkSoft: colors.light.mutedForeground,
+  green: colors.light.primary,
+  greenDark: colors.light.accentForeground,
+  greenSoft: colors.light.accent,
+  mintArt: colors.light.accent,
+  mintSoft: colors.light.background,
+  border: colors.light.border,
+  white: colors.light.card,
+  shadow: colors.light.shadow,
+  phoneSurface: colors.dark.background,
+  phoneNotch: colors.dark.border,
+  phoneRowSurface: colors.dark.card,
+  phoneBadgeSurface: colors.dark.accent,
+  phoneBadgeText: colors.dark.primary,
+  phoneRowText: colors.dark.foreground,
+  phoneRowMuted: colors.dark.mutedForeground,
+  ctaGlow: colors.light.accentForeground,
+  ctaSubtext: colors.light.accent,
 };
 
 const features: Array<{
@@ -600,17 +611,17 @@ export function MarketingLandingPage() {
             </Text>
             <View style={styles.footerLinks}>
               <Link href="/(auth)/privacy" asChild>
-                <Pressable accessibilityRole="link">
+                <Pressable accessibilityRole="link" style={styles.footerLinkButton}>
                   <Text style={styles.footerLink}>سياسة الخصوصية</Text>
                 </Pressable>
               </Link>
               <Link href="/(auth)/terms" asChild>
-                <Pressable accessibilityRole="link">
+                <Pressable accessibilityRole="link" style={styles.footerLinkButton}>
                   <Text style={styles.footerLink}>الشروط والأحكام</Text>
                 </Pressable>
               </Link>
               <Link href="/(auth)/sign-in" asChild>
-                <Pressable accessibilityRole="link">
+                <Pressable accessibilityRole="link" style={styles.footerLinkButton}>
                   <Text style={styles.footerLink}>تسجيل الدخول</Text>
                 </Pressable>
               </Link>
@@ -638,6 +649,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   languagePill: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -645,10 +657,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.border,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
-  languageText: { fontSize: 12, fontWeight: "700", color: palette.ink },
+  languageText: { fontSize: 13, fontWeight: "700", color: palette.ink },
   brand: { flexDirection: "row", alignItems: "center", gap: 8 },
   brandIcon: { width: 34, height: 34, borderRadius: 11 },
   brandName: { fontSize: 20, fontWeight: "800", color: palette.ink, letterSpacing: -0.4 },
@@ -660,17 +672,19 @@ const styles = StyleSheet.create({
     gap: 18,
     paddingVertical: 4,
   },
-  navLink: { paddingVertical: 6 },
-  navText: { fontSize: 13, fontWeight: "700", color: palette.inkSoft },
+  navLink: { minHeight: 44, justifyContent: "center", paddingVertical: 6 },
+  navText: { fontSize: 14, fontWeight: "700", color: palette.inkSoft },
   navSignIn: {
+    minHeight: 44,
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: palette.border,
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     backgroundColor: palette.white,
   },
-  navSignInText: { fontSize: 13, fontWeight: "800", color: palette.ink },
+  navSignInText: { fontSize: 14, fontWeight: "800", color: palette.ink },
 
   hero: {
     backgroundColor: palette.mintArt,
@@ -707,15 +721,15 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   heroBody: {
-    fontSize: 13,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 24,
     color: palette.inkSoft,
     textAlign: "right",
   },
   heroActions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 },
   heroActionsNarrow: { flexDirection: "column", alignItems: "stretch" },
   primaryCta: {
-    minHeight: 46,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -724,9 +738,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 22,
   },
-  primaryCtaText: { fontSize: 14, fontWeight: "800", color: palette.white },
+  primaryCtaText: { fontSize: 15, fontWeight: "800", color: palette.white },
   secondaryCta: {
-    minHeight: 46,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -737,7 +751,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 20,
   },
-  secondaryCtaText: { fontSize: 13, fontWeight: "800", color: palette.ink },
+  secondaryCtaText: { fontSize: 14, fontWeight: "800", color: palette.ink },
 
   featuresPanel: {
     backgroundColor: palette.white,
@@ -785,8 +799,8 @@ const styles = StyleSheet.create({
   featureIconNarrow: { width: 32, height: 32, borderRadius: 10 },
   featureTitleRow: {
     flex: 1,
-    fontSize: 12.5,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 20,
     textAlign: "right",
   },
   featureIcon: {
@@ -798,15 +812,15 @@ const styles = StyleSheet.create({
     borderRadius: 13,
   },
   featureTitle: {
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 21,
     fontWeight: "800",
     color: palette.ink,
     textAlign: "center",
   },
   featureDescription: {
-    fontSize: 11,
-    lineHeight: 17,
+    fontSize: 13,
+    lineHeight: 19,
     color: palette.inkSoft,
     textAlign: "center",
   },
@@ -824,13 +838,13 @@ const styles = StyleSheet.create({
   phoneWrapWide: { flex: 1 },
   phone: {
     width: 258,
-    backgroundColor: "#0F2437",
+    backgroundColor: palette.phoneSurface,
     borderRadius: 32,
     paddingHorizontal: 11,
     paddingTop: 9,
     paddingBottom: 11,
     gap: 9,
-    shadowColor: "#0B2B45",
+    shadowColor: palette.shadow,
     shadowOpacity: 0.2,
     shadowRadius: 22,
     shadowOffset: { width: 0, height: 12 },
@@ -841,7 +855,7 @@ const styles = StyleSheet.create({
     width: 54,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "#2B4A66",
+    backgroundColor: palette.phoneNotch,
     marginBottom: 1,
   },
   phoneHeader: {
@@ -861,7 +875,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(14,159,110,0.18)",
+    backgroundColor: palette.phoneBadgeSurface,
     borderRadius: 99,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -872,7 +886,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: palette.green,
   },
-  phoneLiveText: { fontSize: 7.5, fontWeight: "700", color: "#7FE3BE" },
+  phoneLiveText: { fontSize: 7.5, fontWeight: "700", color: palette.phoneBadgeText },
   phoneStats: { flexDirection: "row", gap: 6 },
   phoneStat: {
     flex: 1,
@@ -923,7 +937,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 7,
-    backgroundColor: "#17324A",
+    backgroundColor: palette.phoneRowSurface,
     borderRadius: 10,
     paddingHorizontal: 8,
     paddingVertical: 7,
@@ -934,15 +948,15 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(14,159,110,0.2)",
+    backgroundColor: palette.phoneBadgeSurface,
   },
   phoneRowText: {
     flex: 1,
     fontSize: 8.5,
     fontWeight: "600",
-    color: "#D6E6F2",
+    color: palette.phoneRowText,
   },
-  phoneRowTime: { fontSize: 7, color: "#7E9AB3" },
+  phoneRowTime: { fontSize: 7, color: palette.phoneRowMuted },
 
   dashboardCopy: { gap: 12 },
   dashboardCopyWide: { flex: 1 },
@@ -954,8 +968,8 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   dashboardBody: {
-    fontSize: 13,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 24,
     color: palette.inkSoft,
     textAlign: "right",
   },
@@ -968,8 +982,8 @@ const styles = StyleSheet.create({
   dashboardPoint: { flexDirection: "row", alignItems: "center", gap: 8 },
   dashboardPointText: {
     flex: 1,
-    fontSize: 12,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 21,
     fontWeight: "700",
     color: palette.ink,
     textAlign: "right",
@@ -1025,14 +1039,14 @@ const styles = StyleSheet.create({
     backgroundColor: palette.mintSoft,
     borderRadius: 10,
   },
-  trustCopy: { flexShrink: 1, gap: 1 },
+  trustCopy: { flexShrink: 1, gap: 2 },
   trustTitle: {
-    fontSize: 10,
+    fontSize: 13,
     fontWeight: "800",
     color: palette.ink,
     textAlign: "right",
   },
-  trustNote: { fontSize: 8, color: palette.inkSoft, textAlign: "right" },
+  trustNote: { fontSize: 12, color: palette.inkSoft, textAlign: "right" },
 
   ctaBand: {
     flexDirection: "row",
@@ -1049,28 +1063,28 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 110,
-    backgroundColor: "#12B77F",
-    opacity: 0.55,
+    backgroundColor: palette.ctaGlow,
+    opacity: 0.35,
     top: -90,
     right: -60,
   },
   ctaCopy: { flex: 1, minWidth: 220, gap: 4 },
-  ctaTitle: { fontSize: 18, fontWeight: "800", color: palette.white, textAlign: "right" },
-  ctaBody: { fontSize: 12, lineHeight: 19, color: "#E4FBF2", textAlign: "right" },
+  ctaTitle: { fontSize: 19, fontWeight: "800", color: palette.white, textAlign: "right" },
+  ctaBody: { fontSize: 14, lineHeight: 21, color: palette.ctaSubtext, textAlign: "right" },
   ctaButton: {
-    minHeight: 44,
+    minHeight: 46,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     backgroundColor: palette.white,
     borderRadius: 999,
-    paddingHorizontal: 20,
+    paddingHorizontal: 22,
   },
-  ctaButtonText: { fontSize: 13, fontWeight: "800", color: palette.greenDark },
+  ctaButtonText: { fontSize: 14, fontWeight: "800", color: palette.greenDark },
 
   section: { gap: 8, paddingVertical: 10 },
   sectionEyebrow: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "800",
     color: palette.green,
     textAlign: "right",
@@ -1083,8 +1097,8 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   sectionBody: {
-    fontSize: 12,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 22,
     color: palette.inkSoft,
     textAlign: "right",
     marginBottom: 6,
@@ -1110,9 +1124,9 @@ const styles = StyleSheet.create({
     backgroundColor: palette.greenSoft,
     borderRadius: 9,
   },
-  stepBadgeText: { fontSize: 13, fontWeight: "800", color: palette.greenDark },
-  stepTitle: { fontSize: 14, fontWeight: "800", color: palette.ink, textAlign: "right" },
-  stepBody: { fontSize: 12, lineHeight: 19, color: palette.inkSoft, textAlign: "right" },
+  stepBadgeText: { fontSize: 14, fontWeight: "800", color: palette.greenDark },
+  stepTitle: { fontSize: 15, fontWeight: "800", color: palette.ink, textAlign: "right" },
+  stepBody: { fontSize: 14, lineHeight: 21, color: palette.inkSoft, textAlign: "right" },
 
   planGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   planCard: {
@@ -1127,21 +1141,21 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   planCardHighlight: { borderColor: palette.green, borderWidth: 2 },
-  planName: { fontSize: 14, fontWeight: "800", color: palette.ink, textAlign: "right" },
+  planName: { fontSize: 15, fontWeight: "800", color: palette.ink, textAlign: "right" },
   planPriceRow: { flexDirection: "row", alignItems: "flex-end", gap: 4 },
   planPrice: { fontSize: 26, fontWeight: "800", color: palette.ink },
-  planPeriod: { fontSize: 11, color: palette.inkSoft, marginBottom: 4 },
+  planPeriod: { fontSize: 13, color: palette.inkSoft, marginBottom: 4 },
   planDescription: {
-    fontSize: 12,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 21,
     color: palette.inkSoft,
     textAlign: "right",
   },
   planLimits: { gap: 6, marginTop: 2 },
   planLimit: { flexDirection: "row", alignItems: "center", gap: 6 },
-  planLimitText: { fontSize: 11, color: palette.ink, textAlign: "right", flex: 1 },
+  planLimitText: { fontSize: 13, color: palette.ink, textAlign: "right", flex: 1 },
   planButton: {
-    minHeight: 40,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 999,
@@ -1153,11 +1167,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.border,
   },
-  planButtonPrimaryText: { fontSize: 12, fontWeight: "800", color: palette.white },
-  planButtonSecondaryText: { fontSize: 12, fontWeight: "800", color: palette.ink },
+  planButtonPrimaryText: { fontSize: 14, fontWeight: "800", color: palette.white },
+  planButtonSecondaryText: { fontSize: 14, fontWeight: "800", color: palette.ink },
   channelNote: {
-    fontSize: 11,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 20,
     color: palette.inkSoft,
     textAlign: "right",
     marginTop: 4,
@@ -1174,13 +1188,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   faqHeading: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
   },
-  faqQuestion: { flex: 1, fontSize: 13, fontWeight: "800", color: palette.ink, textAlign: "right" },
-  faqAnswer: { fontSize: 12, lineHeight: 20, color: palette.inkSoft, textAlign: "right" },
+  faqQuestion: { flex: 1, fontSize: 14, fontWeight: "800", color: palette.ink, textAlign: "right" },
+  faqAnswer: { fontSize: 14, lineHeight: 22, color: palette.inkSoft, textAlign: "right" },
 
   footer: {
     gap: 8,
@@ -1192,8 +1207,9 @@ const styles = StyleSheet.create({
   footerBrand: { flexDirection: "row", alignItems: "center", gap: 6 },
   footerIcon: { width: 24, height: 24, borderRadius: 8 },
   footerName: { fontSize: 15, fontWeight: "800", color: palette.ink },
-  footerText: { fontSize: 11, color: palette.inkSoft, textAlign: "center" },
-  footerLinks: { flexDirection: "row", flexWrap: "wrap", gap: 14, justifyContent: "center" },
-  footerLink: { fontSize: 11, fontWeight: "700", color: palette.greenDark },
-  footerCopyright: { fontSize: 10, color: palette.inkSoft, textAlign: "center" },
+  footerText: { fontSize: 13, color: palette.inkSoft, textAlign: "center" },
+  footerLinks: { flexDirection: "row", flexWrap: "wrap", gap: 6, justifyContent: "center" },
+  footerLinkButton: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 },
+  footerLink: { fontSize: 13, fontWeight: "700", color: palette.greenDark },
+  footerCopyright: { fontSize: 12, color: palette.inkSoft, textAlign: "center" },
 });

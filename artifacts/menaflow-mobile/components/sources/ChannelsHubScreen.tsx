@@ -319,7 +319,7 @@ function ChannelRow({
 }
 
 const styles = StyleSheet.create({
-  progress: { fontSize: 12, fontWeight: "700", textAlign: "right" },
+  progress: { fontSize: 13, fontWeight: "700", textAlign: "right" },
   card: { gap: 10 },
   cardHeader: {
     flexDirection: "row",
@@ -341,14 +341,14 @@ const styles = StyleSheet.create({
     borderRadius: 11,
   },
   cardTitle: { flexShrink: 1, fontSize: 15, fontWeight: "800" },
-  cardBody: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  cardBody: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   cardActions: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "flex-start",
     gap: 8,
   },
-  link: { fontSize: 13, fontWeight: "700" },
+  link: { fontSize: 14, fontWeight: "700" },
   channelRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -358,16 +358,16 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   channelCopy: { flex: 1, gap: 2 },
-  channelName: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  channelAccount: { fontSize: 12, textAlign: "right" },
+  channelName: { fontSize: 14, fontWeight: "700", textAlign: "right" },
+  channelAccount: { fontSize: 13, textAlign: "right" },
   secondaryButton: {
-    minHeight: 38,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 13,
   },
-  secondaryLabel: { fontSize: 13, fontWeight: "700" },
+  secondaryLabel: { fontSize: 14, fontWeight: "700" },
 });

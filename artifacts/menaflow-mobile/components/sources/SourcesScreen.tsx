@@ -2054,21 +2054,117 @@ function SourcesContent({
         />
       ) : null}
 
-      {includeWhatsApp && isPublishingAccounts && (
-        <View style={styles.setupFooter}>
-          <View style={styles.setupHint}>
-            <Icon name="info" size={18} color="#0A2A63" />
-            <Text style={styles.setupHintText}>{connectionsQuery.isPending ? "جارٍ التحقق من الحسابات…" : connectionsQuery.isError ? "تعذر التحقق من الحسابات. أعد المحاولة." : hasConnectedSocialAccount ? "حسابك جاهز للمتابعة" : "يمكنك ربط حساب واحد على الأقل للمتابعة"}</Text>
+      {includeWhatsApp && isPublishingAccounts && (() => {
+        const continueDisabled =
+          !hasConnectedSocialAccount ||
+          connectionsQuery.isError ||
+          connectionsQuery.isPending ||
+          onboardingQuery.isPending ||
+          onboardingQuery.isError ||
+          completeSocialSetup.isPending ||
+          progressSetup.isPending;
+        const skipDisabled =
+          progressSetup.isPending ||
+          onboardingQuery.isPending ||
+          onboardingQuery.isError;
+        return (
+          <View style={styles.setupFooter}>
+            <View style={[styles.setupHint, { backgroundColor: colors.accent }]}>
+              <Icon name="info" size={18} color={colors.accentForeground} />
+              <Text style={[styles.setupHintText, { color: colors.accentForeground }]}>
+                {connectionsQuery.isPending
+                  ? "جارٍ التحقق من الحسابات…"
+                  : connectionsQuery.isError
+                    ? "تعذر التحقق من الحسابات. أعد المحاولة."
+                    : hasConnectedSocialAccount
+                      ? "حسابك جاهز للمتابعة"
+                      : "يمكنك ربط حساب واحد على الأقل للمتابعة"}
+              </Text>
+            </View>
+            {(completeSocialSetup.isError || progressSetup.isError) && (
+              <Text
+                accessibilityRole="alert"
+                style={[styles.error, { color: colors.destructive, textAlign: "center" }]}
+              >
+                تعذر حفظ حالة الإعداد. تحقق من اتصال الإنترنت ثم أعد المحاولة.
+              </Text>
+            )}
+            {socialSetupPending && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="متابعة"
+                accessibilityState={{
+                  disabled: continueDisabled,
+                  busy: completeSocialSetup.isPending || progressSetup.isPending,
+                }}
+                disabled={continueDisabled}
+                onPress={() =>
+                  inOnboarding ? startProgress("advance") : completeSocialSetup.mutate()
+                }
+                style={[
+                  styles.setupPrimary,
+                  {
+                    backgroundColor: continueDisabled
+                      ? colors.disabled
+                      : colors.primary,
+                  },
+                ]}
+              >
+                {completeSocialSetup.isPending || progressSetup.isPending ? (
+                  <ActivityIndicator
+                    color={
+                      continueDisabled
+                        ? colors.disabledForeground
+                        : colors.primaryForeground
+                    }
+                  />
+                ) : (
+                  <Text
+                    style={[
+                      styles.setupPrimaryText,
+                      {
+                        color: continueDisabled
+                          ? colors.disabledForeground
+                          : colors.primaryForeground,
+                      },
+                    ]}
+                  >
+                    متابعة  ←
+                  </Text>
+                )}
+              </Pressable>
+            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="متابعة الإعداد لاحقًا والانتقال إلى لوحة التحكم"
+              disabled={skipDisabled}
+              onPress={() =>
+                inOnboarding ? startProgress("skip") : router.replace("/(tabs)")
+              }
+              style={[
+                styles.setupSecondary,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: skipDisabled ? colors.disabled : colors.card,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.setupSecondaryText,
+                  {
+                    color: skipDisabled
+                      ? colors.disabledForeground
+                      : colors.foreground,
+                  },
+                ]}
+              >
+                إكمال لاحقًا  ←
+              </Text>
+            </Pressable>
           </View>
-          {(completeSocialSetup.isError || progressSetup.isError) && <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive, textAlign: "center" }]}>تعذر حفظ حالة الإعداد. تحقق من اتصال الإنترنت ثم أعد المحاولة.</Text>}
-          {socialSetupPending && <Pressable accessibilityRole="button" accessibilityLabel="متابعة" accessibilityState={{ disabled: !hasConnectedSocialAccount || connectionsQuery.isError || connectionsQuery.isPending || onboardingQuery.isPending || onboardingQuery.isError, busy: completeSocialSetup.isPending || progressSetup.isPending }} disabled={!hasConnectedSocialAccount || connectionsQuery.isError || connectionsQuery.isPending || onboardingQuery.isPending || onboardingQuery.isError || completeSocialSetup.isPending || progressSetup.isPending} onPress={() => inOnboarding ? startProgress("advance") : completeSocialSetup.mutate()} style={[styles.setupPrimary, { opacity: !hasConnectedSocialAccount || connectionsQuery.isError || connectionsQuery.isPending || completeSocialSetup.isPending || progressSetup.isPending ? 0.5 : 1 }]}>
-            {completeSocialSetup.isPending || progressSetup.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.setupPrimaryText}>متابعة  ←</Text>}
-          </Pressable>}
-          <Pressable accessibilityRole="button" accessibilityLabel="متابعة الإعداد لاحقًا والانتقال إلى لوحة التحكم" disabled={progressSetup.isPending || onboardingQuery.isPending || onboardingQuery.isError} onPress={() => inOnboarding ? startProgress("skip") : router.replace("/(tabs)")} style={[styles.setupSecondary, { borderColor: colors.foreground, opacity: progressSetup.isPending || onboardingQuery.isPending || onboardingQuery.isError ? 0.5 : 1 }]}>
-            <Text style={[styles.setupSecondaryText, { color: colors.foreground }]}>إكمال لاحقًا  ←</Text>
-          </Pressable>
-        </View>
-      )}
+        );
+      })()}
 
       {!isPublishingAccounts && activeSection === "sync" ? (
         connections?.whatsapp && isConnected("whatsapp") ? (
@@ -2369,30 +2465,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  tabLabel: { fontSize: 13, fontWeight: "800" },
+  tabLabel: { fontSize: 14, fontWeight: "800" },
   tabDot: { width: 7, height: 7, borderRadius: 4 },
   syncEmptyPanel: { gap: 12, alignItems: "stretch" },
   setupHero: { alignItems: "center", gap: 8 },
-  setupHeroTitle: { color: "#0A2A63", fontSize: 27, fontWeight: "800", textAlign: "center" },
-  setupHeroSubtitle: { color: "#5B6E8E", fontSize: 15, lineHeight: 25, textAlign: "center", maxWidth: 360 },
-  setupBack: { flexDirection: "row", alignItems: "center", gap: 4, padding: 8 },
+  setupHeroTitle: { fontSize: 27, fontWeight: "800", textAlign: "center" },
+  setupHeroSubtitle: { fontSize: 15, lineHeight: 25, textAlign: "center", maxWidth: 360 },
+  setupBack: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 8 },
   setupFooter: { gap: 12 },
-  setupHint: { backgroundColor: "#DDF6ED", borderRadius: 30, padding: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
-  setupHintText: { color: "#0A2A63", fontSize: 13, fontWeight: "700", textAlign: "center", flexShrink: 1 },
-  setupPrimary: { minHeight: 54, borderRadius: 30, backgroundColor: "#02A362", alignItems: "center", justifyContent: "center" },
-  setupPrimaryText: { color: "#fff", fontSize: 19, fontWeight: "800" },
-  setupSecondary: { minHeight: 54, borderRadius: 30, borderWidth: 1, borderColor: "#0A2A63", alignItems: "center", justifyContent: "center" },
-  setupSecondaryText: { color: "#0A2A63", fontSize: 18, fontWeight: "800" },
+  setupHint: { borderRadius: 30, padding: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  setupHintText: { fontSize: 14, fontWeight: "700", textAlign: "center", flexShrink: 1 },
+  setupPrimary: { minHeight: 54, borderRadius: 30, alignItems: "center", justifyContent: "center" },
+  setupPrimaryText: { fontSize: 18, fontWeight: "800" },
+  setupSecondary: { minHeight: 54, borderRadius: 30, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  setupSecondaryText: { fontSize: 16, fontWeight: "800" },
   onboardingActions: { alignItems: "stretch", gap: 12, paddingTop: 2 },
-  onboardingSkip: { alignSelf: "center", paddingVertical: 8, paddingHorizontal: 12 },
-  onboardingSkipText: { fontSize: 13, fontWeight: "600" },
+  onboardingSkip: { alignSelf: "center", paddingVertical: 10, paddingHorizontal: 12, minHeight: 44, justifyContent: "center" },
+  onboardingSkipText: { fontSize: 14, fontWeight: "600" },
   onboardingContinue: {
-    minHeight: 46,
+    minHeight: 48,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
   },
-  onboardingContinueText: { fontSize: 13, fontWeight: "800" },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  onboardingContinueText: { fontSize: 14, fontWeight: "800" },
+  error: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
 });

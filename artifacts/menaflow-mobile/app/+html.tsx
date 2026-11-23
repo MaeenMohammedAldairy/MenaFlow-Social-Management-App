@@ -1,5 +1,6 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import type { PropsWithChildren } from "react";
+import colors from "../constants/colors";
 
 // Crawlers need a fully qualified image URL, so the origin is configurable.
 // Falls back to a relative path, which still resolves for the page itself.
@@ -38,7 +39,7 @@ export default function Root({ children }: PropsWithChildren) {
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={pageTitle} />
         <meta name="twitter:description" content={pageDescription} />
-        <meta name="theme-color" content="#087F68" />
+        <meta name="theme-color" content={colors.light.primary} />
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{ __html: responsiveBackground }} />
       </head>
@@ -50,8 +51,8 @@ export default function Root({ children }: PropsWithChildren) {
 // Matches the app palettes in constants/colors.ts so the first paint does not
 // flash a white page under the dark scheme.
 const responsiveBackground = `
-body { background-color: #F5F7F6; }
-@media (prefers-color-scheme: dark) { body { background-color: #0D1722; } }
+body { background-color: ${colors.light.background}; }
+@media (prefers-color-scheme: dark) { body { background-color: ${colors.dark.background}; } }
 /* Chrome paints autofilled fields with its own background, which showed up as a
    white block over the dark auth card. The auth screens pin color-scheme on the
    document, so the engine follows our palette; these rules keep the text and the
@@ -60,11 +61,11 @@ input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 textarea:-webkit-autofill {
-  -webkit-text-fill-color: #0A2A63 !important;
-  caret-color: #0A2A63 !important;
+  -webkit-text-fill-color: ${colors.light.foreground} !important;
+  caret-color: ${colors.light.foreground} !important;
   /* A huge inset shadow in the field's own colour is the only way to cover the
      background Chrome paints over autofilled inputs. */
-  -webkit-box-shadow: 0 0 0 1000px #F6FBFD inset !important;
+  -webkit-box-shadow: 0 0 0 1000px ${colors.light.background} inset !important;
   transition: background-color 9999s ease-out 0s;
 }
 @media (prefers-color-scheme: dark) {
@@ -72,9 +73,9 @@ textarea:-webkit-autofill {
   input:-webkit-autofill:hover,
   input:-webkit-autofill:focus,
   textarea:-webkit-autofill {
-    -webkit-text-fill-color: #E9F2F9 !important;
-    caret-color: #E9F2F9 !important;
-    -webkit-box-shadow: 0 0 0 1000px #152A3B inset !important;
+    -webkit-text-fill-color: ${colors.dark.foreground} !important;
+    caret-color: ${colors.dark.foreground} !important;
+    -webkit-box-shadow: 0 0 0 1000px ${colors.dark.secondary} inset !important;
   }
 }
 `;

@@ -267,9 +267,8 @@ export function SourcesConnectionsPanel({
                   style={[
                     styles.connectButton,
                     {
-                      borderColor: colors.primary,
-                      backgroundColor: colors.primary,
-                      opacity: sourceBusy ? 0.6 : 1,
+                      borderColor: sourceBusy ? colors.border : colors.primary,
+                      backgroundColor: sourceBusy ? colors.disabled : colors.primary,
                     },
                   ]}
                 >
@@ -277,19 +276,19 @@ export function SourcesConnectionsPanel({
                   disconnectingSource !== "whatsapp" ? (
                     <ActivityIndicator
                       size="small"
-                      color={colors.primaryForeground}
+                      color={sourceBusy ? colors.disabledForeground : colors.primaryForeground}
                     />
                   ) : (
                     <Icon
                       name={connected ? "settings" : "link-2"}
                       size={14}
-                      color={colors.primaryForeground}
+                      color={sourceBusy ? colors.disabledForeground : colors.primaryForeground}
                     />
                   )}
                   <Text
                     style={[
                       styles.connectLabel,
-                      { color: colors.primaryForeground },
+                      { color: sourceBusy ? colors.disabledForeground : colors.primaryForeground },
                     ]}
                   >
                     {whatsappActionLabel}
@@ -305,19 +304,19 @@ export function SourcesConnectionsPanel({
                       styles.disconnectButton,
                       {
                         borderColor: colors.border,
-                        opacity: sourceBusy ? 0.6 : 1,
+                        backgroundColor: sourceBusy ? colors.disabled : "transparent",
                       },
                     ]}
                   >
                     <Icon
                       name="x-circle"
                       size={15}
-                      color={colors.destructive}
+                      color={sourceBusy ? colors.disabledForeground : colors.destructive}
                     />
                     <Text
                       style={[
                         styles.disconnectLabel,
-                        { color: colors.destructive },
+                        { color: sourceBusy ? colors.disabledForeground : colors.destructive },
                       ]}
                     >
                       إلغاء الربط
@@ -335,21 +334,20 @@ export function SourcesConnectionsPanel({
                   style={[
                     styles.connectButton,
                     {
-                      borderColor: colors.primary,
-                      backgroundColor: colors.primary,
-                      opacity: sourceBusy ? 0.6 : 1,
+                      borderColor: sourceBusy ? colors.border : colors.primary,
+                      backgroundColor: sourceBusy ? colors.disabled : colors.primary,
                     },
                   ]}
                 >
                   <Icon
                     name="settings"
                     size={14}
-                    color={colors.primaryForeground}
+                    color={sourceBusy ? colors.disabledForeground : colors.primaryForeground}
                   />
                   <Text
                     style={[
                       styles.connectLabel,
-                      { color: colors.primaryForeground },
+                      { color: sourceBusy ? colors.disabledForeground : colors.primaryForeground },
                     ]}
                   >
                     إدارة الحساب
@@ -364,14 +362,14 @@ export function SourcesConnectionsPanel({
                     styles.disconnectButton,
                     {
                       borderColor: colors.border,
-                      opacity: sourceBusy ? 0.6 : 1,
+                      backgroundColor: sourceBusy ? colors.disabled : "transparent",
                     },
                   ]}
                 >
                   {sourceBusy ? (
                     <ActivityIndicator
                       size="small"
-                      color={colors.destructive}
+                      color={colors.disabledForeground}
                     />
                   ) : (
                     <Icon
@@ -383,7 +381,7 @@ export function SourcesConnectionsPanel({
                   <Text
                     style={[
                       styles.disconnectLabel,
-                      { color: colors.destructive },
+                      { color: sourceBusy ? colors.disabledForeground : colors.destructive },
                     ]}
                   >
                     {disconnectingSource === source.key
@@ -405,24 +403,41 @@ export function SourcesConnectionsPanel({
                 style={[
                   styles.connectButton,
                   {
-                    borderColor: onboarding ? "#DAE5FF" : colors.primary,
-                    backgroundColor: onboarding ? "#DAE5FF" : colors.primary,
-                    opacity: sourceBusy ? 0.6 : 1,
+                    borderColor: sourceBusy
+                      ? colors.border
+                      : onboarding
+                        ? colors.accent
+                        : colors.primary,
+                    backgroundColor: sourceBusy
+                      ? colors.disabled
+                      : onboarding
+                        ? colors.accent
+                        : colors.primary,
                   },
                 ]}
               >
                 {sourceBusy ? (
                   <ActivityIndicator
                     size="small"
-                    color={onboarding ? "#0A2A63" : colors.primaryForeground}
+                    color={colors.disabledForeground}
                   />
                 ) : (
-                  <Icon name="link" size={14} color={onboarding ? "#0A2A63" : colors.primaryForeground} />
+                  <Icon
+                    name="link"
+                    size={14}
+                    color={onboarding ? colors.accentForeground : colors.primaryForeground}
+                  />
                 )}
                 <Text
                   style={[
                     styles.connectLabel,
-                    { color: onboarding ? "#0A2A63" : colors.primaryForeground },
+                    {
+                      color: sourceBusy
+                        ? colors.disabledForeground
+                        : onboarding
+                          ? colors.accentForeground
+                          : colors.primaryForeground,
+                    },
                   ]}
                 >
                   {buttonLabel(source.key)}
@@ -480,7 +495,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   errorCopy: { flex: 1, gap: 3 },
-  errorTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" },
+  errorTitle: { fontSize: 14, fontWeight: "800", textAlign: "right" },
   sourceCard: {
     borderWidth: 1,
     borderRadius: 17,
@@ -518,8 +533,8 @@ const styles = StyleSheet.create({
     gap: 6,
     flexWrap: "wrap",
   },
-  sourceName: { fontSize: 14, fontWeight: "800" },
-  sourceDescription: { fontSize: 12, lineHeight: 17, textAlign: "right" },
+  sourceName: { fontSize: 15, fontWeight: "800" },
+  sourceDescription: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   cardActions: {
     gap: 7,
     alignItems: "stretch",
@@ -529,20 +544,20 @@ const styles = StyleSheet.create({
   connectButton: {
     borderWidth: 1,
     borderRadius: 14,
-    minHeight: 40,
-    paddingHorizontal: 12,
+    minHeight: 44,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
   },
-  connectLabel: { fontSize: 12, fontWeight: "800" },
+  connectLabel: { fontSize: 13.5, fontWeight: "800" },
   disconnectButton: {
     borderWidth: 1,
     borderRadius: 14,
-    minHeight: 40,
-    paddingHorizontal: 12,
+    minHeight: 44,
+    paddingHorizontal: 14,
     paddingVertical: 7,
     flexDirection: "row",
     alignItems: "center",
@@ -550,18 +565,18 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     gap: 5,
   },
-  disconnectLabel: { fontSize: 12, fontWeight: "700" },
-  error: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  disconnectLabel: { fontSize: 13.5, fontWeight: "700" },
+  error: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   errorRetry: {
     marginTop: 6,
     alignSelf: "flex-start",
-    minHeight: 34,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
-  errorRetryLabel: { fontSize: 12, fontWeight: "800" },
+  errorRetryLabel: { fontSize: 13, fontWeight: "800" },
 });

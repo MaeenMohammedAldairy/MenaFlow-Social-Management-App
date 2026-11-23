@@ -297,32 +297,43 @@ function AuthenticatedProfileScreen() {
                 {successMessage}
               </Text>
             ) : null}
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ disabled: !changed || !firstName.trim() || saving, busy: saving }}
-              disabled={!changed || !firstName.trim() || saving}
-              onPress={() => void saveProfile()}
-              style={({ pressed }) => [
-                styles.saveButton,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: !changed || !firstName.trim() || saving ? 0.55 : pressed ? 0.82 : 1,
-                },
-              ]}
-            >
-              {saving ? <ActivityIndicator size="small" color={colors.primaryForeground} /> : null}
-              <Text style={[styles.saveLabel, { color: colors.primaryForeground }]}>
-                {saving ? "جارٍ حفظ التغييرات…" : "حفظ التغييرات"}
-              </Text>
-            </Pressable>
+            {(() => {
+              const saveDisabled = !changed || !firstName.trim() || saving;
+              const saveFg = saveDisabled ? colors.disabledForeground : colors.primaryForeground;
+              return (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: saveDisabled, busy: saving }}
+                  disabled={saveDisabled}
+                  onPress={() => void saveProfile()}
+                  style={({ pressed }) => [
+                    styles.saveButton,
+                    {
+                      backgroundColor: saveDisabled ? colors.disabled : colors.primary,
+                      opacity: !saveDisabled && pressed ? 0.82 : 1,
+                    },
+                  ]}
+                >
+                  {saving ? <ActivityIndicator size="small" color={saveFg} /> : null}
+                  <Text style={[styles.saveLabel, { color: saveFg }]}>
+                    {saving ? "جارٍ حفظ التغييرات…" : "حفظ التغييرات"}
+                  </Text>
+                </Pressable>
+              );
+            })()}
             {changed ? (
               <Pressable
                 accessibilityRole="button"
                 disabled={saving}
                 onPress={resetChanges}
-                style={({ pressed }) => [styles.cancelButton, { opacity: saving ? 0.5 : pressed ? 0.65 : 1 }]}
+                style={({ pressed }) => [styles.cancelButton, { opacity: !saving && pressed ? 0.65 : 1 }]}
               >
-                <Text style={[styles.cancelLabel, { color: colors.mutedForeground }]}>
+                <Text
+                  style={[
+                    styles.cancelLabel,
+                    { color: saving ? colors.disabledForeground : colors.mutedForeground },
+                  ]}
+                >
                   استعادة الاسم المحفوظ
                 </Text>
               </Pressable>
@@ -336,19 +347,19 @@ function AuthenticatedProfileScreen() {
 
 const styles = StyleSheet.create({
   panel: { gap: 14 },
-  message: { fontSize: 12, lineHeight: 20, textAlign: "right" },
+  message: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   loading: { flexDirection: "row", alignItems: "center", gap: 9 },
   empty: { gap: 14 },
   identity: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 4 },
   identityCopy: { flex: 1, alignItems: "flex-start", gap: 4 },
   identityName: { fontSize: 16, fontWeight: "800", textAlign: "right" },
-  identityEmail: { fontSize: 12, textAlign: "right", writingDirection: "ltr" },
+  identityEmail: { fontSize: 13, textAlign: "right", writingDirection: "ltr" },
   avatar: { width: 62, height: 62, borderRadius: 31 },
   avatarFallback: { alignItems: "center", justifyContent: "center" },
   statusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   statusDot: { width: 8, height: 8, borderRadius: 4 },
-  statusText: { fontSize: 12, fontWeight: "700", textAlign: "right" },
-  label: { fontSize: 12, fontWeight: "700", textAlign: "right", marginBottom: -8 },
+  statusText: { fontSize: 13, fontWeight: "700", textAlign: "right" },
+  label: { fontSize: 14, fontWeight: "700", textAlign: "right", marginBottom: -8 },
   input: {
     minHeight: 46,
     width: "100%",
@@ -356,17 +367,17 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     paddingHorizontal: 13,
     fontFamily: "Cairo_400Regular",
-    fontSize: 13,
+    fontSize: 14,
     textAlign: "right",
     writingDirection: "rtl",
     outlineStyle: "none",
   } as never,
   emailInput: { textAlign: "right", writingDirection: "ltr" },
   readOnlyInput: { opacity: 0.86 },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
-  success: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  error: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
+  success: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   infoRow: {
-    minHeight: 42,
+    minHeight: 44,
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: 10,
     flexDirection: "row",
@@ -375,8 +386,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   infoLabel: { flexDirection: "row", alignItems: "center", gap: 7 },
-  infoTitle: { fontSize: 12, textAlign: "right" },
-  infoValue: { flexShrink: 1, fontSize: 12, fontWeight: "700", textAlign: "right" },
+  infoTitle: { fontSize: 13.5, textAlign: "right" },
+  infoValue: { flexShrink: 1, fontSize: 13.5, fontWeight: "700", textAlign: "right" },
   saveButton: {
     minHeight: 46,
     borderRadius: 13,
@@ -386,7 +397,7 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 14,
   },
-  saveLabel: { fontSize: 13, fontWeight: "800" },
-  cancelButton: { minHeight: 34, alignItems: "center", justifyContent: "center" },
-  cancelLabel: { fontSize: 12, fontWeight: "700" },
+  saveLabel: { fontSize: 14, fontWeight: "800" },
+  cancelButton: { minHeight: 44, alignItems: "center", justifyContent: "center" },
+  cancelLabel: { fontSize: 14, fontWeight: "700" },
 });

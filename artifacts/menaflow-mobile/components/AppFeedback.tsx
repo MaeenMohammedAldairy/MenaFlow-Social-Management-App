@@ -108,6 +108,7 @@ export function AppFeedbackProvider({
               top: insets.top + 10,
               backgroundColor: colors.card,
               borderColor: colors.border,
+              shadowColor: colors.shadow,
             },
           ]}
         >
@@ -146,7 +147,7 @@ export function AppFeedbackProvider({
         animationType="fade"
         onRequestClose={() => dismissAlert()}
       >
-        <View style={styles.overlay}>
+        <View style={[styles.overlay, { backgroundColor: colors.overlay }]}>
           <Pressable
             accessibilityLabel="إغلاق مربع الحوار"
             onPress={() => dismissAlert()}
@@ -232,20 +233,18 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     padding: 12,
     elevation: 8,
-    shadowColor: "#000",
     shadowOpacity: 0.14,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
   },
   noticeCopy: { flex: 1, minWidth: 0, gap: 2 },
-  noticeTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" },
-  noticeMessage: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  noticeTitle: { fontSize: 14, fontWeight: "800", textAlign: "right" },
+  noticeMessage: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   overlay: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: 20,
-    backgroundColor: "rgba(0,0,0,0.42)",
   },
   dialog: {
     width: "100%",
@@ -270,5 +269,5 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     paddingHorizontal: 10,
   },
-  dialogButtonText: { fontSize: 13, fontWeight: "800", textAlign: "center" },
+  dialogButtonText: { fontSize: 14, fontWeight: "800", textAlign: "center" },
 });

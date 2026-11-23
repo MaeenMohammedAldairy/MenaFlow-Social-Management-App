@@ -496,7 +496,9 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
           if (!deliveryMutation.isPending) setDeliveryEditOrder(null);
         }}
       >
-        <View style={styles.modalBackdrop}>
+        <View
+          style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
+        >
           <ScrollView
             contentContainerStyle={styles.modalScrollContent}
             keyboardShouldPersistTaps="handled"
@@ -549,7 +551,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                           deliveryForm.deliveryStatus === status
                             ? colors.primaryForeground
                             : colors.foreground,
-                        fontSize: 12,
+                        fontSize: 13.5,
                         fontWeight: "700",
                       }}
                     >
@@ -661,7 +663,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                           deliveryForm.collectionStatus === status
                             ? colors.primaryForeground
                             : colors.foreground,
-                        fontSize: 12,
+                        fontSize: 13.5,
                         fontWeight: "700",
                       }}
                     >
@@ -770,7 +772,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
               style={{
                 color: colors.primaryForeground,
                 fontWeight: "800",
-                fontSize: 12,
+                fontSize: 13.5,
               }}
             >
               {showForm ? "إغلاق" : "طلب جديد"}
@@ -841,7 +843,7 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
                   color: colors.primary,
                   flex: 1,
                   textAlign: "right",
-                  fontSize: 12,
+                  fontSize: 13.5,
                   fontWeight: "700",
                 }}
               >
@@ -1535,15 +1537,15 @@ function OrderManagementContent({ userId }: { userId: string | null }) {
               style={[
                 styles.cancelButton,
                 {
-                  borderColor: colors.destructive,
-                  opacity: isUpdating ? 0.6 : 1,
+                  borderColor: isUpdating ? colors.border : colors.destructive,
+                  backgroundColor: isUpdating ? colors.disabled : "transparent",
                 },
               ]}
             >
               <Text
                 style={{
-                  color: colors.destructive,
-                  fontSize: 12,
+                  color: isUpdating ? colors.disabledForeground : colors.destructive,
+                  fontSize: 13.5,
                   fontWeight: "700",
                 }}
               >
@@ -1561,7 +1563,6 @@ const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
     justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.48)",
     padding: 14,
   },
   modalScrollContent: { flexGrow: 1, justifyContent: "center" },
@@ -1572,19 +1573,19 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   deliveryChoice: {
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: "center",
     borderWidth: 1,
     borderRadius: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
   },
   addButton: {
-    minHeight: 40,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderRadius: 12,
-    paddingHorizontal: 11,
+    paddingHorizontal: 13,
   },
   noticePanel: {
     flexDirection: "row",
@@ -1593,7 +1594,7 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   sourceNotice: {
-    minHeight: 38,
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -1623,12 +1624,12 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   fieldLabel: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "700",
     textAlign: "right",
     marginTop: 3,
   },
-  fieldHint: { fontSize: 12, textAlign: "right" },
+  fieldHint: { fontSize: 13, textAlign: "right" },
   input: {
     minHeight: 44,
     borderWidth: 1,
@@ -1636,7 +1637,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     textAlign: "right",
-    fontSize: 13,
+    fontSize: 14,
   },
   multiline: { minHeight: 78, textAlignVertical: "top" },
   searchBox: {
@@ -1648,7 +1649,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 11,
   },
-  searchInput: { flex: 1, minHeight: 40, fontSize: 12, textAlign: "right" },
+  searchInput: { flex: 1, minHeight: 44, fontSize: 14, textAlign: "right" },
   productList: { gap: 7 },
   productRow: {
     minHeight: 58,
@@ -1669,21 +1670,21 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   productCopy: { flex: 1, minWidth: 0, alignItems: "flex-start", gap: 3 },
-  productName: { fontSize: 12, fontWeight: "700", textAlign: "right" },
-  productPrice: { fontSize: 12, textAlign: "right" },
-  quantityControl: { flexDirection: "row", alignItems: "center", gap: 8 },
+  productName: { fontSize: 14, fontWeight: "700", textAlign: "right" },
+  productPrice: { fontSize: 13, textAlign: "right" },
+  quantityControl: { flexDirection: "row", alignItems: "center", gap: 6 },
   quantityButton: {
-    width: 28,
-    height: 28,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderRadius: 9,
+    borderRadius: 12,
   },
   quantityText: {
-    minWidth: 18,
+    minWidth: 20,
     textAlign: "center",
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: "800",
   },
   totalRow: {
@@ -1694,7 +1695,7 @@ const styles = StyleSheet.create({
     paddingTop: 11,
     marginTop: 2,
   },
-  totalLabel: { fontSize: 13, fontWeight: "800" },
+  totalLabel: { fontSize: 14, fontWeight: "800" },
   totalValue: { fontSize: 15, fontWeight: "900" },
   countBadge: {
     minWidth: 27,
@@ -1719,8 +1720,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   orderHeading: { flex: 1, gap: 3, alignItems: "flex-start" },
-  orderNumber: { fontSize: 14, fontWeight: "900" },
-  orderCustomer: { fontSize: 12, fontWeight: "600" },
+  orderNumber: { fontSize: 15, fontWeight: "900" },
+  orderCustomer: { fontSize: 14, fontWeight: "600" },
   statusBadge: { borderRadius: 10, paddingHorizontal: 9, paddingVertical: 6 },
   orderDate: { fontSize: 12, textAlign: "right" },
   lineItems: { gap: 7 },
@@ -1730,22 +1731,22 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
-  lineName: { flex: 1, fontSize: 12, textAlign: "right" },
-  linePrice: { fontSize: 12, fontWeight: "700" },
+  lineName: { flex: 1, fontSize: 14, textAlign: "right" },
+  linePrice: { fontSize: 14, fontWeight: "700" },
   detailRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  detailText: { flex: 1, fontSize: 12, textAlign: "right" },
-  orderNotes: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  detailText: { flex: 1, fontSize: 14, textAlign: "right" },
+  orderNotes: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   history: { gap: 5, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 9 },
-  historyTitle: { textAlign: "right", fontSize: 12, fontWeight: "800" },
-  historyText: { textAlign: "right", fontSize: 12 },
+  historyTitle: { textAlign: "right", fontSize: 13, fontWeight: "800" },
+  historyText: { textAlign: "right", fontSize: 13 },
   orderActions: { gap: 7, alignItems: "stretch" },
   cancelButton: {
-    minHeight: 38,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
     borderRadius: 11,
   },
-  inlineNotice: { textAlign: "right", fontSize: 12, paddingVertical: 8 },
+  inlineNotice: { textAlign: "right", fontSize: 13.5, paddingVertical: 8 },
   errorInline: { gap: 9, alignItems: "stretch" },
 });

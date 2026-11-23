@@ -204,7 +204,7 @@ export function ContentPostDialogs({
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalBackdrop}
+          style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
         >
           <View
             style={[
@@ -299,6 +299,8 @@ export function ContentPostDialogs({
                             accessibilityRole="button"
                             accessibilityLabel="تحريك الوسيط للأعلى"
                             disabled={index === 0}
+                            style={styles.editMediaActionButton}
+                            hitSlop={4}
                             onPress={() =>
                               setEditingMediaUrls((current) => {
                                 const reordered = [...current];
@@ -328,6 +330,8 @@ export function ContentPostDialogs({
                             accessibilityRole="button"
                             accessibilityLabel="تحريك الوسيط للأسفل"
                             disabled={index === editingMediaUrls.length - 1}
+                            style={styles.editMediaActionButton}
+                            hitSlop={4}
                             onPress={() =>
                               setEditingMediaUrls((current) => {
                                 const reordered = [...current];
@@ -356,6 +360,8 @@ export function ContentPostDialogs({
                           <Pressable
                             accessibilityRole="button"
                             accessibilityLabel="حذف الوسيط من المنشور"
+                            style={styles.editMediaActionButton}
+                            hitSlop={4}
                             onPress={() =>
                               setEditingMediaUrls((current) =>
                                 current.filter(
@@ -384,6 +390,7 @@ export function ContentPostDialogs({
               <Pressable
                 disabled={saving}
                 onPress={requestEditClose}
+                style={styles.modalActionButton}
               >
                 <Text
                   style={[
@@ -396,6 +403,7 @@ export function ContentPostDialogs({
               </Pressable>
               <Pressable
                 disabled={saving}
+                style={styles.modalActionButton}
                 onPress={async () => {
                   const body = editingBody.trim();
                   const editingPost = posts.find(
@@ -460,7 +468,9 @@ export function ContentPostDialogs({
           }
         }}
       >
-        <View style={styles.modalBackdrop}>
+        <View
+          style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
+        >
           <View
             style={[
               styles.editModal,
@@ -638,72 +648,65 @@ export function ContentPostDialogs({
                     </Text>
                   ) : null}
                 </View>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={
+                {(() => {
+                  const disabled =
                     publishing ||
                     !connectionsLoaded ||
-                    selectedPublishChannels.length === 0
-                  }
-                  accessibilityState={{
-                    disabled:
-                      publishing ||
-                      !connectionsLoaded ||
-                      selectedPublishChannels.length === 0,
-                    busy: publishing,
-                  }}
-                  onPress={() =>
-                    publishDialogPostId &&
-                    selectedPublishChannels.length > 0 &&
-                    void publishAndShowResult(
-                      publishDialogPostId,
-                      selectedPublishChannels,
-                    )
-                  }
-                  style={[
-                    styles.publishNowButton,
-                    {
-                      backgroundColor:
-                        selectedPublishChannels.length > 0
-                          ? colors.primary
-                          : colors.secondary,
-                      opacity: publishing || selectedPublishChannels.length === 0
-                        ? 0.6
-                        : 1,
-                    },
-                  ]}
-                >
-                  {publishing ? (
-                    <ActivityIndicator size="small" color={colors.primaryForeground} />
-                  ) : (
-                    <Icon
-                      name="send"
-                      size={16}
-                      color={
-                        selectedPublishChannels.length > 0
-                          ? colors.primaryForeground
-                          : colors.mutedForeground
+                    selectedPublishChannels.length === 0;
+                  const buttonFg =
+                    selectedPublishChannels.length > 0 && !publishing
+                      ? colors.primaryForeground
+                      : colors.disabledForeground;
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={disabled}
+                      accessibilityState={{
+                        disabled,
+                        busy: publishing,
+                      }}
+                      onPress={() =>
+                        publishDialogPostId &&
+                        selectedPublishChannels.length > 0 &&
+                        void publishAndShowResult(
+                          publishDialogPostId,
+                          selectedPublishChannels,
+                        )
                       }
-                    />
-                  )}
-                  <Text
-                    style={[
-                      styles.reviewAction,
-                      {
-                        color:
-                          selectedPublishChannels.length > 0
-                            ? colors.primaryForeground
-                            : colors.mutedForeground,
-                      },
-                    ]}
-                  >
-                    {publishing
-                      ? "جارٍ النشر والتحقق…"
-                      : selectedPublishChannels.length > 0
-                        ? `نشر على ${selectedPublishChannels.map(platformLabel).join(" و")}`
-                        : "اختر منصة للنشر"}
-                  </Text>
-                </Pressable>
+                      style={[
+                        styles.publishNowButton,
+                        {
+                          backgroundColor:
+                            selectedPublishChannels.length > 0 && !publishing
+                              ? colors.primary
+                              : colors.disabled,
+                        },
+                      ]}
+                    >
+                      {publishing ? (
+                        <ActivityIndicator size="small" color={buttonFg} />
+                      ) : (
+                        <Icon
+                          name="send"
+                          size={16}
+                          color={buttonFg}
+                        />
+                      )}
+                      <Text
+                        style={[
+                          styles.reviewAction,
+                          { color: buttonFg },
+                        ]}
+                      >
+                        {publishing
+                          ? "جارٍ النشر والتحقق…"
+                          : selectedPublishChannels.length > 0
+                            ? `نشر على ${selectedPublishChannels.map(platformLabel).join(" و")}`
+                            : "اختر منصة للنشر"}
+                      </Text>
+                    </Pressable>
+                  );
+                })()}
               </>
             )}
             {retryChannels.length > 0 && !publishing ? (
@@ -727,6 +730,7 @@ export function ContentPostDialogs({
                     <Pressable
                       accessibilityRole="button"
                       onPress={() => setRetryConfirmationVisible(false)}
+                      style={styles.modalActionButton}
                     >
                       <Text
                         style={[
@@ -739,6 +743,7 @@ export function ContentPostDialogs({
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
+                      style={styles.modalActionButton}
                       onPress={() => {
                         setRetryConfirmationVisible(false);
                         if (publishDialogPostId) {
@@ -762,6 +767,7 @@ export function ContentPostDialogs({
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => setRetryConfirmationVisible(true)}
+                  style={styles.modalActionButton}
                 >
                   <Text
                     style={[styles.reviewAction, { color: colors.primary }]}
@@ -775,6 +781,7 @@ export function ContentPostDialogs({
               <Pressable
                 accessibilityRole="button"
                 disabled={publishing}
+                style={styles.modalActionButton}
                 onPress={() => {
                   setPublishDialogPostId(null);
                   setPublishMessage(null);

@@ -56,7 +56,7 @@ export function WhatsAppGroupPickerModal({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
+      <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
         <View
           style={[
             styles.whatsappSetupDialog,
@@ -378,16 +378,22 @@ export function WhatsAppGroupPickerModal({
               style={[
                 styles.dialogButton,
                 {
-                  backgroundColor: colors.primary,
-                  borderColor: colors.primary,
-                  opacity: !groupsData || isFetching ? 0.5 : 1,
+                  backgroundColor:
+                    !groupsData || isFetching ? colors.disabled : colors.primary,
+                  borderColor:
+                    !groupsData || isFetching ? colors.border : colors.primary,
                 },
               ]}
             >
               <Text
                 style={[
                   styles.dialogButtonLabel,
-                  { color: colors.primaryForeground },
+                  {
+                    color:
+                      !groupsData || isFetching
+                        ? colors.disabledForeground
+                        : colors.primaryForeground,
+                  },
                 ]}
               >
                 تأكيد الاختيار
@@ -406,7 +412,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
   },
   whatsappSetupDialog: {
     width: "100%",
@@ -418,23 +423,23 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  dialogDescription: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   groupsLoading: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 24,
     gap: 8,
   },
-  loadingLabel: { fontSize: 13, fontWeight: "700" },
+  loadingLabel: { fontSize: 14, fontWeight: "700" },
   setupEmptyState: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 24,
     gap: 10,
   },
-  emptyMessage: { fontSize: 13, textAlign: "center", lineHeight: 20 },
+  emptyMessage: { fontSize: 14, textAlign: "center", lineHeight: 21 },
   secondaryAction: {
-    minHeight: 38,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -442,7 +447,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  secondaryActionLabel: { fontSize: 12, fontWeight: "700" },
+  secondaryActionLabel: { fontSize: 13.5, fontWeight: "700" },
   groupCountsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -450,10 +455,10 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   refreshGroupsButton: {
-    minHeight: 32,
+    minHeight: 44,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
+    borderRadius: 10,
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -513,5 +518,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  dialogButtonLabel: { fontSize: 13, fontWeight: "800" },
+  dialogButtonLabel: { fontSize: 14, fontWeight: "800" },
 });

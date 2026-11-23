@@ -406,6 +406,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
               <Pressable
                 accessibilityRole="link"
                 onPress={() => void Linking.openURL(details.externalUrl!)}
+                hitSlop={10}
               >
                 <Text style={[styles.link, { color: colors.primary }]}>
                   فتح الملف الشخصي على المنصة
@@ -751,13 +752,25 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
                       <View style={styles.postMedia}>
                         <Image
                           source={{ uri: post.imageUrl }}
-                          style={styles.postImage}
+                          style={[
+                            styles.postImage,
+                            { backgroundColor: colors.muted },
+                          ]}
                           resizeMode="cover"
                           accessibilityLabel={`وسائط منشور ${platformInfo.name}`}
                         />
                         {post.mediaType === "VIDEO" ? (
-                          <View style={styles.postVideoBadge}>
-                            <Icon name="play" size={18} color="#FFFFFF" />
+                          <View
+                            style={[
+                              styles.postVideoBadge,
+                              { backgroundColor: colors.mediaOverlay },
+                            ]}
+                          >
+                            <Icon
+                              name="play"
+                              size={18}
+                              color={colors.mediaOverlayForeground}
+                            />
                           </View>
                         ) : null}
                         {post.mediaType === "VIDEO" && !post.imageUrl ? (
@@ -805,6 +818,7 @@ function AccountDetailsContent({ userId }: { userId: string | null }) {
                       <Pressable
                         accessibilityRole="link"
                         onPress={() => void Linking.openURL(post.url!)}
+                        hitSlop={10}
                       >
                         <Text style={[styles.link, { color: colors.primary }]}>
                           فتح المنشور
@@ -892,7 +906,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     gap: 5,
   },
-  facebookPageLabel: { fontSize: 12, fontWeight: "700" },
+  facebookPageLabel: { fontSize: 13, fontWeight: "700" },
   profileImage: { width: 64, height: 64, borderRadius: 32 },
   profilePlaceholder: {
     width: 64,
@@ -908,9 +922,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
-  metaLabel: { fontSize: 12 },
-  metaValue: { fontSize: 12, textAlign: "right" },
-  bodyText: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  metaLabel: { fontSize: 13.5 },
+  metaValue: { fontSize: 13.5, textAlign: "right" },
+  bodyText: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   metricsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   metricCard: {
     flexGrow: 1,
@@ -922,7 +936,7 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   metricValue: { fontSize: 20, fontWeight: "800" },
-  metricLabel: { fontSize: 12, textAlign: "center" },
+  metricLabel: { fontSize: 13, textAlign: "center" },
   metricPeriod: { fontSize: 12, textAlign: "center" },
   performanceCard: {
     flexGrow: 1,
@@ -935,26 +949,28 @@ const styles = StyleSheet.create({
   },
   performanceSummary: { gap: 5 },
   performanceSection: { gap: 8 },
-  performanceHeading: { fontSize: 13, fontWeight: "700", textAlign: "right" },
+  performanceHeading: { fontSize: 14, fontWeight: "700", textAlign: "right" },
   weekRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  weekLabel: { width: 58, fontSize: 12, textAlign: "right" },
+  weekLabel: { width: 58, fontSize: 12.5, textAlign: "right" },
   weekTrack: { flex: 1, height: 8, borderRadius: 5, overflow: "hidden" },
   weekBar: { height: "100%", borderRadius: 5, alignSelf: "flex-start" },
-  weekCount: { width: 28, fontSize: 12, textAlign: "right" },
+  weekCount: { width: 28, fontSize: 12.5, textAlign: "right" },
   activityCard: { borderWidth: 1, borderRadius: 12, padding: 10, gap: 5 },
   activityTopRow: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
-  activityTitle: { flex: 1, fontSize: 12, fontWeight: "700", textAlign: "right" },
-  activityStatus: { fontSize: 12, fontWeight: "700", textAlign: "right" },
-  activityReason: { fontSize: 12, lineHeight: 17, textAlign: "right" },
+  activityTitle: { flex: 1, fontSize: 14, fontWeight: "700", textAlign: "right" },
+  activityStatus: { fontSize: 12.5, fontWeight: "700", textAlign: "right" },
+  activityReason: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   list: { gap: 8 },
   filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   filterChip: {
+    minHeight: 44,
+    justifyContent: "center",
     borderWidth: 1,
     borderRadius: 20,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     paddingVertical: 7,
   },
-  filterLabel: { fontSize: 12, fontWeight: "700" },
+  filterLabel: { fontSize: 13.5, fontWeight: "700" },
   postCard: { borderWidth: 1, borderRadius: 13, padding: 11, gap: 7 },
   facebookPostHeader: {
     flexDirection: "row",
@@ -970,7 +986,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   facebookPostHeading: { flex: 1, alignItems: "flex-start", gap: 2 },
-  facebookPostTitle: { fontSize: 12, fontWeight: "700", textAlign: "right" },
+  facebookPostTitle: { fontSize: 13.5, fontWeight: "700", textAlign: "right" },
   postMedia: { position: "relative", width: "100%" },
   videoPlaceholder: {
     minHeight: 110,
@@ -980,7 +996,7 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 10,
   },
-  postImage: { width: "100%", height: 190, borderRadius: 10, backgroundColor: "#EAF2FC" },
+  postImage: { width: "100%", height: 190, borderRadius: 10 },
   postVideoBadge: {
     position: "absolute",
     top: 0,
@@ -990,9 +1006,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 10,
-    backgroundColor: "rgba(0, 0, 0, 0.18)",
   },
-  postText: { fontSize: 12, lineHeight: 19, textAlign: "right", fontWeight: "700" },
+  postText: { fontSize: 14, lineHeight: 22, textAlign: "right", fontWeight: "700" },
   postStats: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   postStat: { flexDirection: "row", alignItems: "center", gap: 5 },
   whatsappStatusRow: {
@@ -1000,19 +1015,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
-  issue: { fontSize: 12, lineHeight: 17, textAlign: "right" },
+  issue: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   issueList: { gap: 8, marginTop: 10 },
-  permissionText: { fontSize: 12, textAlign: "right" },
-  link: { fontSize: 12, fontWeight: "700", textAlign: "right" },
+  permissionText: { fontSize: 13.5, textAlign: "right" },
+  link: { fontSize: 13.5, fontWeight: "700", textAlign: "right" },
   facebookQuickActions: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
   },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  error: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   disconnectAction: {
-    minHeight: 42,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -1020,5 +1035,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 13,
   },
-  disconnectLabel: { fontSize: 12, fontWeight: "700" },
+  disconnectLabel: { fontSize: 14, fontWeight: "700" },
 });

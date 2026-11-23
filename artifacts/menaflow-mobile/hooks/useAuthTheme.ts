@@ -1,16 +1,13 @@
 import { useColorScheme } from "react-native";
+import colors from "@/constants/colors";
 import { useAppearanceMode } from "@/lib/appearance";
 
 /**
- * Palette for the authentication screens (sign in / sign up / 2FA / reset).
+ * Palette for the authentication and onboarding setup screens.
  *
- * These screens follow the marketing artwork instead of the in-app theme: a pale
- * mint background, deep navy headings and a single green call to action. The
- * token names deliberately mirror `useColors()` so the shared auth styles and the
- * additional forms keep working unchanged.
- *
- * The dark scheme keeps the very same layout and only flips the surfaces, so the
- * screen never blinds a user who runs the app in dark mode.
+ * Derived directly from the shared MenaFlow tokens in `constants/colors.ts`
+ * so auth, onboarding, and in-app surfaces share one visual identity while
+ * keeping subtle wave surfaces for the auth backdrop in both light and dark modes.
  */
 export type AuthTheme = {
   background: string;
@@ -36,59 +33,65 @@ export type AuthTheme = {
   facebook: string;
   shadow: string;
   overlay: string;
+  disabled: string;
+  disabledForeground: string;
 };
 
 const light: AuthTheme = {
-  background: "#F4FBFD",
-  backgroundDeep: "#E8F6F1",
-  wave: "#BAFAE4",
-  waveSoft: "#DCF6EA",
-  card: "#FFFFFF",
-  foreground: "#0A2A63",
-  mutedForeground: "#7F95B4",
-  icon: "#3B5A80",
-  primary: "#02A362",
-  primaryForeground: "#FFFFFF",
-  primarySoft: "#E6F8EF",
-  accent: "#E7F8F0",
-  accentForeground: "#028A54",
-  border: "#E3EFF5",
-  inputSurface: "#F6FBFD",
-  link: "#049143",
-  subtitle: "#2366D7",
-  destructive: "#C62828",
-  dangerSurface: "#FDEDED",
-  dangerBorder: "#F3C9C9",
-  facebook: "#1877F2",
-  shadow: "#0A2A63",
-  overlay: "rgba(10, 42, 99, 0.06)",
+  background: colors.light.background,
+  backgroundDeep: colors.light.muted,
+  wave: colors.light.accent,
+  waveSoft: colors.light.secondary,
+  card: colors.light.card,
+  foreground: colors.light.foreground,
+  mutedForeground: colors.light.mutedForeground,
+  icon: colors.light.secondaryForeground,
+  primary: colors.light.primary,
+  primaryForeground: colors.light.primaryForeground,
+  primarySoft: colors.light.accent,
+  accent: colors.light.accent,
+  accentForeground: colors.light.accentForeground,
+  border: colors.light.border,
+  inputSurface: colors.light.background,
+  link: colors.light.primary,
+  subtitle: colors.light.blue,
+  destructive: colors.light.destructive,
+  dangerSurface: colors.light.secondary,
+  dangerBorder: colors.light.destructive,
+  facebook: colors.light.facebook,
+  shadow: colors.light.shadow,
+  overlay: colors.light.overlay,
+  disabled: colors.light.disabled,
+  disabledForeground: colors.light.disabledForeground,
 };
 
 const dark: AuthTheme = {
-  background: "#071320",
-  backgroundDeep: "#0A1A28",
-  wave: "#0C3A2B",
-  waveSoft: "#0A2A22",
-  card: "#101E2C",
-  foreground: "#E9F2F9",
-  mutedForeground: "#93A9BF",
-  icon: "#A9C0D6",
-  primary: "#1FC58C",
-  primaryForeground: "#04150E",
-  primarySoft: "#0F3A2C",
-  accent: "#0F3A2C",
-  accentForeground: "#5BE3B0",
-  border: "#1E2E3D",
-  // A touch lighter than the card so the field reads as an input, not a hole.
-  inputSurface: "#152A3B",
-  link: "#3ED9A0",
-  subtitle: "#8FB6F0",
-  destructive: "#FF8A8A",
-  dangerSurface: "#2E1A1E",
-  dangerBorder: "#5A2E33",
-  facebook: "#4A90F5",
-  shadow: "#000000",
-  overlay: "rgba(255, 255, 255, 0.04)",
+  background: colors.dark.background,
+  backgroundDeep: colors.dark.card,
+  wave: colors.dark.accent,
+  waveSoft: colors.dark.secondary,
+  card: colors.dark.card,
+  foreground: colors.dark.foreground,
+  mutedForeground: colors.dark.mutedForeground,
+  icon: colors.dark.secondaryForeground,
+  primary: colors.dark.primary,
+  primaryForeground: colors.dark.primaryForeground,
+  primarySoft: colors.dark.accent,
+  accent: colors.dark.accent,
+  accentForeground: colors.dark.accentForeground,
+  border: colors.dark.border,
+  // Slightly lighter than card so fields read clearly on dark surfaces.
+  inputSurface: colors.dark.secondary,
+  link: colors.dark.primary,
+  subtitle: colors.dark.blue,
+  destructive: colors.dark.destructive,
+  dangerSurface: colors.dark.secondary,
+  dangerBorder: colors.dark.destructive,
+  facebook: colors.dark.facebook,
+  shadow: colors.dark.shadow,
+  overlay: colors.dark.overlay,
+  disabled: colors.dark.disabled,
+  disabledForeground: colors.dark.disabledForeground,
 };
 
 export function useAuthTheme(): AuthTheme {

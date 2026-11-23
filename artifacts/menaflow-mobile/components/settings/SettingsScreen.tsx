@@ -617,6 +617,8 @@ function SettingsContent({
               <Pressable
                 accessibilityRole="button"
                 onPress={() => void subscriptionQuery.refetch()}
+                hitSlop={10}
+                style={styles.subscriptionRetryButton}
               >
                 <Text
                   style={[styles.subscriptionLink, { color: colors.primary }]}
@@ -925,7 +927,7 @@ const styles = StyleSheet.create({
   workspaceOptionLast: { borderBottomWidth: 0 },
   workspaceCopy: { flex: 1, minWidth: 0, gap: 3 },
   deletionRequest: { gap: 10, paddingTop: 16 },
-  deletionRequestAction: { fontSize: 13, fontWeight: "700" },
+  deletionRequestAction: { fontSize: 14, fontWeight: "700" },
   sectionHeading: {
     minHeight: 38,
     flexDirection: "row",
@@ -951,8 +953,8 @@ const styles = StyleSheet.create({
   },
   settingRowLast: { borderBottomWidth: 0 },
   settingCopy: { flex: 1, minWidth: 0, alignItems: "flex-start", gap: 4 },
-  settingTitle: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  settingSubtitle: { fontSize: 12, lineHeight: 16, textAlign: "right" },
+  settingTitle: { fontSize: 14.5, fontWeight: "700", textAlign: "right" },
+  settingSubtitle: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   settingIcon: {
     width: 38,
     height: 38,
@@ -960,7 +962,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  version: { textAlign: "center", fontSize: 12 },
+  version: { textAlign: "center", fontSize: 12.5 },
   appearanceOptions: {
     gap: 2,
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -990,7 +992,7 @@ const styles = StyleSheet.create({
   },
   subscriptionCopy: { flex: 1, gap: 4 },
   subscriptionPlan: { fontSize: 16, fontWeight: "800", textAlign: "right" },
-  subscriptionPrice: { fontSize: 12, fontWeight: "700" },
+  subscriptionPrice: { fontSize: 13.5, fontWeight: "700" },
   subscriptionUsage: { gap: 0, paddingVertical: 8 },
   subscriptionUsageRow: {
     minHeight: 40,
@@ -1001,7 +1003,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   plansHeading: {
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: "700",
     textAlign: "right",
     paddingTop: 4,
@@ -1015,6 +1017,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginTop: 7,
   },
-  subscriptionNotice: { fontSize: 12, lineHeight: 16, paddingTop: 8 },
-  subscriptionLink: { fontSize: 12, fontWeight: "700" },
+  subscriptionNotice: { fontSize: 13.5, lineHeight: 20, paddingTop: 8 },
+  subscriptionRetryButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    alignSelf: "flex-start",
+  },
+  subscriptionLink: { fontSize: 13.5, fontWeight: "700" },
 });

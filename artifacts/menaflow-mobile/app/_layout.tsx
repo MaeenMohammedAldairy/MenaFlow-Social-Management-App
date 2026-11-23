@@ -541,6 +541,7 @@ function AuthenticatedAppNavigator() {
                     top: insets.top + 12,
                     backgroundColor: colors.card,
                     borderColor: colors.border,
+                    shadowColor: colors.shadow,
                   },
                 ]}
               >
@@ -728,14 +729,13 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 12,
     elevation: 8,
-    shadowColor: "#000",
     shadowOpacity: 0.16,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
   },
   apiErrorText: {
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 21,
     textAlign: "right",
   },
   apiErrorActions: {
@@ -745,19 +745,19 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   apiErrorButton: {
-    minHeight: 38,
+    minHeight: 44,
     borderRadius: 11,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
   },
   apiErrorButtonText: {
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: "700",
   },
   apiErrorDismiss: {
-    minHeight: 38,
-    paddingHorizontal: 10,
+    minHeight: 44,
+    paddingHorizontal: 12,
     justifyContent: "center",
   },
 });
