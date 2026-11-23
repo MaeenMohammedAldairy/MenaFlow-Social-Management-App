@@ -36,7 +36,6 @@ import {
 } from "libphonenumber-js";
 import {
   ActivityIndicator,
-  Image,
   Platform,
   Pressable,
   RefreshControl,
@@ -1611,10 +1610,8 @@ function SourcesContent({
     >
       {includeWhatsApp && isPublishingAccounts ? (
         <View style={styles.setupHero}>
-          <BrandMark height={36} />
-          <Text style={[styles.setupBrandName, { color: colors.foreground } ]}>MenaFlow</Text>
+          <BrandMark height={28} />
           <OnboardingStepper activeIndex={1} />
-          <Image source={require("@/assets/images/setup-accounts-hero.png")} style={styles.setupHeroImage} resizeMode="contain" />
           <Text style={[styles.setupHeroTitle, { color: colors.foreground }]}>ربط حساباتك</Text>
           <Text style={[styles.setupHeroSubtitle, { color: colors.mutedForeground }]}>اربط حساباتك على منصات التواصل الاجتماعي لتتمكن من النشر والردود التلقائية</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="العودة إلى بيانات النشاط" onPress={() => router.replace({ pathname: "/setup", params: { edit: "business" } })} style={styles.setupBack}>
@@ -2376,8 +2373,6 @@ const styles = StyleSheet.create({
   tabDot: { width: 7, height: 7, borderRadius: 4 },
   syncEmptyPanel: { gap: 12, alignItems: "stretch" },
   setupHero: { alignItems: "center", gap: 8 },
-  setupBrandName: { color: "#0A2A63", fontSize: 21, fontWeight: "800", marginBottom: 10 },
-  setupHeroImage: { width: "100%", maxWidth: 360, height: 180, marginTop: 10 },
   setupHeroTitle: { color: "#0A2A63", fontSize: 27, fontWeight: "800", textAlign: "center" },
   setupHeroSubtitle: { color: "#5B6E8E", fontSize: 15, lineHeight: 25, textAlign: "center", maxWidth: 360 },
   setupBack: { flexDirection: "row", alignItems: "center", gap: 4, padding: 8 },
