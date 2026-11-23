@@ -69,8 +69,32 @@ export const ListWorkspacesResponse = zod.object({
   "workspaces": zod.array(zod.object({
   "id": zod.string(),
   "name": zod.string(),
+  "businessType": zod.string().nullish(),
   "role": zod.string()
 }))
+})
+
+
+/**
+ * Owner-only. Backs the concise post-signup setup and the dashboard checklist edit path.
+ * @summary Update the current workspace's business name and type
+ */
+export const updateWorkspaceCurrentBodyNameMax = 80;
+
+export const updateWorkspaceCurrentBodyBusinessTypeMax = 40;
+
+
+
+export const UpdateWorkspaceCurrentBody = zod.object({
+  "name": zod.string().min(1).max(updateWorkspaceCurrentBodyNameMax).optional(),
+  "businessType": zod.string().min(1).max(updateWorkspaceCurrentBodyBusinessTypeMax).optional()
+})
+
+export const UpdateWorkspaceCurrentResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "businessType": zod.string().nullish(),
+  "role": zod.string()
 })
 
 

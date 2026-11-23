@@ -94,3 +94,4 @@ export * from './workspaceDeletionRequestResponse';
 export * from './workspaceDeletionRequestStatus';
 export * from './workspaceListResponse';
 export * from './workspaceSummary';
+export * from './workspaceUpdateInput';

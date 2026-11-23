@@ -103,7 +103,7 @@ function AuthenticatedAppIndex() {
   }
   if (onboarding.data) {
     return (
-      <Redirect href={onboarding.data.completed ? '/(tabs)' : '/onboarding'} />
+      <Redirect href={onboarding.data.completed ? '/(tabs)' : '/setup'} />
     );
   }
 

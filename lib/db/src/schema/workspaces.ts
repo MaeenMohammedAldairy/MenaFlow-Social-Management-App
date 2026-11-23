@@ -15,6 +15,7 @@ export const workspaces = pgTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull(),
+    businessType: text("business_type"),
     createdBy: text("created_by").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

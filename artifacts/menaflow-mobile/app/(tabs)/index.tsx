@@ -16,6 +16,7 @@ import {
 } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
 import { useStudio, type Post } from "@/context/StudioContext";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import {
   consumeSetupCompleted,
   dismissSetupChecklist,
@@ -102,6 +103,11 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const { posts, refreshPosts, syncing, ready, storageError, autoPublishSettings } =
     useStudio();
+  const { workspaces, activeWorkspaceId } = useWorkspace();
+  const activeWorkspace =
+    workspaces.find((workspace) => workspace.id === activeWorkspaceId) ??
+    workspaces[0] ??
+    null;
   const [refreshing, setRefreshing] = useState(false);
   const [showSetupBanner, setShowSetupBanner] = useState(false);
   const [setupChecklistDismissed, setSetupChecklistDismissed] = useState(true);
@@ -308,6 +314,15 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
     });
   const createContent = () => router.push("/compose");
   const setupSteps = [
+    {
+      // The concise post-signup setup replaced the intro slides; anything the
+      // merchant deferred lives here. In local-auth mode there is no workspace
+      // row to complete, so the step counts as done.
+      key: "business-info",
+      label: "أكمل بيانات النشاط",
+      done: isLocalAuthDisabled || Boolean(activeWorkspace?.businessType),
+      onPress: () => router.push("/setup"),
+    },
     {
       key: "accounts",
       label: "اربط حساب نشر",
