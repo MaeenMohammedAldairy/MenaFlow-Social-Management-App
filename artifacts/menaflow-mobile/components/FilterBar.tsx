@@ -96,7 +96,7 @@ export function FilterSheet({
           accessibilityRole="button"
           accessibilityLabel="إغلاق التصفية"
           onPress={onClose}
-          style={styles.backdrop}
+          style={[styles.backdrop, { backgroundColor: colors.overlay }]}
         />
         <View
           style={[
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   bar: { flexDirection: "row", alignItems: "center", gap: 8 },
   searchBox: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -213,7 +213,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
   },
   filterButton: {
-    minHeight: 42,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 12,
   },
-  filterButtonLabel: { fontSize: 13, fontWeight: "600" },
+  filterButtonLabel: { fontSize: 13.5, fontWeight: "600" },
   badge: {
     minWidth: 20,
     paddingHorizontal: 5,
@@ -237,7 +237,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     left: 0,
-    backgroundColor: "rgba(0, 0, 0, 0.4)",
   },
   sheet: {
     borderWidth: 1,
@@ -256,16 +255,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   sheetTitle: { fontSize: 16, fontWeight: "700" },
-  clearLabel: { fontSize: 13, fontWeight: "600" },
+  clearLabel: { fontSize: 13.5, fontWeight: "600" },
   sheetBody: { gap: 12, paddingBottom: 6 },
   group: { gap: 6 },
-  groupLabel: { fontSize: 12, fontWeight: "700", textAlign: "right" },
+  groupLabel: { fontSize: 13.5, fontWeight: "700", textAlign: "right" },
   groupRow: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   chip: {
-    minHeight: 30,
+    minHeight: 44,
     justifyContent: "center",
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     borderRadius: 12,
   },
-  chipLabel: { fontSize: 12 },
+  chipLabel: { fontSize: 13 },
 });

@@ -12,9 +12,9 @@
  *
  * The two stages, mirroring the server's onboarding progress:
  *
- * - `completed === false`: the concise setup (business name/type, then the
- *   optional channel hand-off) has not been finished. Only `/setup` itself is
- *   reachable; everything else is sent back to it.
+ * - `completed === false`: `/setup` is always reachable. Once the business
+ *   step is saved, account linking and its existing setup subflows are allowed;
+ *   the dashboard remains blocked until the user finishes or defers setup.
  * - `completed === true`, `socialAccountsCompleted === false`: the merchant still
  *   owes one connected platform. The funnel screens stay reachable, and so does
  *   the dashboard — "أكمل لاحقًا" means exactly that. The tab bar stays visible
@@ -29,6 +29,7 @@
 export type OnboardingRouteStatus = {
   completed: boolean;
   socialAccountsCompleted: boolean;
+  currentStep?: number;
 };
 
 export type OnboardingRedirect = "/setup" | "/connect-accounts";
@@ -38,8 +39,10 @@ export type OnboardingRedirect = "/setup" | "/connect-accounts";
  *
  * The dashboard `"/"` (the `(tabs)` group index resolves to the root path) is
  * matched separately and exactly, so "أكمل لاحقًا" works: deferring social setup
- * lands on the dashboard, which shows the setup prompt and hides the tab bar
- * until a platform is connected. The list below holds the funnel's own screens —
+ * lands on the dashboard, which shows the setup checklist. The tab bar stays
+ * visible there (it used to hide until a platform was connected, which
+ * contradicted the promise that the product is usable before setup completes).
+ * The list below holds the funnel's own screens —
  * sources, publishing accounts, channels, reply settings and the WhatsApp setup
  * sheet — plus `/connect-accounts` itself, so the funnel never redirects to
  * itself, and `/setup`: the dashboard checklist's "أكمل بيانات النشاط" step must
@@ -60,6 +63,8 @@ function isAllowedDuringSocialSetup(pathname: string): boolean {
   // The dashboard is matched exactly: an `endsWith` on "/" would accept any
   // trailing-slash path, which is not a route this app serves.
   if (pathname === "/") return true;
+  // Account cards open these exact detail routes during the funnel.
+  if (/^\/account\/(facebook|instagram|whatsapp)$/.test(pathname)) return true;
   return ALLOWED_DURING_SOCIAL_SETUP.some((allowed) =>
     pathname.endsWith(allowed),
   );
@@ -73,7 +78,11 @@ export function onboardingRedirectTarget(
     // Exact match on purpose: endsWith("/setup") would also accept
     // "/whatsapp-setup", trapping the user on a sheet they cannot complete
     // before the concise setup itself is done.
-    return pathname === "/setup" ? null : "/setup";
+    if (pathname === "/setup") return null;
+    // Account linking and its existing WhatsApp/reply-settings subflows are
+    // reachable only once business information has been saved.
+    if ((status.currentStep ?? 0) > 0 && isAllowedDuringSocialSetup(pathname) && pathname !== "/") return null;
+    return "/setup";
   }
   if (status.socialAccountsCompleted) return null;
   return isAllowedDuringSocialSetup(pathname) ? null : "/connect-accounts";

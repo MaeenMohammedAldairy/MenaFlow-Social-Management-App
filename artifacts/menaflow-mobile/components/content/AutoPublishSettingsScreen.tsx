@@ -353,7 +353,12 @@ function AutoPublishSettingsContent({ userId }: { userId: string | null }) {
         animationType="fade"
         onRequestClose={() => setConfirmationVisible(false)}
       >
-        <View style={styles.autoPublishModalOverlay}>
+        <View
+          style={[
+            styles.autoPublishModalOverlay,
+            { backgroundColor: colors.overlay },
+          ]}
+        >
           <View
             accessibilityViewIsModal
             style={[

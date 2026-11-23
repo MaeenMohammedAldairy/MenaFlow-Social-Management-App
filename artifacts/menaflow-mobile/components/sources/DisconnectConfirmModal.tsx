@@ -44,7 +44,7 @@ export function DisconnectConfirmModal({
         if (dialog.status !== "pending") onClose();
       }}
     >
-      <View style={styles.modalOverlay}>
+      <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
         <View
           accessibilityViewIsModal
           style={[
@@ -119,7 +119,10 @@ export function DisconnectConfirmModal({
                 ]}
               >
                 <Text
-                  style={[styles.dialogButtonLabel, { color: "#ffffff" }]}
+                  style={[
+                    styles.dialogButtonLabel,
+                    { color: colors.destructiveForeground },
+                  ]}
                 >
                   تأكيد إلغاء الربط
                 </Text>
@@ -134,7 +137,10 @@ export function DisconnectConfirmModal({
                 ]}
               >
                 <Text
-                  style={[styles.dialogButtonLabel, { color: "#ffffff" }]}
+                  style={[
+                    styles.dialogButtonLabel,
+                    { color: colors.destructiveForeground },
+                  ]}
                 >
                   إعادة المحاولة
                 </Text>
@@ -169,7 +175,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
   },
   whatsappDialog: {
     width: "100%",
@@ -180,7 +185,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  dialogDescription: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   loadingRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -188,7 +193,7 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 10,
   },
-  loadingLabel: { fontSize: 13, fontWeight: "700" },
+  loadingLabel: { fontSize: 14, fontWeight: "700" },
   dialogActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   disconnectConfirmButton: {
     flex: 1,
@@ -206,5 +211,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  dialogButtonLabel: { fontSize: 13, fontWeight: "800" },
+  dialogButtonLabel: { fontSize: 14, fontWeight: "800" },
 });

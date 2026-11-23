@@ -447,6 +447,7 @@ export function ContentPostList({
               <Pressable
                 accessibilityRole="link"
                 accessibilityLabel="فتح المنشور الأصلي على المنصة"
+                hitSlop={10}
                 onPress={() => {
                   void Linking.openURL(importedPermalink).catch(() =>
                     showAppNotice({
@@ -673,6 +674,7 @@ export function ContentPostList({
               accessibilityRole="button"
               disabled={verifyingPostId === post.id}
               onPress={() => void onVerifyFacebookStatus(post.id)}
+              style={styles.expandContentButton}
             >
               <Text
                 style={[
@@ -750,37 +752,34 @@ export function ContentPostList({
 
           <View style={styles.postActions}>
             {primaryAction ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  primaryAction === "preview"
-                    ? "معاينة ومراجعة المنشور"
-                    : primaryAction === "submit"
-                      ? "إرسال المنشور للمراجعة"
-                      : post.status === "failed"
-                        ? "إعادة محاولة النشر"
-                        : "نشر المنشور"
-                }
-                disabled={
-                  primaryAction === "publish" &&
-                  Boolean(readinessMessage)
-                }
-                accessibilityState={{
-                  disabled:
-                    primaryAction === "publish" &&
-                    Boolean(readinessMessage),
-                }}
-                style={[
-                  styles.primaryPostAction,
-                  {
-                    backgroundColor: colors.primary,
-                    opacity:
-                      primaryAction === "publish" && readinessMessage
-                        ? 0.5
-                        : 1,
-                  },
-                ]}
-                onPress={() => {
+              (() => {
+                const actionDisabled =
+                  primaryAction === "publish" && Boolean(readinessMessage);
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      primaryAction === "preview"
+                        ? "معاينة ومراجعة المنشور"
+                        : primaryAction === "submit"
+                          ? "إرسال المنشور للمراجعة"
+                          : post.status === "failed"
+                            ? "إعادة محاولة النشر"
+                            : "نشر المنشور"
+                    }
+                    disabled={actionDisabled}
+                    accessibilityState={{
+                      disabled: actionDisabled,
+                    }}
+                    style={[
+                      styles.primaryPostAction,
+                      {
+                        backgroundColor: actionDisabled
+                          ? colors.disabled
+                          : colors.primary,
+                      },
+                    ]}
+                    onPress={() => {
                   if (primaryAction === "preview") {
                     setPreviewChannel(
                       previewChannels(post)[0] ?? "facebook",
@@ -806,7 +805,11 @@ export function ContentPostList({
                 <Text
                   style={[
                     styles.reviewAction,
-                    { color: colors.primaryForeground },
+                    {
+                      color: actionDisabled
+                        ? colors.disabledForeground
+                        : colors.primaryForeground,
+                    },
                   ]}
                 >
                   {primaryAction === "preview"
@@ -818,6 +821,8 @@ export function ContentPostList({
                         : "نشر الآن"}
                 </Text>
               </Pressable>
+                );
+              })()
             ) : null}
             <Pressable
               accessibilityRole="button"
@@ -910,14 +915,20 @@ export function ContentPostList({
                       styles.postActionButton,
                       {
                         borderColor: colors.border,
-                        opacity: readinessMessage ? 0.5 : 1,
+                        backgroundColor: readinessMessage
+                          ? colors.disabled
+                          : "transparent",
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.reviewAction,
-                        { color: colors.green },
+                        {
+                          color: readinessMessage
+                            ? colors.disabledForeground
+                            : colors.green,
+                        },
                       ]}
                     >
                       نشر يدوي
@@ -948,14 +959,20 @@ export function ContentPostList({
                       styles.postActionButton,
                       {
                         borderColor: colors.border,
-                        opacity: readinessMessage ? 0.5 : 1,
+                        backgroundColor: readinessMessage
+                          ? colors.disabled
+                          : "transparent",
                       },
                     ]}
                   >
                     <Text
                       style={[
                         styles.reviewAction,
-                        { color: colors.green },
+                        {
+                          color: readinessMessage
+                            ? colors.disabledForeground
+                            : colors.green,
+                        },
                       ]}
                     >
                       {approvingPostId === post.id
@@ -1179,7 +1196,9 @@ export function ContentPostList({
         animationType="fade"
         onRequestClose={() => setPreviewPost(null)}
       >
-        <View style={styles.modalBackdrop}>
+        <View
+          style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
+        >
           <View
             style={[
               styles.previewModal,

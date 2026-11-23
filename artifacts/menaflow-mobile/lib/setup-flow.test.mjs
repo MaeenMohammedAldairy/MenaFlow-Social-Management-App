@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  canEditBusinessInfo,
-  shouldArmSkipRetry,
-  shouldReplayPendingSkip,
-} from "./setup-flow.ts";
+import { canEditBusinessInfo } from "./setup-flow.ts";
 
 const OWNER = { role: "owner" };
 const MEMBER = { role: "member" };
@@ -30,42 +26,4 @@ test("local-auth mode has no workspace row to gate", () => {
     canEditBusinessInfo(MEMBER, { isLocalAuthDisabled: true }),
     true,
   );
-});
-
-const armed = {
-  isOffline: false,
-  wasOffline: true,
-  awaitingRetry: true,
-  pendingExit: "dashboard",
-  requestInFlight: false,
-};
-
-test("an armed skip replays exactly on the offline to online transition", () => {
-  assert.equal(shouldReplayPendingSkip(armed), true);
-});
-
-test("still offline means wait", () => {
-  assert.equal(shouldReplayPendingSkip({ ...armed, isOffline: true }), false);
-});
-
-test("no offline stretch observed means no replay", () => {
-  // A server-side rejection while online must not loop.
-  assert.equal(shouldReplayPendingSkip({ ...armed, wasOffline: false }), false);
-});
-
-test("nothing replays without an armed retry, an exit, or with a request in flight", () => {
-  assert.equal(
-    shouldReplayPendingSkip({ ...armed, awaitingRetry: false }),
-    false,
-  );
-  assert.equal(shouldReplayPendingSkip({ ...armed, pendingExit: null }), false);
-  assert.equal(
-    shouldReplayPendingSkip({ ...armed, requestInFlight: true }),
-    false,
-  );
-});
-
-test("only an offline failure is armed for the automatic retry", () => {
-  assert.equal(shouldArmSkipRetry(true), true);
-  assert.equal(shouldArmSkipRetry(false), false);
 });

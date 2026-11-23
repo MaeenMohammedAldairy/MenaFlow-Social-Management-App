@@ -39,3 +39,11 @@ test("skip completes the tour from every slide and completed tours stay complete
     });
   }
 });
+
+
+test("expected step makes repeated advance requests safe", () => {
+  const first = transitionOnboardingProgress({ step: 0, completed: false }, "advance", 0);
+  assert.deepEqual(first, { step: 1, completed: false });
+  assert.deepEqual(transitionOnboardingProgress(first, "advance", 0), first);
+  assert.deepEqual(transitionOnboardingProgress(first, "advance", 1), { step: 2, completed: false });
+});

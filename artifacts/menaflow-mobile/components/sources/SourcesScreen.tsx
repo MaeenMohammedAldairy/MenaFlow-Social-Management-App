@@ -3,6 +3,7 @@ import {
   decideWhatsAppContentAssociation,
   deleteMetaConnectionForPlatform,
   markSocialAccountsSetupComplete,
+  saveOnboardingProgress,
   fetchApiResponse,
   getWhatsAppGroupMessages,
   getWhatsAppGroupSelections,
@@ -44,6 +45,8 @@ import {
 } from "react-native";
 import { showAppNotice } from "@/components/AppFeedback";
 import { CairoText as Text } from "@/components/CairoTypography";
+import { OnboardingStepper } from "@/components/OnboardingStepper";
+import { BrandMark } from "@/components/BrandMark";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
   ActionButton,
@@ -416,15 +419,35 @@ function SourcesContent({
     : false;
   const onboardingQuery = useQuery({
     queryKey: getOnboardingStatusQueryKey(userId),
-    queryFn: () => getOnboardingStatus(),
+    queryFn: () => getOnboardingStatus({ timeoutMs: 20000 }),
     enabled: Boolean(userId),
     retry: false,
   });
+  const inOnboarding = includeWhatsApp && onboardingQuery.data?.completed === false;
   const socialSetupPending =
-    onboardingQuery.data?.completed === true &&
-    !onboardingQuery.data.socialAccountsCompleted;
+    (onboardingQuery.data?.completed === true && !onboardingQuery.data.socialAccountsCompleted) || inOnboarding;
+  const progressLock = useRef(false);
+  const progressSetup = useMutation({
+    mutationFn: async (action: "advance" | "skip") => {
+      const current = await getOnboardingStatus({ timeoutMs: 20000 });
+      if (current.completed || (action === "advance" && current.currentStep >= 2)) return current;
+      const next = await saveOnboardingProgress(action, { timeoutMs: 20000 }, action === "advance" ? 1 : undefined);
+      if (action === "advance" && !next.completed && next.currentStep < 2) throw new Error("Setup progress changed");
+      return next;
+    },
+    onSuccess: (status, action) => {
+      queryClient.setQueryData(getOnboardingStatusQueryKey(userId), status);
+      router.replace(action === "skip" ? "/(tabs)" : "/setup");
+    },
+    onSettled: () => { progressLock.current = false; },
+  });
+  const startProgress = (action: "advance" | "skip") => {
+    if (progressLock.current) return;
+    progressLock.current = true;
+    progressSetup.mutate(action);
+  };
   const completeSocialSetup = useMutation({
-    mutationFn: markSocialAccountsSetupComplete,
+    mutationFn: () => markSocialAccountsSetupComplete({ timeoutMs: 20000 }),
     onSuccess: (status) => {
       queryClient.setQueryData(getOnboardingStatusQueryKey(userId), status);
       // The dashboard shows a one-time confirmation for this flag.
@@ -510,10 +533,10 @@ function SourcesContent({
       if (Platform.OS === "web" && typeof window !== "undefined") {
         window.sessionStorage.setItem(
           META_OAUTH_RETURN_CONTEXT_KEY,
-          isPublishingAccounts
-            ? "publishing"
-            : includeWhatsApp
-              ? "onboarding"
+          includeWhatsApp
+            ? "onboarding"
+            : isPublishingAccounts
+              ? "publishing"
               : "sources",
         );
         window.location.assign(setup.authorizationUrl);
@@ -566,11 +589,10 @@ function SourcesContent({
           tone: "info",
         });
       }
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "خطأ غير محدد";
+    } catch {
       showAppNotice({
         title: "تعذّر فتح صفحة الربط",
-        message: `تحقق من تشغيل الخادم على المنفذ 5000.\n\nالخطأ: ${message}`,
+        message: "تحقق من اتصالك بالإنترنت ثم أعد محاولة الربط.",
         tone: "error",
       });
     } finally {
@@ -1507,7 +1529,7 @@ function SourcesContent({
     if (isConnected(key)) {
       router.push({
         pathname: "/account/[platform]",
-        params: { platform: key },
+        params: { platform: key, ...(includeWhatsApp ? { returnTo: "onboarding" } : {}) },
       });
       return;
     }
@@ -1559,7 +1581,7 @@ function SourcesContent({
     if (isConnected(platform)) {
       router.replace({
         pathname: "/account/[platform]",
-        params: { platform },
+        params: { platform, ...(includeWhatsApp ? { returnTo: "onboarding" } : {}) },
       });
     } else {
       handlePress(platform);
@@ -1586,6 +1608,18 @@ function SourcesContent({
         socialSetupPending && !hasConnectedSocialAccount ? 24 : undefined
       }
     >
+      {includeWhatsApp && isPublishingAccounts ? (
+        <View style={styles.setupHero}>
+          <BrandMark height={28} />
+          <OnboardingStepper activeIndex={1} />
+          <Text style={[styles.setupHeroTitle, { color: colors.foreground }]}>ربط حساباتك</Text>
+          <Text style={[styles.setupHeroSubtitle, { color: colors.mutedForeground }]}>اربط حساباتك على منصات التواصل الاجتماعي لتتمكن من النشر والردود التلقائية</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="العودة إلى بيانات النشاط" onPress={() => router.replace({ pathname: "/setup", params: { edit: "business" } })} style={styles.setupBack}>
+            <Icon name="chevron-right" size={18} color={colors.primary} />
+            <Text style={{ color: colors.primary }}>العودة</Text>
+          </Pressable>
+        </View>
+      ) : (
       <BrandHeader
         title={
           socialSetupPending && isPublishingAccounts
@@ -1611,8 +1645,9 @@ function SourcesContent({
               : "اربط واتساب لاستيراد رسائل المجموعات ومتابعة مزامنتها."
         }
       />
+      )}
 
-      {socialSetupPending && (
+      {socialSetupPending && !(includeWhatsApp && isPublishingAccounts) && (
         <Panel
           style={[
             styles.setupRequirement,
@@ -1673,7 +1708,7 @@ function SourcesContent({
             </Text>
             {socialSetupPending && isPublishingAccounts && (
               <>
-                {completeSocialSetup.isError && (
+                {(completeSocialSetup.isError || progressSetup.isError) && (
                   <Text
                     style={[
                       styles.error,
@@ -1687,9 +1722,9 @@ function SourcesContent({
                 {hasConnectedSocialAccount && !connectionsQuery.isError && (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityState={{ busy: completeSocialSetup.isPending }}
-                    disabled={completeSocialSetup.isPending}
-                    onPress={() => completeSocialSetup.mutate()}
+                    accessibilityState={{ busy: completeSocialSetup.isPending || progressSetup.isPending }}
+                    disabled={completeSocialSetup.isPending || progressSetup.isPending}
+                    onPress={() => inOnboarding ? startProgress("advance") : completeSocialSetup.mutate()}
                     style={[
                       styles.onboardingContinue,
                       {
@@ -1700,7 +1735,7 @@ function SourcesContent({
                       },
                     ]}
                   >
-                    {completeSocialSetup.isPending ? (
+                    {completeSocialSetup.isPending || progressSetup.isPending ? (
                       <ActivityIndicator color={colors.primaryForeground} />
                     ) : (
                       <Text
@@ -1709,7 +1744,7 @@ function SourcesContent({
                           { color: colors.primaryForeground },
                         ]}
                       >
-                        المتابعة إلى لوحة التحكم
+                        {inOnboarding ? "متابعة" : "المتابعة إلى لوحة التحكم"}
                       </Text>
                     )}
                   </Pressable>
@@ -1751,19 +1786,6 @@ function SourcesContent({
           </View>
         </Panel>
       )}
-
-      {includeWhatsApp && isPublishingAccounts ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="متابعة الإعداد لاحقًا والانتقال إلى لوحة التحكم"
-          onPress={() => router.replace("/(tabs)")}
-          style={styles.onboardingSkip}
-        >
-          <Text style={[styles.onboardingSkipText, { color: colors.mutedForeground }]}>
-            أكمل لاحقًا
-          </Text>
-        </Pressable>
-      ) : null}
 
       {onboardingQuery.isError && (
         <Panel style={styles.onboardingActions}>
@@ -1990,6 +2012,7 @@ function SourcesContent({
       {isPublishingAccounts || activeSection === "connections" ? (
         <SourcesConnectionsPanel
           compactLayout={compactLayout}
+          onboarding={includeWhatsApp && isPublishingAccounts}
           sourceKeys={
             isPublishingAccounts
               ? ["facebook", "instagram", "whatsapp"]
@@ -1997,7 +2020,7 @@ function SourcesContent({
           }
           sectionTitle={
             includeWhatsApp
-              ? "المنصات"
+              ? undefined
               : isPublishingAccounts
                 ? undefined
                 : "حساب واتساب"
@@ -2030,6 +2053,118 @@ function SourcesContent({
           onRefresh={() => void refreshSources()}
         />
       ) : null}
+
+      {includeWhatsApp && isPublishingAccounts && (() => {
+        const continueDisabled =
+          !hasConnectedSocialAccount ||
+          connectionsQuery.isError ||
+          connectionsQuery.isPending ||
+          onboardingQuery.isPending ||
+          onboardingQuery.isError ||
+          completeSocialSetup.isPending ||
+          progressSetup.isPending;
+        const skipDisabled =
+          progressSetup.isPending ||
+          onboardingQuery.isPending ||
+          onboardingQuery.isError;
+        return (
+          <View style={styles.setupFooter}>
+            <View style={[styles.setupHint, { backgroundColor: colors.accent }]}>
+              <Icon name="info" size={18} color={colors.accentForeground} />
+              <Text style={[styles.setupHintText, { color: colors.accentForeground }]}>
+                {connectionsQuery.isPending
+                  ? "جارٍ التحقق من الحسابات…"
+                  : connectionsQuery.isError
+                    ? "تعذر التحقق من الحسابات. أعد المحاولة."
+                    : hasConnectedSocialAccount
+                      ? "حسابك جاهز للمتابعة"
+                      : "يمكنك ربط حساب واحد على الأقل للمتابعة"}
+              </Text>
+            </View>
+            {(completeSocialSetup.isError || progressSetup.isError) && (
+              <Text
+                accessibilityRole="alert"
+                style={[styles.error, { color: colors.destructive, textAlign: "center" }]}
+              >
+                تعذر حفظ حالة الإعداد. تحقق من اتصال الإنترنت ثم أعد المحاولة.
+              </Text>
+            )}
+            {socialSetupPending && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="متابعة"
+                accessibilityState={{
+                  disabled: continueDisabled,
+                  busy: completeSocialSetup.isPending || progressSetup.isPending,
+                }}
+                disabled={continueDisabled}
+                onPress={() =>
+                  inOnboarding ? startProgress("advance") : completeSocialSetup.mutate()
+                }
+                style={[
+                  styles.setupPrimary,
+                  {
+                    backgroundColor: continueDisabled
+                      ? colors.disabled
+                      : colors.primary,
+                  },
+                ]}
+              >
+                {completeSocialSetup.isPending || progressSetup.isPending ? (
+                  <ActivityIndicator
+                    color={
+                      continueDisabled
+                        ? colors.disabledForeground
+                        : colors.primaryForeground
+                    }
+                  />
+                ) : (
+                  <Text
+                    style={[
+                      styles.setupPrimaryText,
+                      {
+                        color: continueDisabled
+                          ? colors.disabledForeground
+                          : colors.primaryForeground,
+                      },
+                    ]}
+                  >
+                    متابعة  ←
+                  </Text>
+                )}
+              </Pressable>
+            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="متابعة الإعداد لاحقًا والانتقال إلى لوحة التحكم"
+              disabled={skipDisabled}
+              onPress={() =>
+                inOnboarding ? startProgress("skip") : router.replace("/(tabs)")
+              }
+              style={[
+                styles.setupSecondary,
+                {
+                  borderColor: colors.border,
+                  backgroundColor: skipDisabled ? colors.disabled : colors.card,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.setupSecondaryText,
+                  {
+                    color: skipDisabled
+                      ? colors.disabledForeground
+                      : colors.foreground,
+                  },
+                ]}
+              >
+                إكمال لاحقًا  ←
+              </Text>
+            </Pressable>
+          </View>
+        );
+      })()}
 
       {!isPublishingAccounts && activeSection === "sync" ? (
         connections?.whatsapp && isConnected("whatsapp") ? (
@@ -2330,19 +2465,30 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  tabLabel: { fontSize: 13, fontWeight: "800" },
+  tabLabel: { fontSize: 14, fontWeight: "800" },
   tabDot: { width: 7, height: 7, borderRadius: 4 },
   syncEmptyPanel: { gap: 12, alignItems: "stretch" },
+  setupHero: { alignItems: "center", gap: 8 },
+  setupHeroTitle: { fontSize: 27, fontWeight: "800", textAlign: "center" },
+  setupHeroSubtitle: { fontSize: 15, lineHeight: 25, textAlign: "center", maxWidth: 360 },
+  setupBack: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 10, paddingVertical: 8 },
+  setupFooter: { gap: 12 },
+  setupHint: { borderRadius: 30, padding: 13, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 },
+  setupHintText: { fontSize: 14, fontWeight: "700", textAlign: "center", flexShrink: 1 },
+  setupPrimary: { minHeight: 54, borderRadius: 30, alignItems: "center", justifyContent: "center" },
+  setupPrimaryText: { fontSize: 18, fontWeight: "800" },
+  setupSecondary: { minHeight: 54, borderRadius: 30, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  setupSecondaryText: { fontSize: 16, fontWeight: "800" },
   onboardingActions: { alignItems: "stretch", gap: 12, paddingTop: 2 },
-  onboardingSkip: { alignSelf: "center", paddingVertical: 8, paddingHorizontal: 12 },
-  onboardingSkipText: { fontSize: 13, fontWeight: "600" },
+  onboardingSkip: { alignSelf: "center", paddingVertical: 10, paddingHorizontal: 12, minHeight: 44, justifyContent: "center" },
+  onboardingSkipText: { fontSize: 14, fontWeight: "600" },
   onboardingContinue: {
-    minHeight: 46,
+    minHeight: 48,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 16,
   },
-  onboardingContinueText: { fontSize: 13, fontWeight: "800" },
-  error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  onboardingContinueText: { fontSize: 14, fontWeight: "800" },
+  error: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
 });

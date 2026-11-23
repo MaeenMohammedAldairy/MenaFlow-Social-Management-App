@@ -283,12 +283,12 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   destinationTitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "800",
   },
   destinationDescription: {
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13.5,
+    lineHeight: 20,
     textAlign: "right",
   },
 });

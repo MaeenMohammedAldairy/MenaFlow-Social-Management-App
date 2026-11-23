@@ -197,9 +197,10 @@ function ProductMediaThumbnail({
   return (
     <Image
       source={{ uri: resolvedUri }}
-      style={
-        compact ? styles.productHeadingThumb : styles.productMediaThumbnail
-      }
+      style={[
+        compact ? styles.productHeadingThumb : styles.productMediaThumbnail,
+        { backgroundColor: colors.muted },
+      ]}
       contentFit="cover"
       cachePolicy="disk"
       accessibilityLabel={label}
@@ -1566,6 +1567,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="إلغاء تحديد المنتجات"
+                    hitSlop={10}
                     onPress={() => {
                       setSelectedProductIds(new Set());
                       setError("");
@@ -1590,7 +1592,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     {
                       opacity:
                         selectableVisibleProducts.length === 0
-                          ? 0.45
+                          ? 1
                           : pressed
                             ? 0.7
                             : 1,
@@ -1601,9 +1603,12 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     style={[
                       styles.checkbox,
                       {
-                        borderColor: selectedAllVisible
-                          ? colors.primary
-                          : colors.border,
+                        borderColor:
+                          selectableVisibleProducts.length === 0
+                            ? colors.disabledForeground
+                            : selectedAllVisible
+                              ? colors.primary
+                              : colors.border,
                         backgroundColor: selectedAllVisible
                           ? colors.primary
                           : "transparent",
@@ -1618,7 +1623,17 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                       />
                     ) : null}
                   </View>
-                  <Text style={[styles.link, { color: colors.primary }]}>
+                  <Text
+                    style={[
+                      styles.link,
+                      {
+                        color:
+                          selectableVisibleProducts.length === 0
+                            ? colors.disabledForeground
+                            : colors.primary,
+                      },
+                    ]}
+                  >
                     تحديد الكل
                   </Text>
                 </Pressable>
@@ -1962,7 +1977,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         animationType="slide"
         onRequestClose={() => setCsvImportVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View
             style={[
               styles.dialog,
@@ -1977,6 +1992,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 accessibilityRole="button"
                 accessibilityLabel="إغلاق استيراد CSV"
                 onPress={() => setCsvImportVisible(false)}
+                style={styles.modalCloseButton}
               >
                 <Icon name="x" size={20} color={colors.foreground} />
               </Pressable>
@@ -2003,7 +2019,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           requestEditorClose();
         }}
       >
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View
             style={[
               styles.dialog,
@@ -2023,6 +2039,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 accessibilityLabel="إغلاق نموذج المنتج"
                 disabled={save.isPending || mediaUploading}
                 onPress={requestEditorClose}
+                style={styles.modalCloseButton}
               >
                 <Icon name="x" size={21} color={colors.foreground} />
               </Pressable>
@@ -2060,7 +2077,12 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 </Text>
               ) : null}
               {editor?.sourceContext?.length ? (
-                <View style={styles.sourceMessage}>
+                <View
+                  style={[
+                    styles.sourceMessage,
+                    { borderTopColor: colors.border },
+                  ]}
+                >
                   <Text
                     style={[styles.fieldLabel, { color: colors.foreground }]}
                   >
@@ -2135,12 +2157,17 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                           accessibilityLabel="إزالة وسيط المنتج"
                           disabled={save.isPending || mediaUploading}
                           onPress={() => removeProductMedia(media.id)}
+                          hitSlop={8}
                           style={[
                             styles.removeProductMedia,
                             { backgroundColor: colors.destructive },
                           ]}
                         >
-                          <Icon name="x" size={14} color="#FFFFFF" />
+                          <Icon
+                            name="x"
+                            size={14}
+                            color={colors.destructiveForeground}
+                          />
                         </Pressable>
                       </View>
                     ))}
@@ -2433,7 +2460,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
           if (!publishProducts.isPending) setPublishModalVisible(false);
         }}
       >
-        <View style={styles.modalOverlay}>
+        <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
           <View
             style={[
               styles.dialog,
@@ -2447,6 +2474,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="إغلاق مراجعة النشر"
+                style={styles.modalCloseButton}
                 onPress={() => {
                   if (!publishProducts.isPending) setPublishModalVisible(false);
                 }}
@@ -2860,7 +2888,10 @@ function ProductExtractionCard({
         const expanded = expandedSourceIds.has(source.id);
         const canExpand = source.text.length > 240;
         return (
-          <View key={source.id} style={styles.sourceMessage}>
+          <View
+            key={source.id}
+            style={[styles.sourceMessage, { borderTopColor: colors.border }]}
+          >
             <Text style={[styles.evidence, { color: colors.mutedForeground }]}>
               {source.groupName ?? "مجموعة"}
               {source.senderName ? ` · ${source.senderName}` : ""}
@@ -2902,6 +2933,7 @@ function ProductExtractionCard({
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ expanded }}
+                hitSlop={10}
                 onPress={() =>
                   setExpandedSourceIds((current) => {
                     const next = new Set(current);
@@ -2928,7 +2960,7 @@ function ProductExtractionCard({
         نموذج التحليل: {suggestion.aiModel}
       </Text>
       {suggestion.status === "possible_duplicate" ? (
-        <View style={styles.sourceMessage}>
+        <View style={[styles.sourceMessage, { borderTopColor: colors.border }]}>
           <Text style={[styles.description, { color: colors.warning }]}>
             تحقق من المنتجات المشابهة قبل إنشاء منتج آخر:
           </Text>
@@ -3114,6 +3146,7 @@ function ProductCard({
               disabled: Boolean(selectionDisabledReason),
             }}
             focusable={!selectionDisabledReason}
+            hitSlop={11}
             onPress={(event) => {
               // Keep disabled selectors from bubbling clicks to the edit-card action.
               event.stopPropagation();
@@ -3292,6 +3325,7 @@ function ProductPublicationHistory({
               <Pressable
                 accessibilityRole="link"
                 accessibilityLabel={`فتح منشور ${publication.channel === "facebook" ? "فيسبوك" : "إنستغرام"} السابق`}
+                hitSlop={10}
                 onPress={(event) => {
                   event.stopPropagation();
                   const permalink = publication.permalink;
@@ -3369,7 +3403,10 @@ function ProductPublicationStatus({
             {snapshot.summary.needsAction}
           </Text>
           {snapshot.jobs.map((job) => (
-            <View key={job.id} style={styles.publicationJob}>
+            <View
+              key={job.id}
+              style={[styles.publicationJob, { borderTopColor: colors.border }]}
+            >
               <View style={styles.jobHeading}>
                 <Text
                   style={[styles.accountName, { color: colors.foreground }]}
@@ -3620,8 +3657,8 @@ const styles = StyleSheet.create({
   },
   reviewGuidanceBody: {
     flex: 1,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13.5,
+    lineHeight: 20,
     textAlign: "right",
   },
   catalogEmptyPanel: { gap: 12, padding: 14 },
@@ -3639,8 +3676,8 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   headerIconAction: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
@@ -3678,7 +3715,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   scanEmpty: { gap: 10 },
-  scanLabel: { fontSize: 13, fontWeight: "800", textAlign: "right" },
+  scanLabel: { fontSize: 14, fontWeight: "800", textAlign: "right" },
   scanOperations: { gap: 8 },
   scanOperation: {
     minHeight: 62,
@@ -3697,8 +3734,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   scanPostLink: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 10,
@@ -3709,16 +3746,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    minHeight: 42,
+    minHeight: 44,
   },
   catalogTab: {
-    minHeight: 38,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 11,
+    paddingHorizontal: 12,
     flexShrink: 0,
   },
   catalogTabCount: {
@@ -3741,6 +3778,7 @@ const styles = StyleSheet.create({
   productSearchInput: {
     flex: 1,
     minHeight: 46,
+    fontSize: 14,
     textAlign: "right",
     writingDirection: "rtl",
   },
@@ -3760,11 +3798,11 @@ const styles = StyleSheet.create({
   catalogErrorTitle: { fontSize: 16, fontWeight: "800", textAlign: "center" },
   catalogErrorBody: {
     maxWidth: 420,
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 21,
     textAlign: "center",
   },
-  link: { fontSize: 12, fontWeight: "600" },
+  link: { fontSize: 13.5, fontWeight: "600" },
   sectionTitle: { fontSize: 16, fontWeight: "700", textAlign: "right" },
   selectionActions: {
     flexDirection: "row",
@@ -3773,8 +3811,9 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 10,
   },
-  selectionHint: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  selectionHint: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   selectAll: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
@@ -3799,11 +3838,12 @@ const styles = StyleSheet.create({
     zIndex: 50,
   },
   publishBarCopy: { flex: 1, gap: 4, alignItems: "flex-start" },
-  publishBarCount: { fontSize: 13, fontWeight: "800", textAlign: "right" },
-  publishBarHint: { fontSize: 12, lineHeight: 16, textAlign: "right" },
+  publishBarCount: { fontSize: 14, fontWeight: "800", textAlign: "right" },
+  publishBarHint: { fontSize: 13, lineHeight: 18, textAlign: "right" },
   productCard: { gap: 7 },
   productSkeletonList: { gap: 10 },
   productCardAction: {
+    minHeight: 44,
     flexDirection: "row-reverse",
     alignItems: "center",
     gap: 6,
@@ -3813,7 +3853,7 @@ const styles = StyleSheet.create({
   },
   productCardActionText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13.5,
     fontWeight: "700",
     textAlign: "right",
   },
@@ -3821,7 +3861,6 @@ const styles = StyleSheet.create({
   publicationJob: {
     gap: 5,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#B7BEC8",
     paddingTop: 8,
   },
   jobHeading: {
@@ -3851,10 +3890,10 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   accountDetails: { flex: 1, gap: 3 },
-  accountName: { fontSize: 13, fontWeight: "700", textAlign: "right" },
+  accountName: { fontSize: 14, fontWeight: "700", textAlign: "right" },
   productMediaSection: { gap: 8 },
   addMediaButton: {
-    minHeight: 42,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -3873,7 +3912,6 @@ const styles = StyleSheet.create({
     width: 76,
     height: 76,
     borderRadius: 10,
-    backgroundColor: "#E8EDF2",
   },
   productVideoPlaceholder: {
     alignItems: "center",
@@ -3883,9 +3921,9 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 4,
     start: 4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -3908,7 +3946,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  productSku: { flexShrink: 1, fontSize: 12 },
+  productSku: { flexShrink: 1, fontSize: 12.5 },
   productName: { fontSize: 15, fontWeight: "700", textAlign: "right" },
   badge: {
     overflow: "hidden",
@@ -3917,7 +3955,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     fontSize: 12,
   },
-  description: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  description: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   candidate: { gap: 9 },
   extractionCard: { gap: 9 },
   fieldReview: {
@@ -3927,22 +3965,23 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   reviewChoice: {
+    minHeight: 44,
+    justifyContent: "center",
     borderWidth: 1,
     borderRadius: 12,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
   extractionField: { gap: 2 },
-  evidence: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  evidence: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   sourceMessage: {
     gap: 3,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "#B7BEC8",
     paddingTop: 6,
   },
   sourceMessageToggle: {
     alignSelf: "flex-start",
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
     textAlign: "right",
   },
@@ -3952,7 +3991,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 14,
-    backgroundColor: "rgba(10, 37, 64, 0.55)",
   },
   dialog: {
     width: "100%",
@@ -3968,14 +4006,20 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     padding: 16,
   },
+  modalCloseButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   modalTitle: { fontSize: 17, fontWeight: "700" },
   form: { gap: 14, paddingHorizontal: 16, paddingBottom: 16 },
   field: { gap: 6 },
   inventoryHistory: { gap: 4, paddingTop: 6 },
   productPublicationHistoryRow: { gap: 2 },
-  fieldLabel: { fontSize: 13, fontWeight: "600", textAlign: "right" },
+  fieldLabel: { fontSize: 14, fontWeight: "600", textAlign: "right" },
   input: {
-    minHeight: 42,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 10,
@@ -3984,7 +4028,7 @@ const styles = StyleSheet.create({
   },
   dropdownButton: {
     cursor: "pointer",
-    minHeight: 42,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -3994,7 +4038,7 @@ const styles = StyleSheet.create({
   },
   dropdownOptions: {
     position: "absolute",
-    top: 68,
+    top: 70,
     left: 0,
     right: 0,
     borderWidth: 1,
@@ -4009,7 +4053,7 @@ const styles = StyleSheet.create({
   },
   dropdownOption: {
     cursor: "pointer",
-    minHeight: 42,
+    minHeight: 44,
     justifyContent: "center",
     alignItems: "flex-start",
     paddingHorizontal: 12,
@@ -4024,12 +4068,14 @@ const styles = StyleSheet.create({
   inlineField: { flex: 1 },
   choices: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   choice: {
+    minHeight: 44,
+    justifyContent: "center",
     borderWidth: 1,
     borderRadius: 14,
-    paddingHorizontal: 9,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
-  helper: { fontSize: 12, lineHeight: 20, textAlign: "right" },
+  helper: { fontSize: 13.5, lineHeight: 21, textAlign: "right" },
   footer: {
     flexDirection: "row",
     flexWrap: "wrap",

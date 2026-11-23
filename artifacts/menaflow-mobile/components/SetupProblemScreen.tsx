@@ -138,10 +138,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
   },
-  hintsTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" },
+  hintsTitle: { fontSize: 14, fontWeight: "800", textAlign: "right" },
   hintRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   bullet: { width: 6, height: 6, borderRadius: 3 },
-  hintText: { flex: 1, fontSize: 12.5, lineHeight: 20, textAlign: "right" },
+  hintText: { flex: 1, fontSize: 13.5, lineHeight: 21, textAlign: "right" },
   button: {
     width: "100%",
     minHeight: 48,
@@ -153,5 +153,5 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   buttonText: { fontSize: 14, fontWeight: "800" },
-  footnote: { fontSize: 11.5, lineHeight: 19, textAlign: "center", marginTop: 2 },
+  footnote: { fontSize: 13, lineHeight: 20, textAlign: "center", marginTop: 2 },
 });

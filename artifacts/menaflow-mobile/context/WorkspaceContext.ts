@@ -5,6 +5,7 @@ export type WorkspaceSummary = {
   name: string;
   /** نوع النشاط التجاري؛ null حتى يكمله التاجر من شاشة الإعداد. */
   businessType?: string | null;
+  country?: string | null;
   role: string;
 };
 

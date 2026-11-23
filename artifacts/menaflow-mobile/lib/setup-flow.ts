@@ -3,6 +3,11 @@
  *
  * Kept free of React/Expo imports so plain-Node tests can cover them (the
  * screens themselves cannot be imported in that environment).
+ *
+ * (The offline→online replay of a failed `skip` that used to live here was
+ * dropped: `app/setup.tsx` now shows an OfflineBanner and its error copy asks
+ * for a manual retry instead of promising an automatic one, so there is no
+ * promise left to keep and no helper left to share.)
  */
 
 export type WorkspaceRole = { role: string } | null;
@@ -25,43 +30,4 @@ export function canEditBusinessInfo(
   if (options.isLocalAuthDisabled) return true;
   if (!activeWorkspace) return true; // role not loaded yet
   return activeWorkspace.role === "owner";
-}
-
-export type PendingSkipState = {
-  /** Device currently offline (`useNetworkStatus`). */
-  isOffline: boolean;
-  /** Whether an offline stretch has been observed since the failure. */
-  wasOffline: boolean;
-  /** The failed `skip` was armed for an automatic replay. */
-  awaitingRetry: boolean;
-  /** The exit the pending `skip` should navigate to, if still armed. */
-  pendingExit: string | null;
-  /** A `skip` request is already in flight. */
-  requestInFlight: boolean;
-};
-
-/**
- * Whether the pending onboarding `skip` should be replayed right now.
- *
- * The guard keeps the merchant on `/setup` until `skip` lands, so the error
- * copy promising an automatic retry has to be true. But only the
- * offline→online transition counts: replaying on every render (or after a
- * server-side rejection while online) would loop forever.
- */
-export function shouldReplayPendingSkip(state: PendingSkipState): boolean {
-  if (state.isOffline) return false;
-  if (!state.wasOffline) return false;
-  if (!state.awaitingRetry) return false;
-  if (!state.pendingExit) return false;
-  if (state.requestInFlight) return false;
-  return true;
-}
-
-/**
- * Whether an offline failure should be armed for that automatic replay.
- * A failure while online is not a connectivity problem, so it is left to the
- * merchant to retry by pressing the button again.
- */
-export function shouldArmSkipRetry(isOffline: boolean): boolean {
-  return isOffline;
 }

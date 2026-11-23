@@ -6,6 +6,7 @@ import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, Panel, SectionTitle, StatusPill } from "@/components/Ui";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { useColors } from "@/hooks/useColors";
+import { useAuthTheme } from "@/hooks/useAuthTheme";
 
 export type SourceKey = "instagram" | "facebook" | "whatsapp";
 
@@ -13,6 +14,14 @@ type SourceDefinition = {
   key: SourceKey;
   name: string;
   description: string;
+};
+
+// Onboarding copy from the approved setup design (shown only in the
+// onboarding variant; the regular sources view keeps its own descriptions).
+const onboardingDescriptions: Record<SourceKey, string> = {
+  facebook: "ربط حساب فيسبوك لإدارة صفحاتك والنشر عليها",
+  instagram: "ربط حساب إنستجرام لمشاركة محتواك تلقائيًا",
+  whatsapp: "ربط حساب واتساب للرد على العملاء وتأكيد الطلبيات",
 };
 
 const sources: SourceDefinition[] = [
@@ -35,6 +44,7 @@ const sources: SourceDefinition[] = [
 
 interface SourcesConnectionsPanelProps {
   compactLayout: boolean;
+  onboarding?: boolean;
   sourceKeys: SourceKey[];
   /** Omitted when the page title already names what the cards below are. */
   sectionTitle?: string;
@@ -58,6 +68,7 @@ interface SourcesConnectionsPanelProps {
 
 export function SourcesConnectionsPanel({
   compactLayout,
+  onboarding = false,
   sourceKeys,
   sectionTitle,
   refreshLabel,
@@ -78,6 +89,7 @@ export function SourcesConnectionsPanel({
   onRefresh,
 }: SourcesConnectionsPanelProps) {
   const colors = useColors();
+  const theme = useAuthTheme();
   const visibleSources = sources.filter((source) =>
     sourceKeys.includes(source.key),
   );
@@ -88,7 +100,7 @@ export function SourcesConnectionsPanel({
       : connectionError);
 
   return (
-    <Panel style={styles.panel}>
+    <Panel style={[styles.panel, onboarding && { backgroundColor: "transparent", borderWidth: 0, padding: 0, shadowOpacity: 0, elevation: 0 } ]}>
       {sectionTitle ? (
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleGroup}>
@@ -192,9 +204,10 @@ export function SourcesConnectionsPanel({
             key={source.key}
             style={[
               styles.sourceCard,
-              compactLayout && styles.sourceCardCompact,
+              compactLayout && !onboarding && styles.sourceCardCompact,
+              onboarding && styles.onboardingCard,
               {
-                backgroundColor: colors.background,
+                backgroundColor: onboarding ? theme.card : colors.background,
                 borderColor: connected
                   ? colors.primary
                   : connectionNeedsAttention
@@ -213,17 +226,18 @@ export function SourcesConnectionsPanel({
               disabled={sourceBusy}
               style={[
                 styles.sourceIdentity,
-                compactLayout && styles.sourceIdentityCompact,
+                compactLayout && !onboarding && styles.sourceIdentityCompact,
+                onboarding && styles.onboardingIdentity,
                 sourceBusy && styles.disabledSource,
               ]}
             >
               <View
-                style={[styles.sourceIcon, { backgroundColor: colors.accent }]}
+                style={[styles.sourceIcon, { backgroundColor: onboarding ? "transparent" : colors.accent }]}
               >
-                <SocialPlatformIcon platform={source.key} size={28} />
+                <SocialPlatformIcon platform={source.key} size={onboarding ? 38 : 28} />
               </View>
-              <View style={styles.sourceCopy}>
-                <View style={styles.sourceTitleLine}>
+              <View style={[styles.sourceCopy, onboarding && { alignItems: "flex-end" }]}>
+                <View style={[styles.sourceTitleLine, onboarding && { justifyContent: "flex-end" }]}>
                   <Text
                     style={[styles.sourceName, { color: colors.foreground }]}
                   >
@@ -238,7 +252,7 @@ export function SourcesConnectionsPanel({
                     { color: colors.secondaryForeground },
                   ]}
                 >
-                  {detail ?? source.description}
+                  {detail ?? (onboarding ? onboardingDescriptions[source.key] : source.description)}
                 </Text>
               </View>
             </Pressable>
@@ -253,9 +267,8 @@ export function SourcesConnectionsPanel({
                   style={[
                     styles.connectButton,
                     {
-                      borderColor: colors.primary,
-                      backgroundColor: colors.primary,
-                      opacity: sourceBusy ? 0.6 : 1,
+                      borderColor: sourceBusy ? colors.border : colors.primary,
+                      backgroundColor: sourceBusy ? colors.disabled : colors.primary,
                     },
                   ]}
                 >
@@ -263,19 +276,19 @@ export function SourcesConnectionsPanel({
                   disconnectingSource !== "whatsapp" ? (
                     <ActivityIndicator
                       size="small"
-                      color={colors.primaryForeground}
+                      color={sourceBusy ? colors.disabledForeground : colors.primaryForeground}
                     />
                   ) : (
                     <Icon
                       name={connected ? "settings" : "link-2"}
                       size={14}
-                      color={colors.primaryForeground}
+                      color={sourceBusy ? colors.disabledForeground : colors.primaryForeground}
                     />
                   )}
                   <Text
                     style={[
                       styles.connectLabel,
-                      { color: colors.primaryForeground },
+                      { color: sourceBusy ? colors.disabledForeground : colors.primaryForeground },
                     ]}
                   >
                     {whatsappActionLabel}
@@ -291,19 +304,19 @@ export function SourcesConnectionsPanel({
                       styles.disconnectButton,
                       {
                         borderColor: colors.border,
-                        opacity: sourceBusy ? 0.6 : 1,
+                        backgroundColor: sourceBusy ? colors.disabled : "transparent",
                       },
                     ]}
                   >
                     <Icon
                       name="x-circle"
                       size={15}
-                      color={colors.destructive}
+                      color={sourceBusy ? colors.disabledForeground : colors.destructive}
                     />
                     <Text
                       style={[
                         styles.disconnectLabel,
-                        { color: colors.destructive },
+                        { color: sourceBusy ? colors.disabledForeground : colors.destructive },
                       ]}
                     >
                       إلغاء الربط
@@ -321,21 +334,20 @@ export function SourcesConnectionsPanel({
                   style={[
                     styles.connectButton,
                     {
-                      borderColor: colors.primary,
-                      backgroundColor: colors.primary,
-                      opacity: sourceBusy ? 0.6 : 1,
+                      borderColor: sourceBusy ? colors.border : colors.primary,
+                      backgroundColor: sourceBusy ? colors.disabled : colors.primary,
                     },
                   ]}
                 >
                   <Icon
                     name="settings"
                     size={14}
-                    color={colors.primaryForeground}
+                    color={sourceBusy ? colors.disabledForeground : colors.primaryForeground}
                   />
                   <Text
                     style={[
                       styles.connectLabel,
-                      { color: colors.primaryForeground },
+                      { color: sourceBusy ? colors.disabledForeground : colors.primaryForeground },
                     ]}
                   >
                     إدارة الحساب
@@ -350,14 +362,14 @@ export function SourcesConnectionsPanel({
                     styles.disconnectButton,
                     {
                       borderColor: colors.border,
-                      opacity: sourceBusy ? 0.6 : 1,
+                      backgroundColor: sourceBusy ? colors.disabled : "transparent",
                     },
                   ]}
                 >
                   {sourceBusy ? (
                     <ActivityIndicator
                       size="small"
-                      color={colors.destructive}
+                      color={colors.disabledForeground}
                     />
                   ) : (
                     <Icon
@@ -369,7 +381,7 @@ export function SourcesConnectionsPanel({
                   <Text
                     style={[
                       styles.disconnectLabel,
-                      { color: colors.destructive },
+                      { color: sourceBusy ? colors.disabledForeground : colors.destructive },
                     ]}
                   >
                     {disconnectingSource === source.key
@@ -391,24 +403,41 @@ export function SourcesConnectionsPanel({
                 style={[
                   styles.connectButton,
                   {
-                    borderColor: colors.primary,
-                    backgroundColor: colors.primary,
-                    opacity: sourceBusy ? 0.6 : 1,
+                    borderColor: sourceBusy
+                      ? colors.border
+                      : onboarding
+                        ? colors.accent
+                        : colors.primary,
+                    backgroundColor: sourceBusy
+                      ? colors.disabled
+                      : onboarding
+                        ? colors.accent
+                        : colors.primary,
                   },
                 ]}
               >
                 {sourceBusy ? (
                   <ActivityIndicator
                     size="small"
-                    color={colors.primaryForeground}
+                    color={colors.disabledForeground}
                   />
                 ) : (
-                  <Icon name="link" size={14} color={colors.primaryForeground} />
+                  <Icon
+                    name="link"
+                    size={14}
+                    color={onboarding ? colors.accentForeground : colors.primaryForeground}
+                  />
                 )}
                 <Text
                   style={[
                     styles.connectLabel,
-                    { color: colors.primaryForeground },
+                    {
+                      color: sourceBusy
+                        ? colors.disabledForeground
+                        : onboarding
+                          ? colors.accentForeground
+                          : colors.primaryForeground,
+                    },
                   ]}
                 >
                   {buttonLabel(source.key)}
@@ -466,7 +495,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   errorCopy: { flex: 1, gap: 3 },
-  errorTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" },
+  errorTitle: { fontSize: 14, fontWeight: "800", textAlign: "right" },
   sourceCard: {
     borderWidth: 1,
     borderRadius: 17,
@@ -475,6 +504,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 9,
   },
+  onboardingCard: { flexDirection: "row", borderRadius: 22, minHeight: 104 },
+  onboardingIdentity: { flexDirection: "row" },
   sourceCardCompact: {
     flexDirection: "column",
     alignItems: "stretch",
@@ -502,8 +533,8 @@ const styles = StyleSheet.create({
     gap: 6,
     flexWrap: "wrap",
   },
-  sourceName: { fontSize: 14, fontWeight: "800" },
-  sourceDescription: { fontSize: 12, lineHeight: 17, textAlign: "right" },
+  sourceName: { fontSize: 15, fontWeight: "800" },
+  sourceDescription: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   cardActions: {
     gap: 7,
     alignItems: "stretch",
@@ -513,20 +544,20 @@ const styles = StyleSheet.create({
   connectButton: {
     borderWidth: 1,
     borderRadius: 14,
-    minHeight: 40,
-    paddingHorizontal: 12,
+    minHeight: 44,
+    paddingHorizontal: 14,
     paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 6,
   },
-  connectLabel: { fontSize: 12, fontWeight: "800" },
+  connectLabel: { fontSize: 13.5, fontWeight: "800" },
   disconnectButton: {
     borderWidth: 1,
     borderRadius: 14,
-    minHeight: 40,
-    paddingHorizontal: 12,
+    minHeight: 44,
+    paddingHorizontal: 14,
     paddingVertical: 7,
     flexDirection: "row",
     alignItems: "center",
@@ -534,18 +565,18 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     gap: 5,
   },
-  disconnectLabel: { fontSize: 12, fontWeight: "700" },
-  error: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  disconnectLabel: { fontSize: 13.5, fontWeight: "700" },
+  error: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   errorRetry: {
     marginTop: 6,
     alignSelf: "flex-start",
-    minHeight: 34,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
   },
-  errorRetryLabel: { fontSize: 12, fontWeight: "800" },
+  errorRetryLabel: { fontSize: 13, fontWeight: "800" },
 });

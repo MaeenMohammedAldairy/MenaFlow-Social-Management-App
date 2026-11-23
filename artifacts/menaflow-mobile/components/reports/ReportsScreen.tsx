@@ -224,6 +224,7 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
               onPress={() =>
                 router.push("/(tabs)/more/accounts")
               }
+              hitSlop={10}
             >
               <Text style={[styles.link, { color: colors.primary }]}>حسابات النشر</Text>
             </Pressable>
@@ -420,28 +421,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 10,
   },
-  rangeBadgeText: { fontSize: 12, fontWeight: '700' },
-  rangeTitle: { fontSize: 13, fontWeight: '800', textAlign: 'right' },
+  rangeBadgeText: { fontSize: 12.5, fontWeight: '700' },
+  rangeTitle: { fontSize: 14, fontWeight: '800', textAlign: 'right' },
   rangeOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   rangeChip: {
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 13,
     borderRadius: 11,
     borderWidth: 1,
   },
-  rangeChipText: { fontSize: 12, fontWeight: '700' },
-  rangeHint: { fontSize: 12, lineHeight: 15, textAlign: 'right' },
+  rangeChipText: { fontSize: 13, fontWeight: '700' },
+  rangeHint: { fontSize: 13, lineHeight: 19, textAlign: 'right' },
   connectionNotice: { gap: 10, marginTop: 12, padding: 12, borderRadius: 14 },
-  connectionNoticeText: { fontSize: 12, lineHeight: 17, textAlign: 'right' },
+  connectionNoticeText: { fontSize: 13.5, lineHeight: 20, textAlign: 'right' },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
   statCardPressable: { width: '48%', minWidth: 135 },
   statCard: { gap: 12, padding: 14, minHeight: 104, justifyContent: 'space-between' },
   statCardHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   statIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
   statValue: { fontSize: 25, fontWeight: '800' },
-  statLabel: { fontSize: 12, fontWeight: '600' },
-  link: { fontSize: 12, fontWeight: '700' },
+  statLabel: { fontSize: 13.5, fontWeight: '600' },
+  link: { fontSize: 13.5, fontWeight: '700' },
   channelsList: { gap: 9, marginTop: 12 },
   channelItem: {
     flexDirection: 'row',
@@ -456,8 +457,8 @@ const styles = StyleSheet.create({
   channelMeta: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
   channelIconWrap: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   channelInfo: { flex: 1, minWidth: 0, alignItems: 'flex-start', gap: 3 },
-  channelTitle: { maxWidth: '100%', fontSize: 13, fontWeight: '700', textAlign: 'right' },
-  channelSub: { fontSize: 12, textAlign: 'right' },
+  channelTitle: { maxWidth: '100%', fontSize: 14, fontWeight: '700', textAlign: 'right' },
+  channelSub: { fontSize: 13, textAlign: 'right' },
   channelCount: { minWidth: 36, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 11, paddingHorizontal: 8 },
   channelCountText: { fontSize: 14, fontWeight: '800' },
   workflowList: { gap: 4, marginTop: 8 },
@@ -466,8 +467,8 @@ const styles = StyleSheet.create({
   progressLabelLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   progressLabelGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   progressDot: { width: 8, height: 8, borderRadius: 4 },
-  progressValue: { fontSize: 13, fontWeight: '800' },
-  progressLabel: { fontSize: 12, fontWeight: '700' },
+  progressValue: { fontSize: 14, fontWeight: '800' },
+  progressLabel: { fontSize: 13.5, fontWeight: '700' },
   track: {
     height: 7,
     borderRadius: 4,

@@ -1171,6 +1171,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => router.push("/activities" as Href)}
+                  hitSlop={10}
                 >
                   <Text style={[styles.link, { color: colors.primary }]}>
                     عرض الكل
@@ -1569,16 +1570,16 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   setupBannerCopy: { flex: 1, gap: 2 },
-  setupBannerTitle: { fontSize: 14, fontWeight: "800" },
-  setupBannerBody: { fontSize: 12, lineHeight: 18 },
+  setupBannerTitle: { fontSize: 15, fontWeight: "800" },
+  setupBannerBody: { fontSize: 13.5, lineHeight: 20 },
   setupBannerAction: {
-    minHeight: 34,
+    minHeight: 44,
     justifyContent: "center",
     borderRadius: 10,
     paddingHorizontal: 14,
   },
-  setupBannerActionText: { fontSize: 13, fontWeight: "700" },
-  setupBannerDismiss: { padding: 4 },
+  setupBannerActionText: { fontSize: 13.5, fontWeight: "700" },
+  setupBannerDismiss: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center", padding: 4 },
   setupCard: { gap: 10 },
   setupCardHeader: {
     flexDirection: "row",
@@ -1588,14 +1589,15 @@ const styles = StyleSheet.create({
   },
   setupCardTitleGroup: { flexDirection: "row", alignItems: "center", gap: 8 },
   setupCardTitle: { fontSize: 15, fontWeight: "800" },
-  setupCardProgress: { fontSize: 12, fontWeight: "700" },
+  setupCardProgress: { fontSize: 12.5, fontWeight: "700" },
   setupStepRow: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     paddingVertical: 6,
   },
-  setupStepLabel: { fontSize: 13, fontWeight: "600" },
+  setupStepLabel: { fontSize: 14, fontWeight: "600" },
   orderNotification: {
     minHeight: 72,
     flexDirection: "row",
@@ -1614,11 +1616,11 @@ const styles = StyleSheet.create({
   },
   orderNotificationCopy: { flex: 1, minWidth: 0, gap: 4 },
   orderNotificationTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "800",
     textAlign: "right",
   },
-  orderNotificationText: { fontSize: 12, lineHeight: 17, textAlign: "right" },
+  orderNotificationText: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   hero: {
     borderRadius: 20,
     borderWidth: 1,
@@ -1640,14 +1642,14 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   heroText: { flex: 1, minWidth: 0, alignItems: "flex-start", gap: 4 },
-  heroEyebrow: { fontSize: 12, fontWeight: "700" },
+  heroEyebrow: { fontSize: 13, fontWeight: "700" },
   heroTitle: { fontSize: 22, fontWeight: "800", textAlign: "right" },
-  heroTitlePhone: { fontSize: 16 },
-  heroTitleCompact: { fontSize: 15 },
+  heroTitlePhone: { fontSize: 17 },
+  heroTitleCompact: { fontSize: 16 },
   heroBody: {
     alignSelf: "stretch",
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 14,
+    lineHeight: 21,
     textAlign: "right",
     maxWidth: 560,
   },
@@ -1684,14 +1686,14 @@ const styles = StyleSheet.create({
   metricLabel: {
     flex: 1,
     minWidth: 0,
-    fontSize: 13,
+    fontSize: 14,
     textAlign: "right",
     fontWeight: "700",
   },
-  metricDescription: { fontSize: 12, lineHeight: 15, textAlign: "right" },
-  link: { fontSize: 12, fontWeight: "700" },
+  metricDescription: { fontSize: 13, lineHeight: 18, textAlign: "right" },
+  link: { fontSize: 13.5, fontWeight: "700" },
   channelHeading: { gap: 3 },
-  channelSectionSubtitle: { fontSize: 12, lineHeight: 16, textAlign: "right" },
+  channelSectionSubtitle: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   channelRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -1751,15 +1753,15 @@ const styles = StyleSheet.create({
   channelDetailsPhone: {
     flexShrink: 1,
   },
-  channelName: { fontSize: 13, fontWeight: "700", flexShrink: 1 },
+  channelName: { fontSize: 14, fontWeight: "700", flexShrink: 1 },
   channelState: {
-    fontSize: 12,
-    lineHeight: 14,
+    fontSize: 12.5,
+    lineHeight: 16,
     textAlign: "center",
     flexShrink: 1,
   },
   channelHint: {
-    minHeight: 38,
+    minHeight: 40,
     flexDirection: "row-reverse",
     alignItems: "center",
     gap: 8,
@@ -1770,14 +1772,14 @@ const styles = StyleSheet.create({
   },
   channelHintText: {
     flex: 1,
-    fontSize: 12,
-    lineHeight: 17,
+    fontSize: 13.5,
+    lineHeight: 20,
     textAlign: "right",
   },
   channelAccount: {
     maxWidth: "100%",
-    fontSize: 12,
-    lineHeight: 13,
+    fontSize: 12.5,
+    lineHeight: 16,
     textAlign: "center",
   },
   activityRow: {
@@ -1817,21 +1819,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   activityStatus: { alignSelf: "flex-start" },
-  activityTitle: { fontSize: 13, fontWeight: "700", textAlign: "right" },
-  activityDescription: { fontSize: 12, lineHeight: 16, textAlign: "right" },
+  activityTitle: { fontSize: 14, fontWeight: "700", textAlign: "right" },
+  activityDescription: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
   activityPlatform: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
   },
-  activityDate: { fontSize: 12, lineHeight: 15, textAlign: "right" },
+  activityDate: { fontSize: 12, lineHeight: 17, textAlign: "right" },
   activityError: { gap: 8, paddingVertical: 10 },
-  activityErrorText: { fontSize: 12, lineHeight: 18, textAlign: "center" },
+  activityErrorText: { fontSize: 14, lineHeight: 21, textAlign: "center" },
   reviewButton: {
-    minHeight: 34,
+    minHeight: 44,
     justifyContent: "center",
     borderRadius: 10,
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
   },
-  reviewButtonLabel: { fontSize: 12, fontWeight: "700" },
+  reviewButtonLabel: { fontSize: 13, fontWeight: "700" },
 });

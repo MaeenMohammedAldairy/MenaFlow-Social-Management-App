@@ -1,7 +1,10 @@
 const clerkErrorMessages: Record<string, string> = {
   form_password_incorrect: 'كلمة المرور غير صحيحة. تحقق منها ثم حاول مرة أخرى.',
   form_identifier_not_found: 'لم نعثر على حساب بهذا البريد الإلكتروني. تحقق من البريد أو أنشئ حساباً جديداً.',
-  form_identifier_exists: 'يوجد حساب مسجل بهذا البريد الإلكتروني. جرّب تسجيل الدخول بدلاً من إنشاء حساب جديد.',
+  form_identifier_exists: 'البريد الإلكتروني أو اسم المستخدم مستخدم بالفعل. جرّب اسم مستخدم آخر، أو سجّل الدخول إذا كان البريد مرتبطاً بحسابك.',
+  form_identifier_exists__email_address: 'هذا البريد الإلكتروني مرتبط بحساب بالفعل. جرّب تسجيل الدخول.',
+  form_identifier_exists__username: 'اسم المستخدم مستخدم بالفعل. اختر اسماً آخر.',
+  form_identifier_exists__phone_number: 'رقم الهاتف مرتبط بحساب بالفعل. جرّب تسجيل الدخول.',
   form_email_address_exists: 'هذا البريد الإلكتروني مرتبط بحساب بالفعل. جرّب تسجيل الدخول.',
   form_identifier_invalid: 'تحقق من البريد الإلكتروني أو رقم الهاتف ثم حاول مجدداً.',
   form_code_incorrect: 'رمز التحقق غير صحيح. راجعه ثم حاول مرة أخرى.',
@@ -30,6 +33,14 @@ export function getAuthErrorMessage(error: unknown, fallback: string): string {
 
   for (const item of errors) {
     if (!isRecord(item) || typeof item.code !== 'string') continue;
+    if (item.code === 'form_identifier_exists' && isRecord(item.meta)) {
+      // Clerk returns the field as meta.paramName; raw API errors may use
+      // param_name. Do not assume a duplicate identifier is always an email.
+      const field = item.meta.paramName ?? item.meta.param_name;
+      if (field === 'username') return clerkErrorMessages.form_identifier_exists__username;
+      if (field === 'email_address' || field === 'emailAddress') return clerkErrorMessages.form_identifier_exists__email_address;
+      if (field === 'phone_number' || field === 'phoneNumber') return clerkErrorMessages.form_identifier_exists__phone_number;
+    }
     const message = clerkErrorMessages[item.code];
     if (message) return message;
   }

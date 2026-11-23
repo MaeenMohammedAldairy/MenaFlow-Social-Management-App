@@ -67,7 +67,7 @@ export function WhatsAppGroupMessagesModal({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
+      <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
         <View
           style={[
             styles.whatsappSetupDialog,
@@ -202,63 +202,75 @@ export function WhatsAppGroupMessagesModal({
                 ))}
               </ScrollView>
               <View style={styles.dialogActions}>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={
-                    !messagesData ||
-                    !messagesData.hasNextPage ||
-                    loading
-                  }
-                  onPress={() =>
-                    activeGroupJid &&
-                    onLoadPage(activeGroupJid, (page || 1) + 1)
-                  }
-                  style={[
-                    styles.dialogButton,
-                    {
-                      borderColor: colors.border,
-                      opacity:
-                        !messagesData ||
-                        !messagesData.hasNextPage ||
-                        loading
-                          ? 0.5
-                          : 1,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dialogButtonLabel,
-                      { color: colors.foreground },
-                    ]}
-                  >
-                    الصفحة التالية
-                  </Text>
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={page <= 1 || loading}
-                  onPress={() =>
-                    activeGroupJid &&
-                    onLoadPage(activeGroupJid, Math.max(1, page - 1))
-                  }
-                  style={[
-                    styles.dialogButton,
-                    {
-                      borderColor: colors.border,
-                      opacity: page <= 1 || loading ? 0.5 : 1,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.dialogButtonLabel,
-                      { color: colors.foreground },
-                    ]}
-                  >
-                    السابق
-                  </Text>
-                </Pressable>
+                {(() => {
+                  const nextDisabled =
+                    !messagesData || !messagesData.hasNextPage || loading;
+                  const prevDisabled = page <= 1 || loading;
+                  return (
+                    <>
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={nextDisabled}
+                        onPress={() =>
+                          activeGroupJid &&
+                          onLoadPage(activeGroupJid, (page || 1) + 1)
+                        }
+                        style={[
+                          styles.dialogButton,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: nextDisabled
+                              ? colors.disabled
+                              : "transparent",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.dialogButtonLabel,
+                            {
+                              color: nextDisabled
+                                ? colors.disabledForeground
+                                : colors.foreground,
+                            },
+                          ]}
+                        >
+                          الصفحة التالية
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={prevDisabled}
+                        onPress={() =>
+                          activeGroupJid &&
+                          onLoadPage(activeGroupJid, Math.max(1, page - 1))
+                        }
+                        style={[
+                          styles.dialogButton,
+                          {
+                            borderColor: colors.border,
+                            backgroundColor: prevDisabled
+                              ? colors.disabled
+                              : "transparent",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.dialogButtonLabel,
+                            {
+                              color: prevDisabled
+                                ? colors.disabledForeground
+                                : colors.foreground,
+                            },
+                          ]}
+                        >
+                          السابق
+                        </Text>
+                      </Pressable>
+                    </>
+                  );
+                })()}
               </View>
             </>
           )}
@@ -271,20 +283,20 @@ export function WhatsAppGroupMessagesModal({
                 styles.secondaryAction,
                 {
                   borderColor: colors.border,
+                  backgroundColor: loading ? colors.disabled : "transparent",
                   alignSelf: "flex-end",
-                  opacity: loading ? 0.5 : 1,
                 },
               ]}
             >
               {loading ? (
-                <ActivityIndicator size={15} color={colors.primary} />
+                <ActivityIndicator size={15} color={colors.disabledForeground} />
               ) : (
                 <Icon name="refresh-cw" size={15} color={colors.primary} />
               )}
               <Text
                 style={[
                   styles.secondaryActionLabel,
-                  { color: colors.primary },
+                  { color: loading ? colors.disabledForeground : colors.primary },
                 ]}
               >
                 تحديث الرسائل
@@ -303,7 +315,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
-    backgroundColor: "rgba(0, 0, 0, 0.45)",
   },
   whatsappSetupDialog: {
     width: "100%",
@@ -321,32 +332,32 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dialogTitle: { fontSize: 18, fontWeight: "800", textAlign: "right" },
-  dialogDescription: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  dialogDescription: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   disconnectButton: {
-    minHeight: 36,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
   },
-  disconnectLabel: { fontSize: 12, fontWeight: "700" },
+  disconnectLabel: { fontSize: 13, fontWeight: "700" },
   groupsLoading: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 24,
     gap: 8,
   },
-  loadingLabel: { fontSize: 13, fontWeight: "700" },
+  loadingLabel: { fontSize: 14, fontWeight: "700" },
   setupEmptyState: {
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 24,
     gap: 10,
   },
-  emptyMessage: { fontSize: 13, textAlign: "center", lineHeight: 20 },
+  emptyMessage: { fontSize: 14, textAlign: "center", lineHeight: 21 },
   secondaryAction: {
-    minHeight: 38,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -354,7 +365,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  secondaryActionLabel: { fontSize: 12, fontWeight: "700" },
+  secondaryActionLabel: { fontSize: 13.5, fontWeight: "700" },
   dialogActions: { flexDirection: "row", gap: 10, marginTop: 4 },
   dialogButton: {
     flex: 1,
@@ -365,5 +376,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  dialogButtonLabel: { fontSize: 13, fontWeight: "800" },
+  dialogButtonLabel: { fontSize: 14, fontWeight: "800" },
 });

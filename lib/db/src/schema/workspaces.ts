@@ -16,6 +16,7 @@ export const workspaces = pgTable(
     id: text("id").primaryKey(),
     name: text("name").notNull(),
     businessType: text("business_type"),
+    country: text("country"),
     /** IANA timezone for displaying/capturing scheduled times; UTC by default. */
     timezone: text("timezone").notNull().default("UTC"),
     createdBy: text("created_by").notNull(),
@@ -26,7 +27,10 @@ export const workspaces = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [index("mena_workspaces_created_by_idx").on(table.createdBy)],
+  (table) => [
+    index("mena_workspaces_created_by_idx").on(table.createdBy),
+    check("mena_workspaces_country_format", sql`${table.country} IS NULL OR ${table.country} ~ '^[A-Z]{2}$'`),
+  ],
 );
 
 export const workspaceOnboarding = pgTable(

@@ -70,6 +70,7 @@ export const ListWorkspacesResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "businessType": zod.string().nullish(),
+  "country": zod.string().nullish().describe('ISO 3166-1 alpha-2 country code.'),
   "timezone": zod.string().optional().describe('IANA timezone used to display and capture scheduled times.'),
   "role": zod.string()
 }))
@@ -84,6 +85,7 @@ export const updateWorkspaceCurrentBodyNameMax = 80;
 
 export const updateWorkspaceCurrentBodyBusinessTypeMax = 40;
 
+export const updateWorkspaceCurrentBodyCountryRegExp = new RegExp('^[A-Z]{2}$');
 export const updateWorkspaceCurrentBodyTimezoneMax = 64;
 
 
@@ -91,6 +93,7 @@ export const updateWorkspaceCurrentBodyTimezoneMax = 64;
 export const UpdateWorkspaceCurrentBody = zod.object({
   "name": zod.string().min(1).max(updateWorkspaceCurrentBodyNameMax).optional(),
   "businessType": zod.string().min(1).max(updateWorkspaceCurrentBodyBusinessTypeMax).optional(),
+  "country": zod.string().regex(updateWorkspaceCurrentBodyCountryRegExp).optional().describe('ISO 3166-1 alpha-2 country code.'),
   "timezone": zod.string().min(1).max(updateWorkspaceCurrentBodyTimezoneMax).optional().describe('IANA timezone name, e.g. "Asia/Aden".')
 })
 
@@ -98,6 +101,7 @@ export const UpdateWorkspaceCurrentResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
   "businessType": zod.string().nullish(),
+  "country": zod.string().nullish().describe('ISO 3166-1 alpha-2 country code.'),
   "timezone": zod.string().optional().describe('IANA timezone used to display and capture scheduled times.'),
   "role": zod.string()
 })
@@ -185,8 +189,14 @@ export const GetOnboardingStatusResponse = zod.object({
 /**
  * @summary Save onboarding progress for the current workspace
  */
+export const updateOnboardingProgressBodyExpectedStepMin = 0;
+export const updateOnboardingProgressBodyExpectedStepMax = 3;
+
+
+
 export const UpdateOnboardingProgressBody = zod.object({
-  "action": zod.enum(['advance', 'back', 'skip'])
+  "action": zod.enum(['advance', 'back', 'skip']),
+  "expectedStep": zod.number().int().min(updateOnboardingProgressBodyExpectedStepMin).max(updateOnboardingProgressBodyExpectedStepMax).optional().describe('Apply the action only if the current step matches, for safe retries.')
 })
 
 export const updateOnboardingProgressResponseCurrentStepMin = 0;

@@ -283,12 +283,12 @@ const styles = StyleSheet.create({
   cardIcons: { flexDirection: "row", alignItems: "center", gap: 4 },
   cardCopy: { flexShrink: 1, gap: 2 },
   cardTitle: { fontSize: 15, fontWeight: "800", textAlign: "right" },
-  cardNote: { fontSize: 12, textAlign: "right" },
+  cardNote: { fontSize: 13.5, textAlign: "right" },
   cardBody: { gap: 10 },
   statusLine: {
     paddingHorizontal: 4,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: 13,
+    lineHeight: 20,
     textAlign: "right",
   },
 });

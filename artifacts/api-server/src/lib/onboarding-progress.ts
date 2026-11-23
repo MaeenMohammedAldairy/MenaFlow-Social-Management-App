@@ -8,7 +8,9 @@ export interface OnboardingProgress {
 export function transitionOnboardingProgress(
   current: OnboardingProgress,
   action: OnboardingAction,
+  expectedStep?: number,
 ): OnboardingProgress {
+  if (expectedStep !== undefined && current.step !== expectedStep) return current;
   if (current.completed) return current;
   if (action === "skip") return { step: 3, completed: true };
   if (action === "back") {

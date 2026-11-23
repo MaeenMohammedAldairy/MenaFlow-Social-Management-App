@@ -99,6 +99,7 @@ export function ErrorFallback({
           {
             backgroundColor: colors.card,
             borderColor: colors.border,
+            shadowColor: colors.shadow,
           },
         ]}
       >
@@ -198,7 +199,7 @@ export function ErrorFallback({
           transparent={true}
           onRequestClose={() => setIsModalVisible(false)}
         >
-          <View style={styles.modalOverlay}>
+          <View style={[styles.modalOverlay, { backgroundColor: colors.overlay }]}>
             <View
               style={[
                 styles.modalContainer,
@@ -280,7 +281,6 @@ const styles = StyleSheet.create({
     padding: 32,
     borderWidth: 1,
     borderRadius: 28,
-    shadowColor: '#0A2540',
     shadowOpacity: 0.08,
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
@@ -294,9 +294,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
   },
-  errorCode: { fontSize: 11.5, textAlign: 'center' },
-  detailsToggle: { paddingVertical: 2 },
-  detailsToggleText: { fontSize: 12, fontWeight: '700', textDecorationLine: 'underline' },
+  errorCode: { fontSize: 12.5, textAlign: 'center' },
+  detailsToggle: { minHeight: 44, justifyContent: 'center', paddingVertical: 2 },
+  detailsToggleText: { fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
   detailsBox: {
     width: '100%',
     maxHeight: 220,
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
   },
-  detailsText: { fontSize: 11, lineHeight: 17, textAlign: 'left', writingDirection: 'ltr' },
+  detailsText: { fontSize: 12, lineHeight: 18, textAlign: 'left', writingDirection: 'ltr' },
   messageGroup: {
     alignItems: 'center',
     gap: 10,
@@ -349,7 +349,6 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
   },
   modalContainer: {
