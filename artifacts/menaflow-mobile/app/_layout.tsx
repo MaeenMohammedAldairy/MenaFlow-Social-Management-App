@@ -5,6 +5,7 @@ import {
   QueryClient,
   QueryCache,
   QueryClientProvider,
+  focusManager,
   useQuery,
 } from "@tanstack/react-query";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -55,16 +56,18 @@ import {
   WorkspaceContext,
   type WorkspaceSummary,
 } from "@/context/WorkspaceContext";
-import { Platform, I18nManager } from "react-native";
+import { AppState, Platform, I18nManager } from "react-native";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { applyAppearanceMode, readAppearanceMode } from "@/lib/appearance";
 import { signOutAndClearQueryCache } from "@/lib/sign-out";
 import {
+  installAlertCacheInvalidation,
   installAlertNavigation,
   installForegroundAlertBehaviour,
   registerDeviceForPush,
   unregisterDeviceForPush,
 } from "@/lib/push-notifications";
+import { installQueryFocusTracking } from "@/lib/query-focus";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { useColors } from "@/hooks/useColors";
 import { WebFocusRing } from "@/components/WebFocusRing";
@@ -434,12 +437,44 @@ function AuthenticatedAppNavigator() {
     return () => setWorkspaceIdGetter(null);
   }, []);
 
+  // React Query decides whether an interval timer may fire, and whether to refetch
+  // on return, by asking its focus manager — which on React Native reports
+  // "focused" permanently because it falls back to a `document` that does not
+  // exist here. Left alone that means polls keep running in the background and the
+  // thirteen `refetchOnWindowFocus: true` declarations never fire. Wiring the host
+  // app state in is what makes the long polling periods in `lib/poll-intervals.ts`
+  // safe: timers pause when the merchant is not looking, and everything mounted
+  // refreshes the moment they come back.
+  //
+  // Web is excluded because there the manager's own `visibilitychange` listener is
+  // correct, and replacing it would be a regression.
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    installQueryFocusTracking({
+      setEventListener: (setup) => focusManager.setEventListener(setup),
+      subscribeToHost: (listener) => {
+        const subscription = AppState.addEventListener("change", listener);
+        return () => subscription.remove();
+      },
+      getCurrentStatus: () => AppState.currentState,
+    });
+  }, []);
+
   // Alerts must display and navigate even while the app is already open, and a
   // tap that cold-starts it is read from the stored last response, so both are
-  // installed once for the whole app rather than per screen.
+  // installed once for the whole app rather than per screen. Invalidation is
+  // installed alongside them because an alert that shows a banner over a stale
+  // list has told the merchant something the screen then contradicts.
   useEffect(() => {
     installForegroundAlertBehaviour();
-    return installAlertNavigation();
+    const unsubscribeNavigation = installAlertNavigation();
+    const unsubscribeInvalidation = installAlertCacheInvalidation((prefix) => {
+      void queryClient.invalidateQueries({ queryKey: [...prefix] });
+    });
+    return () => {
+      unsubscribeNavigation();
+      unsubscribeInvalidation();
+    };
   }, []);
 
   // Registers this device once per sign-in. Deliberately best-effort:

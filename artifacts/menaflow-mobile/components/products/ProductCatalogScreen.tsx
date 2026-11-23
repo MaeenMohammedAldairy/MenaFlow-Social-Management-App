@@ -27,6 +27,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { isLocalAuthDisabled } from "@/constants/auth";
+import { POLL_LIST_MS } from "@/lib/poll-intervals";
 import {
   CairoText as Text,
   CairoTextInput,
@@ -367,7 +368,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     queryFn: getWhatsAppProductExtractions,
     enabled: isLocalAuthDisabled || Boolean(userId),
     retry: false,
-    refetchInterval: 10_000,
+    refetchInterval: POLL_LIST_MS,
   });
   const connections = useQuery({
     queryKey: [

@@ -37,6 +37,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
+import { POLL_AGGREGATE_MS, POLL_LIST_MS } from "@/lib/poll-intervals";
 import { formatArabicDate, formatArabicDateTime } from "@/lib/formatting";
 import {
   getActivityPostMeta,
@@ -137,7 +138,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
     queryFn: () => getMetaInbox(),
     enabled: isLocalAuthDisabled || Boolean(userId),
     retry: false,
-    refetchInterval: 15_000,
+    refetchInterval: POLL_LIST_MS,
     refetchOnWindowFocus: true,
   });
   const catalogQuery = useQuery({
@@ -153,7 +154,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
     queryFn: getOrderSummary,
     enabled: isLocalAuthDisabled || Boolean(userId),
     staleTime: 30_000,
-    refetchInterval: 15_000,
+    refetchInterval: POLL_AGGREGATE_MS,
     refetchOnWindowFocus: true,
   });
   const conversationCount = inboxQuery.data

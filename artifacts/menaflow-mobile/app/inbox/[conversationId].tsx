@@ -10,6 +10,7 @@ import { useLocalSearchParams, router } from "expo-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
+import { POLL_ACTIVE_CONVERSATION_MS } from "@/lib/poll-intervals";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import {
@@ -81,7 +82,7 @@ function InboxConversationContent({ userId }: { userId: string | null }) {
         platform: platform ?? undefined,
       }),
     enabled: Boolean(personId && platform && (isLocalAuthDisabled || userId)),
-    refetchInterval: 15_000,
+    refetchInterval: POLL_ACTIVE_CONVERSATION_MS,
     refetchOnWindowFocus: true,
   });
   const [drafts, setDrafts] = useState<Record<string, string>>({});

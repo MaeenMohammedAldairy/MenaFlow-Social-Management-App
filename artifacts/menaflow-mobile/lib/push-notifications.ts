@@ -9,8 +9,10 @@ import {
   unregisterPushToken,
 } from "@workspace/api-client-react";
 import { routeFromAlertData } from "./alert-routes";
+import { queryPrefixesForAlertData } from "./alert-invalidation";
 
 export { ALLOWED_ALERT_ROUTES } from "./alert-routes";
+export { queryPrefixesForAlertData } from "./alert-invalidation";
 
 /**
  * Push notification registration for the merchant app.
@@ -190,4 +192,56 @@ export function installAlertNavigation(): () => void {
     });
 
   return () => subscription.remove();
+}
+
+/**
+ * Refreshes cached data when an alert arrives, so a screen an alert points at is
+ * not showing a snapshot taken before the event it announces.
+ *
+ * Two listeners, for the two ways an alert reaches running JavaScript:
+ *
+ * - received: the alert arrived while the app was in the foreground. The banner
+ *   shows (`installForegroundAlertBehaviour`), but without this the list behind it
+ *   keeps looking unchanged until its next timer tick — a banner reading "a
+ *   customer is waiting for your reply" above an inbox that shows nothing new.
+ * - response: the merchant tapped it. `installAlertNavigation` opens the screen;
+ *   this makes the screen current once it is open.
+ *
+ * A notification delivered while the app was backgrounded and never tapped fires
+ * neither listener, because the runtime is not executing. That case is covered by
+ * focus tracking instead: `lib/query-focus.ts` reports the return to the
+ * foreground and React Query refetches what is mounted.
+ *
+ * Unlike navigation this does not read the last notification response. A cold
+ * start has no cached data to invalidate — every query fetches on mount anyway —
+ * so reading it here would only duplicate that work.
+ *
+ * The callback is injected rather than importing a QueryClient, keeping this
+ * module free of React Query and leaving `lib/alert-invalidation.ts` as the only
+ * place the mapping has to be reasoned about.
+ *
+ * Returns the unsubscribe function for both listeners.
+ */
+export function installAlertCacheInvalidation(
+  invalidate: (queryKeyPrefix: readonly string[]) => void,
+): () => void {
+  const refresh = (data: unknown) => {
+    for (const prefix of queryPrefixesForAlertData(data)) invalidate(prefix);
+  };
+
+  const received = Notifications.addNotificationReceivedListener(
+    (notification) => {
+      refresh(notification.request.content.data);
+    },
+  );
+  const responded = Notifications.addNotificationResponseReceivedListener(
+    (response) => {
+      refresh(response.notification.request.content.data);
+    },
+  );
+
+  return () => {
+    received.remove();
+    responded.remove();
+  };
 }
