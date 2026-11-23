@@ -244,7 +244,6 @@ function AuthenticatedSetup() {
     );
   }
 
-  const compact = width < 400 || height < 700;
   const wide = width >= 900;
   const trimmedName = name.trim();
   const canSave = trimmedName.length > 0 && trimmedName.length <= 80 && !save.isPending && !finishSetup.isPending;
@@ -288,18 +287,10 @@ function AuthenticatedSetup() {
         <View style={[styles.column, { maxWidth: wide ? 560 : 480 }]}>
           <OfflineBanner />
           <View style={styles.brand}>
-            <BrandMark height={compact ? 26 : 30} />
-            <Text style={[styles.brandName, { color: theme.foreground }]}>
-              MenaFlow
-            </Text>
+            <BrandMark height={26} />
           </View>
 
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: theme.card, borderColor: theme.border },
-            ]}
-          >
+          <View style={styles.stepContent}>
             {(!completed || step === "success" || step === "automation") ? <OnboardingStepper activeIndex={activeIndex} /> : null}
 
             {activeIndex === 0 ? (
@@ -321,7 +312,7 @@ function AuthenticatedSetup() {
 
                 <View style={styles.field}>
                   <Text style={[styles.fieldLabel, { color: theme.foreground }]}>
-                    اسم النشاط
+                    اسم النشاط <Text accessibilityLabel="حقل إلزامي" style={{ color: theme.destructive }}>*</Text>
                   </Text>
                   <TextInput
                     value={name}
@@ -348,7 +339,7 @@ function AuthenticatedSetup() {
 
                 <View style={styles.field}>
                   <Text style={[styles.fieldLabel, { color: theme.foreground }]}>
-                    نوع النشاط
+                    نوع النشاط <Text style={{ color: theme.mutedForeground, fontWeight: "600" }}>(اختياري)</Text>
                   </Text>
                   <Pressable
                     accessibilityRole="button"
@@ -630,21 +621,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 9,
   },
-  brandName: { fontSize: 22, fontWeight: "900", letterSpacing: -0.5 },
-  card: {
+  stepContent: {
     width: "100%",
     alignItems: "center",
     gap: 12,
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 20,
-    borderRadius: 28,
-    borderWidth: 1,
-    shadowColor: "#0A2A63",
-    shadowOffset: { width: 0, height: 18 },
-    shadowOpacity: 0.1,
-    shadowRadius: 30,
-    elevation: 6,
+    paddingHorizontal: 4,
+    paddingTop: 8,
   },
   formStep: { width: "100%", alignItems: "center", gap: 12 },
   stepper: {
@@ -672,7 +654,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     borderRadius: 1,
   },
-  hero: { width: 140, height: 115 },
+  hero: { width: 112, height: 92 },
   title: {
     fontSize: 23,
     lineHeight: 34,
