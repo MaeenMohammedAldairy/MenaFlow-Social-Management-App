@@ -244,7 +244,6 @@ function AuthenticatedSetup() {
     );
   }
 
-  const compact = width < 400 || height < 700;
   const wide = width >= 900;
   const trimmedName = name.trim();
   const canSave = trimmedName.length > 0 && trimmedName.length <= 80 && !save.isPending && !finishSetup.isPending;
@@ -288,10 +287,7 @@ function AuthenticatedSetup() {
         <View style={[styles.column, { maxWidth: wide ? 560 : 480 }]}>
           <OfflineBanner />
           <View style={styles.brand}>
-            <BrandMark height={compact ? 26 : 30} />
-            <Text style={[styles.brandName, { color: theme.foreground }]}>
-              MenaFlow
-            </Text>
+            <BrandMark height={26} />
           </View>
 
           <View
@@ -630,7 +626,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 9,
   },
-  brandName: { fontSize: 22, fontWeight: "900", letterSpacing: -0.5 },
   card: {
     width: "100%",
     alignItems: "center",
