@@ -68,6 +68,7 @@ import {
   unregisterDeviceForPush,
 } from "@/lib/push-notifications";
 import { installQueryFocusTracking } from "@/lib/query-focus";
+import { onboardingRedirectTarget } from "@/lib/onboarding-guard";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { useColors } from "@/hooks/useColors";
 import { WebFocusRing } from "@/components/WebFocusRing";
@@ -406,24 +407,12 @@ function AuthenticatedAppNavigator() {
     if (!isSignedIn || !onboarding.data) return;
     if (pathname === "/sso-callback" || pathname === "/oauth/meta") return;
 
-    const onOnboarding = pathname.endsWith("/onboarding");
-    const allowedDuringSocialSetup =
-      pathname.endsWith("/connect-accounts") ||
-      pathname.endsWith("/more/sources") ||
-      pathname.endsWith("/more/accounts") ||
-      pathname.endsWith("/more/channels") ||
-      pathname.endsWith("/inbox/reply-settings") ||
-      pathname.endsWith("/whatsapp-setup");
-
-    if (!onboarding.data.completed && !onOnboarding) {
-      router.replace("/onboarding");
-    } else if (
-      onboarding.data.completed &&
-      !onboarding.data.socialAccountsCompleted &&
-      !allowedDuringSocialSetup
-    ) {
-      router.replace("/connect-accounts");
-    }
+    // The funnel rules live in one tested pure function rather than inline:
+    // the "أكمل لاحقًا" skip button navigates to the dashboard, and while the
+    // dashboard was absent from the social-setup allowlist the guard bounced
+    // every tap straight back, which read as a dead button.
+    const redirect = onboardingRedirectTarget(pathname, onboarding.data);
+    if (redirect) router.replace(redirect);
   }, [isSignedIn, onboarding.data, pathname]);
 
   useEffect(() => {
