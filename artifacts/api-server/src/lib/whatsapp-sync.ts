@@ -75,6 +75,7 @@ import {
   getWhatsAppHistoryTimestamp,
   isWhatsAppHistoryPageBeforeCursor,
   isWhatsAppHistoryCandidate,
+  isWhatsAppHistoryFilterIgnored,
   parseWhatsAppHistoryTimestamp,
 } from "../lib/whatsapp-history";
 import {
@@ -837,6 +838,10 @@ async function persistImportedMessage(
   };
 }
 
+// Cap for the fallback scan used when an Evolution deployment ignores the
+// remoteJid filter (50 pages × 100 records per sync run per group).
+const WHATSAPP_HISTORY_SCAN_PAGE_CAP = 50;
+
 async function fetchHistoryForGroup(
   instanceName: string,
   groupJid: string,
@@ -848,7 +853,16 @@ async function fetchHistoryForGroup(
   const matchingRecords = new Map<string, unknown>();
   let receivedRecordCount = 0;
   let newMessageCount = 0;
+  // When the upstream Evolution deployment ignores the remoteJid filter it
+  // returns other chats' messages; the per-record group filter below still
+  // keeps only this group's records (checking both JID fields), so one
+  // bounded scan replaces both filtered passes. The scan briefly holds
+  // unrelated chats of the same merchant in memory — unavoidable while the
+  // upstream filter is broken, hence the page cap.
+  let filterIgnored = false;
+  let scannedPages = 0;
   for (const jidField of ["remoteJid", "remoteJidAlt"] as const) {
+    if (filterIgnored) break;
     if (
       maxNewMessages !== undefined &&
       newMessageCount >= maxNewMessages
@@ -886,10 +900,40 @@ async function fetchHistoryForGroup(
         seenPageRecordIds.add(recordId);
       }
       if (records.length >= pageSize && newPageRecordIds.length === 0) {
-        throw new Error("EVOLUTION_HISTORY_PAGINATION_STALLED");
+        if (!filterIgnored) {
+          throw new Error("EVOLUTION_HISTORY_PAGINATION_STALLED");
+        }
+        break;
       }
       const matching = filterHistoryRecordsForGroup(records, groupJid);
       if (
+        !filterIgnored &&
+        page === 1 &&
+        isWhatsAppHistoryFilterIgnored(records.length, matching.length)
+      ) {
+        filterIgnored = true;
+        logger.warn(
+          { instanceName, groupJid },
+          "WHATSAPP_HISTORY_FILTER_IGNORED_FALLING_BACK_TO_SCAN",
+        );
+      }
+      if (filterIgnored) {
+        scannedPages += 1;
+      }
+      const scanPageCapReached =
+        filterIgnored && scannedPages >= WHATSAPP_HISTORY_SCAN_PAGE_CAP;
+      const scanPastCursor =
+        filterIgnored &&
+        beforeCursor !== undefined &&
+        isWhatsAppHistoryPageBeforeCursor(records, beforeCursor);
+      if (scanPageCapReached) {
+        logger.warn(
+          { instanceName, groupJid, scannedPages },
+          "WHATSAPP_HISTORY_SCAN_PAGE_CAP_REACHED",
+        );
+      }
+      if (
+        !filterIgnored &&
         beforeCursor &&
         isWhatsAppHistoryPageBeforeCursor(matching, beforeCursor)
       ) {
@@ -923,13 +967,18 @@ async function fetchHistoryForGroup(
       ) {
         break;
       }
+      if (scanPastCursor || scanPageCapReached) break;
       if (records.length < pageSize) break;
       if (page === 1000) {
         throw new Error("EVOLUTION_HISTORY_PAGINATION_LIMIT");
       }
     }
   }
-  if (receivedRecordCount > 0 && matchingRecords.size === 0) {
+  if (
+    !filterIgnored &&
+    receivedRecordCount > 0 &&
+    matchingRecords.size === 0
+  ) {
     throw new Error("EVOLUTION_HISTORY_GROUP_MISMATCH");
   }
   return [...matchingRecords.values()];

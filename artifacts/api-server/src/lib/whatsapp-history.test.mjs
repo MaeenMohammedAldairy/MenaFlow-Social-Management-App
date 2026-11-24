@@ -7,6 +7,7 @@ import {
   filterWhatsAppHistoryFrom,
   getWhatsAppHistoryMessageId,
   isWhatsAppHistoryCandidate,
+  isWhatsAppHistoryFilterIgnored,
   isWhatsAppHistoryPageBeforeCursor,
   parseWhatsAppHistoryTimestamp,
 } from "./whatsapp-history.ts";
@@ -178,4 +179,14 @@ test("parses WhatsApp timestamps in seconds, milliseconds, and ISO format", () =
   );
   assert.equal(parseWhatsAppHistoryTimestamp("invalid"), null);
   assert.equal(parseWhatsAppHistoryTimestamp(new Date(Number.NaN)), null);
+});
+
+test("detects Evolution deployments that ignore the remoteJid filter", () => {
+  // A filtered response can only hold records of the requested group, so
+  // any unmatched record proves the upstream filter was not applied
+  // (EvolutionAPI/evolution-api#1632).
+  assert.equal(isWhatsAppHistoryFilterIgnored(0, 0), false);
+  assert.equal(isWhatsAppHistoryFilterIgnored(5, 5), false);
+  assert.equal(isWhatsAppHistoryFilterIgnored(5, 0), true);
+  assert.equal(isWhatsAppHistoryFilterIgnored(5, 2), true);
 });
