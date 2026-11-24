@@ -2013,17 +2013,31 @@ paths:
         - bearerAuth: []
       summary: Upload an image or video to attach to a product
       description: >-
-        The body is the file itself, not JSON — send it with the file's own
-        content type. The returned media id is what `mediaUrls` holds, and the
-        preview is a signed link the client can render without another request.
+        The body is the file itself, not JSON. Two ways to say what it is: send
+        the file's own content type, or send `application/octet-stream` and name
+        the type in `mediaType` — the latter is what a generated client does,
+        since it has to pin one content type and a wildcard is not a real one.
+        The bytes are validated either way (an image is decoded, a video is
+        checked for an `ftyp` box), so a wrong `mediaType` is refused rather than
+        stored mislabelled. The returned media id is what `mediaUrls` holds, and
+        the preview is a signed link the client can render without another
+        request.
+      parameters:
+        - name: mediaType
+          in: query
+          required: false
+          description: >-
+            Required when the body is sent as `application/octet-stream`;
+            otherwise it overrides the content type. One of `image/jpeg`,
+            `image/png`, `image/webp`, `image/heic`, `image/heif`, `video/mp4`,
+            `video/quicktime`.
+          schema:
+            type: string
+            pattern: "^(image|video)/[a-z0-9.+-]+$"
       requestBody:
         required: true
         content:
-          image/*:
-            schema:
-              type: string
-              format: binary
-          video/*:
+          application/octet-stream:
             schema:
               type: string
               format: binary
@@ -4880,13 +4894,6 @@ components:
           type: object
           additionalProperties:
             type: number
-        confidenceReasons:
-          type: array
-          description: >-
-            Plain-language reasons for the computed confidence, not a raw score.
-            The merchant cannot act on "0.62"; he can act on "السعر مذكور صراحةً".
-          items:
-            type: string
         fieldReview:
           type: object
           additionalProperties:

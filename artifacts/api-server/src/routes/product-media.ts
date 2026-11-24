@@ -118,7 +118,14 @@ router.get("/social/products/public-media/:mediaId", async (req, res) => {
 router.post(
   "/social/products/media",
   requireWorkspace,
-  express.raw({ type: ["image/*", "video/*"], limit: "20mb" }),
+  // `application/octet-stream` is accepted so a generated client can send the
+  // body without having to name the exact type: a code generator has to pin one
+  // content type, and pinning a wildcard like `image/*` is rejected by `typeis`
+  // as a literal. The caller then says what the file is with `?mediaType=`.
+  express.raw({
+    type: ["image/*", "video/*", "application/octet-stream"],
+    limit: "20mb",
+  }),
   async (req, res) => {
     const ownerId = requestOwnerId(req);
     if (!ownerId) {
@@ -126,7 +133,13 @@ router.post(
       return;
     }
     const workspaceId = requestWorkspaceId(req);
-    const mimeType = req.get("content-type")?.split(";", 1)[0].toLowerCase();
+    const declaredType = typeof req.query.mediaType === "string"
+      ? req.query.mediaType.split(";", 1)[0].trim().toLowerCase()
+      : "";
+    const mimeType =
+      declaredType ||
+      req.get("content-type")?.split(";", 1)[0].toLowerCase() ||
+      "";
     if (!Buffer.isBuffer(req.body) || !mimeType) {
       res.status(400).json({ error: "نوع ملف الوسائط غير مدعوم." });
       return;

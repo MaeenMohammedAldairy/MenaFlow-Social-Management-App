@@ -66,6 +66,7 @@ import {
   getProductCatalog,
   getInventoryMovements,
   getWhatsAppProductExtractions,
+  productExtractionConfidenceReasons,
   productExtractionEvidenceSpans,
   getPublishableAccounts,
   getProductPublicationJobs,
@@ -3805,6 +3806,7 @@ function ProductExtractionCard({
         : "مصدر الرسالة غير معروف";
   const statusLabel = extractionStatusLabel(suggestion);
   const evidenceSpans = productExtractionEvidenceSpans(suggestion);
+  const confidenceReasons = productExtractionConfidenceReasons(suggestion);
   return (
     <Panel style={styles.extractionCard}>
       <Pressable
@@ -3850,9 +3852,9 @@ function ProductExtractionCard({
             : ""}
         </Text>
       </View>
-      {suggestion.confidenceReasons?.length ? (
+      {confidenceReasons.length ? (
         <View style={styles.confidenceReasons}>
-          {suggestion.confidenceReasons.map((reason) => (
+          {confidenceReasons.map((reason) => (
             <Text
               key={reason}
               style={[styles.evidence, { color: colors.mutedForeground }]}

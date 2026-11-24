@@ -99,6 +99,7 @@ import type {
   TriggerWhatsAppSyncBody,
   UnregisterPushTokenParams,
   UpdatePostInput,
+  UploadProductMediaParams,
   WhatsAppAutoReplySettings,
   WhatsAppAutoReplySettingsResponse,
   WhatsAppAutoReplyTestInput,
@@ -4600,19 +4601,27 @@ export const useImportPostAsProduct = <TError = ErrorType<ApiError>,
       return useMutation(getImportPostAsProductMutationOptions(options));
     }
 
-export const getUploadProductMediaUrl = () => {
+export const getUploadProductMediaUrl = (params?: UploadProductMediaParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/social/products/media`
+  return stringifiedParams.length > 0 ? `/api/social/products/media?${stringifiedParams}` : `/api/social/products/media`
 }
 
 /**
- * The body is the file itself, not JSON — send it with the file's own content type. The returned media id is what `mediaUrls` holds, and the preview is a signed link the client can render without another request.
+ * The body is the file itself, not JSON. Two ways to say what it is: send the file's own content type, or send `application/octet-stream` and name the type in `mediaType` — the latter is what a generated client does, since it has to pin one content type and a wildcard is not a real one. The bytes are validated either way (an image is decoded, a video is checked for an `ftyp` box), so a wrong `mediaType` is refused rather than stored mislabelled. The returned media id is what `mediaUrls` holds, and the preview is a signed link the client can render without another request.
  * @summary Upload an image or video to attach to a product
  */
-export const uploadProductMedia = async (uploadProductMediaBody: Blob, options?: Parameters<typeof customFetch>[1]): Promise<ProductMediaUploadResponse> => {
+export const uploadProductMedia = async (uploadProductMediaBody: Blob,
+    params?: UploadProductMediaParams, options?: Parameters<typeof customFetch>[1]): Promise<ProductMediaUploadResponse> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
     if (!h) return {};
@@ -4628,11 +4637,11 @@ export const uploadProductMedia = async (uploadProductMediaBody: Blob, options?:
     }
     return headers;
   };
-return customFetch<ProductMediaUploadResponse>(getUploadProductMediaUrl(),
+return customFetch<ProductMediaUploadResponse>(getUploadProductMediaUrl(params),
   {
     ...options,
     method: 'POST',
-    headers: { 'Content-Type': 'image/*', ...getHeaders(options?.headers) },
+    headers: { 'Content-Type': 'application/octet-stream', ...getHeaders(options?.headers) },
     body: uploadProductMediaBody
   }
 );}
@@ -4658,9 +4667,9 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
       const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadProductMedia>>, UploadProductMediaMutationVariables> = (props) => {
-          const {data} = props ?? {};
+          const {data,params} = props ?? {};
 
-          return  uploadProductMedia(data,requestOptions)
+          return  uploadProductMedia(data,params,requestOptions)
         }
 
 
@@ -4673,7 +4682,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UploadProductMediaMutationResult = NonNullable<Awaited<ReturnType<typeof uploadProductMedia>>>
     export type UploadProductMediaMutationBody = BodyType<Blob>
     export type UploadProductMediaMutationError = ErrorType<ApiError>
-    export type UploadProductMediaMutationVariables = {data: BodyType<Blob>}
+    export type UploadProductMediaMutationVariables = {data: BodyType<Blob>;params?: UploadProductMediaParams}
 
     /**
  * @summary Upload an image or video to attach to a product

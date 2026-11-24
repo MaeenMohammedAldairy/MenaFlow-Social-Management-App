@@ -1804,8 +1804,6 @@ export interface ProductExtractionSuggestion {
   extractedData: ProductExtractionSuggestionExtractedData;
   evidence: ProductExtractionSuggestionEvidence;
   confidence: ProductExtractionSuggestionConfidence;
-  /** Plain-language reasons for the computed confidence, not a raw score. The merchant cannot act on "0.62"; he can act on "السعر مذكور صراحةً". */
-  confidenceReasons?: string[];
   fieldReview: ProductExtractionSuggestionFieldReview;
   missingFields?: ProductFieldKey[];
   missingFieldMessages?: string[];
@@ -2349,6 +2347,14 @@ export type ListCatalogProductsParams = {
  * Defaults to false, which excludes archived products
  */
 includeArchived?: boolean;
+};
+
+export type UploadProductMediaParams = {
+/**
+ * Required when the body is sent as `application/octet-stream`; otherwise it overrides the content type. One of `image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif`, `video/mp4`, `video/quicktime`.
+ * @pattern ^(image|video)/[a-z0-9.+-]+$
+ */
+mediaType?: string;
 };
 
 export type GetProductPublicMediaParams = {

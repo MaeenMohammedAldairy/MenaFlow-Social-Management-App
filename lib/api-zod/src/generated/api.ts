@@ -566,7 +566,6 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
 }).describe('The extracted values, plus the extraction\'s own bookkeeping written in snake_case alongside them. Those extras are not a stable API — read the camelCase fields, and treat the rest as diagnostic.'),
   "evidence": zod.record(zod.string(), zod.string().nullable()),
   "confidence": zod.record(zod.string(), zod.number()),
-  "confidenceReasons": zod.array(zod.string()).optional().describe('Plain-language reasons for the computed confidence, not a raw score. The merchant cannot act on "0.62"; he can act on "السعر مذكور صراحةً".'),
   "fieldReview": zod.record(zod.string(), zod.boolean()),
   "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).optional(),
   "missingFieldMessages": zod.array(zod.string()).optional(),
@@ -1772,9 +1771,16 @@ export const ImportPostAsProductResponse = zod.object({
 
 
 /**
- * The body is the file itself, not JSON — send it with the file's own content type. The returned media id is what `mediaUrls` holds, and the preview is a signed link the client can render without another request.
+ * The body is the file itself, not JSON. Two ways to say what it is: send the file's own content type, or send `application/octet-stream` and name the type in `mediaType` — the latter is what a generated client does, since it has to pin one content type and a wildcard is not a real one. The bytes are validated either way (an image is decoded, a video is checked for an `ftyp` box), so a wrong `mediaType` is refused rather than stored mislabelled. The returned media id is what `mediaUrls` holds, and the preview is a signed link the client can render without another request.
  * @summary Upload an image or video to attach to a product
  */
+export const uploadProductMediaQueryMediaTypeRegExp = new RegExp('^(image|video)/[a-z0-9.+-]+$');
+
+
+export const UploadProductMediaQueryParams = zod.object({
+  "mediaType": zod.coerce.string().regex(uploadProductMediaQueryMediaTypeRegExp).optional().describe('Required when the body is sent as `application/octet-stream`; otherwise it overrides the content type. One of `image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif`, `video/mp4`, `video/quicktime`.')
+})
+
 export const UploadProductMediaResponse = zod.object({
   "media": zod.object({
   "id": zod.string(),

@@ -10,17 +10,13 @@ export type WhatsAppDirectMessageStatus =
   | "failed"
   | "unknown";
 
-export type WhatsAppDirectMessageType =
-  | "text"
-  | "image"
-  | "video"
-  | "audio"
-  | "document"
-  | "sticker"
-  | "album"
-  | "location"
-  | "contact"
-  | "unknown";
+/**
+ * The direct inbox stores only encrypted text, so the server can only ever
+ * report whether a message had text or not. It used to claim ten values —
+ * image, video, audio, document, sticker, album, location, contact — none of
+ * which it sends, and the placeholder below carried a label for each.
+ */
+export type WhatsAppDirectMessageType = "text" | "unknown";
 
 export type WhatsAppDirectMessageCursor = {
   beforeTimestamp: string;
@@ -32,17 +28,9 @@ export function whatsappDirectMessagePlaceholder(
 ): string {
   const labels: Record<WhatsAppDirectMessageType, string> = {
     text: "رسالة بدون نص محفوظ",
-    image: "صورة — المرفق غير محفوظ في صندوق الخاص",
-    video: "مقطع فيديو — المرفق غير محفوظ في صندوق الخاص",
-    audio: "رسالة صوتية — المرفق غير محفوظ في صندوق الخاص",
-    document: "ملف — المرفق غير محفوظ في صندوق الخاص",
-    sticker: "ملصق — المرفق غير محفوظ في صندوق الخاص",
-    album: "ألبوم وسائط — المرفقات غير محفوظة في صندوق الخاص",
-    location: "موقع جغرافي",
-    contact: "جهة اتصال",
     unknown: "رسالة واتساب بدون محتوى نصي",
   };
-  return labels[messageType] ?? labels.unknown;
+  return labels[messageType];
 }
 
 export type WhatsAppDirectConversation = {

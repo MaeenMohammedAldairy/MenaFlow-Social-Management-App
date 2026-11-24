@@ -84,6 +84,121 @@ function listItems(fragment, key) {
   );
 }
 
+/**
+ * The columns of one `pgTable` in the Drizzle schema, by their TypeScript property
+ * names — which are the keys the row is serialised with.
+ */
+function tableColumns(table) {
+  const schema = readFileSync(
+    path.resolve(here, "../../../lib/db/src/schema/products.ts"),
+    "utf8",
+  );
+  const start = schema.indexOf(`export const ${table} = pgTable`);
+  assert.ok(start !== -1, `the schema must define ${table}`);
+  const block = schema.slice(start).split("\n);")[0];
+  const columns = [
+    ...block.matchAll(/^ {4}([a-zA-Z_][A-Za-z0-9_]*):/gm),
+  ].map(([, name]) => name);
+  assert.ok(columns.length > 5, `parsed ${columns.length} columns of ${table}`);
+  return columns;
+}
+
+/** The top-level property names of one schema in the contract. */
+function contractProperties(name) {
+  const block = schemaBlock(name);
+  const lines = block.split("\n");
+  const start = lines.findIndex((line) => line === "      properties:");
+  assert.ok(start !== -1, `${name} must declare properties`);
+  const names = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^      \S/.test(line)) break; // left the properties block
+    const match = /^        ([a-zA-Z_][A-Za-z0-9_]*):$/.exec(line);
+    if (match) names.push(match[1]);
+  }
+  assert.ok(names.length > 5, `parsed ${names.length} properties of ${name}`);
+  return names;
+}
+
+/**
+ * A response built as `{...row, ...extras}` can only ever carry the row's columns
+ * plus those extras. Documenting anything else describes a field that is never on
+ * the wire, and the compiler will not object — the client just reads `undefined`
+ * forever. That is how `evidenceSpans` and `confidenceReasons` both sat in the
+ * contract as optional fields nothing ever sent.
+ */
+function assertDocumentedFieldsExist(type, table, extras) {
+  const sendable = new Set([...tableColumns(table), ...extras]);
+  const phantom = contractProperties(type).filter((name) => !sendable.has(name));
+  assert.deepEqual(
+    phantom,
+    [],
+    `${type} documents fields the server never sends: ${phantom.join(", ")}`,
+  );
+}
+
+test("a media upload is sendable by the generated client", () => {
+  // Three things have to agree or every upload 400s: the content type the
+  // contract declares (which a code generator pins as a literal), the content
+  // types the server's raw parser accepts, and the parameter that carries the
+  // real type. It broke once — the contract said `image/*`, the server's
+  // `typeis` filter treats a wildcard as a literal type, so the generated client
+  // could never upload anything.
+  const media = pathBlock("/social/products/media");
+  const contentTypes = [...media.matchAll(/^          ([a-z]+\/[a-z*+-]+):$/gm)].map(
+    ([, type]) => type,
+  );
+  assert.deepEqual(
+    contentTypes,
+    ["application/octet-stream"],
+    "the contract must declare exactly one concrete content type",
+  );
+  assert.ok(
+    media.includes("name: mediaType"),
+    "the contract must offer a parameter to carry the real type",
+  );
+
+  const route = readFileSync(
+    path.join(serverRoot, "routes/product-media.ts"),
+    "utf8",
+  );
+  assert.ok(
+    route.includes('"application/octet-stream"'),
+    "the server must accept the content type the contract declares",
+  );
+
+  assert.ok(
+    mobileClient.includes("{ mediaType: asset.mimeType }"),
+    "the client must send the real type alongside the octet-stream body",
+  );
+});
+
+test("the documented suggestion shape is what the route actually spreads", () => {
+  assertDocumentedFieldsExist(
+    "ProductExtractionSuggestion",
+    "productExtractionSuggestions",
+    [
+      "sources",
+      "missingFields",
+      "missingFieldMessages",
+      "possibleDuplicateProducts",
+    ],
+  );
+});
+
+test("the documented catalog product shape is what the route actually spreads", () => {
+  assertDocumentedFieldsExist("CatalogProduct", "products", [
+    "mediaPreviews",
+    "postIds",
+    "missingFields",
+    "missingFieldMessages",
+    "publicationBlockers",
+    "publicationBlockerMessages",
+    "publicationBlocked",
+    "advisoryFields",
+    "publicationHistory",
+  ]);
+});
+
 function captured(source, pattern, label) {
   const match = pattern.exec(source);
   assert.ok(match, `could not find ${label}`);

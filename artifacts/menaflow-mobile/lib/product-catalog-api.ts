@@ -8,9 +8,11 @@
  *
  *  - `getPublishableAccounts` reads `/social/connections`, which returns
  *    facebook/instagram slots rather than a list.
- *  - `uploadProductMedia` sends the file's own content type. The generated
- *    function pins `Content-Type: image/*`, which the server's `express.raw`
- *    type filter treats as a literal type and rejects, so the upload would 400.
+ *  - nothing else. `uploadProductMedia` used to be here too: the contract
+ *    declared the body as `image/*`, which a code generator pins as a literal
+ *    content type and the server's `express.raw` filter rejects. The contract now
+ *    declares `application/octet-stream` plus a `mediaType` query parameter, so
+ *    the endpoint goes through the generated client like the rest.
  */
 import {
   fetchApiResponse,
@@ -37,6 +39,7 @@ import {
   retryProductPublicationJobs as generatedRetryProductPublicationJobs,
   reviewProductExtractionSuggestion,
   updateCatalogProduct as generatedUpdateCatalogProduct,
+  uploadProductMedia as generatedUploadProductMedia,
   type CatalogProduct as GeneratedCatalogProduct,
   type GetWhatsAppProductExtractionsStatusItem,
   type ImportedMetaPost as GeneratedImportedMetaPost,
@@ -437,6 +440,19 @@ export function productExtractionEvidenceSpans(
   return spans;
 }
 
+/**
+ * Why the extractor scored a suggestion the way it did, in words.
+ *
+ * The server writes these into `extractedData.confidence_reasons`. The review
+ * card used to read a top-level `confidenceReasons` that nothing ever sent, so
+ * the list never rendered — the merchant saw a bare score with no explanation.
+ */
+export function productExtractionConfidenceReasons(
+  suggestion: ProductExtractionSuggestion,
+): string[] {
+  return suggestion.extractedData.confidence_reasons ?? [];
+}
+
 export async function uploadProductMedia(asset: {
   uri: string;
   mimeType: string;
@@ -448,22 +464,13 @@ export async function uploadProductMedia(asset: {
   const fileResponse = await fetch(asset.uri);
   if (!fileResponse.ok) throw new Error("تعذّر قراءة ملف الوسائط المحدد.");
   const file = await fileResponse.blob();
-  // Deliberately not the generated `uploadProductMedia`: it hardcodes
-  // `Content-Type: image/*`, which the server's `express.raw` filter treats as a
-  // literal type and rejects, so every upload would fail with 400.
-  const response = await fetchApiResponse("/api/social/products/media", {
-    method: "POST",
-    headers: { "Content-Type": asset.mimeType },
-    body: file,
-  });
-  const result = await readJsonResponse<{
-    media: {
-      id: string;
-      mediaType: string;
-      mediaPreview: CatalogProduct["mediaPreviews"][number] | null;
-    };
-  }>(response);
-  return result.media;
+  // The generated function sends `application/octet-stream`, which the server
+  // accepts alongside the file's own content type, and names the real type in the
+  // query. Pinning `image/*` instead — what the contract used to say — was
+  // rejected by the server's `express.raw` filter, because a wildcard is not a
+  // content type.
+  return (await generatedUploadProductMedia(file, { mediaType: asset.mimeType }))
+    .media;
 }
 
 function toGeneratedImportedMetaPost(
