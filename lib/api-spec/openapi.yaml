@@ -852,14 +852,32 @@ paths:
           required: false
           description: >-
             Restrict the page to these statuses. Repeat the parameter or pass a
-            comma separated list. Omit it for every status.
+            comma separated list. Omit it for every status. `dismissed` is not
+            selectable: a dismissed suggestion is not review work, and the list
+            never returns one.
           schema:
             type: array
             items:
               type: string
-              enum: [review, draft_created, possible_duplicate]
+              enum:
+                - review
+                - draft_created
+                - possible_duplicate
+                - update_proposed
+                - accepted_update
+                - rejected_update
+                - superseded
           style: form
           explode: true
+        - name: senderRole
+          in: query
+          required: false
+          description: >-
+            Restrict the page to who wrote the message. Useful for a merchant who
+            only wants to review prices he himself quoted. Omit it for every role.
+          schema:
+            type: string
+            enum: [merchant, customer, unknown]
         - name: limit
           in: query
           required: false
@@ -981,7 +999,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
         "409":
-          description: The suggestion needs review or its duplicate resolved first
+          description: >-
+            The suggestion is not in a state a draft can be created from (already a
+            draft, or already decided), or a `product` was sent for a possible
+            duplicate without the `overrideReason` that has to justify it.
           content:
             application/json:
               schema:
@@ -1795,6 +1816,738 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+    post:
+      operationId: createCatalogProduct
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Add a product to the catalog
+      description: >-
+        Creates the product, records an opening-balance movement if it starts with
+        stock, and optionally links a Meta post that is already live. Sending
+        `importedMetaPost` for a post that was published through MenaFlow reuses
+        that post instead of creating a second one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCatalogProductInput"
+      responses:
+        "201":
+          description: The product as stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductWriteResponse"
+        "400":
+          description: Invalid product or imported-post data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: The SKU is already used in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: The imported post's image could not be stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/post-candidates:
+    get:
+      operationId: listProductCandidates
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Published posts that are not products yet
+      description: >-
+        The picker behind "import a post". A candidate is a post that actually
+        went live on Facebook or Instagram and is not linked to any product, so
+        the merchant can turn an existing listing into a catalog entry instead of
+        retyping it. Newest first, at most 50. Posts with neither a title nor a
+        body are dropped: there is nothing in them to extract.
+      responses:
+        "200":
+          description: Posts available to import
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductCandidateListResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/extract-scanned-post:
+    post:
+      operationId: extractScannedPostProduct
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Read product fields out of a post without storing anything
+      description: >-
+        Runs the same extraction the WhatsApp queue uses, but synchronously and
+        against one post, so the editor can pre-fill a product from a competitor's
+        listing or from the merchant's own older post. Nothing is written.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScannedPostExtractionInput"
+      responses:
+        "200":
+          description: What the post contains
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScannedPostExtraction"
+        "400":
+          description: No extractable text, or the post identifier is malformed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: >-
+            The AI provider refused the request, was rate limited, timed out, or
+            returned data that did not survive validation. The reason code is in
+            the message.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: No AI key is configured on the server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/import-post/{postId}:
+    post:
+      operationId: importPostAsProduct
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Turn a published post into a catalog product
+      description: >-
+        Creates a product from a post that is already live and links the two, so
+        the catalog can show where the listing came from. Extraction failing
+        degrades to an empty draft rather than failing the import: the merchant
+        can still fill the fields in by hand.
+      parameters:
+        - name: postId
+          in: path
+          required: true
+          description: A post in this workspace that is published on at least one channel
+          schema:
+            type: string
+      responses:
+        "201":
+          description: Product created and linked to the post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductWriteResponse"
+        "400":
+          description: Invalid post identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such post, or it is not published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            Already imported, or the post's text changed while it was being read —
+            retry picks up the newer version.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: AI extraction or media storage failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: No AI key is configured on the server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/media:
+    post:
+      operationId: uploadProductMedia
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Upload an image or video to attach to a product
+      description: >-
+        The body is the file itself, not JSON — send it with the file's own
+        content type. The returned media id is what `mediaUrls` holds, and the
+        preview is a signed link the client can render without another request.
+      requestBody:
+        required: true
+        content:
+          image/*:
+            schema:
+              type: string
+              format: binary
+          video/*:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "201":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductMediaUploadResponse"
+        "400":
+          description: Unsupported type, over 20mb, or an unreadable image or video
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/public-media/{mediaId}:
+    get:
+      operationId: getProductPublicMedia
+      tags: [products]
+      summary: Serve a product's media over a signed link
+      description: >-
+        No bearer token: `mediaPreviews[].url` points here and is rendered
+        directly by an image tag, so access is granted by the signature instead.
+        The signature covers the media id, the expiry and the variant, which is
+        why a thumbnail link cannot be swapped for the original. The content type
+        follows the stored file — `image/webp` for thumbnails, `image/jpeg` for
+        the Instagram variant, otherwise the original's.
+      parameters:
+        - name: mediaId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: expires
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: signature
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: variant
+          in: query
+          required: false
+          description: >-
+            `thumbnail` and `instagram-jpeg` are only valid for images; anything
+            else is served as `original`.
+          schema:
+            type: string
+            enum: [original, thumbnail, instagram-jpeg]
+            default: original
+      responses:
+        "200":
+          description: The media bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "403":
+          description: Bad signature, expired link, or a thumbnail of a video
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The media id is well formed but no file is stored under it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/{id}:
+    put:
+      operationId: updateCatalogProduct
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Replace a product's editable fields
+      description: >-
+        A full replace, not a patch: omitted optional fields go back to their
+        defaults, which is why `ProductInput` marks the merchant's fields
+        required. Stock is checked against reservations before anything is
+        written, and a stock change is recorded as an inventory movement.
+      parameters:
+        - $ref: "#/components/parameters/ProductId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "200":
+          description: The product as stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductWriteResponse"
+        "400":
+          description: Invalid product data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such product in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: The SKU is taken, or stock would drop below the reserved quantity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/{id}/inventory-movements:
+    get:
+      operationId: listInventoryMovements
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: The newest stock movements of one product
+      description: >-
+        Opening balances, manual adjustments, and the reservations orders place
+        and release. Newest first, at most 20 — a receipt to explain the current
+        stock, not a ledger export.
+      parameters:
+        - $ref: "#/components/parameters/ProductId"
+      responses:
+        "200":
+          description: Movements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMovementListResponse"
+        "400":
+          description: Invalid product identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such product in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/{id}/changes:
+    get:
+      operationId: listProductChanges
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Who changed what on a product, and from where
+      description: >-
+        The audit trail. Each record carries the source — a manual edit, an
+        accepted extraction proposal, an order, or publication — which is what
+        lets the merchant tell "I changed this price" from "the customer's
+        message did". Newest first, at most 200.
+      parameters:
+        - $ref: "#/components/parameters/ProductId"
+      responses:
+        "200":
+          description: Change records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductChangeListResponse"
+        "400":
+          description: Invalid product identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such product in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/change-proposals:
+    get:
+      operationId: listProductChangeProposals
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Updates the extraction queue proposed for existing products
+      description: >-
+        Each proposal is a diff against a product that already exists, with the
+        message evidence behind it, so the merchant can accept or reject a price
+        change without retyping it. Newest first, at most 100.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Omit it for every status. An unknown value is ignored rather than rejected.
+          schema:
+            type: string
+            enum: [proposed, accepted, rejected, expired]
+      responses:
+        "200":
+          description: Proposals
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductChangeProposalListResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/change-proposals/{proposalId}/decide:
+    post:
+      operationId: decideProductChangeProposal
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Accept or reject a proposed product update
+      description: >-
+        Accepting writes the diff onto the product and records each field as a
+        change; rejecting only closes the proposal. Either way the suggestion that
+        produced it leaves the queue, and a proposal can only be decided once.
+      parameters:
+        - name: proposalId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductChangeDecisionInput"
+      responses:
+        "200":
+          description: The decision as recorded, with the fields it touched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductChangeDecisionResponse"
+        "400":
+          description: Invalid decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such proposal in this workspace, or it was already decided
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/whatsapp-extractions/{suggestionId}/restore:
+    post:
+      operationId: restoreProductExtractionSuggestion
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Return a dismissed suggestion to the review queue
+      description: >-
+        Undoes a dismissal. Only a `dismissed` suggestion can be restored: once a
+        suggestion has become a draft it is past this, and the product is edited
+        instead.
+      parameters:
+        - $ref: "#/components/parameters/ProductSuggestionId"
+      responses:
+        "200":
+          description: Back in the review queue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductExtractionRestoreResponse"
+        "400":
+          description: Invalid suggestion identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such suggestion in this workspace, or it was not dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/whatsapp-extractions/{suggestionId}/reprocess:
+    post:
+      operationId: reprocessProductExtraction
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Queue a suggestion's source message for extraction again
+      description: >-
+        Bumps the ruleset version and re-runs the extractor over the original
+        message, for when the rules improve or the first pass clearly misread it.
+        The current suggestion stays in place until the new pass replaces it.
+      parameters:
+        - $ref: "#/components/parameters/ProductSuggestionId"
+      responses:
+        "202":
+          description: Re-extraction queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductExtractionReprocessResponse"
+        "400":
+          description: Invalid suggestion identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such suggestion in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: The suggestion has no source message left to re-read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/whatsapp-extractions/{suggestionId}/propose-update:
+    post:
+      operationId: proposeProductUpdate
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Turn a suggestion into a diff against an existing product
+      description: >-
+        For a message that describes a product already in the catalog — a new
+        price, a corrected description. Nothing is applied yet: this records the
+        proposal for the merchant to accept or reject. A suggestion with no
+        matching product cannot propose anything.
+      parameters:
+        - $ref: "#/components/parameters/ProductSuggestionId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdateProposalInput"
+      responses:
+        "201":
+          description: Proposal recorded, with the diff it would apply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductUpdateProposalResponse"
+        "400":
+          description: Invalid suggestion identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such suggestion or product in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: Nothing to match the suggestion against, or the diff came out empty
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/extraction-metrics:
+    get:
+      operationId: getProductExtractionMetrics
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Extraction counters for the last seven days
+      description: >-
+        How many messages were read, how many became products, and how many
+        proposed updates were accepted. The window is fixed at seven days: this is
+        a health glance for the review screen, not reporting.
+      responses:
+        "200":
+          description: Counters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductExtractionMetrics"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/publish-jobs:
+    get:
+      operationId: getProductPublicationJobs
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Poll the jobs a publish request created
+      description: >-
+        Same shape as the publish response, so a screen can poll without branching.
+        The request key is what ties the jobs to the click that started them.
+      parameters:
+        - name: requestKey
+          in: query
+          required: true
+          description: The key the publish request was sent with
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9._:-]{8,128}$"
+      responses:
+        "200":
+          description: Jobs and their counters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPublicationSnapshot"
+        "400":
+          description: Invalid request key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/publish-jobs/retry:
+    post:
+      operationId: retryProductPublicationJobs
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Re-queue failed publication jobs
+      description: >-
+        Only jobs that actually failed are retried; queued and published ones are
+        left alone. The response covers every job sharing a request key with the
+        ones retried, so the counters still describe the whole batch.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductPublicationRetryInput"
+      responses:
+        "202":
+          description: Re-queued, with the batch's current state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPublicationRetryResponse"
+        "400":
+          description: No job ids, or more than 50
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: None of the selected jobs are failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /social/whatsapp/sync-status:
     get:
       operationId: getWhatsAppSyncStatus
@@ -2031,6 +2784,13 @@ components:
         type: string
         minLength: 1
         maxLength: 200
+    ProductId:
+      name: id
+      in: path
+      required: true
+      description: Identifier of the product
+      schema:
+        type: string
     ProductSuggestionId:
       name: suggestionId
       in: path
@@ -3562,6 +4322,412 @@ components:
           type: string
         mediaType:
           type: string
+    ProductMediaUploadResponse:
+      type: object
+      required: [media]
+      properties:
+        media:
+          type: object
+          required: [id, mediaType, mediaPreview]
+          properties:
+            id:
+              type: string
+            mediaType:
+              type: string
+            mediaPreview:
+              description: Null only if the server has no media signing key configured.
+              oneOf:
+                - $ref: "#/components/schemas/ProductMediaPreview"
+                - type: "null"
+    ProductCandidate:
+      type: object
+      description: A published post offered as the source of a new product.
+      required: [id, title, body, mediaUrls, mediaPreviews, updatedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        mediaUrls:
+          type: array
+          items:
+            type: string
+        mediaPreviews:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductMediaPreview"
+        updatedAt:
+          type: string
+          format: date-time
+    ProductCandidateListResponse:
+      type: object
+      required: [candidates]
+      properties:
+        candidates:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductCandidate"
+    ImportedMetaPost:
+      type: object
+      description: >-
+        A post that is already live on Facebook or Instagram and is being turned
+        into a product. The image host is restricted to Meta's CDNs, so a link to
+        an arbitrary site cannot be stored as product media.
+      required: [platform, id, text, publishedAt, url, imageUrl, mediaType]
+      properties:
+        platform:
+          type: string
+          enum: [facebook, instagram]
+        id:
+          type: string
+          maxLength: 500
+        text:
+          type: string
+          maxLength: 6000
+        publishedAt:
+          type: [string, "null"]
+          format: date-time
+        url:
+          type: [string, "null"]
+          format: uri
+        imageUrl:
+          type: [string, "null"]
+          format: uri
+        mediaType:
+          type: [string, "null"]
+          maxLength: 50
+    CreateCatalogProductInput:
+      allOf:
+        - $ref: "#/components/schemas/ProductInput"
+        - type: object
+          properties:
+            importedMetaPost:
+              description: >-
+                Optional. When present, the product is linked to that post and its
+                image is copied into workspace media.
+              oneOf:
+                - $ref: "#/components/schemas/ImportedMetaPost"
+                - type: "null"
+    ProductWriteResponse:
+      type: object
+      description: The product as the server stored it, with the posts it is linked to.
+      required: [product, postIds]
+      properties:
+        product:
+          $ref: "#/components/schemas/CatalogProduct"
+        postIds:
+          type: array
+          items:
+            type: string
+    ScannedPostExtractionInput:
+      type: object
+      required: [text, platform, postId]
+      properties:
+        text:
+          type: string
+          maxLength: 6000
+        platform:
+          type: string
+          enum: [facebook, instagram]
+        postId:
+          type: string
+          maxLength: 500
+      additionalProperties: false
+    ScannedPostExtraction:
+      type: object
+      required: [classification, extractedData]
+      properties:
+        classification:
+          type: string
+          enum: [product, not_product]
+        extractedData:
+          description: Null when the post held no product.
+          oneOf:
+            - $ref: "#/components/schemas/ExtractedProductData"
+            - type: "null"
+    ExtractedProductData:
+      type: object
+      description: What the extractor read out of a message or post, before anyone edits it.
+      required: [name, sku, aliases, description, price, currency, availability]
+      properties:
+        name:
+          type: [string, "null"]
+        sku:
+          type: [string, "null"]
+        aliases:
+          type: array
+          items:
+            type: string
+        description:
+          type: [string, "null"]
+        price:
+          type: [string, "null"]
+        currency:
+          type: [string, "null"]
+        availability:
+          type: [string, "null"]
+          enum: [in_stock, out_of_stock, preorder]
+    InventoryMovement:
+      type: object
+      required: [id, type, stockDelta, reservedDelta, reason, createdAt]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [opening_balance, adjustment, reservation, release, shipment]
+        stockDelta:
+          type: integer
+        reservedDelta:
+          type: integer
+        reason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    InventoryMovementListResponse:
+      type: object
+      required: [movements]
+      properties:
+        movements:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryMovement"
+    ProductExtractionRestoreResponse:
+      type: object
+      required: [restored]
+      properties:
+        restored:
+          type: boolean
+    ProductExtractionReprocessResponse:
+      type: object
+      required: [rulesetVersion, queued]
+      properties:
+        rulesetVersion:
+          type: string
+          description: The version the new pass will run with, e.g. `v2`.
+        queued:
+          type: boolean
+    ProductChangeDiff:
+      type: object
+      description: >-
+        Field name to what it was and what it would become. Only fields that
+        actually differ appear, so an empty diff means nothing to propose.
+      additionalProperties:
+        type: object
+        required: [before, after, evidence]
+        properties:
+          before: {}
+          after: {}
+          evidence:
+            type: [string, "null"]
+    ProductUpdateProposalInput:
+      type: object
+      properties:
+        productId:
+          type: string
+          description: >-
+            Defaults to the suggestion's own match. Send it when the merchant
+            picked a different product than the one the matcher chose.
+      additionalProperties: false
+    ProductUpdateProposalResponse:
+      type: object
+      required: [proposalId, diff]
+      properties:
+        proposalId:
+          type: string
+        diff:
+          $ref: "#/components/schemas/ProductChangeDiff"
+    ProductChangeDecisionInput:
+      type: object
+      required: [decision]
+      properties:
+        decision:
+          type: string
+          enum: [accepted, rejected]
+      additionalProperties: false
+    ProductChangeDecisionResponse:
+      type: object
+      required: [status, changedFields]
+      properties:
+        status:
+          type: string
+          enum: [accepted, rejected]
+        changedFields:
+          type: array
+          description: The fields the diff covered. Empty when rejected.
+          items:
+            type: string
+    ProductChangeRecord:
+      type: object
+      required:
+        - id
+        - workspaceId
+        - productId
+        - field
+        - beforeValue
+        - afterValue
+        - sourceType
+        - sourceId
+        - actorId
+        - createdAt
+      properties:
+        id:
+          type: string
+        workspaceId:
+          type: string
+        productId:
+          type: string
+        field:
+          type: string
+        beforeValue:
+          description: JSON, so its shape depends on the field — a price is a string, media a list.
+          nullable: true
+        afterValue:
+          nullable: true
+        sourceType:
+          type: string
+          enum: [manual, extraction, order, publication]
+        sourceId:
+          type: [string, "null"]
+        actorId:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+    ProductChangeListResponse:
+      type: object
+      required: [changes]
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductChangeRecord"
+    ProductChangeProposal:
+      type: object
+      required:
+        - id
+        - productId
+        - suggestionId
+        - diff
+        - status
+        - createdAt
+        - decidedAt
+        - product
+        - evidence
+        - senderRole
+      properties:
+        id:
+          type: string
+        productId:
+          type: string
+        suggestionId:
+          type: string
+        diff:
+          $ref: "#/components/schemas/ProductChangeDiff"
+        status:
+          type: string
+          enum: [proposed, accepted, rejected, expired]
+        createdAt:
+          type: string
+          format: date-time
+        decidedAt:
+          type: [string, "null"]
+          format: date-time
+        product:
+          description: The product the diff applies to, for showing it next to the evidence.
+          oneOf:
+            - type: object
+              required: [id, name, sku, status]
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+                sku:
+                  type: [string, "null"]
+                status:
+                  type: string
+            - type: "null"
+        evidence:
+          type: object
+          additionalProperties:
+            type: [string, "null"]
+        senderRole:
+          type: string
+          enum: [merchant, customer, unknown]
+    ProductChangeProposalListResponse:
+      type: object
+      required: [proposals]
+      properties:
+        proposals:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductChangeProposal"
+    ProductExtractionMetrics:
+      type: object
+      required:
+        - events
+        - suggestions
+        - extractionSucceeded
+        - extractionFailed
+        - reprocessed
+        - proposalsAccepted
+        - conversionRate
+        - daily
+      properties:
+        events:
+          type: array
+          description: Event counters, one row per event type that occurred.
+          items:
+            type: object
+            required: [event, total]
+            properties:
+              event:
+                type: string
+              total:
+                type: integer
+        suggestions:
+          type: array
+          description: Suggestion counts broken down by status and classification.
+          items:
+            type: object
+            required: [status, classification, total]
+            properties:
+              status:
+                type: [string, "null"]
+              classification:
+                type: [string, "null"]
+              total:
+                type: integer
+        extractionSucceeded:
+          type: integer
+        extractionFailed:
+          type: integer
+        reprocessed:
+          type: integer
+        proposalsAccepted:
+          type: integer
+        conversionRate:
+          type: number
+          description: Products activated over product suggestions read, 0-1.
+        daily:
+          type: array
+          description: Succeeded and failed extractions per day, for the sparkline.
+          items:
+            type: object
+            required: [day, event, total]
+            properties:
+              day:
+                type: string
+                description: "YYYY-MM-DD"
+              event:
+                type: string
+              total:
+                type: integer
+
     ProductExtractionSourceMessage:
       type: object
       properties:
@@ -3581,19 +4747,82 @@ components:
           items:
             $ref: "#/components/schemas/ProductMediaPreview"
       required: [id, text, mediaPreviews]
+    PossibleDuplicateProduct:
+      type: object
+      description: >-
+        The catalog product a `possible_duplicate` suggestion may already
+        describe. A trimmed read-only view — the editor that resolves the
+        duplicate only needs enough to recognise the existing entry.
+      required: [id, name, sku, status, description, price, currency, availability]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        sku:
+          type: [string, "null"]
+        status:
+          type: string
+          enum: [draft, active, archived]
+        description:
+          type: string
+        price:
+          type: [string, "null"]
+        currency:
+          type: [string, "null"]
+        availability:
+          type: string
+          enum: [unknown, in_stock, out_of_stock, preorder]
     ProductExtractionSuggestion:
       type: object
+      description: >-
+        One message's extraction. The server returns the whole suggestion row,
+        so the bookkeeping fields (`version`, `matchStrategy`, `senderRole`, the
+        evidence spans) are on the wire alongside the extracted values, and the
+        client uses them to explain *why* a suggestion looks the way it does.
       properties:
         id:
           type: string
           format: uuid
         sourceKey:
           type: string
+        version:
+          type: integer
+          description: Bumped each time the suggestion is re-extracted.
+        previousSuggestionId:
+          type: [string, "null"]
+        senderRole:
+          type: string
+          enum: [merchant, customer, unknown]
+          description: >-
+            Who wrote the message. A customer-sourced price is a question or a
+            complaint, not a fact about the product, and is shown differently.
+        matchStrategy:
+          type: [string, "null"]
+          enum: [exact_sku, exact_name, alias_match, fuzzy_candidate, new_product]
+          description: How the suggestion was matched against the existing catalog.
+        matchedProductId:
+          type: [string, "null"]
+        matchScore:
+          type: [string, "null"]
+          description: Decimal as a string, 0-1.
+        rulesetVersion:
+          type: string
+        modelVersion:
+          type: [string, "null"]
+        overrideReason:
+          type: [string, "null"]
+          description: Set when the merchant created a product despite a duplicate warning.
         classification:
           type: string
           enum: [product, not_product]
         extractedData:
           type: object
+          description: >-
+            The extracted values, plus the extraction's own bookkeeping written in
+            snake_case alongside them. Those extras are not a stable API — read the
+            camelCase fields, and treat the rest as diagnostic.
+          required: [name, sku, aliases, description, price, currency, availability]
           properties:
             name:
               type: [string, "null"]
@@ -3611,7 +4840,38 @@ components:
               type: [string, "null"]
             availability:
               type: [string, "null"]
-              enum: [in_stock, out_of_stock, preorder, "null"]
+              enum: [in_stock, out_of_stock, preorder]
+            evidence_spans:
+              type: object
+              description: >-
+                Field name to where its value came from, as character offsets into
+                a source message. This is what lets the UI highlight the words a
+                value was read from instead of asking the merchant to trust the
+                model. A span's source may be keyed `sourceId` or `source_id`.
+              additionalProperties:
+                type: object
+                properties:
+                  sourceId:
+                    type: string
+                  source_id:
+                    type: string
+                  start:
+                    type: integer
+                  end:
+                    type: integer
+            confidence_reasons:
+              type: array
+              items:
+                type: string
+            computed_confidence:
+              type: number
+            self_confidence:
+              type: number
+            generated_sku:
+              type: boolean
+            sender_role:
+              type: string
+          additionalProperties: true
         evidence:
           type: object
           additionalProperties:
@@ -3620,6 +4880,13 @@ components:
           type: object
           additionalProperties:
             type: number
+        confidenceReasons:
+          type: array
+          description: >-
+            Plain-language reasons for the computed confidence, not a raw score.
+            The merchant cannot act on "0.62"; he can act on "السعر مذكور صراحةً".
+          items:
+            type: string
         fieldReview:
           type: object
           additionalProperties:
@@ -3640,14 +4907,23 @@ components:
             and the suggestion always needs a human review.
         status:
           type: string
-          enum: [review, draft_created, possible_duplicate, dismissed]
+          enum:
+            - review
+            - draft_created
+            - possible_duplicate
+            - dismissed
+            - superseded
+            - update_proposed
+            - accepted_update
+            - rejected_update
         productId:
           type: [string, "null"]
           format: uuid
         possibleDuplicateProducts:
           type: array
+          description: Only present when `status` is `possible_duplicate`.
           items:
-            $ref: "#/components/schemas/CatalogProduct"
+            $ref: "#/components/schemas/PossibleDuplicateProduct"
         createdAt:
           type: string
           format: date-time
@@ -3660,6 +4936,8 @@ components:
             $ref: "#/components/schemas/ProductExtractionSourceMessage"
       required:
         - id
+        - version
+        - senderRole
         - classification
         - extractedData
         - evidence
@@ -3732,6 +5010,16 @@ components:
           type: integer
         possibleDuplicate:
           type: integer
+        updateProposed:
+          type: integer
+          description: Suggestions waiting on the merchant to accept or reject a change to an existing product
+        acceptedUpdate:
+          type: integer
+        rejectedUpdate:
+          type: integer
+        superseded:
+          type: integer
+          description: Replaced by a newer extraction of the same message
       required:
         - total
         - product
@@ -3740,6 +5028,10 @@ components:
         - pendingProductReview
         - draftCreated
         - possibleDuplicate
+        - updateProposed
+        - acceptedUpdate
+        - rejectedUpdate
+        - superseded
     ProductExtractionPagination:
       type: object
       properties:
@@ -3820,7 +5112,20 @@ components:
       type: object
       properties:
         product:
-          $ref: "#/components/schemas/ProductInput"
+          description: >-
+            Omit it to accept the extracted values as-is; send it when the
+            merchant corrected them in the editor first.
+          oneOf:
+            - $ref: "#/components/schemas/ProductInput"
+            - type: "null"
+        overrideReason:
+          type: string
+          description: >-
+            Required when the suggestion is `possible_duplicate` and a `product`
+            is sent: it is the merchant's stated reason for creating a product
+            that looks like one he already has. Without it the server refuses
+            rather than silently adding a duplicate.
+      additionalProperties: false
     ProductInput:
       type: object
       properties:
@@ -3965,6 +5270,23 @@ components:
           type: string
           format: date-time
       required: [id, productId, channel, accountId, status, attempts, createdAt]
+    ProductPublicationSummary:
+      type: object
+      description: >-
+        Counters over a batch of publication jobs. `inProgress` counts both
+        queued and processing, because to the merchant they are the same wait.
+      properties:
+        total:
+          type: integer
+        successful:
+          type: integer
+        failed:
+          type: integer
+        inProgress:
+          type: integer
+        needsAction:
+          type: integer
+      required: [total, successful, failed, inProgress, needsAction]
     ProductPublicationSnapshot:
       type: object
       properties:
@@ -3975,20 +5297,32 @@ components:
           items:
             $ref: "#/components/schemas/ProductPublicationJob"
         summary:
-          type: object
-          properties:
-            total:
-              type: integer
-            successful:
-              type: integer
-            failed:
-              type: integer
-            inProgress:
-              type: integer
-            needsAction:
-              type: integer
-          required: [total, successful, failed, inProgress, needsAction]
+          $ref: "#/components/schemas/ProductPublicationSummary"
       required: [requestKey, jobs, summary]
+    ProductPublicationRetryInput:
+      type: object
+      properties:
+        jobIds:
+          type: array
+          description: At most 50. Ids that are not failed are ignored, not rejected.
+          items:
+            type: string
+      required: [jobIds]
+      additionalProperties: false
+    ProductPublicationRetryResponse:
+      type: object
+      description: >-
+        The batch's state after retrying. Unlike the snapshot this carries no
+        `requestKey`: the retried jobs may belong to several requests, so there
+        is no single key to report.
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductPublicationJob"
+        summary:
+          $ref: "#/components/schemas/ProductPublicationSummary"
+      required: [jobs, summary]
     IncompletePublicationProduct:
       type: object
       properties:

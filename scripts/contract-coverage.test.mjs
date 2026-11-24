@@ -36,8 +36,8 @@ const root = new URL("..", import.meta.url).pathname;
 const routesDir = join(root, "artifacts", "api-server", "src", "routes");
 const specPath = join(root, "lib", "api-spec", "openapi.yaml");
 
-/** Highest coverage reached so far: 56 of 99. Raise it, never lower it. */
-const MINIMUM_COVERED = 56;
+/** Highest coverage reached so far: 73 of 99. Raise it, never lower it. */
+const MINIMUM_COVERED = 73;
 
 /**
  * Paths excluded from the count. The owner console is an internal read-only SPA
@@ -72,23 +72,6 @@ const UNDOCUMENTED = [
   ["posts-workflow", "GET /posts/auto-publish-settings"],
   ["posts-workflow", "POST /posts/process-whatsapp-backlog"],
   ["posts-workflow", "PUT /posts/auto-publish-settings"],
-  ["product-catalog", "GET /social/products/post-candidates"],
-  ["product-extractions", "GET /social/products/:id/changes"],
-  ["product-extractions", "GET /social/products/change-proposals"],
-  ["product-extractions", "GET /social/products/extraction-metrics"],
-  ["product-extractions", "POST /social/products/change-proposals/:id/decide"],
-  ["product-extractions", "POST /social/products/whatsapp-extractions/:id/propose-update"],
-  ["product-extractions", "POST /social/products/whatsapp-extractions/:id/reprocess"],
-  ["product-extractions", "POST /social/products/whatsapp-extractions/:id/restore"],
-  ["product-management", "GET /social/products/:id/inventory-movements"],
-  ["product-management", "POST /social/products"],
-  ["product-management", "POST /social/products/extract-scanned-post"],
-  ["product-management", "POST /social/products/import-post/:postId"],
-  ["product-management", "PUT /social/products/:id"],
-  ["product-media", "GET /social/products/public-media/:mediaId"],
-  ["product-media", "POST /social/products/media"],
-  ["product-publishing", "GET /social/products/publish-jobs"],
-  ["product-publishing", "POST /social/products/publish-jobs/retry"],
   ["whatsapp-content-associations", "POST /social/whatsapp/content-associations"],
   ["whatsapp-direct-inbox", "GET /social/whatsapp/direct-conversations"],
   ["whatsapp-direct-inbox", "GET /social/whatsapp/direct-messages"],
@@ -194,5 +177,19 @@ test("the gate can see both sides", () => {
   const operations = serverOperations();
   assert.ok(operations.length > 90, `parsed ${operations.length} server operations`);
   assert.ok(contractOperations().size > 40, `parsed ${contractOperations().size} contract operations`);
-  assert.ok(UNDOCUMENTED.length > 40, `backlog holds ${UNDOCUMENTED.length} entries`);
+  assert.ok(UNDOCUMENTED.length > 25, `backlog holds ${UNDOCUMENTED.length} entries`);
+
+  // The two lists must account for every merchant-facing operation between them,
+  // with nothing in both. If the sum is short, an operation is in neither list and
+  // test 1 should have caught it; if it is over, something is counted twice.
+  const merchantFacing = operations.filter(
+    (operation) => !OUT_OF_CONTRACT.some((pattern) => pattern.test(operation.path)),
+  );
+  const documented = contractOperations();
+  const covered = merchantFacing.filter((operation) => documented.has(key(operation))).length;
+  assert.equal(
+    covered + UNDOCUMENTED.length,
+    merchantFacing.length,
+    `covered (${covered}) + backlog (${UNDOCUMENTED.length}) must equal the ${merchantFacing.length} merchant-facing operations`,
+  );
 });

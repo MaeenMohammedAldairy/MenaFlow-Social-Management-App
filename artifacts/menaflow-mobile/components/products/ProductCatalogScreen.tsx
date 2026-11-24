@@ -66,6 +66,7 @@ import {
   getProductCatalog,
   getInventoryMovements,
   getWhatsAppProductExtractions,
+  productExtractionEvidenceSpans,
   getPublishableAccounts,
   getProductPublicationJobs,
   publishCatalogProducts,
@@ -88,6 +89,7 @@ import {
   type ProductExtractionQueueCounts,
   type ProductExtractionSuggestion,
   type ProductExtractionSuggestionCounts,
+  type ProductExtractionReviewInputField,
   type WhatsAppProductExtractionsQuery,
   type ProductPublicationSnapshot,
 } from "@/lib/product-catalog-api";
@@ -3764,14 +3766,16 @@ function ProductExtractionCard({
   onDismiss: () => void;
   onProposeUpdate: (productId?: string) => void;
   onReprocess: () => void;
-  onReview: (field: string, correct: boolean) => void;
+  onReview: (field: ProductExtractionReviewInputField, correct: boolean) => void;
   onEditProduct: (product: CatalogProduct) => void;
 }) {
   const colors = useColors();
   const [expandedSourceIds, setExpandedSourceIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const fields: Array<[string, string, string | null]> = [
+  const fields: Array<
+    [string, string, ProductExtractionReviewInputField | null]
+  > = [
     ["الاسم", suggestion.extractedData.name ?? "غير مستخرج", "name"],
     [
       "الوصف",
@@ -3800,7 +3804,7 @@ function ProductExtractionCard({
         ? "إشارة من عميل — غير موثوقة"
         : "مصدر الرسالة غير معروف";
   const statusLabel = extractionStatusLabel(suggestion);
-  const evidenceSpans = Object.values(suggestion.evidenceSpans ?? {});
+  const evidenceSpans = productExtractionEvidenceSpans(suggestion);
   return (
     <Panel style={styles.extractionCard}>
       <Pressable

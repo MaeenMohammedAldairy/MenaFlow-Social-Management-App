@@ -26,12 +26,62 @@ const serverRoute = readFileSync(
   path.join(serverRoot, "routes/product-extractions.ts"),
   "utf8",
 );
+/**
+ * `lib/api-spec/openapi.yaml` is now where the client's unions come from: the
+ * mobile module imports the generated client, which is built from this file. So
+ * the drift that matters is between the server's policy and the contract — the
+ * contract-to-client link is already gated by `codegen` reporting NO DRIFT, and
+ * the client-to-module link by the TypeScript build.
+ */
+const contract = readFileSync(
+  path.resolve(here, "../../../lib/api-spec/openapi.yaml"),
+  "utf8",
+);
 const mobileClient = read("product-catalog-api.ts");
 const mobileScreen = read("../components/products/ProductCatalogScreen.tsx");
 
 /** Quoted string literals inside a captured TypeScript fragment. */
 function literals(fragment) {
   return [...fragment.matchAll(/"([^"]+)"/g)].map(([, value]) => value);
+}
+
+/** The text of one `paths` entry, from its key to the next path key. */
+function pathBlock(path) {
+  const start = contract.indexOf(`\n  ${path}:\n`);
+  assert.ok(start !== -1, `the contract must document ${path}`);
+  const rest = contract.slice(start + 1);
+  const end = rest.indexOf("\n  /");
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+/** The text of one named schema, from its key to the next schema key. */
+function schemaBlock(name) {
+  const start = contract.indexOf(`\n    ${name}:\n`);
+  assert.ok(start !== -1, `the contract must define ${name}`);
+  const rest = contract.slice(start + 1);
+  const end = rest.search(/\n    [A-Za-z][A-Za-z0-9]*:\n/);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+/**
+ * The items of a list under `key:` inside a fragment, whether the YAML writes it
+ * as a block list or in flow style (`[a, b]`).
+ */
+function listItems(fragment, key) {
+  const flow = new RegExp(`${key}:\\s*\\[([^\\]]*)\\]`).exec(fragment);
+  if (flow) {
+    return flow[1].split(",").map((value) =>
+      value.trim().replace(/^["']|["']$/g, ""),
+    );
+  }
+  // The last item of a sliced block has no trailing newline, so add one.
+  const match = new RegExp(`${key}:\\s*\\n((?:\\s+-[^\\n]*\\n)+)`).exec(
+    `${fragment}\n`,
+  );
+  assert.ok(match, `could not find a ${key} list`);
+  return [...match[1].matchAll(/-\s+(.+)$/gm)].map(([, value]) =>
+    value.trim().replace(/^["']|["']$/g, ""),
+  );
 }
 
 function captured(source, pattern, label) {
@@ -44,12 +94,9 @@ test("the classification values the app sends are the ones the server accepts", 
   const server = literals(
     captured(serverPolicy, /const CLASSIFICATIONS = \[([^\]]*)\]/, "server CLASSIFICATIONS"),
   );
-  const client = literals(
-    captured(
-      mobileClient,
-      /classification\?: ([^;]*);/,
-      "client classification union",
-    ),
+  const client = listItems(
+    pathBlock("/social/products/whatsapp-extractions").split("- name: status")[0],
+    "enum",
   );
   assert.deepEqual(server, ["product", "not_product"]);
   assert.deepEqual([...client].sort(), [...server].sort());
@@ -59,13 +106,10 @@ test("the status values the app sends are the ones the server accepts", () => {
   const server = literals(
     captured(serverPolicy, /const STATUSES = \[([^\]]*)\]/, "server STATUSES"),
   );
-  const client = literals(
-    captured(
-      mobileClient,
-      /export type ProductExtractionListStatus =([^;]*);/,
-      "client status union",
-    ),
-  );
+  const statusParam = pathBlock("/social/products/whatsapp-extractions")
+    .split("- name: status")[1]
+    .split("- name:")[0];
+  const client = listItems(statusParam, "enum");
   assert.deepEqual(server, [
     "review",
     "draft_created",
@@ -83,13 +127,10 @@ test("dismissed is not something a client can ask for", () => {
     serverPolicy.includes('return { ok: false, error: "حالة الاقتراح غير صالحة." }'),
     "the server must reject an unknown or dismissed status",
   );
-  const clientStatuses = literals(
-    captured(
-      mobileClient,
-      /export type ProductExtractionListStatus =([^;]*);/,
-      "client list status union",
-    ),
-  );
+  const statusParam = pathBlock("/social/products/whatsapp-extractions")
+    .split("- name: status")[1]
+    .split("- name:")[0];
+  const clientStatuses = listItems(statusParam, "enum");
   assert.ok(!clientStatuses.includes("dismissed"));
 });
 
@@ -198,7 +239,10 @@ test("the rejected-message slice says what it is, so it is not read as a failure
 test("messages with nothing readable are counted and explained", () => {
   // Their jobs complete, so no other counter mentions them: six such messages sat
   // on the live workspace with nothing on screen to say where they went.
-  assert.ok(mobileClient.includes("noText: number;"));
+  assert.ok(
+    listItems(schemaBlock("ProductExtractionQueueCounts"), "required").includes("noText"),
+    "the contract's queue counters must include noText",
+  );
   assert.ok(mobileClient.includes("noText: 0,"));
   assert.ok(mobileScreen.includes("counts.noText > 0"));
   assert.ok(

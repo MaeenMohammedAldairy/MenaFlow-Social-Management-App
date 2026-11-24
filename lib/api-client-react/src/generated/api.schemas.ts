@@ -1250,6 +1250,371 @@ export interface PushTokenRemovedResponse {
   removed: boolean;
 }
 
+export type ProductMediaUploadResponseMedia = {
+  id: string;
+  mediaType: string;
+  /** Null only if the server has no media signing key configured. */
+  mediaPreview: ProductMediaPreview | null;
+};
+
+export interface ProductMediaUploadResponse {
+  media: ProductMediaUploadResponseMedia;
+}
+
+/**
+ * A published post offered as the source of a new product.
+ */
+export interface ProductCandidate {
+  id: string;
+  title: string;
+  body: string;
+  mediaUrls: string[];
+  mediaPreviews: ProductMediaPreview[];
+  updatedAt: string;
+}
+
+export interface ProductCandidateListResponse {
+  candidates: ProductCandidate[];
+}
+
+export type ImportedMetaPostPlatform = typeof ImportedMetaPostPlatform[keyof typeof ImportedMetaPostPlatform];
+
+
+export const ImportedMetaPostPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+/**
+ * A post that is already live on Facebook or Instagram and is being turned into a product. The image host is restricted to Meta's CDNs, so a link to an arbitrary site cannot be stored as product media.
+ */
+export interface ImportedMetaPost {
+  platform: ImportedMetaPostPlatform;
+  /** @maxLength 500 */
+  id: string;
+  /** @maxLength 6000 */
+  text: string;
+  /** @nullable */
+  publishedAt: string | null;
+  /** @nullable */
+  url: string | null;
+  /** @nullable */
+  imageUrl: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  mediaType: string | null;
+}
+
+export type ProductInputAvailability = typeof ProductInputAvailability[keyof typeof ProductInputAvailability];
+
+
+export const ProductInputAvailability = {
+  unknown: 'unknown',
+  in_stock: 'in_stock',
+  out_of_stock: 'out_of_stock',
+  preorder: 'preorder',
+} as const;
+
+export type ProductInputStatus = typeof ProductInputStatus[keyof typeof ProductInputStatus];
+
+
+export const ProductInputStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export interface ProductInput {
+  /** @nullable */
+  sku?: string | null;
+  name: string;
+  aliases: string[];
+  description: string;
+  /** @nullable */
+  price?: string | null;
+  /** @nullable */
+  currency?: string | null;
+  availability: ProductInputAvailability;
+  status: ProductInputStatus;
+  mediaUrls: string[];
+  inventoryTracked?: boolean;
+  stockOnHand?: number;
+  lowStockThreshold?: number;
+  inventoryReason?: string;
+}
+
+export type CreateCatalogProductInput = ProductInput & ({
+  /** Optional. When present, the product is linked to that post and its image is copied into workspace media. */
+  importedMetaPost?: ImportedMetaPost | null;
+});
+
+/**
+ * The product as the server stored it, with the posts it is linked to.
+ */
+export interface ProductWriteResponse {
+  product: CatalogProduct;
+  postIds: string[];
+}
+
+export type ScannedPostExtractionInputPlatform = typeof ScannedPostExtractionInputPlatform[keyof typeof ScannedPostExtractionInputPlatform];
+
+
+export const ScannedPostExtractionInputPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export interface ScannedPostExtractionInput {
+  /** @maxLength 6000 */
+  text: string;
+  platform: ScannedPostExtractionInputPlatform;
+  /** @maxLength 500 */
+  postId: string;
+}
+
+export type ScannedPostExtractionClassification = typeof ScannedPostExtractionClassification[keyof typeof ScannedPostExtractionClassification];
+
+
+export const ScannedPostExtractionClassification = {
+  product: 'product',
+  not_product: 'not_product',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ExtractedProductDataAvailability = typeof ExtractedProductDataAvailability[keyof typeof ExtractedProductDataAvailability] | null;
+
+
+export const ExtractedProductDataAvailability = {
+  in_stock: 'in_stock',
+  out_of_stock: 'out_of_stock',
+  preorder: 'preorder',
+} as const;
+
+/**
+ * What the extractor read out of a message or post, before anyone edits it.
+ */
+export interface ExtractedProductData {
+  /** @nullable */
+  name: string | null;
+  /** @nullable */
+  sku: string | null;
+  aliases: string[];
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  price: string | null;
+  /** @nullable */
+  currency: string | null;
+  /** @nullable */
+  availability: ExtractedProductDataAvailability;
+}
+
+export interface ScannedPostExtraction {
+  classification: ScannedPostExtractionClassification;
+  /** Null when the post held no product. */
+  extractedData: ExtractedProductData | null;
+}
+
+export type InventoryMovementType = typeof InventoryMovementType[keyof typeof InventoryMovementType];
+
+
+export const InventoryMovementType = {
+  opening_balance: 'opening_balance',
+  adjustment: 'adjustment',
+  reservation: 'reservation',
+  release: 'release',
+  shipment: 'shipment',
+} as const;
+
+export interface InventoryMovement {
+  id: string;
+  type: InventoryMovementType;
+  stockDelta: number;
+  reservedDelta: number;
+  reason: string;
+  createdAt: string;
+}
+
+export interface InventoryMovementListResponse {
+  movements: InventoryMovement[];
+}
+
+export interface ProductExtractionRestoreResponse {
+  restored: boolean;
+}
+
+export interface ProductExtractionReprocessResponse {
+  /** The version the new pass will run with, e.g. `v2`. */
+  rulesetVersion: string;
+  queued: boolean;
+}
+
+/**
+ * Field name to what it was and what it would become. Only fields that actually differ appear, so an empty diff means nothing to propose.
+ */
+export interface ProductChangeDiff {[key: string]: {
+  before: unknown;
+  after: unknown;
+  /** @nullable */
+  evidence: string | null;
+}}
+
+export interface ProductUpdateProposalInput {
+  /** Defaults to the suggestion's own match. Send it when the merchant picked a different product than the one the matcher chose. */
+  productId?: string;
+}
+
+export interface ProductUpdateProposalResponse {
+  proposalId: string;
+  diff: ProductChangeDiff;
+}
+
+export type ProductChangeDecisionInputDecision = typeof ProductChangeDecisionInputDecision[keyof typeof ProductChangeDecisionInputDecision];
+
+
+export const ProductChangeDecisionInputDecision = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export interface ProductChangeDecisionInput {
+  decision: ProductChangeDecisionInputDecision;
+}
+
+export type ProductChangeDecisionResponseStatus = typeof ProductChangeDecisionResponseStatus[keyof typeof ProductChangeDecisionResponseStatus];
+
+
+export const ProductChangeDecisionResponseStatus = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export interface ProductChangeDecisionResponse {
+  status: ProductChangeDecisionResponseStatus;
+  /** The fields the diff covered. Empty when rejected. */
+  changedFields: string[];
+}
+
+export type ProductChangeRecordSourceType = typeof ProductChangeRecordSourceType[keyof typeof ProductChangeRecordSourceType];
+
+
+export const ProductChangeRecordSourceType = {
+  manual: 'manual',
+  extraction: 'extraction',
+  order: 'order',
+  publication: 'publication',
+} as const;
+
+export interface ProductChangeRecord {
+  id: string;
+  workspaceId: string;
+  productId: string;
+  field: string;
+  /** JSON, so its shape depends on the field — a price is a string, media a list. */
+  beforeValue: unknown | null;
+  afterValue: unknown | null;
+  sourceType: ProductChangeRecordSourceType;
+  /** @nullable */
+  sourceId: string | null;
+  /** @nullable */
+  actorId: string | null;
+  createdAt: string;
+}
+
+export interface ProductChangeListResponse {
+  changes: ProductChangeRecord[];
+}
+
+export type ProductChangeProposalStatus = typeof ProductChangeProposalStatus[keyof typeof ProductChangeProposalStatus];
+
+
+export const ProductChangeProposalStatus = {
+  proposed: 'proposed',
+  accepted: 'accepted',
+  rejected: 'rejected',
+  expired: 'expired',
+} as const;
+
+/**
+ * The product the diff applies to, for showing it next to the evidence.
+ */
+export type ProductChangeProposalProduct = {
+  id: string;
+  name: string;
+  /** @nullable */
+  sku: string | null;
+  status: string;
+} | null;
+
+export type ProductChangeProposalEvidence = {[key: string]: string | null};
+
+export type ProductChangeProposalSenderRole = typeof ProductChangeProposalSenderRole[keyof typeof ProductChangeProposalSenderRole];
+
+
+export const ProductChangeProposalSenderRole = {
+  merchant: 'merchant',
+  customer: 'customer',
+  unknown: 'unknown',
+} as const;
+
+export interface ProductChangeProposal {
+  id: string;
+  productId: string;
+  suggestionId: string;
+  diff: ProductChangeDiff;
+  status: ProductChangeProposalStatus;
+  createdAt: string;
+  /** @nullable */
+  decidedAt: string | null;
+  /** The product the diff applies to, for showing it next to the evidence. */
+  product: ProductChangeProposalProduct;
+  evidence: ProductChangeProposalEvidence;
+  senderRole: ProductChangeProposalSenderRole;
+}
+
+export interface ProductChangeProposalListResponse {
+  proposals: ProductChangeProposal[];
+}
+
+export type ProductExtractionMetricsEventsItem = {
+  event: string;
+  total: number;
+};
+
+export type ProductExtractionMetricsSuggestionsItem = {
+  /** @nullable */
+  status: string | null;
+  /** @nullable */
+  classification: string | null;
+  total: number;
+};
+
+export type ProductExtractionMetricsDailyItem = {
+  /** YYYY-MM-DD */
+  day: string;
+  event: string;
+  total: number;
+};
+
+export interface ProductExtractionMetrics {
+  /** Event counters, one row per event type that occurred. */
+  events: ProductExtractionMetricsEventsItem[];
+  /** Suggestion counts broken down by status and classification. */
+  suggestions: ProductExtractionMetricsSuggestionsItem[];
+  extractionSucceeded: number;
+  extractionFailed: number;
+  reprocessed: number;
+  proposalsAccepted: number;
+  /** Products activated over product suggestions read, 0-1. */
+  conversionRate: number;
+  /** Succeeded and failed extractions per day, for the sparkline. */
+  daily: ProductExtractionMetricsDailyItem[];
+}
+
 export interface ProductExtractionSourceMessage {
   id: string;
   text: string;
@@ -1261,6 +1626,69 @@ export interface ProductExtractionSourceMessage {
   groupName?: string | null;
   mediaPreviews: ProductMediaPreview[];
 }
+
+export type PossibleDuplicateProductStatus = typeof PossibleDuplicateProductStatus[keyof typeof PossibleDuplicateProductStatus];
+
+
+export const PossibleDuplicateProductStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export type PossibleDuplicateProductAvailability = typeof PossibleDuplicateProductAvailability[keyof typeof PossibleDuplicateProductAvailability];
+
+
+export const PossibleDuplicateProductAvailability = {
+  unknown: 'unknown',
+  in_stock: 'in_stock',
+  out_of_stock: 'out_of_stock',
+  preorder: 'preorder',
+} as const;
+
+/**
+ * The catalog product a `possible_duplicate` suggestion may already describe. A trimmed read-only view — the editor that resolves the duplicate only needs enough to recognise the existing entry.
+ */
+export interface PossibleDuplicateProduct {
+  id: string;
+  name: string;
+  /** @nullable */
+  sku: string | null;
+  status: PossibleDuplicateProductStatus;
+  description: string;
+  /** @nullable */
+  price: string | null;
+  /** @nullable */
+  currency: string | null;
+  availability: PossibleDuplicateProductAvailability;
+}
+
+/**
+ * Who wrote the message. A customer-sourced price is a question or a complaint, not a fact about the product, and is shown differently.
+ */
+export type ProductExtractionSuggestionSenderRole = typeof ProductExtractionSuggestionSenderRole[keyof typeof ProductExtractionSuggestionSenderRole];
+
+
+export const ProductExtractionSuggestionSenderRole = {
+  merchant: 'merchant',
+  customer: 'customer',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * How the suggestion was matched against the existing catalog.
+ * @nullable
+ */
+export type ProductExtractionSuggestionMatchStrategy = typeof ProductExtractionSuggestionMatchStrategy[keyof typeof ProductExtractionSuggestionMatchStrategy] | null;
+
+
+export const ProductExtractionSuggestionMatchStrategy = {
+  exact_sku: 'exact_sku',
+  exact_name: 'exact_name',
+  alias_match: 'alias_match',
+  fuzzy_candidate: 'fuzzy_candidate',
+  new_product: 'new_product',
+} as const;
 
 export type ProductExtractionSuggestionClassification = typeof ProductExtractionSuggestionClassification[keyof typeof ProductExtractionSuggestionClassification];
 
@@ -1280,24 +1708,44 @@ export const ProductExtractionSuggestionExtractedDataAvailability = {
   in_stock: 'in_stock',
   out_of_stock: 'out_of_stock',
   preorder: 'preorder',
-  null: 'null',
 } as const;
 
+/**
+ * Field name to where its value came from, as character offsets into a source message. This is what lets the UI highlight the words a value was read from instead of asking the merchant to trust the model. A span's source may be keyed `sourceId` or `source_id`.
+ */
+export type ProductExtractionSuggestionExtractedDataEvidenceSpans = {[key: string]: {
+  sourceId?: string;
+  source_id?: string;
+  start?: number;
+  end?: number;
+}};
+
+/**
+ * The extracted values, plus the extraction's own bookkeeping written in snake_case alongside them. Those extras are not a stable API — read the camelCase fields, and treat the rest as diagnostic.
+ */
 export type ProductExtractionSuggestionExtractedData = {
   /** @nullable */
-  name?: string | null;
+  name: string | null;
   /** @nullable */
-  sku?: string | null;
-  aliases?: string[];
+  sku: string | null;
+  aliases: string[];
   /** @nullable */
-  description?: string | null;
+  description: string | null;
   /** @nullable */
-  price?: string | null;
+  price: string | null;
   /** @nullable */
-  currency?: string | null;
+  currency: string | null;
   /** @nullable */
-  availability?: ProductExtractionSuggestionExtractedDataAvailability;
-};
+  availability: ProductExtractionSuggestionExtractedDataAvailability;
+  /** Field name to where its value came from, as character offsets into a source message. This is what lets the UI highlight the words a value was read from instead of asking the merchant to trust the model. A span's source may be keyed `sourceId` or `source_id`. */
+  evidence_spans?: ProductExtractionSuggestionExtractedDataEvidenceSpans;
+  confidence_reasons?: string[];
+  computed_confidence?: number;
+  self_confidence?: number;
+  generated_sku?: boolean;
+  sender_role?: string;
+  [key: string]: unknown;
+ };
 
 export type ProductExtractionSuggestionEvidence = {[key: string]: string | null};
 
@@ -1313,15 +1761,51 @@ export const ProductExtractionSuggestionStatus = {
   draft_created: 'draft_created',
   possible_duplicate: 'possible_duplicate',
   dismissed: 'dismissed',
+  superseded: 'superseded',
+  update_proposed: 'update_proposed',
+  accepted_update: 'accepted_update',
+  rejected_update: 'rejected_update',
 } as const;
 
+/**
+ * One message's extraction. The server returns the whole suggestion row, so the bookkeeping fields (`version`, `matchStrategy`, `senderRole`, the evidence spans) are on the wire alongside the extracted values, and the client uses them to explain *why* a suggestion looks the way it does.
+ */
 export interface ProductExtractionSuggestion {
   id: string;
   sourceKey?: string;
+  /** Bumped each time the suggestion is re-extracted. */
+  version: number;
+  /** @nullable */
+  previousSuggestionId?: string | null;
+  /** Who wrote the message. A customer-sourced price is a question or a complaint, not a fact about the product, and is shown differently. */
+  senderRole: ProductExtractionSuggestionSenderRole;
+  /**
+     * How the suggestion was matched against the existing catalog.
+     * @nullable
+     */
+  matchStrategy?: ProductExtractionSuggestionMatchStrategy;
+  /** @nullable */
+  matchedProductId?: string | null;
+  /**
+     * Decimal as a string, 0-1.
+     * @nullable
+     */
+  matchScore?: string | null;
+  rulesetVersion?: string;
+  /** @nullable */
+  modelVersion?: string | null;
+  /**
+     * Set when the merchant created a product despite a duplicate warning.
+     * @nullable
+     */
+  overrideReason?: string | null;
   classification: ProductExtractionSuggestionClassification;
+  /** The extracted values, plus the extraction's own bookkeeping written in snake_case alongside them. Those extras are not a stable API — read the camelCase fields, and treat the rest as diagnostic. */
   extractedData: ProductExtractionSuggestionExtractedData;
   evidence: ProductExtractionSuggestionEvidence;
   confidence: ProductExtractionSuggestionConfidence;
+  /** Plain-language reasons for the computed confidence, not a raw score. The merchant cannot act on "0.62"; he can act on "السعر مذكور صراحةً". */
+  confidenceReasons?: string[];
   fieldReview: ProductExtractionSuggestionFieldReview;
   missingFields?: ProductFieldKey[];
   missingFieldMessages?: string[];
@@ -1330,7 +1814,8 @@ export interface ProductExtractionSuggestion {
   status: ProductExtractionSuggestionStatus;
   /** @nullable */
   productId?: string | null;
-  possibleDuplicateProducts?: CatalogProduct[];
+  /** Only present when `status` is `possible_duplicate`. */
+  possibleDuplicateProducts?: PossibleDuplicateProduct[];
   createdAt: string;
   updatedAt?: string;
   sources: ProductExtractionSourceMessage[];
@@ -1366,6 +1851,12 @@ export interface ProductExtractionSuggestionCounts {
   pendingProductReview: number;
   draftCreated: number;
   possibleDuplicate: number;
+  /** Suggestions waiting on the merchant to accept or reject a change to an existing product */
+  updateProposed: number;
+  acceptedUpdate: number;
+  rejectedUpdate: number;
+  /** Replaced by a newer extraction of the same message */
+  superseded: number;
 }
 
 export interface ProductExtractionPagination {
@@ -1408,46 +1899,11 @@ export interface ExtractWhatsAppProductsResponse {
   quota?: ExtractionQuotaEstimate;
 }
 
-export type ProductInputAvailability = typeof ProductInputAvailability[keyof typeof ProductInputAvailability];
-
-
-export const ProductInputAvailability = {
-  unknown: 'unknown',
-  in_stock: 'in_stock',
-  out_of_stock: 'out_of_stock',
-  preorder: 'preorder',
-} as const;
-
-export type ProductInputStatus = typeof ProductInputStatus[keyof typeof ProductInputStatus];
-
-
-export const ProductInputStatus = {
-  draft: 'draft',
-  active: 'active',
-  archived: 'archived',
-} as const;
-
-export interface ProductInput {
-  /** @nullable */
-  sku?: string | null;
-  name: string;
-  aliases: string[];
-  description: string;
-  /** @nullable */
-  price?: string | null;
-  /** @nullable */
-  currency?: string | null;
-  availability: ProductInputAvailability;
-  status: ProductInputStatus;
-  mediaUrls: string[];
-  inventoryTracked?: boolean;
-  stockOnHand?: number;
-  lowStockThreshold?: number;
-  inventoryReason?: string;
-}
-
 export interface CreateProductDraftInput {
-  product?: ProductInput;
+  /** Omit it to accept the extracted values as-is; send it when the merchant corrected them in the editor first. */
+  product?: ProductInput | null;
+  /** Required when the suggestion is `possible_duplicate` and a `product` is sent: it is the merchant's stated reason for creating a product that looks like one he already has. Without it the server refuses rather than silently adding a duplicate. */
+  overrideReason?: string;
 }
 
 export interface ProductDraftResponse {
@@ -1553,18 +2009,34 @@ export interface ProductPublicationJob {
   createdAt: string;
 }
 
-export type ProductPublicationSnapshotSummary = {
+/**
+ * Counters over a batch of publication jobs. `inProgress` counts both queued and processing, because to the merchant they are the same wait.
+ */
+export interface ProductPublicationSummary {
   total: number;
   successful: number;
   failed: number;
   inProgress: number;
   needsAction: number;
-};
+}
 
 export interface ProductPublicationSnapshot {
   requestKey: string;
   jobs: ProductPublicationJob[];
-  summary: ProductPublicationSnapshotSummary;
+  summary: ProductPublicationSummary;
+}
+
+export interface ProductPublicationRetryInput {
+  /** At most 50. Ids that are not failed are ignored, not rejected. */
+  jobIds: string[];
+}
+
+/**
+ * The batch's state after retrying. Unlike the snapshot this carries no `requestKey`: the retried jobs may belong to several requests, so there is no single key to report.
+ */
+export interface ProductPublicationRetryResponse {
+  jobs: ProductPublicationJob[];
+  summary: ProductPublicationSummary;
 }
 
 export interface IncompletePublicationProduct {
@@ -1753,9 +2225,13 @@ export type GetWhatsAppProductExtractionsParams = {
  */
 classification?: GetWhatsAppProductExtractionsClassification;
 /**
- * Restrict the page to these statuses. Repeat the parameter or pass a comma separated list. Omit it for every status.
+ * Restrict the page to these statuses. Repeat the parameter or pass a comma separated list. Omit it for every status. `dismissed` is not selectable: a dismissed suggestion is not review work, and the list never returns one.
  */
 status?: GetWhatsAppProductExtractionsStatusItem[];
+/**
+ * Restrict the page to who wrote the message. Useful for a merchant who only wants to review prices he himself quoted. Omit it for every role.
+ */
+senderRole?: GetWhatsAppProductExtractionsSenderRole;
 /**
  * Page size, clamped to 1-50. Out of range values are clamped, not rejected.
  * @minimum 1
@@ -1785,6 +2261,19 @@ export const GetWhatsAppProductExtractionsStatusItem = {
   review: 'review',
   draft_created: 'draft_created',
   possible_duplicate: 'possible_duplicate',
+  update_proposed: 'update_proposed',
+  accepted_update: 'accepted_update',
+  rejected_update: 'rejected_update',
+  superseded: 'superseded',
+} as const;
+
+export type GetWhatsAppProductExtractionsSenderRole = typeof GetWhatsAppProductExtractionsSenderRole[keyof typeof GetWhatsAppProductExtractionsSenderRole];
+
+
+export const GetWhatsAppProductExtractionsSenderRole = {
+  merchant: 'merchant',
+  customer: 'customer',
+  unknown: 'unknown',
 } as const;
 
 export type GetPostsPageParams = {
@@ -1860,6 +2349,49 @@ export type ListCatalogProductsParams = {
  * Defaults to false, which excludes archived products
  */
 includeArchived?: boolean;
+};
+
+export type GetProductPublicMediaParams = {
+expires: string;
+signature: string;
+/**
+ * `thumbnail` and `instagram-jpeg` are only valid for images; anything else is served as `original`.
+ */
+variant?: GetProductPublicMediaVariant;
+};
+
+export type GetProductPublicMediaVariant = typeof GetProductPublicMediaVariant[keyof typeof GetProductPublicMediaVariant];
+
+
+export const GetProductPublicMediaVariant = {
+  original: 'original',
+  thumbnail: 'thumbnail',
+  'instagram-jpeg': 'instagram-jpeg',
+} as const;
+
+export type ListProductChangeProposalsParams = {
+/**
+ * Omit it for every status. An unknown value is ignored rather than rejected.
+ */
+status?: ListProductChangeProposalsStatus;
+};
+
+export type ListProductChangeProposalsStatus = typeof ListProductChangeProposalsStatus[keyof typeof ListProductChangeProposalsStatus];
+
+
+export const ListProductChangeProposalsStatus = {
+  proposed: 'proposed',
+  accepted: 'accepted',
+  rejected: 'rejected',
+  expired: 'expired',
+} as const;
+
+export type GetProductPublicationJobsParams = {
+/**
+ * The key the publish request was sent with
+ * @pattern ^[A-Za-z0-9._:-]{8,128}$
+ */
+requestKey: string;
 };
 
 export type TriggerWhatsAppSyncBody = {

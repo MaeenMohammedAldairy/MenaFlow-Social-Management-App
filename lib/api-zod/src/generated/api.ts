@@ -524,82 +524,65 @@ export const getWhatsAppProductExtractionsQueryOffsetMax = 10000;
 
 export const GetWhatsAppProductExtractionsQueryParams = zod.object({
   "classification": zod.enum(['product', 'not_product']).optional().describe('Restrict the page to one classification. Omit it for both. A `not_product` suggestion is a message that turned out to be a post candidate, a greeting or an order: it explains where a message went but it is not review work.'),
-  "status": zod.array(zod.enum(['review', 'draft_created', 'possible_duplicate'])).optional().describe('Restrict the page to these statuses. Repeat the parameter or pass a comma separated list. Omit it for every status.'),
+  "status": zod.array(zod.enum(['review', 'draft_created', 'possible_duplicate', 'update_proposed', 'accepted_update', 'rejected_update', 'superseded'])).optional().describe('Restrict the page to these statuses. Repeat the parameter or pass a comma separated list. Omit it for every status. `dismissed` is not selectable: a dismissed suggestion is not review work, and the list never returns one.'),
+  "senderRole": zod.enum(['merchant', 'customer', 'unknown']).optional().describe('Restrict the page to who wrote the message. Useful for a merchant who only wants to review prices he himself quoted. Omit it for every role.'),
   "limit": zod.coerce.number().int().min(1).max(getWhatsAppProductExtractionsQueryLimitMax).default(getWhatsAppProductExtractionsQueryLimitDefault).describe('Page size, clamped to 1-50. Out of range values are clamped, not rejected.'),
   "offset": zod.coerce.number().int().min(getWhatsAppProductExtractionsQueryOffsetMin).max(getWhatsAppProductExtractionsQueryOffsetMax).default(getWhatsAppProductExtractionsQueryOffsetDefault).describe('Rows to skip, clamped to 0-10000.')
 })
-
-export const getWhatsAppProductExtractionsResponseSuggestionsItemPossibleDuplicateProductsItemMediaUrlsMax = 20;
-
-
 
 export const GetWhatsAppProductExtractionsResponse = zod.object({
   "suggestions": zod.array(zod.object({
   "id": zod.string().uuid(),
   "sourceKey": zod.string().optional(),
+  "version": zod.number().int().describe('Bumped each time the suggestion is re-extracted.'),
+  "previousSuggestionId": zod.string().nullish(),
+  "senderRole": zod.enum(['merchant', 'customer', 'unknown']).describe('Who wrote the message. A customer-sourced price is a question or a complaint, not a fact about the product, and is shown differently.'),
+  "matchStrategy": zod.enum(['exact_sku', 'exact_name', 'alias_match', 'fuzzy_candidate', 'new_product']).nullish().describe('How the suggestion was matched against the existing catalog.'),
+  "matchedProductId": zod.string().nullish(),
+  "matchScore": zod.string().nullish().describe('Decimal as a string, 0-1.'),
+  "rulesetVersion": zod.string().optional(),
+  "modelVersion": zod.string().nullish(),
+  "overrideReason": zod.string().nullish().describe('Set when the merchant created a product despite a duplicate warning.'),
   "classification": zod.enum(['product', 'not_product']),
   "extractedData": zod.object({
-  "name": zod.string().nullish(),
-  "sku": zod.string().nullish(),
-  "aliases": zod.array(zod.string()).optional(),
-  "description": zod.string().nullish(),
-  "price": zod.string().nullish(),
-  "currency": zod.string().nullish(),
-  "availability": zod.enum(['in_stock', 'out_of_stock', 'preorder', 'null']).nullish()
-}),
+  "name": zod.string().nullable(),
+  "sku": zod.string().nullable(),
+  "aliases": zod.array(zod.string()),
+  "description": zod.string().nullable(),
+  "price": zod.string().nullable(),
+  "currency": zod.string().nullable(),
+  "availability": zod.enum(['in_stock', 'out_of_stock', 'preorder']).nullable(),
+  "evidence_spans": zod.record(zod.string(), zod.object({
+  "sourceId": zod.string().optional(),
+  "source_id": zod.string().optional(),
+  "start": zod.number().int().optional(),
+  "end": zod.number().int().optional()
+})).optional().describe('Field name to where its value came from, as character offsets into a source message. This is what lets the UI highlight the words a value was read from instead of asking the merchant to trust the model. A span\'s source may be keyed `sourceId` or `source_id`.'),
+  "confidence_reasons": zod.array(zod.string()).optional(),
+  "computed_confidence": zod.number().optional(),
+  "self_confidence": zod.number().optional(),
+  "generated_sku": zod.boolean().optional(),
+  "sender_role": zod.string().optional()
+}).describe('The extracted values, plus the extraction\'s own bookkeeping written in snake_case alongside them. Those extras are not a stable API — read the camelCase fields, and treat the rest as diagnostic.'),
   "evidence": zod.record(zod.string(), zod.string().nullable()),
   "confidence": zod.record(zod.string(), zod.number()),
+  "confidenceReasons": zod.array(zod.string()).optional().describe('Plain-language reasons for the computed confidence, not a raw score. The merchant cannot act on "0.62"; he can act on "السعر مذكور صراحةً".'),
   "fieldReview": zod.record(zod.string(), zod.boolean()),
   "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).optional(),
   "missingFieldMessages": zod.array(zod.string()).optional(),
   "aiModel": zod.string().describe('Model that produced the suggestion. A `+vision` suffix means the values were read from the message images rather than from its text, and the suggestion always needs a human review.'),
-  "status": zod.enum(['review', 'draft_created', 'possible_duplicate', 'dismissed']),
+  "status": zod.enum(['review', 'draft_created', 'possible_duplicate', 'dismissed', 'superseded', 'update_proposed', 'accepted_update', 'rejected_update']),
   "productId": zod.string().uuid().nullish(),
   "possibleDuplicateProducts": zod.array(zod.object({
   "id": zod.string(),
-  "ownerId": zod.string().describe('The user who created the product; the workspace is the tenant'),
-  "workspaceId": zod.string(),
-  "sku": zod.string().nullable(),
   "name": zod.string(),
-  "normalizedName": zod.string().nullable().describe('Match key used to spot duplicates'),
-  "sourceTrust": zod.enum(['merchant', 'customer', 'unknown']).describe('Who supplied the data, so the UI can flag customer-sourced prices'),
-  "lastExtractionSuggestionId": zod.string().nullable(),
-  "updatedBy": zod.string().nullable(),
-  "updatedReason": zod.string().nullable(),
-  "aliases": zod.array(zod.string()),
-  "description": zod.string(),
-  "price": zod.string().nullable().describe('Decimal as a string, to keep exact money arithmetic on the client'),
-  "currency": zod.string().nullable(),
-  "availability": zod.enum(['unknown', 'in_stock', 'out_of_stock', 'preorder']),
-  "inventoryTracked": zod.boolean(),
-  "stockOnHand": zod.number().int(),
-  "stockReserved": zod.number().int(),
-  "lowStockThreshold": zod.number().int(),
+  "sku": zod.string().nullable(),
   "status": zod.enum(['draft', 'active', 'archived']),
-  "mediaUrls": zod.array(zod.string()).max(getWhatsAppProductExtractionsResponseSuggestionsItemPossibleDuplicateProductsItemMediaUrlsMax).describe('Deduplicated and capped, not the raw column'),
-  "verifiedAt": zod.coerce.date().nullable(),
-  "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date(),
-  "mediaPreviews": zod.array(zod.object({
-  "id": zod.string(),
-  "url": zod.string(),
-  "mediaType": zod.string()
-})),
-  "postIds": zod.array(zod.string()).describe('Posts this product is linked to'),
-  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Every empty field, so the catalog can badge an incomplete product'),
-  "missingFieldMessages": zod.array(zod.string()).describe('Arabic labels for the empty fields, ready to show'),
-  "publicationBlockers": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Missing fields that stop publication'),
-  "publicationBlockerMessages": zod.array(zod.string()),
-  "publicationBlocked": zod.boolean(),
-  "advisoryFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Worth completing, but not enforced'),
-  "publicationHistory": zod.array(zod.object({
-  "channel": zod.enum(['facebook', 'instagram']),
-  "accountId": zod.string(),
-  "permalink": zod.string().nullable(),
-  "createdAt": zod.coerce.date(),
-  "completedAt": zod.coerce.date().nullable()
-}).describe('One channel+account the product was actually published to')).optional().describe('Newest completed publication per channel+account, only for jobs that actually reached "published". Returned by the catalog list; omitted by single-product reads.')
-}).describe('A product plus everything derived from it: media previews, the fields it is missing, and whether those omissions block publication.')).optional(),
+  "description": zod.string(),
+  "price": zod.string().nullable(),
+  "currency": zod.string().nullable(),
+  "availability": zod.enum(['unknown', 'in_stock', 'out_of_stock', 'preorder'])
+}).describe('The catalog product a `possible_duplicate` suggestion may already describe. A trimmed read-only view — the editor that resolves the duplicate only needs enough to recognise the existing entry.')).optional().describe('Only present when `status` is `possible_duplicate`.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional(),
   "sources": zod.array(zod.object({
@@ -614,7 +597,7 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
   "mediaType": zod.string()
 }))
 }))
-})),
+}).describe('One message\'s extraction. The server returns the whole suggestion row, so the bookkeeping fields (`version`, `matchStrategy`, `senderRole`, the evidence spans) are on the wire alongside the extracted values, and the client uses them to explain *why* a suggestion looks the way it does.')),
   "pendingJobs": zod.object({
   "pending": zod.number().int(),
   "processing": zod.number().int(),
@@ -631,7 +614,11 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
   "pendingReview": zod.number().int().describe('Awaiting a decision, of either classification'),
   "pendingProductReview": zod.number().int().describe('Awaiting a decision and holding a product — the badge number'),
   "draftCreated": zod.number().int(),
-  "possibleDuplicate": zod.number().int()
+  "possibleDuplicate": zod.number().int(),
+  "updateProposed": zod.number().int().describe('Suggestions waiting on the merchant to accept or reject a change to an existing product'),
+  "acceptedUpdate": zod.number().int(),
+  "rejectedUpdate": zod.number().int(),
+  "superseded": zod.number().int().describe('Replaced by a newer extraction of the same message')
 }).describe('Totals over every non-dismissed suggestion in the workspace, ignoring the page filters, so a badge does not change while the merchant moves between tabs.'),
   "pagination": zod.object({
   "total": zod.number().int().describe('Rows matching the requested filters'),
@@ -676,7 +663,7 @@ export const CreateProductExtractionDraftParams = zod.object({
 })
 
 export const CreateProductExtractionDraftBody = zod.object({
-  "product": zod.object({
+  "product": zod.union([zod.object({
   "sku": zod.string().nullish(),
   "name": zod.string(),
   "aliases": zod.array(zod.string()),
@@ -690,7 +677,8 @@ export const CreateProductExtractionDraftBody = zod.object({
   "stockOnHand": zod.number().optional(),
   "lowStockThreshold": zod.number().optional(),
   "inventoryReason": zod.string().optional()
-}).optional()
+}),zod.null()]).optional().describe('Omit it to accept the extracted values as-is; send it when the merchant corrected them in the editor first.'),
+  "overrideReason": zod.string().optional().describe('Required when the suggestion is `possible_duplicate` and a `product` is sent: it is the merchant\'s stated reason for creating a product that looks like one he already has. Without it the server refuses rather than silently adding a duplicate.')
 })
 
 export const createProductExtractionDraftResponseProductMediaUrlsMax = 20;
@@ -824,7 +812,7 @@ export const PublishCatalogProductsResponse = zod.object({
   "failed": zod.number().int(),
   "inProgress": zod.number().int(),
   "needsAction": zod.number().int()
-})
+}).describe('Counters over a batch of publication jobs. `inProgress` counts both queued and processing, because to the merchant they are the same wait.')
 })
 
 
@@ -1577,6 +1565,574 @@ export const ListCatalogProductsResponse = zod.object({
 }).describe('One channel+account the product was actually published to')).optional().describe('Newest completed publication per channel+account, only for jobs that actually reached "published". Returned by the catalog list; omitted by single-product reads.')
 }).describe('A product plus everything derived from it: media previews, the fields it is missing, and whether those omissions block publication.'))
 })
+
+
+/**
+ * Creates the product, records an opening-balance movement if it starts with stock, and optionally links a Meta post that is already live. Sending `importedMetaPost` for a post that was published through MenaFlow reuses that post instead of creating a second one.
+ * @summary Add a product to the catalog
+ */
+export const createCatalogProductBodyTwoImportedMetaPostOneIdMax = 500;
+
+export const createCatalogProductBodyTwoImportedMetaPostOneTextMax = 6000;
+
+export const createCatalogProductBodyTwoImportedMetaPostOneMediaTypeMax = 50;
+
+
+
+export const CreateCatalogProductBody = zod.object({
+  "sku": zod.string().nullish(),
+  "name": zod.string(),
+  "aliases": zod.array(zod.string()),
+  "description": zod.string(),
+  "price": zod.string().nullish(),
+  "currency": zod.string().nullish(),
+  "availability": zod.enum(['unknown', 'in_stock', 'out_of_stock', 'preorder']),
+  "status": zod.enum(['draft', 'active', 'archived']),
+  "mediaUrls": zod.array(zod.string()),
+  "inventoryTracked": zod.boolean().optional(),
+  "stockOnHand": zod.number().optional(),
+  "lowStockThreshold": zod.number().optional(),
+  "inventoryReason": zod.string().optional()
+}).and(zod.object({
+  "importedMetaPost": zod.union([zod.object({
+  "platform": zod.enum(['facebook', 'instagram']),
+  "id": zod.string().max(createCatalogProductBodyTwoImportedMetaPostOneIdMax),
+  "text": zod.string().max(createCatalogProductBodyTwoImportedMetaPostOneTextMax),
+  "publishedAt": zod.coerce.date().nullable(),
+  "url": zod.string().url().nullable(),
+  "imageUrl": zod.string().url().nullable(),
+  "mediaType": zod.string().max(createCatalogProductBodyTwoImportedMetaPostOneMediaTypeMax).nullable()
+}).describe('A post that is already live on Facebook or Instagram and is being turned into a product. The image host is restricted to Meta\'s CDNs, so a link to an arbitrary site cannot be stored as product media.'),zod.null()]).optional().describe('Optional. When present, the product is linked to that post and its image is copied into workspace media.')
+}))
+
+export const createCatalogProductResponseProductMediaUrlsMax = 20;
+
+
+
+export const CreateCatalogProductResponse = zod.object({
+  "product": zod.object({
+  "id": zod.string(),
+  "ownerId": zod.string().describe('The user who created the product; the workspace is the tenant'),
+  "workspaceId": zod.string(),
+  "sku": zod.string().nullable(),
+  "name": zod.string(),
+  "normalizedName": zod.string().nullable().describe('Match key used to spot duplicates'),
+  "sourceTrust": zod.enum(['merchant', 'customer', 'unknown']).describe('Who supplied the data, so the UI can flag customer-sourced prices'),
+  "lastExtractionSuggestionId": zod.string().nullable(),
+  "updatedBy": zod.string().nullable(),
+  "updatedReason": zod.string().nullable(),
+  "aliases": zod.array(zod.string()),
+  "description": zod.string(),
+  "price": zod.string().nullable().describe('Decimal as a string, to keep exact money arithmetic on the client'),
+  "currency": zod.string().nullable(),
+  "availability": zod.enum(['unknown', 'in_stock', 'out_of_stock', 'preorder']),
+  "inventoryTracked": zod.boolean(),
+  "stockOnHand": zod.number().int(),
+  "stockReserved": zod.number().int(),
+  "lowStockThreshold": zod.number().int(),
+  "status": zod.enum(['draft', 'active', 'archived']),
+  "mediaUrls": zod.array(zod.string()).max(createCatalogProductResponseProductMediaUrlsMax).describe('Deduplicated and capped, not the raw column'),
+  "verifiedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "mediaPreviews": zod.array(zod.object({
+  "id": zod.string(),
+  "url": zod.string(),
+  "mediaType": zod.string()
+})),
+  "postIds": zod.array(zod.string()).describe('Posts this product is linked to'),
+  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Every empty field, so the catalog can badge an incomplete product'),
+  "missingFieldMessages": zod.array(zod.string()).describe('Arabic labels for the empty fields, ready to show'),
+  "publicationBlockers": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Missing fields that stop publication'),
+  "publicationBlockerMessages": zod.array(zod.string()),
+  "publicationBlocked": zod.boolean(),
+  "advisoryFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Worth completing, but not enforced'),
+  "publicationHistory": zod.array(zod.object({
+  "channel": zod.enum(['facebook', 'instagram']),
+  "accountId": zod.string(),
+  "permalink": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable()
+}).describe('One channel+account the product was actually published to')).optional().describe('Newest completed publication per channel+account, only for jobs that actually reached "published". Returned by the catalog list; omitted by single-product reads.')
+}).describe('A product plus everything derived from it: media previews, the fields it is missing, and whether those omissions block publication.'),
+  "postIds": zod.array(zod.string())
+}).describe('The product as the server stored it, with the posts it is linked to.')
+
+
+/**
+ * The picker behind "import a post". A candidate is a post that actually went live on Facebook or Instagram and is not linked to any product, so the merchant can turn an existing listing into a catalog entry instead of retyping it. Newest first, at most 50. Posts with neither a title nor a body are dropped: there is nothing in them to extract.
+ * @summary Published posts that are not products yet
+ */
+export const ListProductCandidatesResponse = zod.object({
+  "candidates": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "mediaUrls": zod.array(zod.string()),
+  "mediaPreviews": zod.array(zod.object({
+  "id": zod.string(),
+  "url": zod.string(),
+  "mediaType": zod.string()
+})),
+  "updatedAt": zod.coerce.date()
+}).describe('A published post offered as the source of a new product.'))
+})
+
+
+/**
+ * Runs the same extraction the WhatsApp queue uses, but synchronously and against one post, so the editor can pre-fill a product from a competitor's listing or from the merchant's own older post. Nothing is written.
+ * @summary Read product fields out of a post without storing anything
+ */
+export const extractScannedPostProductBodyTextMax = 6000;
+
+export const extractScannedPostProductBodyPostIdMax = 500;
+
+
+
+export const ExtractScannedPostProductBody = zod.object({
+  "text": zod.string().max(extractScannedPostProductBodyTextMax),
+  "platform": zod.enum(['facebook', 'instagram']),
+  "postId": zod.string().max(extractScannedPostProductBodyPostIdMax)
+})
+
+export const ExtractScannedPostProductResponse = zod.object({
+  "classification": zod.enum(['product', 'not_product']),
+  "extractedData": zod.union([zod.object({
+  "name": zod.string().nullable(),
+  "sku": zod.string().nullable(),
+  "aliases": zod.array(zod.string()),
+  "description": zod.string().nullable(),
+  "price": zod.string().nullable(),
+  "currency": zod.string().nullable(),
+  "availability": zod.enum(['in_stock', 'out_of_stock', 'preorder']).nullable()
+}).describe('What the extractor read out of a message or post, before anyone edits it.'),zod.null()]).describe('Null when the post held no product.')
+})
+
+
+/**
+ * Creates a product from a post that is already live and links the two, so the catalog can show where the listing came from. Extraction failing degrades to an empty draft rather than failing the import: the merchant can still fill the fields in by hand.
+ * @summary Turn a published post into a catalog product
+ */
+export const ImportPostAsProductParams = zod.object({
+  "postId": zod.coerce.string().describe('A post in this workspace that is published on at least one channel')
+})
+
+export const importPostAsProductResponseProductMediaUrlsMax = 20;
+
+
+
+export const ImportPostAsProductResponse = zod.object({
+  "product": zod.object({
+  "id": zod.string(),
+  "ownerId": zod.string().describe('The user who created the product; the workspace is the tenant'),
+  "workspaceId": zod.string(),
+  "sku": zod.string().nullable(),
+  "name": zod.string(),
+  "normalizedName": zod.string().nullable().describe('Match key used to spot duplicates'),
+  "sourceTrust": zod.enum(['merchant', 'customer', 'unknown']).describe('Who supplied the data, so the UI can flag customer-sourced prices'),
+  "lastExtractionSuggestionId": zod.string().nullable(),
+  "updatedBy": zod.string().nullable(),
+  "updatedReason": zod.string().nullable(),
+  "aliases": zod.array(zod.string()),
+  "description": zod.string(),
+  "price": zod.string().nullable().describe('Decimal as a string, to keep exact money arithmetic on the client'),
+  "currency": zod.string().nullable(),
+  "availability": zod.enum(['unknown', 'in_stock', 'out_of_stock', 'preorder']),
+  "inventoryTracked": zod.boolean(),
+  "stockOnHand": zod.number().int(),
+  "stockReserved": zod.number().int(),
+  "lowStockThreshold": zod.number().int(),
+  "status": zod.enum(['draft', 'active', 'archived']),
+  "mediaUrls": zod.array(zod.string()).max(importPostAsProductResponseProductMediaUrlsMax).describe('Deduplicated and capped, not the raw column'),
+  "verifiedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "mediaPreviews": zod.array(zod.object({
+  "id": zod.string(),
+  "url": zod.string(),
+  "mediaType": zod.string()
+})),
+  "postIds": zod.array(zod.string()).describe('Posts this product is linked to'),
+  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Every empty field, so the catalog can badge an incomplete product'),
+  "missingFieldMessages": zod.array(zod.string()).describe('Arabic labels for the empty fields, ready to show'),
+  "publicationBlockers": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Missing fields that stop publication'),
+  "publicationBlockerMessages": zod.array(zod.string()),
+  "publicationBlocked": zod.boolean(),
+  "advisoryFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Worth completing, but not enforced'),
+  "publicationHistory": zod.array(zod.object({
+  "channel": zod.enum(['facebook', 'instagram']),
+  "accountId": zod.string(),
+  "permalink": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable()
+}).describe('One channel+account the product was actually published to')).optional().describe('Newest completed publication per channel+account, only for jobs that actually reached "published". Returned by the catalog list; omitted by single-product reads.')
+}).describe('A product plus everything derived from it: media previews, the fields it is missing, and whether those omissions block publication.'),
+  "postIds": zod.array(zod.string())
+}).describe('The product as the server stored it, with the posts it is linked to.')
+
+
+/**
+ * The body is the file itself, not JSON — send it with the file's own content type. The returned media id is what `mediaUrls` holds, and the preview is a signed link the client can render without another request.
+ * @summary Upload an image or video to attach to a product
+ */
+export const UploadProductMediaResponse = zod.object({
+  "media": zod.object({
+  "id": zod.string(),
+  "mediaType": zod.string(),
+  "mediaPreview": zod.union([zod.object({
+  "id": zod.string(),
+  "url": zod.string(),
+  "mediaType": zod.string()
+}),zod.null()]).describe('Null only if the server has no media signing key configured.')
+})
+})
+
+
+/**
+ * No bearer token: `mediaPreviews[].url` points here and is rendered directly by an image tag, so access is granted by the signature instead. The signature covers the media id, the expiry and the variant, which is why a thumbnail link cannot be swapped for the original. The content type follows the stored file — `image/webp` for thumbnails, `image/jpeg` for the Instagram variant, otherwise the original's.
+ * @summary Serve a product's media over a signed link
+ */
+export const GetProductPublicMediaParams = zod.object({
+  "mediaId": zod.coerce.string()
+})
+
+export const getProductPublicMediaQueryVariantDefault = `original`;
+
+export const GetProductPublicMediaQueryParams = zod.object({
+  "expires": zod.coerce.string(),
+  "signature": zod.coerce.string(),
+  "variant": zod.enum(['original', 'thumbnail', 'instagram-jpeg']).default(getProductPublicMediaQueryVariantDefault).describe('`thumbnail` and `instagram-jpeg` are only valid for images; anything else is served as `original`.')
+})
+
+export const GetProductPublicMediaResponse = zod.unknown()
+
+
+/**
+ * A full replace, not a patch: omitted optional fields go back to their defaults, which is why `ProductInput` marks the merchant's fields required. Stock is checked against reservations before anything is written, and a stock change is recorded as an inventory movement.
+ * @summary Replace a product's editable fields
+ */
+export const UpdateCatalogProductParams = zod.object({
+  "id": zod.coerce.string().describe('Identifier of the product')
+})
+
+export const UpdateCatalogProductBody = zod.object({
+  "sku": zod.string().nullish(),
+  "name": zod.string(),
+  "aliases": zod.array(zod.string()),
+  "description": zod.string(),
+  "price": zod.string().nullish(),
+  "currency": zod.string().nullish(),
+  "availability": zod.enum(['unknown', 'in_stock', 'out_of_stock', 'preorder']),
+  "status": zod.enum(['draft', 'active', 'archived']),
+  "mediaUrls": zod.array(zod.string()),
+  "inventoryTracked": zod.boolean().optional(),
+  "stockOnHand": zod.number().optional(),
+  "lowStockThreshold": zod.number().optional(),
+  "inventoryReason": zod.string().optional()
+})
+
+export const updateCatalogProductResponseProductMediaUrlsMax = 20;
+
+
+
+export const UpdateCatalogProductResponse = zod.object({
+  "product": zod.object({
+  "id": zod.string(),
+  "ownerId": zod.string().describe('The user who created the product; the workspace is the tenant'),
+  "workspaceId": zod.string(),
+  "sku": zod.string().nullable(),
+  "name": zod.string(),
+  "normalizedName": zod.string().nullable().describe('Match key used to spot duplicates'),
+  "sourceTrust": zod.enum(['merchant', 'customer', 'unknown']).describe('Who supplied the data, so the UI can flag customer-sourced prices'),
+  "lastExtractionSuggestionId": zod.string().nullable(),
+  "updatedBy": zod.string().nullable(),
+  "updatedReason": zod.string().nullable(),
+  "aliases": zod.array(zod.string()),
+  "description": zod.string(),
+  "price": zod.string().nullable().describe('Decimal as a string, to keep exact money arithmetic on the client'),
+  "currency": zod.string().nullable(),
+  "availability": zod.enum(['unknown', 'in_stock', 'out_of_stock', 'preorder']),
+  "inventoryTracked": zod.boolean(),
+  "stockOnHand": zod.number().int(),
+  "stockReserved": zod.number().int(),
+  "lowStockThreshold": zod.number().int(),
+  "status": zod.enum(['draft', 'active', 'archived']),
+  "mediaUrls": zod.array(zod.string()).max(updateCatalogProductResponseProductMediaUrlsMax).describe('Deduplicated and capped, not the raw column'),
+  "verifiedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "mediaPreviews": zod.array(zod.object({
+  "id": zod.string(),
+  "url": zod.string(),
+  "mediaType": zod.string()
+})),
+  "postIds": zod.array(zod.string()).describe('Posts this product is linked to'),
+  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Every empty field, so the catalog can badge an incomplete product'),
+  "missingFieldMessages": zod.array(zod.string()).describe('Arabic labels for the empty fields, ready to show'),
+  "publicationBlockers": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Missing fields that stop publication'),
+  "publicationBlockerMessages": zod.array(zod.string()),
+  "publicationBlocked": zod.boolean(),
+  "advisoryFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Worth completing, but not enforced'),
+  "publicationHistory": zod.array(zod.object({
+  "channel": zod.enum(['facebook', 'instagram']),
+  "accountId": zod.string(),
+  "permalink": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable()
+}).describe('One channel+account the product was actually published to')).optional().describe('Newest completed publication per channel+account, only for jobs that actually reached "published". Returned by the catalog list; omitted by single-product reads.')
+}).describe('A product plus everything derived from it: media previews, the fields it is missing, and whether those omissions block publication.'),
+  "postIds": zod.array(zod.string())
+}).describe('The product as the server stored it, with the posts it is linked to.')
+
+
+/**
+ * Opening balances, manual adjustments, and the reservations orders place and release. Newest first, at most 20 — a receipt to explain the current stock, not a ledger export.
+ * @summary The newest stock movements of one product
+ */
+export const ListInventoryMovementsParams = zod.object({
+  "id": zod.coerce.string().describe('Identifier of the product')
+})
+
+export const ListInventoryMovementsResponse = zod.object({
+  "movements": zod.array(zod.object({
+  "id": zod.string(),
+  "type": zod.enum(['opening_balance', 'adjustment', 'reservation', 'release', 'shipment']),
+  "stockDelta": zod.number().int(),
+  "reservedDelta": zod.number().int(),
+  "reason": zod.string(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * The audit trail. Each record carries the source — a manual edit, an accepted extraction proposal, an order, or publication — which is what lets the merchant tell "I changed this price" from "the customer's message did". Newest first, at most 200.
+ * @summary Who changed what on a product, and from where
+ */
+export const ListProductChangesParams = zod.object({
+  "id": zod.coerce.string().describe('Identifier of the product')
+})
+
+export const ListProductChangesResponse = zod.object({
+  "changes": zod.array(zod.object({
+  "id": zod.string(),
+  "workspaceId": zod.string(),
+  "productId": zod.string(),
+  "field": zod.string(),
+  "beforeValue": zod.unknown().nullable().describe('JSON, so its shape depends on the field — a price is a string, media a list.'),
+  "afterValue": zod.unknown().nullable(),
+  "sourceType": zod.enum(['manual', 'extraction', 'order', 'publication']),
+  "sourceId": zod.string().nullable(),
+  "actorId": zod.string().nullable(),
+  "createdAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * Each proposal is a diff against a product that already exists, with the message evidence behind it, so the merchant can accept or reject a price change without retyping it. Newest first, at most 100.
+ * @summary Updates the extraction queue proposed for existing products
+ */
+export const ListProductChangeProposalsQueryParams = zod.object({
+  "status": zod.enum(['proposed', 'accepted', 'rejected', 'expired']).optional().describe('Omit it for every status. An unknown value is ignored rather than rejected.')
+})
+
+export const ListProductChangeProposalsResponse = zod.object({
+  "proposals": zod.array(zod.object({
+  "id": zod.string(),
+  "productId": zod.string(),
+  "suggestionId": zod.string(),
+  "diff": zod.record(zod.string(), zod.object({
+  "before": zod.unknown(),
+  "after": zod.unknown(),
+  "evidence": zod.string().nullable()
+})).describe('Field name to what it was and what it would become. Only fields that actually differ appear, so an empty diff means nothing to propose.'),
+  "status": zod.enum(['proposed', 'accepted', 'rejected', 'expired']),
+  "createdAt": zod.coerce.date(),
+  "decidedAt": zod.coerce.date().nullable(),
+  "product": zod.union([zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "sku": zod.string().nullable(),
+  "status": zod.string()
+}),zod.null()]).describe('The product the diff applies to, for showing it next to the evidence.'),
+  "evidence": zod.record(zod.string(), zod.string().nullable()),
+  "senderRole": zod.enum(['merchant', 'customer', 'unknown'])
+}))
+})
+
+
+/**
+ * Accepting writes the diff onto the product and records each field as a change; rejecting only closes the proposal. Either way the suggestion that produced it leaves the queue, and a proposal can only be decided once.
+ * @summary Accept or reject a proposed product update
+ */
+export const DecideProductChangeProposalParams = zod.object({
+  "proposalId": zod.coerce.string()
+})
+
+export const DecideProductChangeProposalBody = zod.object({
+  "decision": zod.enum(['accepted', 'rejected'])
+})
+
+export const DecideProductChangeProposalResponse = zod.object({
+  "status": zod.enum(['accepted', 'rejected']),
+  "changedFields": zod.array(zod.string()).describe('The fields the diff covered. Empty when rejected.')
+})
+
+
+/**
+ * Undoes a dismissal. Only a `dismissed` suggestion can be restored: once a suggestion has become a draft it is past this, and the product is edited instead.
+ * @summary Return a dismissed suggestion to the review queue
+ */
+export const restoreProductExtractionSuggestionPathSuggestionIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const RestoreProductExtractionSuggestionParams = zod.object({
+  "suggestionId": zod.coerce.string().regex(restoreProductExtractionSuggestionPathSuggestionIdRegExp).describe('Identifier of the extraction suggestion')
+})
+
+export const RestoreProductExtractionSuggestionResponse = zod.object({
+  "restored": zod.boolean()
+})
+
+
+/**
+ * Bumps the ruleset version and re-runs the extractor over the original message, for when the rules improve or the first pass clearly misread it. The current suggestion stays in place until the new pass replaces it.
+ * @summary Queue a suggestion's source message for extraction again
+ */
+export const reprocessProductExtractionPathSuggestionIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const ReprocessProductExtractionParams = zod.object({
+  "suggestionId": zod.coerce.string().regex(reprocessProductExtractionPathSuggestionIdRegExp).describe('Identifier of the extraction suggestion')
+})
+
+export const ReprocessProductExtractionResponse = zod.object({
+  "rulesetVersion": zod.string().describe('The version the new pass will run with, e.g. `v2`.'),
+  "queued": zod.boolean()
+})
+
+
+/**
+ * For a message that describes a product already in the catalog — a new price, a corrected description. Nothing is applied yet: this records the proposal for the merchant to accept or reject. A suggestion with no matching product cannot propose anything.
+ * @summary Turn a suggestion into a diff against an existing product
+ */
+export const proposeProductUpdatePathSuggestionIdRegExp = new RegExp('^[0-9a-fA-F-]{36}$');
+
+
+export const ProposeProductUpdateParams = zod.object({
+  "suggestionId": zod.coerce.string().regex(proposeProductUpdatePathSuggestionIdRegExp).describe('Identifier of the extraction suggestion')
+})
+
+export const ProposeProductUpdateBody = zod.object({
+  "productId": zod.string().optional().describe('Defaults to the suggestion\'s own match. Send it when the merchant picked a different product than the one the matcher chose.')
+})
+
+export const ProposeProductUpdateResponse = zod.object({
+  "proposalId": zod.string(),
+  "diff": zod.record(zod.string(), zod.object({
+  "before": zod.unknown(),
+  "after": zod.unknown(),
+  "evidence": zod.string().nullable()
+})).describe('Field name to what it was and what it would become. Only fields that actually differ appear, so an empty diff means nothing to propose.')
+})
+
+
+/**
+ * How many messages were read, how many became products, and how many proposed updates were accepted. The window is fixed at seven days: this is a health glance for the review screen, not reporting.
+ * @summary Extraction counters for the last seven days
+ */
+export const GetProductExtractionMetricsResponse = zod.object({
+  "events": zod.array(zod.object({
+  "event": zod.string(),
+  "total": zod.number().int()
+})).describe('Event counters, one row per event type that occurred.'),
+  "suggestions": zod.array(zod.object({
+  "status": zod.string().nullable(),
+  "classification": zod.string().nullable(),
+  "total": zod.number().int()
+})).describe('Suggestion counts broken down by status and classification.'),
+  "extractionSucceeded": zod.number().int(),
+  "extractionFailed": zod.number().int(),
+  "reprocessed": zod.number().int(),
+  "proposalsAccepted": zod.number().int(),
+  "conversionRate": zod.number().describe('Products activated over product suggestions read, 0-1.'),
+  "daily": zod.array(zod.object({
+  "day": zod.string().describe('YYYY-MM-DD'),
+  "event": zod.string(),
+  "total": zod.number().int()
+})).describe('Succeeded and failed extractions per day, for the sparkline.')
+})
+
+
+/**
+ * Same shape as the publish response, so a screen can poll without branching. The request key is what ties the jobs to the click that started them.
+ * @summary Poll the jobs a publish request created
+ */
+export const getProductPublicationJobsQueryRequestKeyRegExp = new RegExp('^[A-Za-z0-9._:-]{8,128}$');
+
+
+export const GetProductPublicationJobsQueryParams = zod.object({
+  "requestKey": zod.coerce.string().regex(getProductPublicationJobsQueryRequestKeyRegExp).describe('The key the publish request was sent with')
+})
+
+export const GetProductPublicationJobsResponse = zod.object({
+  "requestKey": zod.string(),
+  "jobs": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "productId": zod.string().uuid(),
+  "channel": zod.enum(['facebook', 'instagram']),
+  "accountId": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'published', 'failed', 'action_required']),
+  "postId": zod.string().uuid().nullish(),
+  "permalink": zod.string().url().nullish(),
+  "error": zod.string().nullish().describe('Reason code. PRODUCT_FIELDS_INCOMPLETE means the listing was stopped because the product is missing a required field.'),
+  "attempts": zod.number().int(),
+  "startedAt": zod.coerce.date().nullish(),
+  "completedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})),
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "successful": zod.number().int(),
+  "failed": zod.number().int(),
+  "inProgress": zod.number().int(),
+  "needsAction": zod.number().int()
+}).describe('Counters over a batch of publication jobs. `inProgress` counts both queued and processing, because to the merchant they are the same wait.')
+})
+
+
+/**
+ * Only jobs that actually failed are retried; queued and published ones are left alone. The response covers every job sharing a request key with the ones retried, so the counters still describe the whole batch.
+ * @summary Re-queue failed publication jobs
+ */
+export const RetryProductPublicationJobsBody = zod.object({
+  "jobIds": zod.array(zod.string()).describe('At most 50. Ids that are not failed are ignored, not rejected.')
+})
+
+export const RetryProductPublicationJobsResponse = zod.object({
+  "jobs": zod.array(zod.object({
+  "id": zod.string().uuid(),
+  "productId": zod.string().uuid(),
+  "channel": zod.enum(['facebook', 'instagram']),
+  "accountId": zod.string(),
+  "status": zod.enum(['queued', 'processing', 'published', 'failed', 'action_required']),
+  "postId": zod.string().uuid().nullish(),
+  "permalink": zod.string().url().nullish(),
+  "error": zod.string().nullish().describe('Reason code. PRODUCT_FIELDS_INCOMPLETE means the listing was stopped because the product is missing a required field.'),
+  "attempts": zod.number().int(),
+  "startedAt": zod.coerce.date().nullish(),
+  "completedAt": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date()
+})),
+  "summary": zod.object({
+  "total": zod.number().int(),
+  "successful": zod.number().int(),
+  "failed": zod.number().int(),
+  "inProgress": zod.number().int(),
+  "needsAction": zod.number().int()
+}).describe('Counters over a batch of publication jobs. `inProgress` counts both queued and processing, because to the merchant they are the same wait.')
+}).describe('The batch\'s state after retrying. Unlike the snapshot this carries no `requestKey`: the retried jobs may belong to several requests, so there is no single key to report.')
 
 
 /**
