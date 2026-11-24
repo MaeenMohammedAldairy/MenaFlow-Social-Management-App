@@ -64,6 +64,10 @@ import {
   whatsAppAutoReplyWindowExpiredCode,
 } from "../lib/whatsapp-auto-reply-policy";
 import {
+  planWhatsAppAutoReplyFailure,
+  whatsAppAutoReplyErrorCode,
+} from "../lib/whatsapp-auto-reply-failure";
+import {
   describeWhatsAppAutoReplySkip,
   describeWhatsAppInboundOutcome,
   logInboundWebhookOutcome,
@@ -1726,32 +1730,49 @@ async function processWhatsAppAutoReplyAsync(input: {
         ),
       );
   } catch (error) {
-    const errorCode =
-      error instanceof EvolutionApiError
-        ? error.message.slice(0, 80)
-        : error instanceof Error
-          ? error.name.slice(0, 80)
-          : "AUTO_REPLY_FAILED";
-    logger.error(
-      {
-        workspaceId: input.connection.workspaceId,
-        instanceName: input.instanceName,
-        errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
-      },
-      "WhatsApp automatic reply failed",
-    );
-    const retry =
-      !sendStarted && retryMetaAutoReplyGeneration(error, input.attempts);
+    // A limit that lifts by itself is not a failure: an exhausted AI quota
+    // resets next period and a missing provider key is fixed in minutes, while a
+    // `failed` row is never claimed again, so the customer's message would lose
+    // its reply permanently. The planner keeps such an event `queued`, pushes
+    // `next_run_at` out and hands the attempt back; the age check above is what
+    // bounds the loop, so a quota that never lifts ends with the conversation
+    // handed to a human instead of an event queued forever.
+    const plan = planWhatsAppAutoReplyFailure({
+      errorCode: whatsAppAutoReplyErrorCode(
+        error,
+        error instanceof EvolutionApiError,
+      ),
+      retryable: retryMetaAutoReplyGeneration(error, input.attempts),
+      attempts: input.attempts,
+      sendStarted,
+    });
+    const logContext = {
+      workspaceId: input.connection.workspaceId,
+      instanceName: input.instanceName,
+      errorCode: plan.errorCode,
+      outcome: plan.kind,
+    };
+    if (plan.kind === "quota_pause") {
+      logger.warn(
+        { ...logContext, nextRunAt: plan.nextRunAt.toISOString() },
+        "WHATSAPP_AUTO_REPLY_PAUSED_FOR_LIMIT",
+      );
+    } else {
+      logger.error(logContext, "WhatsApp automatic reply failed");
+    }
     await db
       .update(menaWhatsAppAutoReplyEvents)
       .set({
-        status: sendStarted ? "unknown" : retry ? "queued" : "failed",
-        errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
-        nextRunAt: retry
-          ? new Date(Date.now() + Math.min(input.attempts * 10_000, 30_000))
-          : new Date(),
+        status: plan.status,
+        errorCode: plan.errorCode,
+        // The attempt was claimed but never spent on a generation, and the
+        // column is capped at 3, so it is handed back rather than lost.
+        attempts: plan.returnAttempt
+          ? sql`GREATEST(${menaWhatsAppAutoReplyEvents.attempts} - 1, 0)`
+          : undefined,
+        nextRunAt: plan.nextRunAt ?? new Date(),
         leaseExpiresAt: null,
-        completedAt: sendStarted || !retry ? new Date() : null,
+        completedAt: plan.completed ? new Date() : null,
       })
       .where(
         and(

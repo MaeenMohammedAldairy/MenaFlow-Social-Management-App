@@ -22,6 +22,14 @@ const serverRoot = path.resolve(here, "../../api-server/src");
 const NOT_SYNC_STATE_ERRORS = new Map([
   ["WHATSAPP_HISTORY_FILTER_IGNORED_FALLING_BACK_TO_SCAN", "log event name"],
   ["WHATSAPP_HISTORY_SCAN_PAGE_CAP_REACHED", "log event name"],
+  [
+    // Warn-level log event for a reply postponed by a limit that lifts by
+    // itself. The merchant sees the stored `error_code`
+    // (SUBSCRIPTION_LIMIT_REACHED:…) through lib/whatsapp-auto-reply-copy.ts,
+    // never this name.
+    "WHATSAPP_AUTO_REPLY_PAUSED_FOR_LIMIT",
+    "log event name, not stored in last_error",
+  ],
   ["WHATSAPP_WEBHOOK_SECRET_REQUIRED", "webhook setup, answered to the caller"],
   ["WHATSAPP_WEBHOOK_URL_REQUIRED", "webhook setup, answered to the caller"],
   ["WHATSAPP_WEBHOOK_URL_INVALID", "webhook setup, answered to the caller"],

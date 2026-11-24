@@ -186,6 +186,17 @@ remain discoverable until their messages expire. The inbox and reply routes
 require workspace authentication; uncertain sends are not retried until an
 operator confirms the message did not arrive.
 
+An automatic reply that could not be generated because of a limit that lifts by
+itself — an exhausted AI quota, a missing provider key, an unreadable plan — is
+not failed. The event stays `queued`, its attempt is handed back, and
+`next_run_at` moves out by `WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES` (default 30,
+clamped to 5–120), so the reply is sent once the limit clears. The loop is
+bounded by the reply window the queue already enforces
+(`WHATSAPP_AUTO_REPLY_MAX_AGE_MINUTES`, 12 hours): past that age the event is
+dropped as `AUTO_REPLY_WINDOW_EXPIRED` and the conversation waits for a human,
+so a quota that never lifts cannot leave an event queued forever or deliver a
+reply half a day late.
+
 The same delivery log records every Evolution webhook decision, including the
 refusals that cannot be attributed to a workspace because the secret check
 happens first. `docs/INBOUND_DELIVERY_DIAGNOSTICS.md` covers the outcome

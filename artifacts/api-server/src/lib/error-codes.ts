@@ -149,3 +149,74 @@ export function errorHttpStatus(code: string): number {
 export function registeredErrorCodes(): string[] {
   return Object.keys(errorDefinitions);
 }
+
+/** Longest value an `error_code` column in this schema holds. */
+export const MAX_ERROR_CODE_LENGTH = 80;
+
+/**
+ * Shape of a code this registry can classify: `UPPER_SNAKE`, optionally with a
+ * `:suffix` naming the limit or resource (`SUBSCRIPTION_LIMIT_REACHED:aiGenerations`).
+ *
+ * Anything else is not a code and must not be stored as one. Two real failures
+ * motivated the check: recording `error.name` stores `"Error"` for most faults,
+ * which tells the merchant nothing, and recording a raw `error.message` can
+ * store a provider's prose — including text from a model response — in a column
+ * the app renders back to the merchant.
+ */
+const STABLE_ERROR_CODE = /^[A-Z][A-Z0-9_]{2,63}(?::[A-Za-z0-9_.-]{1,64})?$/;
+
+/**
+ * Returns `value` when it is a stable machine code, otherwise null so the
+ * caller can fall back to something it knows is safe to store.
+ */
+export function stableErrorCode(
+  value: string | null | undefined,
+): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > MAX_ERROR_CODE_LENGTH) return null;
+  return STABLE_ERROR_CODE.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Codes that mean an automatic reply was never generated, so nothing was sent
+ * and no customer is waiting on half a delivery.
+ *
+ * Both reply queues spend the same workspace AI quota and read the same
+ * configuration, and every code here lifts on its own — at the next billing
+ * period, or as soon as the operator supplies the missing key. Recording one as
+ * a failure therefore turns a temporary limit into a permanently lost reply,
+ * and tells the merchant a send failed that never happened.
+ */
+export const autoReplyGenerationPausedCodes = [
+  "SUBSCRIPTION_LIMIT_REACHED",
+  "WORKSPACE_SUBSCRIPTION_MISSING",
+  "WORKSPACE_SUBSCRIPTION_PLAN_INVALID",
+  "MISSING_OPENAI_KEY",
+  "MISSING_GEMINI_KEY",
+  "MISSING_AI_PROVIDER_KEY",
+  "AI_MODEL_NAME_INVALID",
+] as const;
+
+export function isAutoReplyGenerationPausedCode(
+  reason: string | null | undefined,
+): boolean {
+  const code = reason?.trim() ?? "";
+  if (!code) return false;
+  return autoReplyGenerationPausedCodes.some(
+    (candidate) =>
+      code === candidate ||
+      code.startsWith(`${candidate}:`) ||
+      code.includes(candidate),
+  );
+}
+
+/**
+ * `"skipped"` means paused by a limit that lifts by itself; `"failed"` means a
+ * real generation or send fault.
+ */
+export function classifyAutoReplyGenerationFailure(
+  reason: string,
+): "skipped" | "failed" {
+  return isAutoReplyGenerationPausedCode(reason) ? "skipped" : "failed";
+}
