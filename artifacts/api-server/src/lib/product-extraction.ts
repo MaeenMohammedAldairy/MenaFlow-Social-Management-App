@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { type AiProviderOptions } from "./ai-provider.ts";
+import { resolvePurposeModelOverrides } from "./ai-provider-fallback.ts";
 import { callMeteredAiProvider } from "./metered-ai-provider.ts";
 import {
   asRecord as record,
@@ -404,15 +405,20 @@ export function generatedProductSku(
   return `MF-${productExtractionSourceKey(sourceMessageIds).slice(0, 16).toUpperCase()}`;
 }
 
-export async function extractWhatsAppProductCandidates(
-  workspaceId: string,
+/**
+ * Re-indexes caller sources to short local ids ("1", "2", …) and numeric group
+ * ids before they are shown to a model, so database identifiers never leave the
+ * server and the reply graph stays consistent. Shared by the text and the image
+ * extraction paths.
+ */
+export function toLocalProductExtractionSources(
   sources: readonly ProductExtractionSource[],
-): Promise<{ model: string; candidates: ProductExtractionCandidate[] }> {
+): ProductExtractionSource[] {
   const sourceIndexById = new Map(
     sources.map((source, index) => [source.id, index]),
   );
   const groupNumberById = new Map<string, number>();
-  const localSources = sources.map((source, index) => {
+  return sources.map((source, index) => {
     let groupNumber = groupNumberById.get(source.groupId);
     if (groupNumber === undefined) {
       groupNumber = groupNumberById.size + 1;
@@ -429,6 +435,43 @@ export async function extractWhatsAppProductCandidates(
         replyIndex === undefined ? null : String(replyIndex + 1),
     };
   });
+}
+
+/**
+ * Maps normalized local ids back to the caller's message ids and fills in a
+ * generated SKU for a named product that quoted none.
+ */
+export function remapProductExtractionCandidates(
+  normalized: ReturnType<typeof normalizeProductExtractionResponse>,
+  sources: readonly ProductExtractionSource[],
+): ProductExtractionCandidate[] {
+  return normalized.candidates.map((candidate) => {
+    const sourceMessageIds = candidate.sourceMessageIds.map((id) => {
+      const sourceIndex = Number(id) - 1;
+      const source = sources[sourceIndex];
+      if (!Number.isInteger(sourceIndex) || !source) {
+        throw new Error("PRODUCT_EXTRACTION_INVALID_SOURCE_GROUPING");
+      }
+      return source.id;
+    });
+    const sku = candidate.classification === "product" &&
+        candidate.data.name &&
+        !candidate.data.sku
+      ? generatedProductSku(sourceMessageIds)
+      : candidate.data.sku;
+    return {
+      ...candidate,
+      sourceMessageIds,
+      data: { ...candidate.data, sku },
+    };
+  });
+}
+
+export async function extractWhatsAppProductCandidates(
+  workspaceId: string,
+  sources: readonly ProductExtractionSource[],
+): Promise<{ model: string; candidates: ProductExtractionCandidate[] }> {
+  const localSources = toLocalProductExtractionSources(sources);
   const input = JSON.stringify(
     localSources.map((source) => ({
       id: source.id,
@@ -552,6 +595,9 @@ export async function extractWhatsAppProductCandidates(
         },
       },
     },
+    // `AI_EXTRACTION_OPENAI_MODEL` / `AI_EXTRACTION_GEMINI_MODEL` pin the
+    // extraction quality independently of the chat/auto-reply models.
+    ...resolvePurposeModelOverrides("extraction"),
     temperature: 0,
     maxTokens: 3000,
     timeoutMs: 45_000,
@@ -594,29 +640,9 @@ export async function extractWhatsAppProductCandidates(
     );
     model = fallbackResult.model;
   }
-  const candidates = normalized.candidates.map((candidate) => {
-    const sourceMessageIds = candidate.sourceMessageIds.map((id) => {
-      const sourceIndex = Number(id) - 1;
-      const source = sources[sourceIndex];
-      if (!Number.isInteger(sourceIndex) || !source) {
-        throw new Error("PRODUCT_EXTRACTION_INVALID_SOURCE_GROUPING");
-      }
-      return source.id;
-    });
-    const sku = candidate.classification === "product" &&
-        candidate.data.name &&
-        !candidate.data.sku
-      ? generatedProductSku(sourceMessageIds)
-      : candidate.data.sku;
-    return {
-      ...candidate,
-      sourceMessageIds,
-      data: { ...candidate.data, sku },
-    };
-  });
   return {
     model,
-    candidates,
+    candidates: remapProductExtractionCandidates(normalized, sources),
   };
 }
 

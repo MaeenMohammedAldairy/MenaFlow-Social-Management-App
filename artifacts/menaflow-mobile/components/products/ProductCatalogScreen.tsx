@@ -73,6 +73,7 @@ import {
   reviewProductExtraction,
   type CatalogProduct,
   type PublishableAccount,
+  type ProductExtractionQueueCounts,
   type ProductExtractionSuggestion,
   type ProductPublicationSnapshot,
 } from "@/lib/product-catalog-api";
@@ -123,6 +124,10 @@ function productPublicationDisabledReason(
   }
   if (!product.verifiedAt) {
     return "راجع بيانات المنتج واحفظها بعد التحقق قبل نشره.";
+  }
+  const blockers = product.publicationBlockerMessages ?? [];
+  if (blockers.length) {
+    return `أكمل بيانات المنتج قبل النشر: ينقصه ${blockers.join(" و")}.`;
   }
   return null;
 }
@@ -584,23 +589,25 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   const selectableVisibleProducts = visibleProducts.filter(
     (product) => productPublicationDisabledReason(product) === null,
   );
+  const extractionSuggestions = extractions.data?.suggestions ?? [];
+  const extractionQueue = extractions.data?.pendingJobs;
   const targetedSuggestion = targetedSourceMessageId
-    ? extractions.data?.find((suggestion) =>
+    ? extractionSuggestions.find((suggestion) =>
         suggestion.sources.some((source) => source.id === targetedSourceMessageId),
       ) ?? null
     : null;
   const extractionsForDisplay = targetedSuggestion
     ? [
         targetedSuggestion,
-        ...(extractions.data ?? []).filter(
+        ...extractionSuggestions.filter(
           (suggestion) => suggestion.id !== targetedSuggestion.id,
         ),
       ]
-    : extractions.data ?? [];
+    : extractionSuggestions;
   const extractionCount =
     extractions.isPending || candidates.isPending
       ? null
-      : (extractions.data?.length ?? 0) + (candidates.data?.length ?? 0);
+      : extractionSuggestions.length + (candidates.data?.length ?? 0);
   const tabCounts: Record<CatalogTabId, number | null> = {
     all: catalog.data === undefined ? null : allProducts.length,
     drafts:
@@ -1440,6 +1447,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 ) : null}
               </Panel>
             ))}
+            <ProductExtractionQueueStrip counts={extractionQueue} />
             {extractions.isError ? (
               <Text
                 accessibilityRole="alert"
@@ -1453,7 +1461,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
               <Text style={[styles.helper, { color: colors.mutedForeground }]}>
                 جارٍ تحميل اقتراحات المنتجات...
               </Text>
-            ) : extractions.data?.length ? (
+            ) : extractionSuggestions.length ? (
               <>
                 {extractionsForDisplay.map((suggestion) => (
                   <ProductExtractionCard
@@ -2878,6 +2886,11 @@ function ProductExtractionCard({
             </View>
           ))
         : null}
+      {suggestion.missingFieldMessages?.length ? (
+        <Text style={[styles.description, { color: colors.warning }]}>
+          يحتاج إلى مراجعة: {suggestion.missingFieldMessages.join(" · ")}
+        </Text>
+      ) : null}
       {suggestion.classification === "product" &&
       suggestion.extractedData.aliases.length ? (
         <Text style={[styles.description, { color: colors.mutedForeground }]}>
@@ -3103,6 +3116,70 @@ function ProductExtractionCard({
   );
 }
 
+/**
+ * Shows the extraction jobs that are stuck on something other than the AI:
+ * a download, an association decision the merchant owes, or a failure. Without
+ * it an empty suggestion list looks like the feature is idle.
+ */
+function ProductExtractionQueueStrip({
+  counts,
+}: {
+  counts?: ProductExtractionQueueCounts;
+}) {
+  const colors = useColors();
+  if (!counts) return null;
+  const working = counts.pending + counts.processing;
+  const lines: Array<{ text: string; tone: "warning" | "muted" }> = [];
+  if (counts.waitingAssociation > 0) {
+    lines.push({
+      text: `${formatArabicNumber(counts.waitingAssociation)} رسالة تنتظر قرار ربط الصور بالنص — احسم الربط من شاشة الرسائل.`,
+      tone: "warning",
+    });
+  }
+  if (counts.waitingMedia > 0) {
+    lines.push({
+      text: `${formatArabicNumber(counts.waitingMedia)} رسالة تنتظر اكتمال تنزيل الوسائط.`,
+      tone: "muted",
+    });
+  }
+  if (counts.failed > 0) {
+    lines.push({
+      text: `${formatArabicNumber(counts.failed)} رسالة تعذر استخراج بياناتها — أعد التحليل من زر «تحليل الرسائل».`,
+      tone: "warning",
+    });
+  }
+  if (working > 0) {
+    lines.push({
+      text: `جارٍ تحليل ${formatArabicNumber(working)} رسالة.`,
+      tone: "muted",
+    });
+  }
+  if (!lines.length) return null;
+  return (
+    <Panel style={styles.scannedPost}>
+      <Text
+        accessibilityRole="status"
+        style={[styles.accountName, { color: colors.foreground }]}
+      >
+        حالة طابور الاستخراج
+      </Text>
+      {lines.map((line) => (
+        <Text
+          key={line.text}
+          style={[
+            styles.helper,
+            {
+              color: line.tone === "warning" ? colors.warning : colors.mutedForeground,
+            },
+          ]}
+        >
+          {line.text}
+        </Text>
+      ))}
+    </Panel>
+  );
+}
+
 function ProductCard({
   product,
   selected,
@@ -3221,6 +3298,11 @@ function ProductCard({
             ? ` · ${formatArabicCurrency(product.price, product.currency)}`
             : " · لا يوجد سعر معتمد"}
         </Text>
+        {product.missingFieldMessages?.length ? (
+          <Text style={[styles.description, { color: colors.warning }]}>
+            ينقصه: {product.missingFieldMessages.join(" · ")}
+          </Text>
+        ) : null}
         {product.inventoryTracked ? (
           <View style={styles.inventoryHistory}>
             <Text

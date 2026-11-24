@@ -19,6 +19,18 @@
  */
 
 import { logger } from "./logger.ts";
+import {
+  validateAiImages,
+  type AiImage,
+} from "./ai-image-validation.ts";
+import {
+  applyProviderCooldown,
+  describeAiProviderPlan,
+  emptyAiProviderCooldowns,
+  planAiProviders,
+  type AiProviderCooldowns,
+  type AiProviderName,
+} from "./ai-provider-fallback.ts";
 
 export type OpenAiMessage = {
   role: "system" | "user" | "assistant";
@@ -34,6 +46,13 @@ export type GeminiResponseFormat = {
   };
 };
 
+export {
+  MAX_AI_IMAGE_BASE64_LENGTH,
+  MAX_AI_IMAGES_PER_CALL,
+  validateAiImages,
+  type AiImage,
+} from "./ai-image-validation.ts";
+
 export type AiProviderOptions = {
   /** Messages in OpenAI chat-completions format. Required when calling OpenAI. */
   openAiMessages?: OpenAiMessage[];
@@ -45,13 +64,27 @@ export type AiProviderOptions = {
   geminiSystemInstruction?: string;
   /** Gemini response format for generateContent. */
   geminiResponseFormat?: GeminiResponseFormat;
+  /**
+   * Optional inline images for vision-capable callers. Omit to keep the call
+   * text-only, which is the default for every existing feature.
+   */
+  images?: AiImage[];
+  /** Model override for this call; validated like the environment default. */
+  openAiModel?: string;
+  /** Model override for this call; validated like the environment default. */
+  geminiModel?: string;
   temperature?: number;
   maxTokens?: number;
   timeoutMs?: number;
 };
 
 export type AiProviderCallOptions = AiProviderOptions & {
-  preferredProvider?: "openai" | "gemini";
+  preferredProvider?: AiProviderName;
+  /**
+   * Attempt a provider even while it is inside its throttle cooldown. Use for
+   * an explicit merchant-triggered retry, never for background workers.
+   */
+  ignoreProviderCooldowns?: boolean;
 };
 
 export type AiProviderResult = {
@@ -136,10 +169,40 @@ function textOnlyOpenAiMessages(messages: OpenAiMessage[] | undefined): OpenAiMe
   });
 }
 
+/**
+ * Appends validated inline images to the last user turn. Text parts keep going
+ * through `textOnlyGeminiContents`, so a caller cannot smuggle an image in by
+ * adding a key to a part: images are only accepted through `options.images`.
+ */
+export function geminiContentsWithImages(
+  contents: Array<{ parts: GeminiPart[] }>,
+  images: readonly AiImage[],
+): Array<{
+  parts: Array<GeminiPart | { inlineData: { mimeType: string; data: string } }>;
+}> {
+  if (images.length === 0) return contents;
+  const target = contents.length - 1;
+  return contents.map((content, index) =>
+    index === target
+      ? {
+          parts: [
+            ...content.parts,
+            ...images.map((image) => ({
+              inlineData: { mimeType: image.mimeType, data: image.dataBase64 },
+            })),
+          ],
+        }
+      : { parts: [...content.parts] },
+  );
+}
+
 export function buildGeminiRequestBody(
   options: AiProviderOptions,
 ): Record<string, unknown> {
-  const geminiContents = textOnlyGeminiContents(options.geminiContents);
+  const geminiContents = geminiContentsWithImages(
+    textOnlyGeminiContents(options.geminiContents),
+    validateAiImages(options.images),
+  );
   const responseFormat = options.geminiResponseFormat
     ? {
         ...options.geminiResponseFormat,
@@ -167,16 +230,44 @@ export function buildGeminiRequestBody(
   return body;
 }
 
-async function callOpenAI(
-  options: AiProviderOptions,
-): Promise<AiProviderResult> {
-  const key = process.env.OPENAI_API_KEY;
-  if (!key) throw new Error("MISSING_OPENAI_KEY");
-  if (!options.openAiMessages?.length)
-    throw new Error("OPENAI_MESSAGES_REQUIRED");
+/**
+ * OpenAI chat body builder. Exported so the vision shape and the model pinning
+ * can be asserted without a network call.
+ */
+export function openAiMessagesWithImages(
+  messages: OpenAiMessage[],
+  images: readonly AiImage[],
+): Array<{ role: OpenAiMessage["role"]; content: unknown }> {
+  if (images.length === 0) return messages;
+  const target = messages.length - 1;
+  return messages.map((message, index) =>
+    index === target
+      ? {
+          role: message.role,
+          content: [
+            { type: "text", text: message.content },
+            ...images.map((image) => ({
+              type: "image_url",
+              image_url: { url: `data:${image.mimeType};base64,${image.dataBase64}` },
+            })),
+          ],
+        }
+      : message,
+  );
+}
 
-  const model = validateModelName(process.env.OPENAI_MODEL, "gpt-4o-mini");
-  const messages = textOnlyOpenAiMessages(options.openAiMessages);
+export function buildOpenAiRequestBody(
+  options: AiProviderOptions,
+): Record<string, unknown> {
+  const model = validateModelName(
+    options.openAiModel ?? process.env.OPENAI_MODEL,
+    "gpt-4o-mini",
+  );
+  const images = validateAiImages(options.images);
+  const messages = openAiMessagesWithImages(
+    textOnlyOpenAiMessages(options.openAiMessages),
+    images,
+  );
   const body: Record<string, unknown> = {
     model,
     messages,
@@ -186,6 +277,19 @@ async function callOpenAI(
   if (options.openAiResponseFormat) {
     body.response_format = options.openAiResponseFormat;
   }
+  return body;
+}
+
+async function callOpenAI(
+  options: AiProviderOptions,
+): Promise<AiProviderResult> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) throw new Error("MISSING_OPENAI_KEY");
+  if (!options.openAiMessages?.length)
+    throw new Error("OPENAI_MESSAGES_REQUIRED");
+
+  const body = buildOpenAiRequestBody(options);
+  const model = String(body.model);
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -262,7 +366,7 @@ async function callGemini(
   }
 
   const preferredModel = validateModelName(
-    process.env.GEMINI_MODEL,
+    options.geminiModel ?? process.env.GEMINI_MODEL,
     "gemini-2.5-flash",
   );
   const fallbackModel = "gemini-flash-lite-latest";
@@ -303,40 +407,113 @@ async function callGemini(
 // ---------------------------------------------------------------------------
 
 /**
+ * Process-wide throttle state. A provider that answers `429` (or rejects the
+ * key) is not asked again until its cooldown expires, so a queue of fifty jobs
+ * costs one failed request instead of fifty.
+ */
+const providerCooldowns: AiProviderCooldowns = { ...emptyAiProviderCooldowns };
+const lastProviderFailure: Partial<Record<AiProviderName, string>> = {};
+
+/** Clears the throttle state. Used by tests and by an operator retry endpoint. */
+export function resetAiProviderCooldowns(): void {
+  providerCooldowns.openai = 0;
+  providerCooldowns.gemini = 0;
+  delete lastProviderFailure.openai;
+  delete lastProviderFailure.gemini;
+}
+
+/** Read-only view of the throttle state, for diagnostics endpoints and tests. */
+export function aiProviderCooldownSnapshot(now: number = Date.now()): Record<
+  AiProviderName,
+  { coolingDown: boolean; remainingMs: number; lastReason: string | null }
+> {
+  const snapshot = (provider: AiProviderName) => ({
+    coolingDown: providerCooldowns[provider] > now,
+    remainingMs: Math.max(0, providerCooldowns[provider] - now),
+    lastReason: lastProviderFailure[provider] ?? null,
+  });
+  return { openai: snapshot("openai"), gemini: snapshot("gemini") };
+}
+
+const providerCallers: Record<
+  AiProviderName,
+  (options: AiProviderOptions) => Promise<AiProviderResult>
+> = {
+  openai: callOpenAI,
+  gemini: callGemini,
+};
+
+/**
  * Calls the configured AI provider (OpenAI first, Gemini as fallback).
- * The caller can force a specific provider by passing `preferredProvider`.
+ * The caller can force a specific provider by passing `preferredProvider`,
+ * which is honoured unless that provider is inside its throttle cooldown.
  */
 export async function callAiProvider(
   options: AiProviderCallOptions,
 ): Promise<AiProviderResult> {
-  const openAiKey = process.env.OPENAI_API_KEY;
-  const geminiKey = process.env.GEMINI_API_KEY;
+  const now = Date.now();
+  const plan = planAiProviders({
+    openAiKeyPresent: Boolean(process.env.OPENAI_API_KEY),
+    geminiKeyPresent: Boolean(process.env.GEMINI_API_KEY),
+    preferredProvider: options.preferredProvider,
+    cooldowns: providerCooldowns,
+    now,
+    ignoreCooldowns: options.ignoreProviderCooldowns,
+  });
 
-  const tryGemini = () => callGemini(options);
-  const tryOpenAI = () => callOpenAI(options);
-
-  if (options.preferredProvider === "gemini") {
-    if (!geminiKey) throw new Error("MISSING_GEMINI_KEY");
-    return tryGemini();
+  if (plan.order.length === 0) {
+    if (
+      plan.skipped.length === 2 &&
+      plan.skipped.every((item) => item.reason === "MISSING_KEY")
+    ) {
+      throw new Error("MISSING_AI_PROVIDER_KEY");
+    }
+    // Everything that has a key is throttled: surface the reason that put it
+    // there so existing error-to-message mapping keeps working.
+    const throttled = plan.skipped.find((item) =>
+      item.reason.startsWith("COOLING_DOWN"),
+    );
+    const reason = throttled
+      ? lastProviderFailure[throttled.provider]
+      : undefined;
+    logger.warn(
+      { plan: describeAiProviderPlan(plan) },
+      "No AI provider attempted; all configured providers are cooling down",
+    );
+    throw new Error(reason ?? "AI_PROVIDER_COOLING_DOWN");
   }
 
-  if (openAiKey) {
+  if (plan.skipped.length) {
+    logger.info(
+      { plan: describeAiProviderPlan(plan) },
+      "AI provider plan adjusted",
+    );
+  }
+
+  let lastError: Error = new Error("AI_PROVIDER_UNAVAILABLE");
+  for (const provider of plan.order) {
     try {
-      return await tryOpenAI();
+      return await providerCallers[provider](options);
     } catch (error) {
-      if (!geminiKey) throw error;
+      lastError =
+        error instanceof Error ? error : new Error("AI_PROVIDER_REQUEST_FAILED");
+      lastProviderFailure[provider] = lastError.message;
+      const remaining = plan.order.slice(plan.order.indexOf(provider) + 1);
+      Object.assign(
+        providerCooldowns,
+        applyProviderCooldown(providerCooldowns, provider, lastError.message, Date.now()),
+      );
+      if (remaining.length === 0) throw lastError;
       logger.warn(
         {
-          reason:
-            error instanceof Error ? error.message : "OPENAI_REQUEST_FAILED",
+          provider,
+          reason: lastError.message,
+          next: remaining[0],
+          cooldownRemainingMs: Math.max(0, providerCooldowns[provider] - Date.now()),
         },
-        "AI provider (openai) failed; trying Gemini fallback",
+        "AI provider failed; trying fallback",
       );
-      return tryGemini();
     }
   }
-
-  if (geminiKey) return tryGemini();
-
-  throw new Error("MISSING_AI_PROVIDER_KEY");
+  throw lastError;
 }

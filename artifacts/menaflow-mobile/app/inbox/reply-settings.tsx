@@ -106,12 +106,31 @@ function ReplySettingsContent({ userId }: { userId: string | null }) {
         hint: `اربط حساب ${label} من شاشة القنوات قبل إعداد الردود.`,
       };
     }
-    return enabled
-      ? {
-          status: { label: "مفعّل", tone: "green" },
-          hint: `الرد على رسائل وتعليقات ${label} مفعّل.`,
-        }
-      : { status: { label: "متوقف", tone: "muted" }, hint: "الرد الآلي متوقف." };
+    if (!enabled) {
+      return {
+        status: { label: "متوقف", tone: "muted" },
+        hint: "الرد الآلي متوقف.",
+      };
+    }
+    // Enabled is only half the story: if nothing has ever arrived from this
+    // platform the replies cannot happen, and the card has to say so.
+    const inbound = data?.inbound;
+    if (inbound && !inbound.deliveryConfirmed) {
+      return {
+        status: { label: "مفعّل بلا استقبال", tone: "amber" },
+        hint: `الردود مفعّلة لكن لم يصل أي تفاعل إلى الخادم بعد. افتح بطاقة ${label} لمعرفة السبب وإصلاحه.`,
+      };
+    }
+    if (inbound && (inbound.inboxCountByPlatform[platform] ?? 0) === 0) {
+      return {
+        status: { label: "مفعّل", tone: "green" },
+        hint: `الرد على ${label} مفعّل، ولم تصل تفاعلات لهذه المنصة تحديدًا بعد.`,
+      };
+    }
+    return {
+      status: { label: "مفعّل", tone: "green" },
+      hint: `الرد على رسائل وتعليقات ${label} مفعّل.`,
+    };
   };
 
   const whatsAppConnected = whatsAppSettings.data?.connected === true;
@@ -131,10 +150,17 @@ function ReplySettingsContent({ userId }: { userId: string | null }) {
             hint: "اربط حساب واتساب من شاشة القنوات قبل إعداد الردود.",
           }
         : whatsAppSettings.data?.settings.enabled
-          ? {
-              status: { label: "مفعّل", tone: "green" },
-              hint: "الرد الآلي مفعّل على الرسائل الفردية.",
-            }
+          ? whatsAppSettings.data?.inbound &&
+            !whatsAppSettings.data.inbound.deliveryConfirmed
+            ? {
+                status: { label: "مفعّل بلا استقبال", tone: "amber" },
+                hint:
+                  "الرد الآلي مفعّل لكن لم تصل أي رسالة عميل إلى الخادم. افتح البطاقة لإعادة تسجيل الويب هوك.",
+              }
+            : {
+                status: { label: "مفعّل", tone: "green" },
+                hint: "الرد الآلي مفعّل على الرسائل الفردية.",
+              }
           : {
               status: { label: "متوقف", tone: "muted" },
               hint: "الرد الآلي متوقف.",

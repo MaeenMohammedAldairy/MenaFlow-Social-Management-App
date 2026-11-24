@@ -25,8 +25,11 @@ import type {
   ApiError,
   AuthAccessResponse,
   CreatePostInput,
+  CreateProductDraftInput,
   DeleteMetaConnectionParams,
   DeleteWhatsAppConnectionParams,
+  ExtractWhatsAppProductsInput,
+  ExtractWhatsAppProductsResponse,
   GetKnownPostIds200,
   GetPostReportSummaryParams,
   GetPostsPage200,
@@ -34,14 +37,24 @@ import type {
   GetWhatsAppConnectionStatusParams,
   HealthStatus,
   KnownPostIdsInput,
+  MetaAutoReplySettingsResponse,
   MetaConnectInput,
   MetaConnectResponse,
   MetaDisconnectResponse,
+  MetaWebhookSubscriptionsResponse,
   OnboardingProgressInput,
   OnboardingStatus,
   PostDeleteResult,
   PostItem,
   PostReportSummary,
+  ProductDraftResponse,
+  ProductExtractionDismissResponse,
+  ProductExtractionListResponse,
+  ProductExtractionReviewInput,
+  ProductExtractionReviewResponse,
+  ProductPublicationConflict,
+  ProductPublicationSnapshot,
+  PublishCatalogProductsInput,
   PushTokenInput,
   PushTokenListResponse,
   PushTokenRegisteredResponse,
@@ -61,6 +74,7 @@ import type {
   WhatsAppGroupsResponse,
   WhatsAppPairingCodeInput,
   WhatsAppPairingCodeResponse,
+  WhatsAppWebhookReconfiguration,
   WorkspaceDeletionRequestCreatedResponse,
   WorkspaceDeletionRequestResponse,
   WorkspaceExport,
@@ -2120,6 +2134,740 @@ export const useDeleteWhatsAppConnection = <TError = ErrorType<ApiError>,
         TContext
       > => {
       return useMutation(getDeleteWhatsAppConnectionMutationOptions(options));
+    }
+
+export const getGetWhatsAppProductExtractionsUrl = () => {
+
+
+
+
+  return `/api/social/products/whatsapp-extractions`
+}
+
+/**
+ * Returns the review queue together with the extraction job counters, so a client can explain why nothing new appeared (a pending download, an association decision the merchant owes, or a failure).
+ * @summary List product suggestions extracted from WhatsApp messages
+ */
+export const getWhatsAppProductExtractions = async ( options?: Parameters<typeof customFetch>[1]): Promise<ProductExtractionListResponse> => {
+
+  return customFetch<ProductExtractionListResponse>(getGetWhatsAppProductExtractionsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsAppProductExtractionsQueryKey = () => {
+    return [
+    `/api/social/products/whatsapp-extractions`
+    ] as const;
+    }
+
+
+export const getGetWhatsAppProductExtractionsQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppProductExtractionsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>> = ({ signal }) => getWhatsAppProductExtractions({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsAppProductExtractionsQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>>
+export type GetWhatsAppProductExtractionsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary List product suggestions extracted from WhatsApp messages
+ */
+
+export function useGetWhatsAppProductExtractions<TData = Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsAppProductExtractionsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getExtractWhatsAppProductMessagesUrl = () => {
+
+
+
+
+  return `/api/social/products/extract-whatsapp`
+}
+
+/**
+ * @summary Queue imported WhatsApp messages for product extraction
+ */
+export const extractWhatsAppProductMessages = async (extractWhatsAppProductsInput?: ExtractWhatsAppProductsInput, options?: Parameters<typeof customFetch>[1]): Promise<ExtractWhatsAppProductsResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ExtractWhatsAppProductsResponse>(getExtractWhatsAppProductMessagesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(extractWhatsAppProductsInput)
+  }
+);}
+
+
+
+
+
+export const getExtractWhatsAppProductMessagesMutationKey = () => ['extractWhatsAppProductMessages'] as const;
+
+export const getExtractWhatsAppProductMessagesMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractWhatsAppProductMessages>>, TError,ExtractWhatsAppProductMessagesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof extractWhatsAppProductMessages>>, TError,ExtractWhatsAppProductMessagesMutationVariables, TContext> => {
+
+const mutationKey = getExtractWhatsAppProductMessagesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof extractWhatsAppProductMessages>>, ExtractWhatsAppProductMessagesMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  extractWhatsAppProductMessages(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExtractWhatsAppProductMessagesMutationResult = NonNullable<Awaited<ReturnType<typeof extractWhatsAppProductMessages>>>
+    export type ExtractWhatsAppProductMessagesMutationBody = BodyType<ExtractWhatsAppProductsInput> | undefined
+    export type ExtractWhatsAppProductMessagesMutationError = ErrorType<ApiError>
+    export type ExtractWhatsAppProductMessagesMutationVariables = {data?: BodyType<ExtractWhatsAppProductsInput>}
+
+    /**
+ * @summary Queue imported WhatsApp messages for product extraction
+ */
+export const useExtractWhatsAppProductMessages = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractWhatsAppProductMessages>>, TError,ExtractWhatsAppProductMessagesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof extractWhatsAppProductMessages>>,
+        TError,
+        ExtractWhatsAppProductMessagesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getExtractWhatsAppProductMessagesMutationOptions(options));
+    }
+
+export const getCreateProductExtractionDraftUrl = (suggestionId: string,) => {
+
+
+
+
+  return `/api/social/products/whatsapp-extractions/${suggestionId}/create-draft`
+}
+
+/**
+ * Without a body the extracted data is used as-is. A `product` body creates a draft from merchant-supplied values, which is also the way to resolve a possible duplicate or to keep a message the model classified as not-a-product.
+ * @summary Turn a suggestion into a product draft
+ */
+export const createProductExtractionDraft = async (suggestionId: string,
+    createProductDraftInput?: CreateProductDraftInput, options?: Parameters<typeof customFetch>[1]): Promise<ProductDraftResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ProductDraftResponse>(getCreateProductExtractionDraftUrl(suggestionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createProductDraftInput)
+  }
+);}
+
+
+
+
+
+export const getCreateProductExtractionDraftMutationKey = () => ['createProductExtractionDraft'] as const;
+
+export const getCreateProductExtractionDraftMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProductExtractionDraft>>, TError,CreateProductExtractionDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createProductExtractionDraft>>, TError,CreateProductExtractionDraftMutationVariables, TContext> => {
+
+const mutationKey = getCreateProductExtractionDraftMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createProductExtractionDraft>>, CreateProductExtractionDraftMutationVariables> = (props) => {
+          const {suggestionId,data} = props ?? {};
+
+          return  createProductExtractionDraft(suggestionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateProductExtractionDraftMutationResult = NonNullable<Awaited<ReturnType<typeof createProductExtractionDraft>>>
+    export type CreateProductExtractionDraftMutationBody = BodyType<CreateProductDraftInput> | undefined
+    export type CreateProductExtractionDraftMutationError = ErrorType<ApiError>
+    export type CreateProductExtractionDraftMutationVariables = {suggestionId: string;data?: BodyType<CreateProductDraftInput>}
+
+    /**
+ * @summary Turn a suggestion into a product draft
+ */
+export const useCreateProductExtractionDraft = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createProductExtractionDraft>>, TError,CreateProductExtractionDraftMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createProductExtractionDraft>>,
+        TError,
+        CreateProductExtractionDraftMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateProductExtractionDraftMutationOptions(options));
+    }
+
+export const getDismissProductExtractionSuggestionUrl = (suggestionId: string,) => {
+
+
+
+
+  return `/api/social/products/whatsapp-extractions/${suggestionId}/dismiss`
+}
+
+/**
+ * @summary Dismiss a suggestion that is not a product
+ */
+export const dismissProductExtractionSuggestion = async (suggestionId: string, options?: Parameters<typeof customFetch>[1]): Promise<ProductExtractionDismissResponse> => {
+
+  return customFetch<ProductExtractionDismissResponse>(getDismissProductExtractionSuggestionUrl(suggestionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getDismissProductExtractionSuggestionMutationKey = () => ['dismissProductExtractionSuggestion'] as const;
+
+export const getDismissProductExtractionSuggestionMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissProductExtractionSuggestion>>, TError,DismissProductExtractionSuggestionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof dismissProductExtractionSuggestion>>, TError,DismissProductExtractionSuggestionMutationVariables, TContext> => {
+
+const mutationKey = getDismissProductExtractionSuggestionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof dismissProductExtractionSuggestion>>, DismissProductExtractionSuggestionMutationVariables> = (props) => {
+          const {suggestionId} = props ?? {};
+
+          return  dismissProductExtractionSuggestion(suggestionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DismissProductExtractionSuggestionMutationResult = NonNullable<Awaited<ReturnType<typeof dismissProductExtractionSuggestion>>>
+
+    export type DismissProductExtractionSuggestionMutationError = ErrorType<ApiError>
+    export type DismissProductExtractionSuggestionMutationVariables = {suggestionId: string}
+
+    /**
+ * @summary Dismiss a suggestion that is not a product
+ */
+export const useDismissProductExtractionSuggestion = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof dismissProductExtractionSuggestion>>, TError,DismissProductExtractionSuggestionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof dismissProductExtractionSuggestion>>,
+        TError,
+        DismissProductExtractionSuggestionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDismissProductExtractionSuggestionMutationOptions(options));
+    }
+
+export const getReviewProductExtractionSuggestionUrl = (suggestionId: string,) => {
+
+
+
+
+  return `/api/social/products/whatsapp-extractions/${suggestionId}/review`
+}
+
+/**
+ * Field-level feedback is stored on the suggestion and feeds the extraction benchmark, so a model change can be measured against merchant verdicts.
+ * @summary Record whether one extracted field was correct
+ */
+export const reviewProductExtractionSuggestion = async (suggestionId: string,
+    productExtractionReviewInput: ProductExtractionReviewInput, options?: Parameters<typeof customFetch>[1]): Promise<ProductExtractionReviewResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ProductExtractionReviewResponse>(getReviewProductExtractionSuggestionUrl(suggestionId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(productExtractionReviewInput)
+  }
+);}
+
+
+
+
+
+export const getReviewProductExtractionSuggestionMutationKey = () => ['reviewProductExtractionSuggestion'] as const;
+
+export const getReviewProductExtractionSuggestionMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewProductExtractionSuggestion>>, TError,ReviewProductExtractionSuggestionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reviewProductExtractionSuggestion>>, TError,ReviewProductExtractionSuggestionMutationVariables, TContext> => {
+
+const mutationKey = getReviewProductExtractionSuggestionMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reviewProductExtractionSuggestion>>, ReviewProductExtractionSuggestionMutationVariables> = (props) => {
+          const {suggestionId,data} = props ?? {};
+
+          return  reviewProductExtractionSuggestion(suggestionId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReviewProductExtractionSuggestionMutationResult = NonNullable<Awaited<ReturnType<typeof reviewProductExtractionSuggestion>>>
+    export type ReviewProductExtractionSuggestionMutationBody = BodyType<ProductExtractionReviewInput>
+    export type ReviewProductExtractionSuggestionMutationError = ErrorType<ApiError>
+    export type ReviewProductExtractionSuggestionMutationVariables = {suggestionId: string;data: BodyType<ProductExtractionReviewInput>}
+
+    /**
+ * @summary Record whether one extracted field was correct
+ */
+export const useReviewProductExtractionSuggestion = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reviewProductExtractionSuggestion>>, TError,ReviewProductExtractionSuggestionMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reviewProductExtractionSuggestion>>,
+        TError,
+        ReviewProductExtractionSuggestionMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReviewProductExtractionSuggestionMutationOptions(options));
+    }
+
+export const getPublishCatalogProductsUrl = () => {
+
+
+
+
+  return `/api/social/products/publish`
+}
+
+/**
+ * @summary Queue approved products for publication to Meta channels
+ */
+export const publishCatalogProducts = async (publishCatalogProductsInput: PublishCatalogProductsInput, options?: Parameters<typeof customFetch>[1]): Promise<ProductPublicationSnapshot> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ProductPublicationSnapshot>(getPublishCatalogProductsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(publishCatalogProductsInput)
+  }
+);}
+
+
+
+
+
+export const getPublishCatalogProductsMutationKey = () => ['publishCatalogProducts'] as const;
+
+export const getPublishCatalogProductsMutationOptions = <TError = ErrorType<ApiError | ProductPublicationConflict>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishCatalogProducts>>, TError,PublishCatalogProductsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishCatalogProducts>>, TError,PublishCatalogProductsMutationVariables, TContext> => {
+
+const mutationKey = getPublishCatalogProductsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishCatalogProducts>>, PublishCatalogProductsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  publishCatalogProducts(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishCatalogProductsMutationResult = NonNullable<Awaited<ReturnType<typeof publishCatalogProducts>>>
+    export type PublishCatalogProductsMutationBody = BodyType<PublishCatalogProductsInput>
+    export type PublishCatalogProductsMutationError = ErrorType<ApiError | ProductPublicationConflict>
+    export type PublishCatalogProductsMutationVariables = {data: BodyType<PublishCatalogProductsInput>}
+
+    /**
+ * @summary Queue approved products for publication to Meta channels
+ */
+export const usePublishCatalogProducts = <TError = ErrorType<ApiError | ProductPublicationConflict>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishCatalogProducts>>, TError,PublishCatalogProductsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof publishCatalogProducts>>,
+        TError,
+        PublishCatalogProductsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPublishCatalogProductsMutationOptions(options));
+    }
+
+export const getReconfigureWhatsAppWebhookUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/reconfigure-webhook`
+}
+
+/**
+ * Pairing already configures the webhook; this covers the cases that break it afterwards (a rotated secret, a moved API domain) without re-pairing. The response carries the exact URL that was registered.
+ * @summary Re-register the Evolution webhook for this workspace instance
+ */
+export const reconfigureWhatsAppWebhook = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppWebhookReconfiguration> => {
+
+  return customFetch<WhatsAppWebhookReconfiguration>(getReconfigureWhatsAppWebhookUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReconfigureWhatsAppWebhookMutationKey = () => ['reconfigureWhatsAppWebhook'] as const;
+
+export const getReconfigureWhatsAppWebhookMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>, TError,void, TContext> => {
+
+const mutationKey = getReconfigureWhatsAppWebhookMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>, void> = () => {
+
+
+          return  reconfigureWhatsAppWebhook(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReconfigureWhatsAppWebhookMutationResult = NonNullable<Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>>
+
+    export type ReconfigureWhatsAppWebhookMutationError = ErrorType<ApiError>
+
+
+    /**
+ * @summary Re-register the Evolution webhook for this workspace instance
+ */
+export const useReconfigureWhatsAppWebhook = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getReconfigureWhatsAppWebhookMutationOptions(options));
+    }
+
+export const getGetMetaAutoReplySettingsUrl = () => {
+
+
+
+
+  return `/api/social/meta-auto-replies`
+}
+
+/**
+ * @summary Get Meta automatic-reply settings, readiness and inbound facts
+ */
+export const getMetaAutoReplySettings = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetaAutoReplySettingsResponse> => {
+
+  return customFetch<MetaAutoReplySettingsResponse>(getGetMetaAutoReplySettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMetaAutoReplySettingsQueryKey = () => {
+    return [
+    `/api/social/meta-auto-replies`
+    ] as const;
+    }
+
+
+export const getGetMetaAutoReplySettingsQueryOptions = <TData = Awaited<ReturnType<typeof getMetaAutoReplySettings>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMetaAutoReplySettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMetaAutoReplySettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMetaAutoReplySettings>>> = ({ signal }) => getMetaAutoReplySettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMetaAutoReplySettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMetaAutoReplySettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getMetaAutoReplySettings>>>
+export type GetMetaAutoReplySettingsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get Meta automatic-reply settings, readiness and inbound facts
+ */
+
+export function useGetMetaAutoReplySettings<TData = Awaited<ReturnType<typeof getMetaAutoReplySettings>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMetaAutoReplySettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMetaAutoReplySettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getActivateMetaWebhookSubscriptionsUrl = () => {
+
+
+
+
+  return `/api/social/meta-inbox/webhook-subscriptions`
+}
+
+/**
+ * @summary Renew the Meta webhook subscriptions for the connected accounts
+ */
+export const activateMetaWebhookSubscriptions = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetaWebhookSubscriptionsResponse> => {
+
+  return customFetch<MetaWebhookSubscriptionsResponse>(getActivateMetaWebhookSubscriptionsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getActivateMetaWebhookSubscriptionsMutationKey = () => ['activateMetaWebhookSubscriptions'] as const;
+
+export const getActivateMetaWebhookSubscriptionsMutationOptions = <TError = ErrorType<ApiError | MetaWebhookSubscriptionsResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>, TError,void, TContext> => {
+
+const mutationKey = getActivateMetaWebhookSubscriptionsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>, void> = () => {
+
+
+          return  activateMetaWebhookSubscriptions(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ActivateMetaWebhookSubscriptionsMutationResult = NonNullable<Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>>
+
+    export type ActivateMetaWebhookSubscriptionsMutationError = ErrorType<ApiError | MetaWebhookSubscriptionsResponse>
+
+
+    /**
+ * @summary Renew the Meta webhook subscriptions for the connected accounts
+ */
+export const useActivateMetaWebhookSubscriptions = <TError = ErrorType<ApiError | MetaWebhookSubscriptionsResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getActivateMetaWebhookSubscriptionsMutationOptions(options));
     }
 
 export const getGetPostsUrl = () => {

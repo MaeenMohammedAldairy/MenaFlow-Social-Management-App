@@ -819,6 +819,351 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /social/products/whatsapp-extractions:
+    get:
+      operationId: getWhatsAppProductExtractions
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: List product suggestions extracted from WhatsApp messages
+      description: >-
+        Returns the review queue together with the extraction job counters, so a
+        client can explain why nothing new appeared (a pending download, an
+        association decision the merchant owes, or a failure).
+      responses:
+        "200":
+          description: Suggestions and extraction queue state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductExtractionListResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/extract-whatsapp:
+    post:
+      operationId: extractWhatsAppProductMessages
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Queue imported WhatsApp messages for product extraction
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExtractWhatsAppProductsInput"
+      responses:
+        "202":
+          description: Messages queued for the extraction worker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractWhatsAppProductsResponse"
+        "400":
+          description: Invalid message identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: The queue could not be scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/whatsapp-extractions/{suggestionId}/create-draft:
+    post:
+      operationId: createProductExtractionDraft
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Turn a suggestion into a product draft
+      description: >-
+        Without a body the extracted data is used as-is. A `product` body creates
+        a draft from merchant-supplied values, which is also the way to resolve a
+        possible duplicate or to keep a message the model classified as
+        not-a-product.
+      parameters:
+        - $ref: "#/components/parameters/ProductSuggestionId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductDraftInput"
+      responses:
+        "201":
+          description: Draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDraftResponse"
+        "400":
+          description: Invalid suggestion identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Suggestion not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: The suggestion needs review or its duplicate resolved first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: No product name could be extracted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/whatsapp-extractions/{suggestionId}/dismiss:
+    post:
+      operationId: dismissProductExtractionSuggestion
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Dismiss a suggestion that is not a product
+      parameters:
+        - $ref: "#/components/parameters/ProductSuggestionId"
+      responses:
+        "200":
+          description: Suggestion dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductExtractionDismissResponse"
+        "400":
+          description: Invalid suggestion identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No dismissible suggestion found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/whatsapp-extractions/{suggestionId}/review:
+    post:
+      operationId: reviewProductExtractionSuggestion
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Record whether one extracted field was correct
+      description: >-
+        Field-level feedback is stored on the suggestion and feeds the extraction
+        benchmark, so a model change can be measured against merchant verdicts.
+      parameters:
+        - $ref: "#/components/parameters/ProductSuggestionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductExtractionReviewInput"
+      responses:
+        "200":
+          description: Review recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductExtractionReviewResponse"
+        "400":
+          description: Invalid review payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No reviewable suggestion found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/products/publish:
+    post:
+      operationId: publishCatalogProducts
+      tags: [products]
+      security:
+        - bearerAuth: []
+      summary: Queue approved products for publication to Meta channels
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishCatalogProductsInput"
+      responses:
+        "202":
+          description: Publication jobs queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPublicationSnapshot"
+        "400":
+          description: Invalid publication request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: One of the selected products does not exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            Meta is not connected, a selected account no longer matches the
+            connection, a product is still a draft, or a product is missing
+            fields a listing needs (code PRODUCT_FIELDS_INCOMPLETE lists them).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductPublicationConflict"
+  /social/whatsapp/reconfigure-webhook:
+    post:
+      operationId: reconfigureWhatsAppWebhook
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Re-register the Evolution webhook for this workspace instance
+      description: >-
+        Pairing already configures the webhook; this covers the cases that break
+        it afterwards (a rotated secret, a moved API domain) without re-pairing.
+        The response carries the exact URL that was registered.
+      responses:
+        "200":
+          description: Webhook re-registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppWebhookReconfiguration"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No WhatsApp connection in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Evolution API rejected the configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: >-
+            The webhook secret or the public API URL is not configured on the
+            server (code names the missing variable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta-auto-replies:
+    get:
+      operationId: getMetaAutoReplySettings
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Get Meta automatic-reply settings, readiness and inbound facts
+      responses:
+        "200":
+          description: Settings, per-platform readiness and inbound diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaAutoReplySettingsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta-inbox/webhook-subscriptions:
+    post:
+      operationId: activateMetaWebhookSubscriptions
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Renew the Meta webhook subscriptions for the connected accounts
+      responses:
+        "200":
+          description: Subscriptions renewed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaWebhookSubscriptionsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: No Meta connection, or the token needs re-authorization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Meta rejected one of the subscription requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaWebhookSubscriptionsResponse"
+        "503":
+          description: MENA_META_WEBHOOK_VERIFY_TOKEN is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /posts:
     get:
       operationId: getPosts
@@ -1162,6 +1507,15 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  parameters:
+    ProductSuggestionId:
+      name: suggestionId
+      in: path
+      required: true
+      description: Identifier of the extraction suggestion
+      schema:
+        type: string
+        pattern: "^[0-9a-fA-F-]{36}$"
   schemas:
     HealthStatus:
       type: object
@@ -1699,7 +2053,9 @@ components:
           type: [string, "null"]
         settings:
           $ref: "#/components/schemas/WhatsAppAutoReplySettings"
-      required: [connected, phoneNumber, settings]
+        inbound:
+          $ref: "#/components/schemas/WhatsAppInboundDiagnostics"
+      required: [connected, phoneNumber, settings, inbound]
     WhatsAppAutoReplyTestInput:
       type: object
       properties:
@@ -1858,3 +2214,699 @@ components:
         removed:
           type: boolean
       required: [removed]
+    ProductFieldKey:
+      type: string
+      description: >-
+        A product field the merchant still has to fill. `price`, `currency`,
+        `availability`, `media` and `name` block publication; `description` is
+        advisory.
+      enum: [name, description, price, currency, availability, media]
+    ProductMediaPreview:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+          format: uri
+        mediaType:
+          type: string
+          enum: [image, video]
+      required: [id, url, mediaType]
+    CatalogProduct:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: [string, "null"]
+        name:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        price:
+          type: [string, "null"]
+        currency:
+          type: [string, "null"]
+        availability:
+          type: string
+          enum: [unknown, in_stock, out_of_stock, preorder]
+        inventoryTracked:
+          type: boolean
+        stockOnHand:
+          type: number
+        stockReserved:
+          type: number
+        lowStockThreshold:
+          type: number
+        status:
+          type: string
+          enum: [draft, active, archived]
+        mediaUrls:
+          type: array
+          items:
+            type: string
+        mediaPreviews:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductMediaPreview"
+        verifiedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        postIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        missingFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductFieldKey"
+        missingFieldMessages:
+          type: array
+          description: Arabic labels for missingFields, ready to render
+          items:
+            type: string
+        publicationBlockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductFieldKey"
+        publicationBlockerMessages:
+          type: array
+          items:
+            type: string
+        publicationBlocked:
+          type: boolean
+        advisoryFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductFieldKey"
+      required:
+        - id
+        - name
+        - aliases
+        - description
+        - availability
+        - status
+        - mediaUrls
+        - mediaPreviews
+        - postIds
+        - missingFields
+        - publicationBlockers
+        - publicationBlocked
+    ProductExtractionSourceMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        senderName:
+          type: [string, "null"]
+        messageTimestamp:
+          type: [string, "null"]
+          format: date-time
+        groupName:
+          type: [string, "null"]
+        mediaPreviews:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductMediaPreview"
+      required: [id, text, mediaPreviews]
+    ProductExtractionSuggestion:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sourceKey:
+          type: string
+        classification:
+          type: string
+          enum: [product, not_product]
+        extractedData:
+          type: object
+          properties:
+            name:
+              type: [string, "null"]
+            sku:
+              type: [string, "null"]
+            aliases:
+              type: array
+              items:
+                type: string
+            description:
+              type: [string, "null"]
+            price:
+              type: [string, "null"]
+            currency:
+              type: [string, "null"]
+            availability:
+              type: [string, "null"]
+              enum: [in_stock, out_of_stock, preorder, "null"]
+        evidence:
+          type: object
+          additionalProperties:
+            type: [string, "null"]
+        confidence:
+          type: object
+          additionalProperties:
+            type: number
+        fieldReview:
+          type: object
+          additionalProperties:
+            type: boolean
+        missingFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductFieldKey"
+        missingFieldMessages:
+          type: array
+          items:
+            type: string
+        aiModel:
+          type: string
+          description: >-
+            Model that produced the suggestion. A `+vision` suffix means the
+            values were read from the message images rather than from its text,
+            and the suggestion always needs a human review.
+        status:
+          type: string
+          enum: [review, draft_created, possible_duplicate, dismissed]
+        productId:
+          type: [string, "null"]
+          format: uuid
+        possibleDuplicateProducts:
+          type: array
+          items:
+            $ref: "#/components/schemas/CatalogProduct"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductExtractionSourceMessage"
+      required:
+        - id
+        - classification
+        - extractedData
+        - evidence
+        - confidence
+        - fieldReview
+        - aiModel
+        - status
+        - createdAt
+        - sources
+    ProductExtractionQueueCounts:
+      type: object
+      description: >-
+        Extraction jobs by state. `waitingMedia` and `waitingAssociation` are the
+        states only a download or a merchant decision can clear.
+      properties:
+        pending:
+          type: integer
+        processing:
+          type: integer
+        waitingMedia:
+          type: integer
+        waitingAssociation:
+          type: integer
+        failed:
+          type: integer
+      required: [pending, processing, waitingMedia, waitingAssociation, failed]
+    ProductExtractionListResponse:
+      type: object
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductExtractionSuggestion"
+        pendingJobs:
+          $ref: "#/components/schemas/ProductExtractionQueueCounts"
+      required: [suggestions, pendingJobs]
+    ExtractWhatsAppProductsInput:
+      type: object
+      properties:
+        messageId:
+          type: string
+          description: Queue a single message again; omit to queue every unprocessed message
+      additionalProperties: false
+    ExtractWhatsAppProductsResponse:
+      type: object
+      properties:
+        queuedMessages:
+          type: integer
+      required: [queuedMessages]
+    CreateProductDraftInput:
+      type: object
+      properties:
+        product:
+          $ref: "#/components/schemas/ProductInput"
+    ProductInput:
+      type: object
+      properties:
+        sku:
+          type: [string, "null"]
+        name:
+          type: string
+        aliases:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        price:
+          type: [string, "null"]
+        currency:
+          type: [string, "null"]
+        availability:
+          type: string
+          enum: [unknown, in_stock, out_of_stock, preorder]
+        status:
+          type: string
+          enum: [draft, active, archived]
+        mediaUrls:
+          type: array
+          items:
+            type: string
+        inventoryTracked:
+          type: boolean
+        stockOnHand:
+          type: number
+        lowStockThreshold:
+          type: number
+        inventoryReason:
+          type: string
+      required: [name, aliases, description, availability, status, mediaUrls]
+    ProductDraftResponse:
+      type: object
+      properties:
+        product:
+          $ref: "#/components/schemas/CatalogProduct"
+      required: [product]
+    ProductExtractionDismissResponse:
+      type: object
+      properties:
+        dismissed:
+          type: boolean
+      required: [dismissed]
+    ProductExtractionReviewInput:
+      type: object
+      properties:
+        field:
+          type: string
+          enum:
+            - classification
+            - grouping
+            - name
+            - description
+            - sku
+            - price
+            - currency
+            - availability
+        correct:
+          type: boolean
+      required: [field, correct]
+      additionalProperties: false
+    ProductExtractionReviewResponse:
+      type: object
+      properties:
+        reviewed:
+          type: boolean
+        field:
+          type: string
+        correct:
+          type: boolean
+      required: [reviewed, field, correct]
+    PublishCatalogProductsInput:
+      type: object
+      properties:
+        requestKey:
+          type: string
+          description: Client-generated idempotency key (8-128 of A-Za-z0-9._:-)
+          pattern: "^[A-Za-z0-9._:-]{8,128}$"
+        productIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            type: string
+            format: uuid
+        targets:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              channel:
+                type: string
+                enum: [facebook, instagram]
+              accountId:
+                type: string
+            required: [channel, accountId]
+            additionalProperties: false
+      required: [requestKey, productIds, targets]
+    ProductPublicationJob:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        productId:
+          type: string
+          format: uuid
+        channel:
+          type: string
+          enum: [facebook, instagram]
+        accountId:
+          type: string
+        status:
+          type: string
+          enum: [queued, processing, published, failed, action_required]
+        postId:
+          type: [string, "null"]
+          format: uuid
+        permalink:
+          type: [string, "null"]
+          format: uri
+        error:
+          type: [string, "null"]
+          description: >-
+            Reason code. PRODUCT_FIELDS_INCOMPLETE means the listing was stopped
+            because the product is missing a required field.
+        attempts:
+          type: integer
+        startedAt:
+          type: [string, "null"]
+          format: date-time
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, productId, channel, accountId, status, attempts, createdAt]
+    ProductPublicationSnapshot:
+      type: object
+      properties:
+        requestKey:
+          type: string
+        jobs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductPublicationJob"
+        summary:
+          type: object
+          properties:
+            total:
+              type: integer
+            successful:
+              type: integer
+            failed:
+              type: integer
+            inProgress:
+              type: integer
+            needsAction:
+              type: integer
+          required: [total, successful, failed, inProgress, needsAction]
+      required: [requestKey, jobs, summary]
+    IncompletePublicationProduct:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        missingFields:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductFieldKey"
+        missingFieldMessages:
+          type: array
+          items:
+            type: string
+      required: [id, name, missingFields, missingFieldMessages]
+    ProductPublicationConflict:
+      allOf:
+        - $ref: "#/components/schemas/ApiError"
+        - type: object
+          properties:
+            incompleteProducts:
+              type: array
+              description: >-
+                Present with code PRODUCT_FIELDS_INCOMPLETE: the products that
+                stopped the request and the fields each one is missing.
+              items:
+                $ref: "#/components/schemas/IncompletePublicationProduct"
+    DiagnosticIssue:
+      type: object
+      description: One actionable problem, worded for the merchant
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        severity:
+          type: string
+          enum: [warning, critical]
+      required: [code, message, severity]
+    WhatsAppInboundDiagnostics:
+      type: object
+      description: >-
+        Whether customer messages reach the server at all, which is the fact that
+        separates "automatic replies are off" from "nothing is arriving".
+      properties:
+        deliveryConfirmed:
+          type: boolean
+        lastDirectMessageAt:
+          type: [string, "null"]
+          format: date-time
+        directMessageCount:
+          type: integer
+        autoReplyEvents:
+          type: object
+          properties:
+            queued:
+              type: integer
+            sent:
+              type: integer
+            failed:
+              type: integer
+            other:
+              type: integer
+          required: [queued, sent, failed, other]
+        webhookSecretConfigured:
+          type: boolean
+        webhookUrl:
+          type: [string, "null"]
+          format: uri
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiagnosticIssue"
+      required:
+        - deliveryConfirmed
+        - directMessageCount
+        - autoReplyEvents
+        - webhookSecretConfigured
+        - issues
+    WhatsAppWebhookReconfiguration:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        instanceName:
+          type: string
+        webhookUrl:
+          type: string
+          format: uri
+        reconfiguredAt:
+          type: string
+          format: date-time
+      required: [ok, instanceName, webhookUrl, reconfiguredAt]
+    MetaInboundDiagnostics:
+      type: object
+      description: >-
+        Whether Facebook and Instagram events reach the server, with the recorded
+        subscriptions and their last error.
+      properties:
+        deliveryConfirmed:
+          type: boolean
+        lastInboxItemAt:
+          type: [string, "null"]
+          format: date-time
+        inboxItemCount:
+          type: integer
+        inboxCountByPlatform:
+          type: object
+          additionalProperties:
+            type: integer
+        autoReplyJobs:
+          type: object
+          properties:
+            queued:
+              type: integer
+            completed:
+              type: integer
+            failed:
+              type: integer
+            skipped:
+              type: integer
+          required: [queued, completed, failed, skipped]
+        subscriptions:
+          type: array
+          items:
+            type: object
+            properties:
+              platform:
+                type: string
+                enum: [facebook, instagram]
+              accountId:
+                type: string
+              subscribedFields:
+                type: array
+                items:
+                  type: string
+              subscribedAt:
+                type: [string, "null"]
+                format: date-time
+              lastErrorCode:
+                type: [string, "null"]
+            required: [platform, accountId, subscribedFields, lastErrorCode]
+        verifyTokenConfigured:
+          type: boolean
+        appSecretConfigured:
+          type: boolean
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiagnosticIssue"
+      required:
+        - deliveryConfirmed
+        - inboxItemCount
+        - inboxCountByPlatform
+        - autoReplyJobs
+        - subscriptions
+        - verifyTokenConfigured
+        - appSecretConfigured
+        - issues
+    MetaAutoReplySettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        facebookMessagesEnabled:
+          type: boolean
+        facebookCommentsEnabled:
+          type: boolean
+        instagramMessagesEnabled:
+          type: boolean
+        instagramCommentsEnabled:
+          type: boolean
+        language:
+          type: string
+        tone:
+          type: string
+        instructions:
+          type: string
+      required:
+        - enabled
+        - facebookMessagesEnabled
+        - facebookCommentsEnabled
+        - instagramMessagesEnabled
+        - instagramCommentsEnabled
+        - language
+        - tone
+        - instructions
+    MetaAutoReplyReadiness:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        tokenReady:
+          type: boolean
+        webhookConfigured:
+          type: boolean
+        subscriptionReady:
+          type: boolean
+        messagesSubscriptionReady:
+          type: boolean
+        commentsSubscriptionReady:
+          type: boolean
+        aiConfigured:
+          type: boolean
+        messagesReady:
+          type: boolean
+        commentsReady:
+          type: boolean
+        missingPermissions:
+          type: array
+          items:
+            type: string
+      required:
+        - connected
+        - tokenReady
+        - webhookConfigured
+        - subscriptionReady
+        - messagesSubscriptionReady
+        - commentsSubscriptionReady
+        - aiConfigured
+        - messagesReady
+        - commentsReady
+        - missingPermissions
+    MetaAutoReplySettingsResponse:
+      type: object
+      properties:
+        settings:
+          $ref: "#/components/schemas/MetaAutoReplySettings"
+        readiness:
+          type: object
+          properties:
+            facebook:
+              $ref: "#/components/schemas/MetaAutoReplyReadiness"
+            instagram:
+              $ref: "#/components/schemas/MetaAutoReplyReadiness"
+          required: [facebook, instagram]
+        inbound:
+          $ref: "#/components/schemas/MetaInboundDiagnostics"
+      required: [settings, readiness, inbound]
+    MetaWebhookSubscriptionResult:
+      type: object
+      properties:
+        subscribed:
+          type: boolean
+        fields:
+          type: array
+          items:
+            type: string
+        errorCode:
+          type: string
+      required: [subscribed, fields]
+    MetaWebhookSubscriptionsResponse:
+      type: object
+      properties:
+        subscriptions:
+          type: object
+          properties:
+            facebook:
+              $ref: "#/components/schemas/MetaWebhookSubscriptionResult"
+            instagram:
+              $ref: "#/components/schemas/MetaWebhookSubscriptionResult"
+          additionalProperties: false
+      required: [subscriptions]

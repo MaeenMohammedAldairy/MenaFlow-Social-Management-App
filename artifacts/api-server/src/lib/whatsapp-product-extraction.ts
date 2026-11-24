@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import {
   and,
   asc,
@@ -36,6 +37,18 @@ import {
 import { findWhatsAppAssociationSuggestions } from "./whatsapp-association-suggestions.ts";
 import type { ProductAvailability } from "./product-validation.ts";
 import { normalizedProductName } from "./product-utils.ts";
+import {
+  productSuggestionStatus,
+  shouldAutoCreateProductDraft,
+} from "./product-draft-policy.ts";
+import {
+  extractProductCandidatesFromImages,
+  prepareVisionImage,
+  readStoredVisionMedia,
+  selectVisionMedia,
+  visionProductExtractionEnabled,
+} from "./product-vision-extraction.ts";
+import { readMediaObject } from "./whatsapp-media-storage.ts";
 import { logger } from "./logger.ts";
 
 function extractionProductInput(candidate: ProductExtractionCandidate) {
@@ -383,6 +396,77 @@ async function updateJob(
     ));
 }
 
+async function readStoredVisionObject(locator: {
+  provider: "supabase" | "local";
+  locator: string;
+}): Promise<Buffer> {
+  return locator.provider === "supabase"
+    ? readMediaObject(locator.locator)
+    : readFile(locator.locator);
+}
+
+/**
+ * Reads the stored images of a bundle and extracts product candidates from
+ * them. Returns null when vision extraction is off, nothing usable is stored,
+ * or the model produced an unusable answer — the caller then keeps the
+ * `PRODUCT_TEXT_REQUIRED` outcome it had before.
+ */
+async function extractCandidatesFromStoredImages(
+  workspaceId: string,
+  sources: readonly ProductExtractionSource[],
+): Promise<{ model: string; candidates: ProductExtractionCandidate[] } | null> {
+  if (!visionProductExtractionEnabled()) return null;
+  const rows = await db
+    .select({
+      id: menaWhatsAppMessageMedia.id,
+      mediaType: menaWhatsAppMessageMedia.mediaType,
+      mimeType: menaWhatsAppMessageMedia.mimeType,
+      sizeBytes: menaWhatsAppMessageMedia.sizeBytes,
+      downloadStatus: menaWhatsAppMessageMedia.downloadStatus,
+      storageProvider: menaWhatsAppMessageMedia.storageProvider,
+      storageKey: menaWhatsAppMessageMedia.storageKey,
+      storagePath: menaWhatsAppMessageMedia.storagePath,
+      mediaIndex: menaWhatsAppMessageMedia.mediaIndex,
+    })
+    .from(menaWhatsAppMessageMedia)
+    .where(and(
+      eq(menaWhatsAppMessageMedia.workspaceId, workspaceId),
+      eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
+      inArray(
+        menaWhatsAppMessageMedia.messageId,
+        sources.map((source) => source.id),
+      ),
+    ))
+    .orderBy(
+      asc(menaWhatsAppMessageMedia.messageId),
+      asc(menaWhatsAppMessageMedia.mediaIndex),
+    );
+  const selected = selectVisionMedia(rows);
+  if (selected.length === 0) return null;
+
+  const images = [];
+  for (const row of selected) {
+    try {
+      const buffer = await readStoredVisionMedia(row, readStoredVisionObject);
+      images.push(await prepareVisionImage(buffer, row.mimeType));
+    } catch (error) {
+      logger.warn(
+        {
+          workspaceId,
+          mediaId: row.id,
+          reason:
+            error instanceof Error
+              ? error.message
+              : "PRODUCT_VISION_MEDIA_FAILED",
+        },
+        "Skipping image for vision product extraction",
+      );
+    }
+  }
+  if (images.length === 0) return null;
+  return extractProductCandidatesFromImages(workspaceId, sources, images);
+}
+
 async function processProductExtractionJob(
   job: typeof whatsappProductExtractionJobs.$inferSelect,
 ): Promise<void> {
@@ -489,7 +573,15 @@ async function processProductExtractionJob(
       : null,
     text: messageText(item),
   }));
-  if (!sources.some((source) => source.text)) {
+  await updateJob(job, { status: "processing", stage: "extraction", lastError: null });
+  // Messages that carry only a photo used to stop here. When the deployment
+  // opts into vision extraction the stored images are read and the product is
+  // extracted from the text visible in them; the result always needs a human
+  // review, so it never becomes an automatic draft.
+  const visionExtraction = sources.some((source) => source.text)
+    ? null
+    : await extractCandidatesFromStoredImages(job.workspaceId, sources);
+  if (!sources.some((source) => source.text) && !visionExtraction) {
     await updateJob(job, {
       status: "complete",
       stage: "extraction",
@@ -497,11 +589,9 @@ async function processProductExtractionJob(
     });
     return;
   }
-  await updateJob(job, { status: "processing", stage: "extraction", lastError: null });
-  const extraction = await extractWhatsAppProductCandidates(
-    job.workspaceId,
-    sources,
-  );
+  const requiresManualReview = visionExtraction !== null;
+  const extraction = visionExtraction ??
+    (await extractWhatsAppProductCandidates(job.workspaceId, sources));
 
   await db.transaction(async (transaction) => {
     await transaction.execute(sql`
@@ -537,15 +627,28 @@ async function processProductExtractionJob(
         ? normalizedProductName(candidate.data.name)
         : "";
       const sku = candidate.data.sku?.toUpperCase() ?? null;
-      const duplicate = Boolean(
-        (name && seenNames.has(name)) || (sku && seenSkus.has(sku)),
-      );
-      const canCreate = candidate.classification === "product" &&
-        Boolean(candidate.data.name?.trim()) &&
-        isCompleteProductExtraction(candidate) &&
-        !duplicate;
+      const draftCandidate = {
+        classification: candidate.classification,
+        data: candidate.data,
+        complete: isCompleteProductExtraction(candidate),
+        seenNames,
+        seenSkus,
+        manualReviewRequired: requiresManualReview,
+      };
+      const decision = shouldAutoCreateProductDraft(draftCandidate, name, sku);
       const suggestionId = randomUUID();
-      const productId = canCreate ? randomUUID() : null;
+      const productId = decision.canCreate ? randomUUID() : null;
+      logger.info(
+        {
+          workspaceId: job.workspaceId,
+          suggestionId,
+          classification: candidate.classification,
+          decision: decision.reason,
+          source: requiresManualReview ? "vision" : "text",
+          model: extraction.model,
+        },
+        "Product extraction suggestion recorded",
+      );
       if (productId) {
         const sourceMedia = await transaction
           .select({ id: menaWhatsAppMessageMedia.id })
@@ -579,13 +682,7 @@ async function processProductExtractionJob(
         evidence: candidate.evidence,
         confidence: candidate.confidence,
         aiModel: extraction.model,
-        status: candidate.classification === "not_product"
-          ? "review"
-          : duplicate
-            ? "possible_duplicate"
-            : productId
-              ? "draft_created"
-              : "review",
+        status: productSuggestionStatus(draftCandidate, decision),
         productId,
         updatedAt: new Date(),
       });

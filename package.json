@@ -13,6 +13,7 @@
     "build:owner-console": "pnpm --filter @workspace/owner-console run build",
     "db:migrate:whatsapp-albums": "node scripts/migrate-whatsapp-albums.js",
     "db:report:whatsapp-albums": "node scripts/report-whatsapp-album-post-candidates.js",
+    "db:export:product-review-fixtures": "node --experimental-strip-types scripts/export-product-review-fixtures.mjs",
     "db:preview:whatsapp-media-recovery": "node scripts/preview-whatsapp-media-recovery.js",
     "db:migrate:workspaces": "node scripts/migrate-workspaces.mjs",
     "dev:instagram": "node scripts/dev-instagram-tunnel.mjs",

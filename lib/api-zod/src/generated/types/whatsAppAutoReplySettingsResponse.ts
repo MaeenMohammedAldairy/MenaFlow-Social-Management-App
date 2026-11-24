@@ -6,10 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { WhatsAppAutoReplySettings } from './whatsAppAutoReplySettings';
+import type { WhatsAppInboundDiagnostics } from './whatsAppInboundDiagnostics';
 
 export interface WhatsAppAutoReplySettingsResponse {
   connected: boolean;
   /** @nullable */
   phoneNumber: string | null;
   settings: WhatsAppAutoReplySettings;
+  inbound: WhatsAppInboundDiagnostics;
 }

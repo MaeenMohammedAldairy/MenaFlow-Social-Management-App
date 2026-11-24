@@ -14,6 +14,7 @@ import {
   isProductPublicationActionRequired,
   isVerifiedActiveProduct,
 } from "./product-publishing-logic.ts";
+import { productPublicationBlockers } from "./product-draft-policy.ts";
 import { logger } from "./logger.ts";
 import { notifyPublishFailure } from "./push-notifications";
 
@@ -88,6 +89,22 @@ async function preparePost(job: PublicationJob) {
     .limit(1);
   if (!isVerifiedActiveProduct(product ?? null)) {
     await markActionRequired(job, "PRODUCT_NOT_AVAILABLE");
+    return null;
+  }
+  // Guarded here as well as in the route: a product approved before this rule
+  // existed, or edited after queueing, must not publish an empty listing.
+  if (
+    product &&
+    productPublicationBlockers({
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      currency: product.currency,
+      availability: product.availability,
+      mediaUrls: product.mediaUrls,
+    }).length > 0
+  ) {
+    await markActionRequired(job, "PRODUCT_FIELDS_INCOMPLETE");
     return null;
   }
   const [connection] = await db

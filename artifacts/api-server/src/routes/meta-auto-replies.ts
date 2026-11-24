@@ -31,6 +31,7 @@ import {
   type MetaIntegration,
 } from "../lib/meta-oauth";
 import { isRecord } from "../lib/value-utils.ts";
+import { metaInboundDiagnostics } from "../lib/inbound-diagnostics";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
   generateMetaAutoReply,
@@ -653,6 +654,57 @@ router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
     integrationReadiness(workspaceId, "facebook", connection),
     integrationReadiness(workspaceId, "instagram", connection),
   ]);
+  // Whether anything ever arrived from Meta. The settings can be fully enabled
+  // and the connection verified while no event reaches the server (app still in
+  // Development mode, callback URL pointing elsewhere), and the merchant has no
+  // way to see that difference without these counters.
+  const [[inboxSummary], inboxByPlatform, autoReplyJobCounts, subscriptions] =
+    await Promise.all([
+      db
+        .select({
+          lastAt: sql<string | null>`max(${menaMetaInboxItems.occurredAt})`,
+          total: sql<number>`count(*)::int`,
+        })
+        .from(menaMetaInboxItems)
+        .where(eq(menaMetaInboxItems.workspaceId, workspaceId)),
+      db
+        .select({
+          platform: menaMetaInboxItems.platform,
+          total: sql<number>`count(*)::int`,
+        })
+        .from(menaMetaInboxItems)
+        .where(eq(menaMetaInboxItems.workspaceId, workspaceId))
+        .groupBy(menaMetaInboxItems.platform),
+      db
+        .select({
+          status: menaMetaAutoReplyJobs.status,
+          total: sql<number>`count(*)::int`,
+        })
+        .from(menaMetaAutoReplyJobs)
+        .where(eq(menaMetaAutoReplyJobs.workspaceId, workspaceId))
+        .groupBy(menaMetaAutoReplyJobs.status),
+      db
+        .select({
+          platform: menaMetaWebhookSubscriptions.platform,
+          accountId: menaMetaWebhookSubscriptions.accountId,
+          subscribedFields: menaMetaWebhookSubscriptions.subscribedFields,
+          subscribedAt: menaMetaWebhookSubscriptions.subscribedAt,
+          lastErrorCode: menaMetaWebhookSubscriptions.lastErrorCode,
+        })
+        .from(menaMetaWebhookSubscriptions)
+        .where(eq(menaMetaWebhookSubscriptions.workspaceId, workspaceId)),
+    ]);
+  const inbound = metaInboundDiagnostics({
+    lastInboxItemAt: inboxSummary?.lastAt ? new Date(inboxSummary.lastAt) : null,
+    inboxItemCount: inboxSummary?.total ?? 0,
+    inboxCountsByPlatform: inboxByPlatform,
+    autoReplyJobCounts,
+    subscriptions,
+    verifyTokenConfigured: Boolean(
+      process.env.MENA_META_WEBHOOK_VERIFY_TOKEN?.trim(),
+    ),
+    appSecretConfigured: Boolean(process.env.FACEBOOK_APP_SECRET?.trim()),
+  });
   res.json({
     settings: settings
       ? {
@@ -667,6 +719,7 @@ router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
         }
       : defaults,
     readiness: { facebook, instagram },
+    inbound,
   });
 });
 

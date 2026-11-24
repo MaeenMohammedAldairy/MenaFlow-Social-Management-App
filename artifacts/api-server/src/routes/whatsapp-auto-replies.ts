@@ -1,9 +1,10 @@
-import { and, desc, eq, isNotNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
 import { autoReplySettingsHash } from "../lib/whatsapp-auto-reply-policy";
 import {
   db,
   menaWhatsAppAutoReplyEvents,
   menaWhatsAppConnections,
+  menaWhatsAppDirectMessages,
   products,
 } from "@workspace/db";
 import { Router, type IRouter, type Response } from "express";
@@ -20,7 +21,10 @@ import type {
 import {
   EvolutionApiError,
   evolutionConnectionState,
+  resolveWhatsAppWebhookSecret,
+  whatsappWebhookUrl,
 } from "../lib/whatsapp-evolution";
+import { whatsAppInboundDiagnostics } from "../lib/inbound-diagnostics";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import { isRecord } from "../lib/value-utils.ts";
 import { evolutionErrorResponse } from "./whatsapp-route-errors";
@@ -184,6 +188,56 @@ function aiErrorResponse(
   });
 }
 
+/**
+ * Inbound facts for the reply-settings screen: whether any customer message ever
+ * reached the server, what the automatic replies did with them, and whether the
+ * webhook is configured on our side. "Replies are on but nothing arrives" and
+ * "replies are off" need different fixes, and the screen cannot tell them apart
+ * without this.
+ */
+async function whatsAppInboundForWorkspace(workspaceId: string) {
+  const [[directSummary], autoReplyEventCounts] = await Promise.all([
+    db
+      .select({
+        lastAt: sql<string | null>`max(${menaWhatsAppDirectMessages.messageTimestamp})`,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(menaWhatsAppDirectMessages)
+      .where(
+        and(
+          eq(menaWhatsAppDirectMessages.workspaceId, workspaceId),
+          eq(menaWhatsAppDirectMessages.direction, "inbound"),
+        ),
+      ),
+    db
+      .select({
+        status: menaWhatsAppAutoReplyEvents.status,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(menaWhatsAppAutoReplyEvents)
+      .where(eq(menaWhatsAppAutoReplyEvents.workspaceId, workspaceId))
+      .groupBy(menaWhatsAppAutoReplyEvents.status),
+  ]);
+  let webhookUrl: string | null = null;
+  let webhookUrlError: string | null = null;
+  try {
+    webhookUrl = whatsappWebhookUrl();
+  } catch (error) {
+    webhookUrlError =
+      error instanceof EvolutionApiError ? error.message : "WHATSAPP_WEBHOOK_URL_INVALID";
+  }
+  return whatsAppInboundDiagnostics({
+    lastDirectMessageAt: directSummary?.lastAt
+      ? new Date(directSummary.lastAt)
+      : null,
+    directMessageCount: directSummary?.total ?? 0,
+    autoReplyEventCounts,
+    webhookSecretConfigured: Boolean(resolveWhatsAppWebhookSecret()),
+    webhookUrl,
+    webhookUrlError,
+  });
+}
+
 router.get(
   "/social/whatsapp/auto-reply-settings",
   requireWorkspace,
@@ -214,6 +268,7 @@ router.get(
         tone: connection.autoReplyTone,
         instructions: connection.autoReplyInstructions ?? "",
       },
+      inbound: await whatsAppInboundForWorkspace(workspaceId),
     });
   },
 );

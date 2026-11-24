@@ -61,3 +61,9 @@ test("marks known content/account blockers for user action", () => {
   assert.equal(isProductPublicationActionRequired("FACEBOOK_NO_SUPPORTED_MEDIA"), true);
   assert.equal(isProductPublicationActionRequired("META_HTTP_429"), false);
 });
+
+test("incomplete product fields are a merchant action, not a retry", () => {
+  assert.equal(isProductPublicationActionRequired("PRODUCT_FIELDS_INCOMPLETE"), true);
+  assert.equal(isProductPublicationActionRequired("PRODUCT_POST_CONTENT_REQUIRED"), false);
+  assert.equal(isProductPublicationActionRequired("PRODUCT_FIELDS_INCOMPLETE_X"), false);
+});

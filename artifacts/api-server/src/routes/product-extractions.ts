@@ -11,6 +11,7 @@ import {
   productExtractionSources,
   productExtractionSuggestions,
   products,
+  whatsappProductExtractionJobs,
 } from "@workspace/db";
 import { metaString } from "../lib/meta-inbox-utils";
 
@@ -18,6 +19,10 @@ import { requestOwnerId } from "../lib/owner-access";
 
 import { queueUnprocessedWhatsAppProductMessages } from "../lib/whatsapp-product-extraction";
 import { normalizedProductName } from "../lib/product-utils.ts";
+import {
+  missingProductFieldMessages,
+  missingProductFields,
+} from "../lib/product-draft-policy";
 import { parseProductInput } from "../lib/product-validation";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
@@ -171,6 +176,27 @@ router.get(
             asc(menaWhatsAppMessageMedia.mediaIndex),
           )
       : [];
+    // Jobs that are waiting on something the merchant must do (approve an
+    // association, wait for a download) or that failed, so the catalog can say
+    // why nothing new appeared instead of looking idle.
+    const jobStatusRows = await db
+      .select({
+        status: whatsappProductExtractionJobs.status,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(whatsappProductExtractionJobs)
+      .where(eq(whatsappProductExtractionJobs.workspaceId, workspaceId))
+      .groupBy(whatsappProductExtractionJobs.status);
+    const jobCounts = Object.fromEntries(
+      jobStatusRows.map((row) => [row.status, row.total]),
+    ) as Record<string, number>;
+    const pendingJobs = {
+      pending: jobCounts.pending ?? 0,
+      processing: jobCounts.processing ?? 0,
+      waitingMedia: jobCounts.waiting_media ?? 0,
+      waitingAssociation: jobCounts.waiting_association ?? 0,
+      failed: jobCounts.failed ?? 0,
+    };
     const requestOrigin = mediaRequestOrigin(req);
     const sourceMediaByMessageId = new Map<string, ProductMediaPreview[]>();
     for (const media of sourceMediaRows) {
@@ -208,16 +234,39 @@ router.get(
       sourcesBySuggestionId.set(source.suggestionId, current);
     }
     res.json({
-      suggestions: suggestions.map((suggestion) => ({
-        ...suggestion,
-        sources: sourcesBySuggestionId.get(suggestion.id) ?? [],
-        ...(suggestion.status === "possible_duplicate"
-          ? {
-              possibleDuplicateProducts:
-                duplicateProductsBySuggestionId.get(suggestion.id) ?? [],
-            }
-          : {}),
-      })),
+      suggestions: suggestions.map((suggestion) => {
+        const suggestionSources = sourcesBySuggestionId.get(suggestion.id) ?? [];
+        const extracted = (suggestion.extractedData ?? {}) as {
+          name?: string | null;
+          description?: string | null;
+          price?: string | null;
+          currency?: string | null;
+          availability?: string | null;
+        };
+        const missingFields = missingProductFields({
+          name: extracted.name ?? null,
+          description: extracted.description ?? null,
+          price: extracted.price ?? null,
+          currency: extracted.currency ?? null,
+          availability: extracted.availability ?? null,
+          mediaUrls: suggestionSources.flatMap(
+            (source) => source.mediaPreviews.map((preview) => preview.id),
+          ),
+        });
+        return {
+          ...suggestion,
+          sources: suggestionSources,
+          missingFields,
+          missingFieldMessages: missingProductFieldMessages(missingFields),
+          ...(suggestion.status === "possible_duplicate"
+            ? {
+                possibleDuplicateProducts:
+                  duplicateProductsBySuggestionId.get(suggestion.id) ?? [],
+              }
+            : {}),
+        };
+      }),
+      pendingJobs,
     });
   },
 );

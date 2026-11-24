@@ -514,11 +514,51 @@ export interface WhatsAppAutoReplySettings {
   instructions: string;
 }
 
+export type DiagnosticIssueSeverity = typeof DiagnosticIssueSeverity[keyof typeof DiagnosticIssueSeverity];
+
+
+export const DiagnosticIssueSeverity = {
+  warning: 'warning',
+  critical: 'critical',
+} as const;
+
+/**
+ * One actionable problem, worded for the merchant
+ */
+export interface DiagnosticIssue {
+  code: string;
+  message: string;
+  severity: DiagnosticIssueSeverity;
+}
+
+export type WhatsAppInboundDiagnosticsAutoReplyEvents = {
+  queued: number;
+  sent: number;
+  failed: number;
+  other: number;
+};
+
+/**
+ * Whether customer messages reach the server at all, which is the fact that separates "automatic replies are off" from "nothing is arriving".
+ */
+export interface WhatsAppInboundDiagnostics {
+  deliveryConfirmed: boolean;
+  /** @nullable */
+  lastDirectMessageAt?: string | null;
+  directMessageCount: number;
+  autoReplyEvents: WhatsAppInboundDiagnosticsAutoReplyEvents;
+  webhookSecretConfigured: boolean;
+  /** @nullable */
+  webhookUrl?: string | null;
+  issues: DiagnosticIssue[];
+}
+
 export interface WhatsAppAutoReplySettingsResponse {
   connected: boolean;
   /** @nullable */
   phoneNumber: string | null;
   settings: WhatsAppAutoReplySettings;
+  inbound: WhatsAppInboundDiagnostics;
 }
 
 export type WhatsAppAutoReplyTestInputLanguage = typeof WhatsAppAutoReplyTestInputLanguage[keyof typeof WhatsAppAutoReplyTestInputLanguage];
@@ -664,6 +704,469 @@ export interface PushTokenListResponse {
 
 export interface PushTokenRemovedResponse {
   removed: boolean;
+}
+
+/**
+ * A product field the merchant still has to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.
+ */
+export type ProductFieldKey = typeof ProductFieldKey[keyof typeof ProductFieldKey];
+
+
+export const ProductFieldKey = {
+  name: 'name',
+  description: 'description',
+  price: 'price',
+  currency: 'currency',
+  availability: 'availability',
+  media: 'media',
+} as const;
+
+export type ProductMediaPreviewMediaType = typeof ProductMediaPreviewMediaType[keyof typeof ProductMediaPreviewMediaType];
+
+
+export const ProductMediaPreviewMediaType = {
+  image: 'image',
+  video: 'video',
+} as const;
+
+export interface ProductMediaPreview {
+  id: string;
+  url: string;
+  mediaType: ProductMediaPreviewMediaType;
+}
+
+export type CatalogProductAvailability = typeof CatalogProductAvailability[keyof typeof CatalogProductAvailability];
+
+
+export const CatalogProductAvailability = {
+  unknown: 'unknown',
+  in_stock: 'in_stock',
+  out_of_stock: 'out_of_stock',
+  preorder: 'preorder',
+} as const;
+
+export type CatalogProductStatus = typeof CatalogProductStatus[keyof typeof CatalogProductStatus];
+
+
+export const CatalogProductStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export interface CatalogProduct {
+  id: string;
+  /** @nullable */
+  sku?: string | null;
+  name: string;
+  aliases: string[];
+  description: string;
+  /** @nullable */
+  price?: string | null;
+  /** @nullable */
+  currency?: string | null;
+  availability: CatalogProductAvailability;
+  inventoryTracked?: boolean;
+  stockOnHand?: number;
+  stockReserved?: number;
+  lowStockThreshold?: number;
+  status: CatalogProductStatus;
+  mediaUrls: string[];
+  mediaPreviews: ProductMediaPreview[];
+  /** @nullable */
+  verifiedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  postIds: string[];
+  missingFields: ProductFieldKey[];
+  /** Arabic labels for missingFields, ready to render */
+  missingFieldMessages?: string[];
+  publicationBlockers: ProductFieldKey[];
+  publicationBlockerMessages?: string[];
+  publicationBlocked: boolean;
+  advisoryFields?: ProductFieldKey[];
+}
+
+export interface ProductExtractionSourceMessage {
+  id: string;
+  text: string;
+  /** @nullable */
+  senderName?: string | null;
+  /** @nullable */
+  messageTimestamp?: string | null;
+  /** @nullable */
+  groupName?: string | null;
+  mediaPreviews: ProductMediaPreview[];
+}
+
+export type ProductExtractionSuggestionClassification = typeof ProductExtractionSuggestionClassification[keyof typeof ProductExtractionSuggestionClassification];
+
+
+export const ProductExtractionSuggestionClassification = {
+  product: 'product',
+  not_product: 'not_product',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ProductExtractionSuggestionExtractedDataAvailability = typeof ProductExtractionSuggestionExtractedDataAvailability[keyof typeof ProductExtractionSuggestionExtractedDataAvailability] | null;
+
+
+export const ProductExtractionSuggestionExtractedDataAvailability = {
+  in_stock: 'in_stock',
+  out_of_stock: 'out_of_stock',
+  preorder: 'preorder',
+  null: 'null',
+} as const;
+
+export type ProductExtractionSuggestionExtractedData = {
+  /** @nullable */
+  name?: string | null;
+  /** @nullable */
+  sku?: string | null;
+  aliases?: string[];
+  /** @nullable */
+  description?: string | null;
+  /** @nullable */
+  price?: string | null;
+  /** @nullable */
+  currency?: string | null;
+  /** @nullable */
+  availability?: ProductExtractionSuggestionExtractedDataAvailability;
+};
+
+export type ProductExtractionSuggestionEvidence = {[key: string]: string | null};
+
+export type ProductExtractionSuggestionConfidence = {[key: string]: number};
+
+export type ProductExtractionSuggestionFieldReview = {[key: string]: boolean};
+
+export type ProductExtractionSuggestionStatus = typeof ProductExtractionSuggestionStatus[keyof typeof ProductExtractionSuggestionStatus];
+
+
+export const ProductExtractionSuggestionStatus = {
+  review: 'review',
+  draft_created: 'draft_created',
+  possible_duplicate: 'possible_duplicate',
+  dismissed: 'dismissed',
+} as const;
+
+export interface ProductExtractionSuggestion {
+  id: string;
+  sourceKey?: string;
+  classification: ProductExtractionSuggestionClassification;
+  extractedData: ProductExtractionSuggestionExtractedData;
+  evidence: ProductExtractionSuggestionEvidence;
+  confidence: ProductExtractionSuggestionConfidence;
+  fieldReview: ProductExtractionSuggestionFieldReview;
+  missingFields?: ProductFieldKey[];
+  missingFieldMessages?: string[];
+  /** Model that produced the suggestion. A `+vision` suffix means the values were read from the message images rather than from its text, and the suggestion always needs a human review. */
+  aiModel: string;
+  status: ProductExtractionSuggestionStatus;
+  /** @nullable */
+  productId?: string | null;
+  possibleDuplicateProducts?: CatalogProduct[];
+  createdAt: string;
+  updatedAt?: string;
+  sources: ProductExtractionSourceMessage[];
+}
+
+/**
+ * Extraction jobs by state. `waitingMedia` and `waitingAssociation` are the states only a download or a merchant decision can clear.
+ */
+export interface ProductExtractionQueueCounts {
+  pending: number;
+  processing: number;
+  waitingMedia: number;
+  waitingAssociation: number;
+  failed: number;
+}
+
+export interface ProductExtractionListResponse {
+  suggestions: ProductExtractionSuggestion[];
+  pendingJobs: ProductExtractionQueueCounts;
+}
+
+export interface ExtractWhatsAppProductsInput {
+  /** Queue a single message again; omit to queue every unprocessed message */
+  messageId?: string;
+}
+
+export interface ExtractWhatsAppProductsResponse {
+  queuedMessages: number;
+}
+
+export type ProductInputAvailability = typeof ProductInputAvailability[keyof typeof ProductInputAvailability];
+
+
+export const ProductInputAvailability = {
+  unknown: 'unknown',
+  in_stock: 'in_stock',
+  out_of_stock: 'out_of_stock',
+  preorder: 'preorder',
+} as const;
+
+export type ProductInputStatus = typeof ProductInputStatus[keyof typeof ProductInputStatus];
+
+
+export const ProductInputStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export interface ProductInput {
+  /** @nullable */
+  sku?: string | null;
+  name: string;
+  aliases: string[];
+  description: string;
+  /** @nullable */
+  price?: string | null;
+  /** @nullable */
+  currency?: string | null;
+  availability: ProductInputAvailability;
+  status: ProductInputStatus;
+  mediaUrls: string[];
+  inventoryTracked?: boolean;
+  stockOnHand?: number;
+  lowStockThreshold?: number;
+  inventoryReason?: string;
+}
+
+export interface CreateProductDraftInput {
+  product?: ProductInput;
+}
+
+export interface ProductDraftResponse {
+  product: CatalogProduct;
+}
+
+export interface ProductExtractionDismissResponse {
+  dismissed: boolean;
+}
+
+export type ProductExtractionReviewInputField = typeof ProductExtractionReviewInputField[keyof typeof ProductExtractionReviewInputField];
+
+
+export const ProductExtractionReviewInputField = {
+  classification: 'classification',
+  grouping: 'grouping',
+  name: 'name',
+  description: 'description',
+  sku: 'sku',
+  price: 'price',
+  currency: 'currency',
+  availability: 'availability',
+} as const;
+
+export interface ProductExtractionReviewInput {
+  field: ProductExtractionReviewInputField;
+  correct: boolean;
+}
+
+export interface ProductExtractionReviewResponse {
+  reviewed: boolean;
+  field: string;
+  correct: boolean;
+}
+
+export type PublishCatalogProductsInputTargetsItemChannel = typeof PublishCatalogProductsInputTargetsItemChannel[keyof typeof PublishCatalogProductsInputTargetsItemChannel];
+
+
+export const PublishCatalogProductsInputTargetsItemChannel = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type PublishCatalogProductsInputTargetsItem = {
+  channel: PublishCatalogProductsInputTargetsItemChannel;
+  accountId: string;
+};
+
+export interface PublishCatalogProductsInput {
+  /**
+     * Client-generated idempotency key (8-128 of A-Za-z0-9._:-)
+     * @pattern ^[A-Za-z0-9._:-]{8,128}$
+     */
+  requestKey: string;
+  /**
+     * @minItems 1
+     * @maxItems 50
+     */
+  productIds: string[];
+  /** @minItems 1 */
+  targets: PublishCatalogProductsInputTargetsItem[];
+}
+
+export type ProductPublicationJobChannel = typeof ProductPublicationJobChannel[keyof typeof ProductPublicationJobChannel];
+
+
+export const ProductPublicationJobChannel = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type ProductPublicationJobStatus = typeof ProductPublicationJobStatus[keyof typeof ProductPublicationJobStatus];
+
+
+export const ProductPublicationJobStatus = {
+  queued: 'queued',
+  processing: 'processing',
+  published: 'published',
+  failed: 'failed',
+  action_required: 'action_required',
+} as const;
+
+export interface ProductPublicationJob {
+  id: string;
+  productId: string;
+  channel: ProductPublicationJobChannel;
+  accountId: string;
+  status: ProductPublicationJobStatus;
+  /** @nullable */
+  postId?: string | null;
+  /** @nullable */
+  permalink?: string | null;
+  /**
+     * Reason code. PRODUCT_FIELDS_INCOMPLETE means the listing was stopped because the product is missing a required field.
+     * @nullable
+     */
+  error?: string | null;
+  attempts: number;
+  /** @nullable */
+  startedAt?: string | null;
+  /** @nullable */
+  completedAt?: string | null;
+  createdAt: string;
+}
+
+export type ProductPublicationSnapshotSummary = {
+  total: number;
+  successful: number;
+  failed: number;
+  inProgress: number;
+  needsAction: number;
+};
+
+export interface ProductPublicationSnapshot {
+  requestKey: string;
+  jobs: ProductPublicationJob[];
+  summary: ProductPublicationSnapshotSummary;
+}
+
+export interface IncompletePublicationProduct {
+  id: string;
+  name: string;
+  missingFields: ProductFieldKey[];
+  missingFieldMessages: string[];
+}
+
+export type ProductPublicationConflict = ApiError & {
+  /** Present with code PRODUCT_FIELDS_INCOMPLETE: the products that stopped the request and the fields each one is missing. */
+  incompleteProducts?: IncompletePublicationProduct[];
+};
+
+export interface WhatsAppWebhookReconfiguration {
+  ok: boolean;
+  instanceName: string;
+  webhookUrl: string;
+  reconfiguredAt: string;
+}
+
+export type MetaInboundDiagnosticsInboxCountByPlatform = {[key: string]: number};
+
+export type MetaInboundDiagnosticsAutoReplyJobs = {
+  queued: number;
+  completed: number;
+  failed: number;
+  skipped: number;
+};
+
+export type MetaInboundDiagnosticsSubscriptionsItemPlatform = typeof MetaInboundDiagnosticsSubscriptionsItemPlatform[keyof typeof MetaInboundDiagnosticsSubscriptionsItemPlatform];
+
+
+export const MetaInboundDiagnosticsSubscriptionsItemPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type MetaInboundDiagnosticsSubscriptionsItem = {
+  platform: MetaInboundDiagnosticsSubscriptionsItemPlatform;
+  accountId: string;
+  subscribedFields: string[];
+  /** @nullable */
+  subscribedAt?: string | null;
+  /** @nullable */
+  lastErrorCode: string | null;
+};
+
+/**
+ * Whether Facebook and Instagram events reach the server, with the recorded subscriptions and their last error.
+ */
+export interface MetaInboundDiagnostics {
+  deliveryConfirmed: boolean;
+  /** @nullable */
+  lastInboxItemAt?: string | null;
+  inboxItemCount: number;
+  inboxCountByPlatform: MetaInboundDiagnosticsInboxCountByPlatform;
+  autoReplyJobs: MetaInboundDiagnosticsAutoReplyJobs;
+  subscriptions: MetaInboundDiagnosticsSubscriptionsItem[];
+  verifyTokenConfigured: boolean;
+  appSecretConfigured: boolean;
+  issues: DiagnosticIssue[];
+}
+
+export interface MetaAutoReplySettings {
+  enabled: boolean;
+  facebookMessagesEnabled: boolean;
+  facebookCommentsEnabled: boolean;
+  instagramMessagesEnabled: boolean;
+  instagramCommentsEnabled: boolean;
+  language: string;
+  tone: string;
+  instructions: string;
+}
+
+export interface MetaAutoReplyReadiness {
+  connected: boolean;
+  tokenReady: boolean;
+  webhookConfigured: boolean;
+  subscriptionReady: boolean;
+  messagesSubscriptionReady: boolean;
+  commentsSubscriptionReady: boolean;
+  aiConfigured: boolean;
+  messagesReady: boolean;
+  commentsReady: boolean;
+  missingPermissions: string[];
+}
+
+export type MetaAutoReplySettingsResponseReadiness = {
+  facebook: MetaAutoReplyReadiness;
+  instagram: MetaAutoReplyReadiness;
+};
+
+export interface MetaAutoReplySettingsResponse {
+  settings: MetaAutoReplySettings;
+  readiness: MetaAutoReplySettingsResponseReadiness;
+  inbound: MetaInboundDiagnostics;
+}
+
+export interface MetaWebhookSubscriptionResult {
+  subscribed: boolean;
+  fields: string[];
+  errorCode?: string;
+}
+
+export type MetaWebhookSubscriptionsResponseSubscriptions = {
+  facebook?: MetaWebhookSubscriptionResult;
+  instagram?: MetaWebhookSubscriptionResult;
+};
+
+export interface MetaWebhookSubscriptionsResponse {
+  subscriptions: MetaWebhookSubscriptionsResponseSubscriptions;
 }
 
 export type DeleteMetaConnectionParams = {
