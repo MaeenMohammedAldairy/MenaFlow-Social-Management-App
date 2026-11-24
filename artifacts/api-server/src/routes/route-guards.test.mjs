@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
  * Why a *static* guard rather than only per-route tests: tenant isolation in
  * this codebase lives in one place — `requireWorkspace` resolves the caller's
  * workspace and the `assert*Workspace` helpers reject foreign records — and the
- * database offers no second layer (RLS is enabled on all 42 tables but has zero
+ * database offers no second layer (RLS is enabled on all 43 tables but has zero
  * policies, and the server connects as the table owner, so it bypasses RLS). A
  * single new route registered without the middleware is therefore a cross-tenant
  * data leak, and nothing else in CI would notice: 43 of the 44 route files have
