@@ -911,9 +911,37 @@ export interface ProductExtractionQueueCounts {
   quotaPaused: number;
 }
 
+/**
+ * Totals over every non-dismissed suggestion in the workspace, ignoring the page filters, so a badge does not change while the merchant moves between tabs.
+ */
+export interface ProductExtractionSuggestionCounts {
+  total: number;
+  /** Suggestions the model read as a product */
+  product: number;
+  /** Suggestions the model read as not a product */
+  notProduct: number;
+  /** Awaiting a decision, of either classification */
+  pendingReview: number;
+  /** Awaiting a decision and holding a product — the badge number */
+  pendingProductReview: number;
+  draftCreated: number;
+  possibleDuplicate: number;
+}
+
+export interface ProductExtractionPagination {
+  /** Rows matching the requested filters */
+  total: number;
+  limit: number;
+  offset: number;
+  /** Null when this page already held the last row */
+  nextOffset: number | null;
+}
+
 export interface ProductExtractionListResponse {
   suggestions: ProductExtractionSuggestion[];
   pendingJobs: ProductExtractionQueueCounts;
+  suggestionCounts: ProductExtractionSuggestionCounts;
+  pagination: ProductExtractionPagination;
 }
 
 export interface ExtractWhatsAppProductsInput {
@@ -1278,6 +1306,46 @@ export type DeleteWhatsAppConnectionParams = {
  */
 cancelPairing?: boolean;
 };
+
+export type GetWhatsAppProductExtractionsParams = {
+/**
+ * Restrict the page to one classification. Omit it for both. A `not_product` suggestion is a message that turned out to be a post candidate, a greeting or an order: it explains where a message went but it is not review work.
+ */
+classification?: GetWhatsAppProductExtractionsClassification;
+/**
+ * Restrict the page to these statuses. Repeat the parameter or pass a comma separated list. Omit it for every status.
+ */
+status?: GetWhatsAppProductExtractionsStatusItem[];
+/**
+ * Page size, clamped to 1-50. Out of range values are clamped, not rejected.
+ * @minimum 1
+ * @maximum 50
+ */
+limit?: number;
+/**
+ * Rows to skip, clamped to 0-10000.
+ * @minimum 0
+ * @maximum 10000
+ */
+offset?: number;
+};
+
+export type GetWhatsAppProductExtractionsClassification = typeof GetWhatsAppProductExtractionsClassification[keyof typeof GetWhatsAppProductExtractionsClassification];
+
+
+export const GetWhatsAppProductExtractionsClassification = {
+  product: 'product',
+  not_product: 'not_product',
+} as const;
+
+export type GetWhatsAppProductExtractionsStatusItem = typeof GetWhatsAppProductExtractionsStatusItem[keyof typeof GetWhatsAppProductExtractionsStatusItem];
+
+
+export const GetWhatsAppProductExtractionsStatusItem = {
+  review: 'review',
+  draft_created: 'draft_created',
+  possible_duplicate: 'possible_duplicate',
+} as const;
 
 export type GetPostsPageParams = {
 /**

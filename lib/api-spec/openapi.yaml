@@ -827,9 +827,55 @@ paths:
         - bearerAuth: []
       summary: List product suggestions extracted from WhatsApp messages
       description: >-
-        Returns the review queue together with the extraction job counters, so a
-        client can explain why nothing new appeared (a pending download, an
-        association decision the merchant owes, or a failure).
+        Returns one page of the review queue together with the extraction job
+        counters and the queue's own totals, so a client can explain why nothing
+        new appeared (a pending download, an association decision the merchant
+        owes, or a failure) and can badge the number of suggestions that actually
+        hold a product instead of counting every message the importer saw.
+        Dismissed suggestions are never returned and cannot be asked for.
+      parameters:
+        - name: classification
+          in: query
+          required: false
+          description: >-
+            Restrict the page to one classification. Omit it for both. A
+            `not_product` suggestion is a message that turned out to be a post
+            candidate, a greeting or an order: it explains where a message went
+            but it is not review work.
+          schema:
+            type: string
+            enum: [product, not_product]
+        - name: status
+          in: query
+          required: false
+          description: >-
+            Restrict the page to these statuses. Repeat the parameter or pass a
+            comma separated list. Omit it for every status.
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [review, draft_created, possible_duplicate]
+          style: form
+          explode: true
+        - name: limit
+          in: query
+          required: false
+          description: Page size, clamped to 1-50. Out of range values are clamped, not rejected.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          description: Rows to skip, clamped to 0-10000.
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 10000
+            default: 0
       responses:
         "200":
           description: Suggestions and extraction queue state
@@ -837,6 +883,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProductExtractionListResponse"
+        "400":
+          description: An unknown classification or status was requested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "401":
           description: Authentication required
           content:
@@ -2465,6 +2517,54 @@ components:
         - waitingAssociation
         - failed
         - quotaPaused
+    ProductExtractionSuggestionCounts:
+      type: object
+      description: >-
+        Totals over every non-dismissed suggestion in the workspace, ignoring the
+        page filters, so a badge does not change while the merchant moves between
+        tabs.
+      properties:
+        total:
+          type: integer
+        product:
+          type: integer
+          description: Suggestions the model read as a product
+        notProduct:
+          type: integer
+          description: Suggestions the model read as not a product
+        pendingReview:
+          type: integer
+          description: Awaiting a decision, of either classification
+        pendingProductReview:
+          type: integer
+          description: Awaiting a decision and holding a product — the badge number
+        draftCreated:
+          type: integer
+        possibleDuplicate:
+          type: integer
+      required:
+        - total
+        - product
+        - notProduct
+        - pendingReview
+        - pendingProductReview
+        - draftCreated
+        - possibleDuplicate
+    ProductExtractionPagination:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: Rows matching the requested filters
+        limit:
+          type: integer
+        offset:
+          type: integer
+        nextOffset:
+          type: integer
+          nullable: true
+          description: Null when this page already held the last row
+      required: [total, limit, offset, nextOffset]
     ProductExtractionListResponse:
       type: object
       properties:
@@ -2474,7 +2574,11 @@ components:
             $ref: "#/components/schemas/ProductExtractionSuggestion"
         pendingJobs:
           $ref: "#/components/schemas/ProductExtractionQueueCounts"
-      required: [suggestions, pendingJobs]
+        suggestionCounts:
+          $ref: "#/components/schemas/ProductExtractionSuggestionCounts"
+        pagination:
+          $ref: "#/components/schemas/ProductExtractionPagination"
+      required: [suggestions, pendingJobs, suggestionCounts, pagination]
     ExtractWhatsAppProductsInput:
       type: object
       properties:

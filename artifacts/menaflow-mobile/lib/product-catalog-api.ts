@@ -295,27 +295,110 @@ export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
   quotaPaused: 0,
 };
 
+/**
+ * Totals over the workspace's whole review queue, ignoring the page filters, so
+ * the badge keeps its meaning while the merchant moves between filters.
+ */
+export type ProductExtractionSuggestionCounts = {
+  total: number;
+  product: number;
+  /** Messages that turned out to be a post candidate, a greeting or an order. */
+  notProduct: number;
+  pendingReview: number;
+  /** Awaiting a decision *and* holding a product — the badge number. */
+  pendingProductReview: number;
+  draftCreated: number;
+  possibleDuplicate: number;
+};
+
+export const emptyProductExtractionSuggestionCounts: ProductExtractionSuggestionCounts =
+  {
+    total: 0,
+    product: 0,
+    notProduct: 0,
+    pendingReview: 0,
+    pendingProductReview: 0,
+    draftCreated: 0,
+    possibleDuplicate: 0,
+  };
+
+export type ProductExtractionPagination = {
+  total: number;
+  limit: number;
+  offset: number;
+  /** `null` when this page already held the last row. */
+  nextOffset: number | null;
+};
+
+/** How big a page of the review queue is. The server clamps to the same bound. */
+export const PRODUCT_EXTRACTION_PAGE_SIZE = 50;
+
+export const emptyProductExtractionPagination: ProductExtractionPagination = {
+  total: 0,
+  limit: PRODUCT_EXTRACTION_PAGE_SIZE,
+  offset: 0,
+  nextOffset: null,
+};
+
+export type ProductExtractionListStatus =
+  | "review"
+  | "draft_created"
+  | "possible_duplicate";
+
+export type WhatsAppProductExtractionsQuery = {
+  classification?: "product" | "not_product";
+  statuses?: ProductExtractionListStatus[];
+  limit?: number;
+  offset?: number;
+};
+
 export type WhatsAppProductExtractions = {
   suggestions: ProductExtractionSuggestion[];
   /** Jobs stuck on something the merchant or a download has to resolve. */
   pendingJobs: ProductExtractionQueueCounts;
+  suggestionCounts: ProductExtractionSuggestionCounts;
+  pagination: ProductExtractionPagination;
 };
 
-export async function getWhatsAppProductExtractions(): Promise<
-  WhatsAppProductExtractions
-> {
+/**
+ * One page of the WhatsApp product review queue.
+ *
+ * Filtered and paged server-side: the queue holds one row per imported message,
+ * most of them `not_product`, so a client-side page of the fifty newest rows
+ * buried the handful of suggestions that actually held a product — and could
+ * never reach the rest.
+ */
+export async function getWhatsAppProductExtractions(
+  query: WhatsAppProductExtractionsQuery = {},
+): Promise<WhatsAppProductExtractions> {
+  const params = new URLSearchParams();
+  if (query.classification) params.set("classification", query.classification);
+  for (const status of query.statuses ?? []) params.append("status", status);
+  if (query.limit !== undefined) params.set("limit", String(query.limit));
+  if (query.offset !== undefined) params.set("offset", String(query.offset));
+  const search = params.toString();
   const response = await fetchApiResponse(
-    "/api/social/products/whatsapp-extractions",
+    `/api/social/products/whatsapp-extractions${search ? `?${search}` : ""}`,
   );
   const result = await readJsonResponse<{
     suggestions: ProductExtractionSuggestion[];
     pendingJobs?: Partial<ProductExtractionQueueCounts>;
+    suggestionCounts?: Partial<ProductExtractionSuggestionCounts>;
+    pagination?: Partial<ProductExtractionPagination>;
   }>(response);
   return {
     suggestions: result.suggestions ?? [],
     pendingJobs: {
       ...emptyProductExtractionQueueCounts,
       ...(result.pendingJobs ?? {}),
+    },
+    suggestionCounts: {
+      ...emptyProductExtractionSuggestionCounts,
+      ...(result.suggestionCounts ?? {}),
+    },
+    pagination: {
+      ...emptyProductExtractionPagination,
+      ...(result.pagination ?? {}),
     },
   };
 }

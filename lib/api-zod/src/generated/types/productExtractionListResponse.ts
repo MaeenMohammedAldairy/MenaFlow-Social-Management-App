@@ -5,10 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ProductExtractionPagination } from './productExtractionPagination';
 import type { ProductExtractionQueueCounts } from './productExtractionQueueCounts';
 import type { ProductExtractionSuggestion } from './productExtractionSuggestion';
+import type { ProductExtractionSuggestionCounts } from './productExtractionSuggestionCounts';
 
 export interface ProductExtractionListResponse {
   suggestions: ProductExtractionSuggestion[];
   pendingJobs: ProductExtractionQueueCounts;
+  suggestionCounts: ProductExtractionSuggestionCounts;
+  pagination: ProductExtractionPagination;
 }

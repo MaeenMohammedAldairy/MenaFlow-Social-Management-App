@@ -29,6 +29,11 @@ import {
   missingProductFields,
 } from "../lib/product-draft-policy";
 import { parseProductInput } from "../lib/product-validation";
+import {
+  buildProductExtractionPagination,
+  parseProductExtractionListQuery,
+  summarizeProductExtractionSuggestions,
+} from "../lib/product-extraction-list-policy";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 const router = Router();
@@ -81,17 +86,68 @@ router.get(
       return;
     }
     const workspaceId = requestWorkspaceId(req);
+    // A flat page of the fifty newest suggestions cannot serve a review queue:
+    // most of them are `not_product` — a message that turned out to be a post
+    // candidate or a greeting — so the few suggestions holding an actual product
+    // were buried under cards that say «لم يستخرج منتجًا من الرسالة», and
+    // anything past the fiftieth row was unreachable. Filters and an offset make
+    // the queue pagable, and the counts below keep the badge honest about what is
+    // actually waiting for a decision.
+    const listQuery = parseProductExtractionListQuery(
+      req.query as Record<string, unknown>,
+    );
+    if (!listQuery.ok) {
+      res.status(400).json({ error: listQuery.error });
+      return;
+    }
+    const notDismissed = and(
+      eq(productExtractionSuggestions.workspaceId, workspaceId),
+      ne(productExtractionSuggestions.status, "dismissed"),
+    );
+    const countRows = await db
+      .select({
+        classification: productExtractionSuggestions.classification,
+        status: productExtractionSuggestions.status,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(productExtractionSuggestions)
+      .where(notDismissed)
+      .groupBy(
+        productExtractionSuggestions.classification,
+        productExtractionSuggestions.status,
+      );
+    const suggestionCounts = summarizeProductExtractionSuggestions(countRows);
+    const filteredWhere = and(
+      notDismissed,
+      ...(listQuery.classification
+        ? [eq(productExtractionSuggestions.classification, listQuery.classification)]
+        : []),
+      ...(listQuery.statuses.length > 0
+        ? [inArray(productExtractionSuggestions.status, listQuery.statuses)]
+        : []),
+    );
     const suggestions = await db
       .select()
       .from(productExtractionSuggestions)
-      .where(
-        and(
-          eq(productExtractionSuggestions.workspaceId, workspaceId),
-          ne(productExtractionSuggestions.status, "dismissed"),
-        ),
-      )
+      .where(filteredWhere)
       .orderBy(desc(productExtractionSuggestions.createdAt))
-      .limit(50);
+      .limit(listQuery.limit)
+      .offset(listQuery.offset);
+    const unfiltered =
+      listQuery.classification === null && listQuery.statuses.length === 0;
+    const total = unfiltered
+      ? suggestionCounts.total
+      : (
+          await db
+            .select({ total: sql<number>`count(*)::int` })
+            .from(productExtractionSuggestions)
+            .where(filteredWhere)
+        )[0]?.total ?? 0;
+    const pagination = buildProductExtractionPagination({
+      total,
+      limit: listQuery.limit,
+      offset: listQuery.offset,
+    });
     const possibleDuplicateSuggestions = suggestions.filter(
       (suggestion) => suggestion.status === "possible_duplicate",
     );
@@ -315,6 +371,8 @@ router.get(
         };
       }),
       pendingJobs,
+      suggestionCounts,
+      pagination,
     });
   },
 );

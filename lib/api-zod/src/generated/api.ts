@@ -510,9 +510,25 @@ export const DeleteWhatsAppConnectionResponse = zod.object({
 
 
 /**
- * Returns the review queue together with the extraction job counters, so a client can explain why nothing new appeared (a pending download, an association decision the merchant owes, or a failure).
+ * Returns one page of the review queue together with the extraction job counters and the queue's own totals, so a client can explain why nothing new appeared (a pending download, an association decision the merchant owes, or a failure) and can badge the number of suggestions that actually hold a product instead of counting every message the importer saw. Dismissed suggestions are never returned and cannot be asked for.
  * @summary List product suggestions extracted from WhatsApp messages
  */
+export const getWhatsAppProductExtractionsQueryLimitDefault = 50;
+export const getWhatsAppProductExtractionsQueryLimitMax = 50;
+
+export const getWhatsAppProductExtractionsQueryOffsetDefault = 0;
+export const getWhatsAppProductExtractionsQueryOffsetMin = 0;
+export const getWhatsAppProductExtractionsQueryOffsetMax = 10000;
+
+
+
+export const GetWhatsAppProductExtractionsQueryParams = zod.object({
+  "classification": zod.enum(['product', 'not_product']).optional().describe('Restrict the page to one classification. Omit it for both. A `not_product` suggestion is a message that turned out to be a post candidate, a greeting or an order: it explains where a message went but it is not review work.'),
+  "status": zod.array(zod.enum(['review', 'draft_created', 'possible_duplicate'])).optional().describe('Restrict the page to these statuses. Repeat the parameter or pass a comma separated list. Omit it for every status.'),
+  "limit": zod.coerce.number().int().min(1).max(getWhatsAppProductExtractionsQueryLimitMax).default(getWhatsAppProductExtractionsQueryLimitDefault).describe('Page size, clamped to 1-50. Out of range values are clamped, not rejected.'),
+  "offset": zod.coerce.number().int().min(getWhatsAppProductExtractionsQueryOffsetMin).max(getWhatsAppProductExtractionsQueryOffsetMax).default(getWhatsAppProductExtractionsQueryOffsetDefault).describe('Rows to skip, clamped to 0-10000.')
+})
+
 export const GetWhatsAppProductExtractionsResponse = zod.object({
   "suggestions": zod.array(zod.object({
   "id": zod.string().uuid(),
@@ -588,7 +604,22 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
   "waitingAssociation": zod.number().int(),
   "failed": zod.number().int(),
   "quotaPaused": zod.number().int().describe('Pending jobs held back because the workspace AI quota is exhausted. They resume on their own; no attempt is spent while paused.')
-}).describe('Extraction jobs by state. `waitingMedia` and `waitingAssociation` are the states only a download or a merchant decision can clear.')
+}).describe('Extraction jobs by state. `waitingMedia` and `waitingAssociation` are the states only a download or a merchant decision can clear.'),
+  "suggestionCounts": zod.object({
+  "total": zod.number().int(),
+  "product": zod.number().int().describe('Suggestions the model read as a product'),
+  "notProduct": zod.number().int().describe('Suggestions the model read as not a product'),
+  "pendingReview": zod.number().int().describe('Awaiting a decision, of either classification'),
+  "pendingProductReview": zod.number().int().describe('Awaiting a decision and holding a product — the badge number'),
+  "draftCreated": zod.number().int(),
+  "possibleDuplicate": zod.number().int()
+}).describe('Totals over every non-dismissed suggestion in the workspace, ignoring the page filters, so a badge does not change while the merchant moves between tabs.'),
+  "pagination": zod.object({
+  "total": zod.number().int().describe('Rows matching the requested filters'),
+  "limit": zod.number().int(),
+  "offset": zod.number().int(),
+  "nextOffset": zod.number().int().nullable().describe('Null when this page already held the last row')
+})
 })
 
 
