@@ -8,7 +8,10 @@ import {
   processWhatsAppMediaDownloadQueue,
   processWhatsAppMediaThumbnailQueue,
 } from "./whatsapp-media-download";
-import { processWhatsAppProductExtractionQueue } from "./whatsapp-product-extraction";
+import {
+  autoQueueWhatsAppProductExtractions,
+  processWhatsAppProductExtractionQueue,
+} from "./whatsapp-product-extraction";
 import { processWhatsAppAutoReplyQueue } from "./whatsapp-sync";
 import { processWhatsAppOrderConfirmationsQueue } from "./whatsapp-order-confirmation-queue";
 import { processProductPublicationQueue } from "./product-publishing";
@@ -38,6 +41,7 @@ type WorkerName =
   | "inbound-webhook-retention"
   | "meta-webhook-subscriptions"
   | "product-extraction"
+  | "product-extraction-queue"
   | "product-publication"
   | "media-download"
   | "media-thumbnails"
@@ -160,6 +164,19 @@ const workers: WorkerDefinition[] = [
     run: processWhatsAppProductExtractionQueue,
     disabledMessage: "WhatsApp product extraction worker disabled",
     errorMessage: "WhatsApp product extraction queue poll failed",
+  },
+  {
+    // Selecting a WhatsApp group is the merchant's opt-in to extracting products
+    // from it, so the queue is filled without anyone pressing a button. Runs
+    // slower than the extraction worker it feeds: queueing is a scan, not a
+    // deadline.
+    name: "product-extraction-queue",
+    intervalMs: 60_000,
+    enabled: () =>
+      process.env.WHATSAPP_PRODUCT_AUTOQUEUE_WORKER_ENABLED !== "false",
+    run: autoQueueWhatsAppProductExtractions,
+    disabledMessage: "WhatsApp product auto-queue worker disabled",
+    errorMessage: "WhatsApp product auto-queue pass failed",
   },
   {
     name: "product-publication",

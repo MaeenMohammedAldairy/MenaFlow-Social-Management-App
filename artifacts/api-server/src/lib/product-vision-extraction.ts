@@ -31,6 +31,7 @@ import { resolvePurposeModelOverrides } from "./ai-provider-fallback.ts";
 import { callMeteredAiProvider } from "./metered-ai-provider.ts";
 import {
   normalizeProductExtractionResponse,
+  type ProductExtractionContext,
   remapProductExtractionCandidates,
   toLocalProductExtractionSources,
   type ProductExtractionCandidate,
@@ -344,6 +345,7 @@ export async function extractProductCandidatesFromImages(
   workspaceId: string,
   sources: readonly ProductExtractionSource[],
   images: readonly AiImage[],
+  context: ProductExtractionContext = {},
 ): Promise<{ model: string; candidates: ProductExtractionCandidate[] } | null> {
   if (images.length === 0 || sources.length === 0) return null;
   const localSources = toLocalProductExtractionSources(sources);
@@ -365,6 +367,7 @@ export async function extractProductCandidatesFromImages(
         nonProductMessageIds: payload.nonProductMessageIds,
       }),
       groundedSources,
+      context,
     );
   } catch (error) {
     if (

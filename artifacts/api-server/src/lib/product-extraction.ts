@@ -8,6 +8,8 @@ import {
 } from "./value-utils.ts";
 import { logger } from "./logger.ts";
 
+import { resolveCurrencyFromEvidence } from "./product-currency-resolution.ts";
+
 export type ProductExtractionSource = {
   id: string;
   groupId: string;
@@ -135,34 +137,19 @@ function hasMultiplePriceMentions(sourceText: string): boolean {
   return priceMentions(sourceText).length > 1;
 }
 
-function currencyCodeFromEvidence(value: string): string | null {
-  const code = /(?:^|[^A-Za-z])([A-Za-z]{3})(?:$|[^A-Za-z])/.exec(value);
-  if (code) return code[1]!.toUpperCase();
-
-  const normalized = value
-    .normalize("NFKC")
-    .replace(/[\u064B-\u065F\u0670]/g, "")
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ة/g, "ه")
-    .toLocaleLowerCase();
-  const explicitCurrencies: Array<[RegExp, string]> = [
-    [/ريال\s+سعودي/, "SAR"],
-    [/ريال\s+يمني/, "YER"],
-    [/ريال\s+عماني/, "OMR"],
-    [/ريال\s+قطري/, "QAR"],
-    [/دينار\s+كويتي/, "KWD"],
-    [/دينار\s+بحريني/, "BHD"],
-    [/دينار\s+اردني/, "JOD"],
-    [/درهم\s+اماراتي/, "AED"],
-    [/جنيه\s+مصري/, "EGP"],
-    [/دولار\s+امريكي/, "USD"],
-  ];
-  return explicitCurrencies.find(([pattern]) => pattern.test(normalized))?.[1] ?? null;
-}
+export type ProductExtractionContext = {
+  /**
+   * ISO 3166-1 alpha-2 of the workspace's business country. Used only to settle
+   * an ambiguous currency word — see `product-currency-resolution.ts`. Omitting
+   * it keeps the strict behaviour: «45 ريال» yields no currency.
+   */
+  workspaceCountry?: string | null;
+};
 
 export function normalizeProductExtractionResponse(
   content: string,
   sources: readonly ProductExtractionSource[],
+  context: ProductExtractionContext = {},
 ): {
   candidates: ProductExtractionCandidate[];
   nonProductMessageIds: string[];
@@ -268,8 +255,15 @@ export function normalizeProductExtractionResponse(
     const currency = extractedString(rawData.currency, 3)?.toUpperCase() ?? null;
     const normalizedCurrency =
       currency && /^[A-Z]{3}$/.test(currency) ? currency : null;
+    // Strict resolution first; the workspace's country settles only an
+    // ambiguity the quote itself left open («45 ريال»). The model's claimed code
+    // still has to equal the resolved one, so a pair is never accepted on the
+    // country alone.
     const evidencedCurrency = evidence.currency
-      ? currencyCodeFromEvidence(evidence.currency)
+      ? resolveCurrencyFromEvidence({
+          evidence: evidence.currency,
+          country: context.workspaceCountry ?? null,
+        }).code
       : null;
     const verifiedCurrency = normalizedCurrency === evidencedCurrency
       ? normalizedCurrency
@@ -470,6 +464,7 @@ export function remapProductExtractionCandidates(
 export async function extractWhatsAppProductCandidates(
   workspaceId: string,
   sources: readonly ProductExtractionSource[],
+  context: ProductExtractionContext = {},
 ): Promise<{ model: string; candidates: ProductExtractionCandidate[] }> {
   const localSources = toLocalProductExtractionSources(sources);
   const input = JSON.stringify(
@@ -609,6 +604,7 @@ export async function extractWhatsAppProductCandidates(
     normalized = normalizeProductExtractionResponse(
       result.content,
       localSources,
+      context,
     );
   } catch (error) {
     if (!(error instanceof Error) || !error.message.startsWith("PRODUCT_EXTRACTION_")) {
@@ -637,6 +633,7 @@ export async function extractWhatsAppProductCandidates(
     normalized = normalizeProductExtractionResponse(
       fallbackResult.content,
       localSources,
+      context,
     );
     model = fallbackResult.model;
   }

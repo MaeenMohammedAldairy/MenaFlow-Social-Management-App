@@ -4,6 +4,7 @@ import {
   and,
   asc,
   eq,
+  gt,
   inArray,
   lt,
   lte,
@@ -22,11 +23,20 @@ import {
   productExtractionSuggestions,
   products,
   whatsappProductExtractionJobs,
+  workspaces,
 } from "@workspace/db";
 import {
+  QUOTA_EXHAUSTED_REASON_PREFIX,
   planExtractionFailure,
   resolveExtractionQuotaPauseMs,
 } from "./extraction-quota-policy.ts";
+import {
+  AUTOQUEUE_WORKSPACE_BATCH_SIZE,
+  isQuotaPauseRow,
+  planAutoQueuePass,
+  settledJobQueuePolicy,
+  type ProductQueueIntent,
+} from "./whatsapp-product-autoqueue-policy.ts";
 import {
   decideWhatsAppMediaGate,
   shouldResetMediaForRequeue,
@@ -37,8 +47,10 @@ import {
   isCompleteProductExtraction,
   productExtractionSourceKey,
   type ProductExtractionCandidate,
+  type ProductExtractionContext,
   type ProductExtractionSource,
 } from "./product-extraction.ts";
+import { isCurrencyDerivedFromCountry } from "./product-currency-resolution.ts";
 import {
   getWhatsAppContentAssociationDecisions,
   getWhatsAppContentBundle,
@@ -224,6 +236,7 @@ async function hasCompleteWhatsAppProductMedia(
 export async function queueUnprocessedWhatsAppProductMessages(
   workspaceId: string,
   messageId?: string,
+  intent: ProductQueueIntent = "manual",
 ): Promise<number> {
   const [connection] = await db
     .select({ id: menaWhatsAppGroupSelections.id })
@@ -235,6 +248,7 @@ export async function queueUnprocessedWhatsAppProductMessages(
     .limit(1);
   if (!connection) return 0;
 
+  const settledJobs = settledJobQueuePolicy(intent);
   const messages = await db
     .select({
       id: menaWhatsAppMessages.id,
@@ -279,6 +293,18 @@ export async function queueUnprocessedWhatsAppProductMessages(
             eq(productExtractionSources.messageId, menaWhatsAppMessages.id),
           )),
       ),
+      // The timer only ever looks at messages nobody has queued yet, so it
+      // cannot revive a settled job or keep re-selecting the same oldest page.
+      ...(settledJobs.excludeMessagesWithJobs
+        ? [notExists(
+            db.select({ messageId: whatsappProductExtractionJobs.messageId })
+              .from(whatsappProductExtractionJobs)
+              .where(and(
+                eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+                eq(whatsappProductExtractionJobs.messageId, menaWhatsAppMessages.id),
+              )),
+          )]
+        : []),
     ))
     .orderBy(asc(menaWhatsAppMessages.messageTimestamp))
     .limit(200);
@@ -320,30 +346,35 @@ export async function queueUnprocessedWhatsAppProductMessages(
       updatedAt: now,
     })))
     .onConflictDoNothing();
-  await db
-    .update(whatsappProductExtractionJobs)
-    .set({
-      status: "pending",
-      stage: "received",
-      attempts: 0,
-      lastError: null,
-      nextRunAt: now,
-      updatedAt: now,
-    })
-    .where(and(
-      eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
-      or(
-        eq(whatsappProductExtractionJobs.status, "failed"),
-        and(
-          eq(whatsappProductExtractionJobs.status, "complete"),
-          eq(whatsappProductExtractionJobs.lastError, "PRODUCT_TEXT_REQUIRED"),
+  if (settledJobs.reviveSettledJobs) {
+    // Pressing «استخراج المنتجات» again means "try these once more", so a job
+    // that failed — or that ended with no text to read — is put back in the
+    // queue with its attempts reset. The timer never reaches this branch.
+    await db
+      .update(whatsappProductExtractionJobs)
+      .set({
+        status: "pending",
+        stage: "received",
+        attempts: 0,
+        lastError: null,
+        nextRunAt: now,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+        or(
+          eq(whatsappProductExtractionJobs.status, "failed"),
+          and(
+            eq(whatsappProductExtractionJobs.status, "complete"),
+            eq(whatsappProductExtractionJobs.lastError, "PRODUCT_TEXT_REQUIRED"),
+          ),
         ),
-      ),
-      inArray(
-        whatsappProductExtractionJobs.messageId,
-        messages.map((message) => message.id),
-      ),
-    ));
+        inArray(
+          whatsappProductExtractionJobs.messageId,
+          messages.map((message) => message.id),
+        ),
+      ));
+  }
   return messages.length;
 }
 
@@ -450,6 +481,7 @@ async function readStoredVisionObject(locator: {
 async function extractCandidatesFromStoredImages(
   workspaceId: string,
   sources: readonly ProductExtractionSource[],
+  context: ProductExtractionContext = {},
 ): Promise<{ model: string; candidates: ProductExtractionCandidate[] } | null> {
   if (!visionProductExtractionEnabled()) return null;
   const rows = await db
@@ -500,7 +532,31 @@ async function extractCandidatesFromStoredImages(
     }
   }
   if (images.length === 0) return null;
-  return extractProductCandidatesFromImages(workspaceId, sources, images);
+  return extractProductCandidatesFromImages(workspaceId, sources, images, context);
+}
+
+/**
+ * The workspace's business country, used only to settle an ambiguous currency
+ * word («45 ريال»). A missing or unknown country leaves extraction exactly as
+ * strict as it was, so this lookup is allowed to fail quietly.
+ */
+async function workspaceExtractionContext(
+  workspaceId: string,
+): Promise<ProductExtractionContext> {
+  try {
+    const [workspace] = await db
+      .select({ country: workspaces.country })
+      .from(workspaces)
+      .where(eq(workspaces.id, workspaceId))
+      .limit(1);
+    return { workspaceCountry: workspace?.country ?? null };
+  } catch (error) {
+    logger.warn(
+      { workspaceId, error },
+      "PRODUCT_EXTRACTION_WORKSPACE_COUNTRY_UNAVAILABLE",
+    );
+    return { workspaceCountry: null };
+  }
 }
 
 async function processProductExtractionJob(
@@ -627,13 +683,18 @@ async function processProductExtractionJob(
     text: messageText(item),
   }));
   await updateJob(job, { status: "processing", stage: "extraction", lastError: null });
+  const extractionContext = await workspaceExtractionContext(job.workspaceId);
   // Messages that carry only a photo used to stop here. When the deployment
   // opts into vision extraction the stored images are read and the product is
   // extracted from the text visible in them; the result always needs a human
   // review, so it never becomes an automatic draft.
   const visionExtraction = sources.some((source) => source.text)
     ? null
-    : await extractCandidatesFromStoredImages(job.workspaceId, sources);
+    : await extractCandidatesFromStoredImages(
+        job.workspaceId,
+        sources,
+        extractionContext,
+      );
   if (!sources.some((source) => source.text) && !visionExtraction) {
     await updateJob(job, {
       status: "complete",
@@ -642,9 +703,24 @@ async function processProductExtractionJob(
     });
     return;
   }
-  const requiresManualReview = visionExtraction !== null;
   const extraction = visionExtraction ??
-    (await extractWhatsAppProductCandidates(job.workspaceId, sources));
+    (await extractWhatsAppProductCandidates(
+      job.workspaceId,
+      sources,
+      extractionContext,
+    ));
+  // A currency the workspace's country settled is grounded in the message only
+  // as far as the word «ريال» goes — which rial came from a setting. It stays
+  // reviewable for the same reason a vision candidate does, so it never becomes
+  // an automatic draft with a price the merchant has not seen.
+  const currencyDerivedFromCountry = extraction.candidates.some((candidate) =>
+    isCurrencyDerivedFromCountry({
+      evidence: candidate.evidence.currency ?? null,
+      code: candidate.data.currency,
+      country: extractionContext.workspaceCountry ?? null,
+    }),
+  );
+  const requiresManualReview = visionExtraction !== null || currencyDerivedFromCountry;
 
   await db.transaction(async (transaction) => {
     await transaction.execute(sql`
@@ -789,6 +865,135 @@ async function pauseWorkspaceExtractionQueue(
     ))
     .returning({ id: whatsappProductExtractionJobs.id });
   return paused.length;
+}
+
+let autoQueueRunning = false;
+let autoQueueCursor: string | null = null;
+
+/**
+ * Workspaces that have selected at least one group, strictly after a cursor,
+ * ascending. Selecting a group *is* the merchant's opt-in to having that
+ * conversation's messages turned into products.
+ */
+async function workspacesWithSelectedGroups(
+  after: string | null,
+  limit: number,
+): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ workspaceId: menaWhatsAppGroupSelections.workspaceId })
+    .from(menaWhatsAppGroupSelections)
+    .where(and(
+      eq(menaWhatsAppGroupSelections.selected, true),
+      ...(after ? [gt(menaWhatsAppGroupSelections.workspaceId, after)] : []),
+    ))
+    .orderBy(asc(menaWhatsAppGroupSelections.workspaceId))
+    .limit(limit);
+  return rows.map((row) => row.workspaceId);
+}
+
+/**
+ * Whether a workspace's extraction queue is currently postponed for an
+ * exhausted AI quota — see `isQuotaPauseRow` for why queueing over that would
+ * burn the quota twice.
+ */
+export async function hasActiveExtractionQuotaPause(
+  workspaceId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const [paused] = await db
+    .select({
+      status: whatsappProductExtractionJobs.status,
+      lastError: whatsappProductExtractionJobs.lastError,
+      nextRunAt: whatsappProductExtractionJobs.nextRunAt,
+    })
+    .from(whatsappProductExtractionJobs)
+    .where(and(
+      eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+      eq(whatsappProductExtractionJobs.status, "pending"),
+      gt(whatsappProductExtractionJobs.nextRunAt, now),
+      sql`${whatsappProductExtractionJobs.lastError} like ${`${QUOTA_EXHAUSTED_REASON_PREFIX}%`}`,
+    ))
+    .limit(1);
+  return paused ? isQuotaPauseRow(paused, now) : false;
+}
+
+/**
+ * Queues extraction work for every workspace that has selected a group, without
+ * anyone pressing a button.
+ *
+ * Before this existed the only caller of `queueUnprocessedWhatsAppProductMessages`
+ * was the manual endpoint, so a message that arrived after the merchant's last
+ * tap was never extracted at all — the catalog looked idle while the queue was
+ * simply never filled. Selecting a group is the opt-in, so nothing here spends
+ * quota the merchant did not ask for, and the quota is still enforced downstream
+ * where a job that hits the limit is postponed rather than failed.
+ *
+ * Returns the number of messages queued. Never throws: one unreachable
+ * workspace must not stop the others, and a failed pass must not take the worker
+ * loop down with it.
+ */
+export async function autoQueueWhatsAppProductExtractions(): Promise<number> {
+  if (autoQueueRunning) return 0;
+  autoQueueRunning = true;
+  try {
+    const page = await workspacesWithSelectedGroups(
+      autoQueueCursor,
+      AUTOQUEUE_WORKSPACE_BATCH_SIZE,
+    );
+    const restartPage =
+      autoQueueCursor !== null && page.length === 0
+        ? await workspacesWithSelectedGroups(null, AUTOQUEUE_WORKSPACE_BATCH_SIZE)
+        : [];
+    const plan = planAutoQueuePass({
+      cursor: autoQueueCursor,
+      workspaces: page,
+      restartWorkspaces: restartPage,
+    });
+    autoQueueCursor = plan.nextCursor;
+
+    let queued = 0;
+    let quotaPaused = 0;
+    let errored = 0;
+    for (const workspaceId of plan.visit) {
+      try {
+        if (await hasActiveExtractionQuotaPause(workspaceId)) {
+          quotaPaused += 1;
+          continue;
+        }
+        queued += await queueUnprocessedWhatsAppProductMessages(
+          workspaceId,
+          undefined,
+          "automatic",
+        );
+      } catch (error) {
+        errored += 1;
+        logger.warn(
+          { workspaceId, error },
+          "WHATSAPP_PRODUCT_AUTOQUEUE_WORKSPACE_FAILED",
+        );
+      }
+    }
+
+    if (plan.visit.length > 0) {
+      logger.info(
+        {
+          workspaces: plan.visit.length,
+          restarted: plan.restarted,
+          queued,
+          quotaPaused,
+          errored,
+          cursor: autoQueueCursor,
+        },
+        "WHATSAPP_PRODUCT_AUTOQUEUE_PASS",
+      );
+    }
+    return queued;
+  } catch (error) {
+    logger.warn({ error }, "WHATSAPP_PRODUCT_AUTOQUEUE_PASS_FAILED");
+    return 0;
+  } finally {
+    autoQueueRunning = false;
+  }
 }
 
 /** Jobs examined per sweep, and how often the sweep runs. */
