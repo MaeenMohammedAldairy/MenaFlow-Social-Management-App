@@ -119,6 +119,7 @@ import {
   decryptWhatsAppDirectMessageValue,
   encryptWhatsAppDirectMessageValue,
   isWhatsAppDirectPhoneJid,
+  outboundWhatsAppDirectMessageValues,
   normalizeWhatsAppDirectMessageText,
   redactWhatsAppPrivateData,
   selectWhatsAppDirectJid,
@@ -1431,26 +1432,21 @@ async function processWhatsAppAutoReplyAsync(input: {
       text,
     );
     const sentAt = new Date();
-    await db.insert(menaWhatsAppDirectMessages).values({
-      id: randomUUID(),
-      ownerId: input.connection.ownerId,
-      workspaceId: input.connection.workspaceId,
-      instanceName: input.instanceName,
-      remoteJidHash: whatsappDirectConversationKeys(
-        input.connection.workspaceId,
-        input.instanceName,
-        input.remoteJid,
-      )[0]!,
-      encryptedRemoteJid: encryptWhatsAppDirectMessageValue(input.remoteJid),
-      providerMessageId: replyMessageId,
-      direction: "outbound",
-      status: "sent",
-      encryptedTextBody: encryptWhatsAppDirectMessageValue(
-        normalizeWhatsAppDirectMessageText(text),
-      ),
-      messageTimestamp: sentAt,
-      expiresAt: whatsappDirectMessageExpiry(sentAt),
-    }).onConflictDoNothing();
+    await db
+      .insert(menaWhatsAppDirectMessages)
+      .values(
+        outboundWhatsAppDirectMessageValues({
+          ownerId: input.connection.ownerId,
+          workspaceId: input.connection.workspaceId,
+          instanceName: input.instanceName,
+          remoteJid: input.remoteJid,
+          text,
+          status: "sent",
+          messageTimestamp: sentAt,
+          providerMessageId: replyMessageId,
+        }),
+      )
+      .onConflictDoNothing();
     await db
       .update(menaWhatsAppAutoReplyEvents)
       .set({

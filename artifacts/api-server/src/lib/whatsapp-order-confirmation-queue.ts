@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, gt, lt, lte, or, sql } from "drizzle-orm";
 import {
   db,
@@ -11,10 +10,7 @@ import { formatMetaOrderConfirmationMessage } from "./meta-order-messages";
 import { sendWhatsAppAutoReply } from "./whatsapp-auto-reply";
 import {
   decryptWhatsAppDirectMessageValue,
-  encryptWhatsAppDirectMessageValue,
-  normalizeWhatsAppDirectMessageText,
-  whatsappDirectConversationKeys,
-  whatsappDirectMessageExpiry,
+  outboundWhatsAppDirectMessageValues,
 } from "./whatsapp-direct-messages";
 
 const confirmationLeaseMs = 60_000;
@@ -243,32 +239,23 @@ async function processWhatsAppOrderConfirmation(
       text,
     );
     const sentAt = new Date();
-    const conversationKey = whatsappDirectConversationKeys(
-      order.workspaceId,
-      order.sourceWhatsAppInstanceName,
-      remoteJid,
-    )[0]!;
     await db
       .insert(menaWhatsAppDirectMessages)
-      .values({
-        id: randomUUID(),
-        ownerId: order.ownerId,
-        workspaceId: order.workspaceId,
-        instanceName: order.sourceWhatsAppInstanceName,
-        remoteJidHash: conversationKey,
-        encryptedRemoteJid: encryptWhatsAppDirectMessageValue(
+      .values(
+        outboundWhatsAppDirectMessageValues({
+          ownerId: order.ownerId,
+          workspaceId: order.workspaceId,
+          instanceName: order.sourceWhatsAppInstanceName,
           remoteJid,
-        ),
-        providerMessageId,
-        clientRequestId: `order-confirmation-${order.id}`,
-        direction: "outbound",
-        status: "sent",
-        encryptedTextBody: encryptWhatsAppDirectMessageValue(
-          normalizeWhatsAppDirectMessageText(text),
-        ),
-        messageTimestamp: sentAt,
-        expiresAt: whatsappDirectMessageExpiry(sentAt),
-      })
+          text,
+          status: "sent",
+          messageTimestamp: sentAt,
+          providerMessageId,
+          // The idempotency key: a retried confirmation for the same order
+          // lands on the same row instead of a second message.
+          clientRequestId: `order-confirmation-${order.id}`,
+        }),
+      )
       .onConflictDoNothing();
     await markConfirmation(order.id, order.workspaceId, {
       status: "sent",

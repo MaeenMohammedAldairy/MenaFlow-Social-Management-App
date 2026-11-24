@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { and, desc, eq, gt, inArray, lt, or } from "drizzle-orm";
 import { Router, type Request, type Response } from "express";
 import {
@@ -11,13 +10,11 @@ import { requestOwnerId } from "../lib/owner-access";
 import { sendWhatsAppAutoReply } from "../lib/whatsapp-auto-reply";
 import {
   decryptWhatsAppDirectMessageValue,
-  encryptWhatsAppDirectMessageValue,
   isWhatsAppDirectPhoneJid,
   normalizeWhatsAppDirectJid,
-  normalizeWhatsAppDirectMessageText,
   whatsappDirectMessagePlaceholder,
   whatsappDirectConversationKeys,
-  whatsappDirectMessageExpiry,
+  outboundWhatsAppDirectMessageValues,
 } from "../lib/whatsapp-direct-messages";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
@@ -382,22 +379,18 @@ router.post(
     }
     const [queued] = await db
       .insert(menaWhatsAppDirectMessages)
-      .values({
-        id: randomUUID(),
-        ownerId,
-        workspaceId,
-        instanceName: connection.instanceName,
-        remoteJidHash: conversationKey,
-        encryptedRemoteJid: encryptWhatsAppDirectMessageValue(remoteJid),
-        clientRequestId,
-        direction: "outbound",
-        status: "sending",
-        encryptedTextBody: encryptWhatsAppDirectMessageValue(
-          normalizeWhatsAppDirectMessageText(text),
-        ),
-        messageTimestamp: now,
-        expiresAt: whatsappDirectMessageExpiry(now),
-      })
+      .values(
+        outboundWhatsAppDirectMessageValues({
+          ownerId,
+          workspaceId,
+          instanceName: connection.instanceName,
+          remoteJid,
+          text,
+          status: "sending",
+          messageTimestamp: now,
+          clientRequestId,
+        }),
+      )
       .onConflictDoNothing()
       .returning();
     if (!queued) {
