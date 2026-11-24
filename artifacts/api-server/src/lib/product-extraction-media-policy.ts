@@ -6,34 +6,59 @@
  *
  * The distinction that matters is between *waiting* and *terminal*, and the code
  * used to have only one bucket for both. A message whose media download failed
- * for good is written as `media_download_status = 'failed'` with
- * `media_download_error = 'MEDIA_DOWNLOAD_FAILED_REQUIRES_REVIEW'`, and the
- * download worker's claim query selects **only** `pending` messages — so nothing
- * ever looks at a `failed` message again. A job parked in `waiting_media` for one
- * therefore never resumes, never exhausts its attempts, and never reaches the
- * `failed` state that would show it to the merchant as repairable. In production
- * on 2026-11-24 three jobs sat like that for twelve hours behind a
+ * for good is written as `media_download_status = 'failed'`, and the download
+ * worker's claim query selects **only** `pending` messages — so nothing ever
+ * looks at a `failed` message again. A job parked in `waiting_media` for one
+ * therefore never resumes, never exhausts its attempts, and never reaches a
+ * state that shows it to the merchant as repairable. In production on
+ * 2026-11-24 three jobs sat like that for twelve hours behind a
  * `pendingJobs.waitingMedia` count that looked like progress.
  *
- * Retries live one level down and are already handled: a retryable download error
- * keeps the media row `pending` with a `next_attempt_at`, and only a non-retryable
- * error or exhausted attempts produce `failed`. So `failed` here is terminal by
- * construction, not by inspection — which is what makes it safe to fail the job.
+ * The second failure mode is the mirror image: treating a dead download as a
+ * reason to fail a job that never needed it. The live workspace holds a message
+ * whose text is a complete offer — a name, a description, «سعر الطقم 3حبات 2300
+ * ريال فقط» — sent with four photos. The message was imported twenty-four days
+ * after it was sent, and WhatsApp no longer serves media that old, so all four
+ * downloads gave up (`EVOLUTION_API_REQUEST_FAILED`, five attempts each). The
+ * text was still perfectly extractable; a gate that fails the bundle because a
+ * photo expired destroys the offer to keep a photograph it cannot get.
  *
- * Pure on purpose: no database and no network, so the three outcomes are testable
- * and the caller decides what to write.
+ * So `terminal` is reserved for the one case where nothing readable remains: no
+ * text anywhere in the bundle and no stored media. Retries live one level down
+ * and are already handled — a retryable download error keeps the row `pending`
+ * with a `next_attempt_at`, and only a non-retryable error or exhausted attempts
+ * produce `failed` — so `failed` here is settled by construction, which is what
+ * makes it safe to reason about.
+ *
+ * Pure on purpose: no database and no network, so the three outcomes are
+ * testable and the caller decides what to write.
  */
 
 /** The subset of a source message the media gate reads. */
 export type MediaGateMessage = {
   id: string;
+  /**
+   * Whether the message carries a non-empty `text_body` or `caption` — the same
+   * pair the extractor reads. A bundle with text has something to extract even
+   * when every photo in it is gone.
+   */
+  hasText: boolean;
   mediaAvailable: boolean;
   /** `mena_whatsapp_messages.media_download_status`. */
   mediaDownloadStatus: string | null;
 };
 
 export type WhatsAppMediaGateDecision =
-  | { outcome: "ready" }
+  | {
+      outcome: "ready";
+      /**
+       * Messages whose download gave up and were therefore left out. Non-empty
+       * exactly when the job proceeds with less media than the bundle carried,
+       * so the caller can say so in the log and the product can show the photo
+       * as missing rather than as still on its way.
+       */
+      failedMediaSkipped: string[];
+    }
   | {
       outcome: "waiting";
       reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING";
@@ -46,42 +71,67 @@ export type WhatsAppMediaGateDecision =
     };
 
 /**
- * A bundle is ready only when every message that carries media has it stored.
+ * Whether the bundle may be extracted now, must wait, or never can be.
  *
- * Terminal wins over waiting: if one message in the bundle gave up, the bundle
- * can never complete no matter how many siblings are still downloading, and
- * waiting an hour to re-discover that is how the dead end above was built.
+ * Order of questions, and why:
+ *
+ * 1. Is any download still in flight (`pending`, or a status this module does
+ *    not recognise)? Then wait — it may still complete and bring its photo, and
+ *    an unknown status must never fail a job, because failing is irreversible
+ *    from the merchant's side while waiting is not.
+ * 2. Everything has settled. Is there anything readable — text in any message,
+ *    or media that did arrive? Then proceed, naming the downloads that gave up
+ *    so the caller can log them.
+ * 3. Nothing readable remains: no text and no stored media. Terminal, with the
+ *    dead messages named so a manual re-queue can reset them.
  */
 export function decideWhatsAppMediaGate(
   messages: readonly MediaGateMessage[],
 ): WhatsAppMediaGateDecision {
-  const terminal = messages
-    .filter((message) => message.mediaAvailable && message.mediaDownloadStatus === "failed")
-    .map((message) => message.id);
-  if (terminal.length > 0) {
-    return {
-      outcome: "terminal",
-      reason: "WHATSAPP_MEDIA_DOWNLOAD_FAILED",
-      messageIds: [...new Set(terminal)],
-    };
-  }
+  const failed = [
+    ...new Set(
+      messages
+        .filter(
+          (message) =>
+            message.mediaAvailable && message.mediaDownloadStatus === "failed",
+        )
+        .map((message) => message.id),
+    ),
+  ];
 
-  const waiting = messages.some(
-    (message) => message.mediaAvailable && message.mediaDownloadStatus !== "stored",
+  const inFlight = messages.some(
+    (message) =>
+      message.mediaAvailable &&
+      message.mediaDownloadStatus !== "stored" &&
+      message.mediaDownloadStatus !== "failed",
   );
-  if (waiting) {
+  if (inFlight) {
     return { outcome: "waiting", reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING" };
   }
 
-  return { outcome: "ready" };
+  const anythingReadable =
+    messages.some((message) => message.hasText) ||
+    messages.some(
+      (message) =>
+        message.mediaAvailable && message.mediaDownloadStatus === "stored",
+    );
+  if (!anythingReadable && failed.length > 0) {
+    return {
+      outcome: "terminal",
+      reason: "WHATSAPP_MEDIA_DOWNLOAD_FAILED",
+      messageIds: failed,
+    };
+  }
+
+  return { outcome: "ready", failedMediaSkipped: failed };
 }
 
 /**
  * Whether a manual re-queue should also reset a message's media.
  *
  * Resetting is what turns "run extraction again" from a no-op into a repair: the
- * download worker only claims `pending`, so a `failed` message has to be put back
- * to `pending` by someone, and the merchant pressing the button is the only
+ * download worker only claims `pending`, so a `failed` message has to be put
+ * back to `pending` by someone, and the merchant pressing the button is the only
  * signal that a human wants to spend another attempt on it.
  */
 export function shouldResetMediaForRequeue(

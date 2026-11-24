@@ -653,15 +653,22 @@ async function processProductExtractionJob(
     });
     return;
   }
-  const mediaGate = decideWhatsAppMediaGate(sourceMessages);
+  const mediaGate = decideWhatsAppMediaGate(
+    sourceMessages.map((item) => ({
+      id: item.id,
+      hasText: messageText(item).length > 0,
+      mediaAvailable: item.mediaAvailable,
+      mediaDownloadStatus: item.mediaDownloadStatus,
+    })),
+  );
   if (mediaGate.outcome === "terminal") {
-    // `failed` media is never revisited: the download worker claims only
-    // messages whose `media_download_status` is `pending`, and a retryable error
-    // keeps the row `pending` with a scheduled attempt — so `failed` means the
-    // download gave up for good. Parking the job in `waiting_media` for it would
-    // leave it there forever: never resuming, never spending an attempt, never
-    // reaching the `failed` state that shows up in `pendingJobs.failed` as
-    // something a merchant can act on. Failing it is what makes it repairable —
+    // Reached only when the bundle holds neither text nor a stored photo: the
+    // download worker claims only messages whose `media_download_status` is
+    // `pending`, and a retryable error keeps the row `pending` with a scheduled
+    // attempt — so `failed` means the download gave up for good and nothing here
+    // can ever be read. Parking the job in `waiting_media` for it would leave it
+    // there forever: never resuming, never spending an attempt, never reaching a
+    // state the merchant can see. Failing it is what makes it repairable —
     // re-running extraction resets the media and requeues the job.
     await updateJob(job, {
       status: "failed",
@@ -686,6 +693,22 @@ async function processProductExtractionJob(
       nextRunAt: new Date(Date.now() + 60 * 60_000),
     });
     return;
+  }
+  if (mediaGate.failedMediaSkipped.length > 0) {
+    // Something readable survived — the bundle's text, or a photo that did
+    // arrive — so the offer is extracted and the product shows the missing
+    // photo as a field to complete. Typical cause upstream: the message was
+    // imported weeks after it was sent, and WhatsApp no longer serves media
+    // that old, so those downloads can never succeed no matter how many
+    // attempts they get.
+    logger.warn(
+      {
+        workspaceId: job.workspaceId,
+        jobId: job.id,
+        skippedMessageIds: mediaGate.failedMediaSkipped,
+      },
+      "PRODUCT_EXTRACTION_PROCEEDING_WITHOUT_FAILED_MEDIA",
+    );
   }
   const sources: ProductExtractionSource[] = sourceMessages.map((item) => ({
     id: item.id,
@@ -1025,16 +1048,24 @@ let lastWaitingMediaSweepAt = 0;
  * Three such jobs sat in production for twelve hours behind a
  * `pendingJobs.waitingMedia` count that read as progress.
  *
- * Two conditions, either of which means "this can never complete":
+ * Two conditions mark such a row:
  * - the job's own message has media that failed for good, or
  * - the job was parked with `WHATSAPP_MEDIA_DOWNLOAD_FAILED`, which is the mark
  *   the old gate wrote when *any* message of the bundle — including a sibling
  *   this join does not reach — had given up.
  *
+ * The sweep releases those rows back to `pending` rather than failing them,
+ * because whether a dead download is fatal is a question about the whole
+ * bundle — is there text, or a photo that did arrive? — and only the gate, which
+ * sees every source message, can answer it. A bundle with nothing readable left
+ * is failed by the gate on the very next pass; a bundle with an offer written in
+ * text is extracted instead of being thrown away for a photograph WhatsApp no
+ * longer serves.
+ *
  * Throttled and bounded because it runs inside a 3-second loop: a join over the
  * jobs table on every pass would cost more than the queue it protects.
  */
-export async function failJobsWaitingOnTerminalMedia(
+export async function releaseJobsWaitingOnTerminalMedia(
   now: number = Date.now(),
 ): Promise<number> {
   if (now - lastWaitingMediaSweepAt < waitingMediaSweepIntervalMs) return 0;
@@ -1070,9 +1101,10 @@ export async function failJobsWaitingOnTerminalMedia(
   await db
     .update(whatsappProductExtractionJobs)
     .set({
-      status: "failed",
-      stage: "media",
-      lastError: "WHATSAPP_MEDIA_DOWNLOAD_FAILED",
+      status: "pending",
+      stage: "received",
+      lastError: null,
+      nextRunAt: new Date(now),
       updatedAt: new Date(now),
     })
     .where(inArray(whatsappProductExtractionJobs.id, stuck.map((job) => job.id)));
@@ -1083,7 +1115,7 @@ export async function failJobsWaitingOnTerminalMedia(
       workspaces: [...new Set(stuck.map((job) => job.workspaceId))].length,
       limit: waitingMediaSweepLimit,
     },
-    "PRODUCT_EXTRACTION_WAITING_MEDIA_DEAD_END_CLEARED",
+    "PRODUCT_EXTRACTION_WAITING_MEDIA_RELEASED_FOR_REDECISION",
   );
   return stuck.length;
 }
@@ -1094,7 +1126,7 @@ export async function processWhatsAppProductExtractionQueue(): Promise<void> {
   if (productQueueRunning) return;
   productQueueRunning = true;
   try {
-    await failJobsWaitingOnTerminalMedia();
+    await releaseJobsWaitingOnTerminalMedia();
     const staleBefore = new Date(Date.now() - 10 * 60_000);
     await db
       .update(whatsappProductExtractionJobs)
