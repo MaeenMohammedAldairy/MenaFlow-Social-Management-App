@@ -1,4 +1,7 @@
-import { fetchApiResponse } from "@workspace/api-client-react";
+import {
+  fetchApiResponse,
+  readJsonResponse,
+} from "@workspace/api-client-react";
 
 export type WhatsAppDirectMessageStatus =
   | "received"
@@ -65,34 +68,13 @@ export type WhatsAppDirectMessage = {
   errorCode: string | null;
 };
 
-async function responseJson<T>(response: Response): Promise<T> {
-  const body = await response.text();
-  let payload: unknown;
-  try {
-    payload = JSON.parse(body);
-  } catch {
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    throw new Error("تعذر قراءة استجابة الخادم.");
-  }
-  if (!response.ok) {
-    const error =
-      payload && typeof payload === "object" && "error" in payload
-        ? payload.error
-        : undefined;
-    throw new Error(
-      typeof error === "string" ? error : `HTTP ${response.status}`,
-    );
-  }
-  return payload as T;
-}
-
 export async function getWhatsAppDirectConversations(): Promise<{
   conversations: WhatsAppDirectConversation[];
 }> {
   const response = await fetchApiResponse(
     "/api/social/whatsapp/direct-conversations",
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function getWhatsAppDirectMessages(
@@ -110,7 +92,7 @@ export async function getWhatsAppDirectMessages(
   const response = await fetchApiResponse(
     `/api/social/whatsapp/direct-messages?${query.toString()}`,
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function sendWhatsAppDirectReply(input: {
@@ -126,7 +108,7 @@ export async function sendWhatsAppDirectReply(input: {
       body: JSON.stringify(input),
     },
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function confirmWhatsAppDirectReplyNotSent(
@@ -136,5 +118,5 @@ export async function confirmWhatsAppDirectReplyNotSent(
     `/api/social/whatsapp/direct-messages/${encodeURIComponent(messageId)}/confirm-not-sent`,
     { method: "POST" },
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }

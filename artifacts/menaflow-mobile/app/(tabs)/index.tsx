@@ -17,7 +17,11 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { useStudio, type Post } from "@/context/StudioContext";
 import { useWorkspace } from "@/context/WorkspaceContext";
-import { canEditBusinessInfo as canEditBusinessInfoFor } from "@/lib/setup-flow";
+import {
+  canEditBusinessInfo as canEditBusinessInfoFor,
+  setupChecklistProgress,
+  type SetupStepKey,
+} from "@/lib/setup-flow";
 import {
   consumeSetupCompleted,
   dismissSetupChecklist,
@@ -190,6 +194,12 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
     }
   };
 
+  /**
+   * Re-check the connections. One request covers all three platforms — the server
+   * answers with the whole connection state — so `platform` only decides which
+   * tile shows the spinner: the one the merchant tapped, rather than three tiles
+   * claiming work that a single request is doing.
+   */
   const retryConnections = async (
     platform: "facebook" | "instagram" | "whatsapp",
   ) => {
@@ -314,7 +324,14 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
       },
     });
   const createContent = () => router.push("/compose");
-  const setupSteps = [
+  // The key union comes from `lib/setup-flow.ts` so that a step renamed or added
+  // here is a compile error there, not a silently uncounted checklist item.
+  const setupSteps: Array<{
+    key: SetupStepKey;
+    label: string;
+    done: boolean;
+    onPress: () => void;
+  }> = [
     {
       // The concise post-signup setup replaced the intro slides; anything the
       // merchant deferred lives here. In local-auth mode there is no workspace
@@ -355,21 +372,27 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
   const canEditBusinessInfo = canEditBusinessInfoFor(activeWorkspace, {
     isLocalAuthDisabled,
   });
-  const visibleSetupSteps = setupSteps.filter(
-    (step) => step.key !== "business-info" || canEditBusinessInfo,
+  // Which steps to show and what progress to claim. See `lib/setup-flow.ts`, where
+  // the rule that an *unknown* step is not an *outstanding* step is written down and
+  // tested: while the connections query is loading or has errored, "اربط حساب نشر"
+  // stays on the card and tappable but leaves the count, so a merchant who has
+  // already linked a page is not told they owe it for as long as the network is bad.
+  const checklist = setupChecklistProgress(
+    setupSteps.map(({ key, done }) => ({ key, done })),
+    {
+      canEditBusinessInfo,
+      connectionsStateKnown: !(connectionsLoading || connectionsUnavailable),
+    },
   );
-  // Auto-publish is a recommendation, not a requirement, so it never keeps the
-  // card alive on its own.
-  const requiredSetupSteps = visibleSetupSteps.filter(
-    (step) => step.key !== "auto-publish",
+  const visibleSetupSteps = setupSteps.filter((step) =>
+    checklist.visibleKeys.includes(step.key),
   );
-  const completedSetupSteps = requiredSetupSteps.filter(
-    (step) => step.done,
-  ).length;
+  const requiredSetupSteps = setupSteps.filter((step) =>
+    checklist.requiredKeys.includes(step.key),
+  );
+  const completedSetupSteps = checklist.completed;
   const showSetupChecklist =
-    ready &&
-    !setupChecklistDismissed &&
-    completedSetupSteps < requiredSetupSteps.length;
+    ready && !setupChecklistDismissed && !checklist.isComplete;
 
   let heroEyebrow = "خطوتك التالية";
   let heroTitle = "تابع محتواك";

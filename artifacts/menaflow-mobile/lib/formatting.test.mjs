@@ -6,6 +6,7 @@ import {
   signedMediaResourceKey,
 } from "./content-utils.ts";
 import {
+  arabicCountPhrase,
   formatArabicCurrency,
   formatArabicDate,
   formatArabicDateTime,
@@ -93,4 +94,36 @@ test("identifies signed product and WhatsApp media independently of signature ex
     ),
     null,
   );
+});
+const POST_FORMS = {
+  one: "منشور واحد",
+  two: "منشوران",
+  few: "منشورات",
+  many: "منشورًا",
+};
+
+test("counts an item with the noun form Arabic grammar requires", () => {
+  // Every branch matters because these strings are read aloud by the header bell's
+  // accessibility label, and "${count} + plural" is wrong for three of the four.
+  assert.equal(arabicCountPhrase(1, POST_FORMS), "منشور واحد");
+  assert.equal(arabicCountPhrase(2, POST_FORMS), "منشوران");
+  assert.equal(arabicCountPhrase(3, POST_FORMS), "3 منشورات");
+  assert.equal(arabicCountPhrase(10, POST_FORMS), "10 منشورات");
+  assert.equal(arabicCountPhrase(11, POST_FORMS), "11 منشورًا");
+  assert.equal(arabicCountPhrase(120, POST_FORMS), "120 منشورًا");
+});
+
+test("a count that is not a positive whole number cannot produce a nonsense phrase", () => {
+  // The bell computes these by adding optional numbers from a query response; a
+  // missing field must not read as "undefined منشورات".
+  for (const count of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.equal(arabicCountPhrase(count, POST_FORMS), "منشور واحد", String(count));
+  }
+  // A fractional count is read as a whole number of items.
+  assert.equal(arabicCountPhrase(3.5, POST_FORMS), "3 منشورات");
+  assert.equal(arabicCountPhrase(0.5, POST_FORMS), "منشور واحد");
+});
+
+test("digits in a counted phrase stay Latin, matching the rest of the app", () => {
+  assert.match(arabicCountPhrase(7, POST_FORMS), /^7 /u);
 });

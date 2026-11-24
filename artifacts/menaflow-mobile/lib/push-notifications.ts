@@ -9,7 +9,6 @@ import {
   unregisterPushToken,
 } from "@workspace/api-client-react";
 import { routeFromAlertData } from "./alert-routes";
-import { queryPrefixesForAlertData } from "./alert-invalidation";
 
 export { ALLOWED_ALERT_ROUTES } from "./alert-routes";
 export { queryPrefixesForAlertData } from "./alert-invalidation";
@@ -195,8 +194,8 @@ export function installAlertNavigation(): () => void {
 }
 
 /**
- * Refreshes cached data when an alert arrives, so a screen an alert points at is
- * not showing a snapshot taken before the event it announces.
+ * Hands an arriving alert to the app shell, so a screen an alert points at is not
+ * showing a snapshot taken before the event it announces.
  *
  * Two listeners, for the two ways an alert reaches running JavaScript:
  *
@@ -216,17 +215,18 @@ export function installAlertNavigation(): () => void {
  * start has no cached data to invalidate — every query fetches on mount anyway —
  * so reading it here would only duplicate that work.
  *
- * The callback is injected rather than importing a QueryClient, keeping this
- * module free of React Query and leaving `lib/alert-invalidation.ts` as the only
- * place the mapping has to be reasoned about.
+ * The callback receives the alert's raw data rather than a QueryClient or a list
+ * of keys, keeping this module free of React Query and of the studio store, and
+ * leaving `lib/alert-invalidation.ts` as the only place the mapping is reasoned
+ * about. The caller decides what an event refreshes: cached queries through
+ * `queryPrefixesForAlertData`, and the post list — which is not a query — through
+ * `postsSyncForAlertData` and `lib/posts-sync-signal.ts`.
  *
  * Returns the unsubscribe function for both listeners.
  */
-export function installAlertCacheInvalidation(
-  invalidate: (queryKeyPrefix: readonly string[]) => void,
-): () => void {
+export function installAlertRefresh(onAlert: (data: unknown) => void): () => void {
   const refresh = (data: unknown) => {
-    for (const prefix of queryPrefixesForAlertData(data)) invalidate(prefix);
+    onAlert(data);
   };
 
   const received = Notifications.addNotificationReceivedListener(

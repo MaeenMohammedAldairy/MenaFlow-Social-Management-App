@@ -13,10 +13,18 @@ import {
   type WhatsAppBacklogResult,
   type PostPublishResponse,
 } from '@workspace/api-client-react';
+import { AppState, Platform } from 'react-native';
 import {
   markNetworkAvailable,
   markNetworkUnavailable,
 } from '@/lib/network-status';
+import { isFocusedAppState } from '@/lib/query-focus';
+import { streamReconnectPlan } from '@/lib/posts-stream';
+import { setPostsSyncListener } from '@/lib/posts-sync-signal';
+import {
+  STUDIO_STORAGE_KEY as STORAGE_KEY,
+  legacyStudioStorageKey,
+} from '@/lib/studio-storage-key';
 
 export type Channel = 'instagram' | 'facebook' | 'whatsapp';
 export type PostStatus = 'draft' | 'review' | 'approved' | 'scheduled' | 'publishing' | 'published' | 'failed';
@@ -151,7 +159,6 @@ interface StudioContextValue extends StudioState {
   loadMorePosts: () => Promise<void>;
 }
 
-const STORAGE_KEY = 'menaflow.mobile.studio.v1';
 const defaults: StudioState = {
   posts: [],
   preferences: {
@@ -164,6 +171,36 @@ const defaults: StudioState = {
     enabledAt: null,
   },
 };
+
+/**
+ * The starting state for a workspace-scoped key that has nothing cached yet,
+ * carrying over the device-local preferences from the older user-scoped key.
+ *
+ * Only preferences travel. Posts and auto-publish settings belong to one
+ * workspace: copying them into another workspace's key would put data in front of
+ * the merchant that this workspace does not own, even if the sync that follows
+ * immediately replaces it. The legacy key is left in place on purpose — the same
+ * user's other workspaces carry their preferences from it too.
+ */
+async function carryOverPreferences(
+  storageNamespace: string | null,
+): Promise<StudioState> {
+  const legacyKey = legacyStudioStorageKey(storageNamespace);
+  if (!legacyKey) return defaults;
+  try {
+    const stored = await AsyncStorage.getItem(legacyKey);
+    if (!stored) return defaults;
+    const parsed = JSON.parse(stored) as { preferences?: Partial<Preferences> } | null;
+    const preferences = parsed?.preferences;
+    if (!preferences || typeof preferences !== 'object') return defaults;
+    return {
+      ...defaults,
+      preferences: { ...defaults.preferences, ...preferences },
+    };
+  } catch {
+    return defaults;
+  }
+}
 
 const StudioContext = createContext<StudioContextValue | null>(null);
 
@@ -189,6 +226,10 @@ export function StudioProvider({
   const postsCursorRef = useRef<string | null>(null);
   const loadMoreInFlightRef = useRef(false);
   const serverPostIdsRef = useRef(new Set<string>());
+  // Mirrored into state because a ref read during render does not re-render when
+  // it changes: the "load more" affordance stayed whatever it was at the last
+  // unrelated render.
+  const [hasMorePosts, setHasMorePosts] = useState(false);
 
   // Background checks stay silent and only update state when server data changes.
   const syncWithServer = async ({
@@ -211,6 +252,7 @@ export function StudioProvider({
       setSyncError(null);
       postsCursorRef.current =
         typeof page.nextCursor === 'string' ? page.nextCursor : null;
+      setHasMorePosts(postsCursorRef.current !== null);
       const mapped = page.items.map((post) => mapApiPost(post as Record<string, any>));
 
       const current = stateRef.current;
@@ -247,20 +289,32 @@ export function StudioProvider({
     }
   };
 
+  // The effects below depend on the storage key or namespace, not on this
+  // closure, so they call through a ref instead of re-subscribing every render.
+  const syncRef = useRef(syncWithServer);
+  syncRef.current = syncWithServer;
+
   useEffect(() => {
     postsCursorRef.current = null;
+    setHasMorePosts(false);
     serverPostIdsRef.current.clear();
     if (!storageKey) {
-      stateRef.current = defaults;
-      setState(defaults);
+      // Signed out, or signed in with the active workspace still unresolved.
+      // `null` rather than the defaults: an empty post list renders as "this
+      // workspace has no posts yet", which is a claim the app cannot make before
+      // it knows which workspace it is looking at.
+      stateRef.current = null;
+      setState(null);
       return;
     }
 
     let active = true;
     AsyncStorage.getItem(storageKey)
-      .then((stored) => {
+      .then(async (stored) => {
         if (!active) return;
-        const parsed: StudioState = stored ? JSON.parse(stored) : defaults;
+        const parsed: StudioState = stored
+          ? JSON.parse(stored)
+          : await carryOverPreferences(storageNamespace);
         stateRef.current = parsed;
         setState(parsed);
         if (!stored) {
@@ -269,7 +323,7 @@ export function StudioProvider({
           });
         }
         // After loading local storage, sync with server
-        void syncWithServer({ includeSettings: true });
+        void syncRef.current({ includeSettings: true });
       })
       .catch(() => {
         if (active) {
@@ -281,21 +335,79 @@ export function StudioProvider({
     };
   }, [storageKey]);
 
+  /**
+   * Live post changes, on the platforms that can hold a streamed response open.
+   *
+   * Three responsibilities this effect did not have before:
+   *
+   * - **The reconnect schedule comes from `lib/posts-stream.ts`.** A fixed
+   *   five-second timer with no ceiling retried a dead or refusing API twelve
+   *   times a minute per open tab, forever, and every attempt passed through the
+   *   `/api` rate limiter. Backoff now doubles to a one-minute ceiling, and a
+   *   refusal a timer cannot fix (401/403, or any other 4xx) parks the stream
+   *   instead of hammering it.
+   * - **A backgrounded tab schedules nothing.** Nobody is watching it, so a
+   *   reconnect timer there is pure load on the API; the stream reopens when the
+   *   tab becomes visible again, which is also when its data is wanted. An already
+   *   open connection is left alone — holding it costs nothing and it keeps
+   *   delivering events.
+   * - **The request opts out of the default deadline** (`timeoutMs: null`). The
+   *   shared fetch layer now arms every request with a timeout, and the read
+   *   deadline would close a healthy stream after twenty seconds — turning the
+   *   reconnect policy into a poll of exactly the kind the stream exists to avoid.
+   */
   useEffect(() => {
     if (!storageNamespace || typeof window === 'undefined' || typeof ReadableStream === 'undefined') return;
     const controller = new AbortController();
     let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
+    let parked = false;
+    let waitingForFocus = false;
+    let attempt = 0;
+    let blurred = !isFocusedAppState(AppState.currentState);
+
+    const resume = () => {
+      if (stopped || (!parked && !waitingForFocus)) return;
+      parked = false;
+      waitingForFocus = false;
+      attempt = 0;
+      void connect();
+    };
+
+    const scheduleReconnect = (status: number | null) => {
+      if (stopped) return;
+      const plan = streamReconnectPlan({ status, attempt });
+      if (plan.kind === 'stop') {
+        parked = true;
+        return;
+      }
+      if (blurred) {
+        waitingForFocus = true;
+        return;
+      }
+      attempt += 1;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = undefined;
+        void connect();
+      }, plan.delayMs);
+    };
 
     const connect = async () => {
+      parked = false;
+      let status: number | null = null;
       try {
         const response = await fetchApiResponse('/api/posts/events', {
           signal: controller.signal,
           headers: { Accept: 'text/event-stream' },
+          timeoutMs: null,
         });
+        status = response.status;
         if (!response.ok || !response.body) {
           throw new Error(`Post change stream failed with status ${response.status}.`);
         }
+        // An accepted connection resets the backoff: the next failure is the first
+        // of a new streak rather than a continuation of the old one.
+        attempt = 0;
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -308,7 +420,7 @@ export function StudioProvider({
             const event = buffer.slice(0, boundary);
             buffer = buffer.slice(boundary + 2);
             if (event.split(/\r?\n/).some((line) => line === 'event: posts_changed')) {
-              void syncWithServer();
+              void syncRef.current();
             }
             boundary = buffer.indexOf('\n\n');
           }
@@ -318,16 +430,108 @@ export function StudioProvider({
           console.warn('Post change stream disconnected; reconnecting:', error);
         }
       }
-      if (!stopped) reconnectTimer = setTimeout(() => void connect(), 5_000);
+      scheduleReconnect(status);
     };
+
+    const onStatus = (status: string) => {
+      const nowFocused = isFocusedAppState(status);
+      blurred = !nowFocused;
+      if (nowFocused) {
+        resume();
+        return;
+      }
+      // A timer armed while the tab was still visible would otherwise fire into a
+      // background nobody is looking at; the reconnect waits for the return
+      // instead. An open stream is left connected.
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = undefined;
+        waitingForFocus = true;
+      }
+    };
+    const onVisibilityChange = () => {
+      onStatus(
+        typeof document !== 'undefined' && document.visibilityState === 'visible'
+          ? 'active'
+          : 'background',
+      );
+    };
+    const appStateSubscription = AppState.addEventListener('change', onStatus);
+    const usesDocument = typeof document !== 'undefined';
+    if (usesDocument) document.addEventListener('visibilitychange', onVisibilityChange);
 
     void connect();
     return () => {
       stopped = true;
+      parked = false;
+      waitingForFocus = false;
+      appStateSubscription.remove();
+      if (usesDocument) document.removeEventListener('visibilitychange', onVisibilityChange);
       controller.abort();
       if (reconnectTimer) clearTimeout(reconnectTimer);
     };
   }, [storageNamespace]);
+
+  /**
+   * Sync when the merchant comes back to the app.
+   *
+   * Posts are not in React Query, so neither the focus-manager wiring in
+   * `lib/query-focus.ts` nor the refetch-on-return in the root layout reaches
+   * them: a merchant who backgrounded the app for half an hour came back to
+   * refreshed conversations, orders and products sitting above a post list from
+   * before they left — and the dashboard hero and the header bell are both
+   * computed from that list. This puts posts on the same footing, and reopens a
+   * parked stream.
+   *
+   * On web both host signals are wired (AppState and `visibilitychange`); the
+   * trigger is the transition, so the two agreeing costs one comparison.
+   */
+  useEffect(() => {
+    if (!storageKey) return;
+    let focused = isFocusedAppState(AppState.currentState);
+
+    const onStatus = (status: string) => {
+      const nowFocused = isFocusedAppState(status);
+      // The event stream handles its own visibility (see the effect above); this
+      // one is about the post list, which has no connection to reopen.
+      if (nowFocused && !focused) {
+        void syncRef.current({ includeSettings: true });
+      }
+      focused = nowFocused;
+    };
+    const onVisibilityChange = () => {
+      onStatus(
+        typeof document !== 'undefined' && document.visibilityState === 'visible'
+          ? 'active'
+          : 'background',
+      );
+    };
+
+    const subscription = AppState.addEventListener('change', onStatus);
+    const usesDocument = Platform.OS === 'web' && typeof document !== 'undefined';
+    if (usesDocument) document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      subscription.remove();
+      if (usesDocument) document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [storageKey]);
+
+  /**
+   * Let an arriving push alert refresh the post list.
+   *
+   * A `publish_failure` alert changes a post's status and its error, which is what
+   * the dashboard hero ("a post failed to publish") and the bell's failed-post
+   * count are built from; invalidating query keys cannot reach them. The layout
+   * that installs the alert listeners sits above this provider, so the request
+   * arrives through `lib/posts-sync-signal.ts`, and `lib/alert-invalidation.ts`
+   * decides which events warrant it.
+   */
+  useEffect(() => {
+    if (!storageKey) return;
+    return setPostsSyncListener(() => {
+      void syncRef.current();
+    });
+  }, [storageKey]);
 
   const commit = (change: (current: StudioState) => StudioState) => {
     const current = stateRef.current;
@@ -357,6 +561,7 @@ export function StudioProvider({
       const morePosts = page.items.map((post) => mapApiPost(post as Record<string, any>));
       postsCursorRef.current =
         typeof page.nextCursor === 'string' ? page.nextCursor : null;
+      setHasMorePosts(postsCursorRef.current !== null);
       for (const post of morePosts) {
         serverPostIdsRef.current.add(post.id);
       }
@@ -376,7 +581,7 @@ export function StudioProvider({
     syncing,
     syncError,
     loadingMorePosts,
-    hasMorePosts: postsCursorRef.current !== null,
+    hasMorePosts,
     storageError,
     autoPublishSettings: state?.autoPublishSettings ?? defaults.autoPublishSettings,
     refreshPosts: () =>

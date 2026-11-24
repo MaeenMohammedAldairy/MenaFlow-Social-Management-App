@@ -6,6 +6,7 @@ import test from "node:test";
 import {
   KNOWN_ALERT_EVENT_TYPES,
   isKnownAlertEventType,
+  postsSyncForAlertData,
   queryPrefixesForAlertData,
 } from "./alert-invalidation.ts";
 
@@ -115,4 +116,43 @@ test("a missing eventType is refused", () => {
   assert.deepEqual(queryPrefixesForAlertData({}), []);
   assert.equal(isKnownAlertEventType(undefined), false);
   assert.equal(isKnownAlertEventType(7), false);
+});
+
+test("a publication failure asks for a post sync, and only it does", () => {
+  // The dashboard hero ("a post failed to publish") and the header bell's
+  // failed-post count are both computed from the post list, which lives outside
+  // React Query — so invalidating keys cannot refresh them. Without this, the
+  // alert announced a failure the screen it landed on still contradicted.
+  assert.equal(postsSyncForAlertData({ eventType: "publish_failure" }), true);
+
+  assert.equal(postsSyncForAlertData({ eventType: "customer_message" }), false);
+  assert.equal(postsSyncForAlertData({ eventType: "new_order" }), false);
+  assert.equal(postsSyncForAlertData({ eventType: "quota_exhausted" }), false);
+});
+
+test("every event type this build knows has an explicit posts decision", () => {
+  const syncing = KNOWN_ALERT_EVENT_TYPES.filter((eventType) =>
+    postsSyncForAlertData({ eventType }),
+  );
+  assert.deepEqual(syncing, ["publish_failure"]);
+  // A sync costs a page of posts on the wire, so it is asserted per type rather
+  // than defaulted: the mapping is a Record over the union, which makes a new
+  // event type a compile error until somebody decides what it changes.
+  for (const eventType of KNOWN_ALERT_EVENT_TYPES) {
+    assert.equal(typeof postsSyncForAlertData({ eventType }), "boolean", eventType);
+  }
+});
+
+test("an event type this build does not know asks for no post sync", () => {
+  assert.equal(postsSyncForAlertData({ eventType: "some_future_event" }), false);
+});
+
+test("malformed payloads ask for no post sync rather than crashing", () => {
+  for (const payload of [null, undefined, "publish_failure", 42, [], true, {}]) {
+    assert.equal(
+      postsSyncForAlertData(payload),
+      false,
+      `كان يجب رفض: ${JSON.stringify(payload) ?? String(payload)}`,
+    );
+  }
 });

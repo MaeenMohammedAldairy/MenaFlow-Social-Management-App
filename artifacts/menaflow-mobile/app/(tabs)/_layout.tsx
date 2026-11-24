@@ -7,15 +7,14 @@ import { Tabs } from "expo-router";
 import { NativeTabs } from "expo-router/native-tabs";
 import { SymbolView } from "expo-symbols";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
-import { isLocalAuthDisabled } from "@/constants/auth";
 
 // IMPORTANT: iOS 26 uses NativeTabs for native tabs with liquid glass support.
 // NativeTabs intentionally does NOT use custom design tokens — liquid glass
 // is a system-level appearance provided by iOS and cannot be overridden.
 // Custom brand colors are applied only on the ClassicTabLayout path (older iOS / Android / web).
-function NativeTabLayout({ hidden }: { hidden: boolean }) {
+function NativeTabLayout() {
   return (
-    <NativeTabs hidden={hidden}>
+    <NativeTabs>
       <NativeTabs.Trigger name="index">
         <NativeTabs.Trigger.Icon
           sf={{ default: "house", selected: "house.fill" }}
@@ -43,7 +42,7 @@ function NativeTabLayout({ hidden }: { hidden: boolean }) {
   );
 }
 
-function ClassicTabLayout({ hidden }: { hidden: boolean }) {
+function ClassicTabLayout() {
   const colors = useColors();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
@@ -82,7 +81,6 @@ function ClassicTabLayout({ hidden }: { hidden: boolean }) {
           borderTopColor: colors.border,
           elevation: 0,
           ...(isWeb ? { height: 84 } : {}),
-          ...(hidden ? { display: "none" as const } : {}),
         },
         tabBarBackground: () =>
           isIOS ? (
@@ -153,29 +151,25 @@ function ClassicTabLayout({ hidden }: { hidden: boolean }) {
   );
 }
 
+/**
+ * The tab bar is always visible, for every signed-in state.
+ *
+ * It used to hide while a merchant still owed a connected platform (onboarding
+ * completed, `socialAccountsCompleted` false, no eligible connection). That
+ * predates the concise-setup redesign and contradicts its core promise: the
+ * product stays usable before setup is complete, with the dashboard checklist
+ * ("خطوات البدء") doing the guiding instead of a wall. Hiding navigation blocked
+ * المنتجات/المنشورات/المحادثات/المزيد outright — screens that need no connection
+ * at all — so the bar lost the prop that hid it rather than keeping a dead one
+ * that reads as if hiding were still possible.
+ */
 export default function TabLayout() {
-  return isLocalAuthDisabled ? (
-    <TabNavigation hidden={false} />
-  ) : (
-    <AuthenticatedTabNavigation />
-  );
+  // The dev-mode auth bypass (`isLocalAuthDisabled`) reaches this layout the same
+  // way a signed-in merchant does, and nothing in the tab tree differs between
+  // them — the two branches of the old conditional rendered the same element.
+  return <TabNavigation />;
 }
 
-function AuthenticatedTabNavigation() {
-  // The bar used to hide while a merchant still owed a connected platform
-  // (onboarding completed, socialAccountsCompleted false, no eligible
-  // connection). That predates the concise-setup redesign and now contradicts
-  // its core promise: the product stays usable before setup is complete, with
-  // the dashboard checklist ("خطوات البدء") doing the guiding instead of a
-  // wall. Hiding navigation blocked المنتجات/المنشورات/المحادثات/المزيد
-  // outright, so the bar is always visible.
-  return <TabNavigation hidden={false} />;
-}
-
-function TabNavigation({ hidden }: { hidden: boolean }) {
-  return isLiquidGlassAvailable() ? (
-    <NativeTabLayout hidden={hidden} />
-  ) : (
-    <ClassicTabLayout hidden={hidden} />
-  );
+function TabNavigation() {
+  return isLiquidGlassAvailable() ? <NativeTabLayout /> : <ClassicTabLayout />;
 }

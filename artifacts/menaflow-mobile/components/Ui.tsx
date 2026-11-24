@@ -11,6 +11,7 @@ import { OfflineBanner } from '@/components/OfflineBanner';
 import { useStudio } from '@/context/StudioContext';
 import { isLocalAuthDisabled } from '@/constants/auth';
 import { getOrderSummary } from '@/lib/orders-api';
+import { arabicCountPhrase } from '@/lib/formatting';
 import { POLL_AGGREGATE_MS } from '@/lib/poll-intervals';
 import { router, type Href } from 'expo-router';
 
@@ -189,6 +190,40 @@ function BrandHeaderContent({
   const whatsappOrderDrafts = orderSummaryQuery.data?.whatsappDrafts ?? 0;
   const orderDraftCount = metaOrderDrafts + whatsappOrderDrafts;
   const actionableCount = pendingReview + failedPosts + orderDraftCount;
+  /**
+   * What the badge counts, in the same words the sheet uses for each group.
+   *
+   * The label used to call every item a post — "N منشورات تحتاج إلى إجراء" —
+   * while the count also includes draft orders, so a screen reader announced three
+   * posts needing action to a merchant with one post and two orders waiting. The
+   * groups are named through `arabicCountPhrase` because the count is spoken: "1
+   * منشورات" and "12 منشورات" are both ungrammatical.
+   */
+  const pendingReviewPhrase = arabicCountPhrase(pendingReview, {
+    one: "منشور واحد بانتظار المراجعة",
+    two: "منشوران بانتظار المراجعة",
+    few: "منشورات بانتظار المراجعة",
+    many: "منشورًا بانتظار المراجعة",
+  });
+  const failedPostsPhrase = arabicCountPhrase(failedPosts, {
+    one: "منشور واحد تعذّر نشره",
+    two: "منشوران تعذّر نشرهما",
+    few: "منشورات تعذّر نشرها",
+    many: "منشورًا تعذّر نشره",
+  });
+  const orderDraftsPhrase = arabicCountPhrase(orderDraftCount, {
+    one: "مسودة طلب واحدة بانتظار المراجعة",
+    two: "مسودتا طلب بانتظار المراجعة",
+    few: "مسودات طلب بانتظار المراجعة",
+    many: "مسودة طلب بانتظار المراجعة",
+  });
+  const actionableSummary = [
+    pendingReview > 0 ? pendingReviewPhrase : null,
+    failedPosts > 0 ? failedPostsPhrase : null,
+    orderDraftCount > 0 ? orderDraftsPhrase : null,
+  ]
+    .filter((part): part is string => Boolean(part))
+    .join("، ");
   const [notificationsVisible, setNotificationsVisible] = useState(false);
   const openPostQueue = (status: 'review' | 'failed') => {
     setNotificationsVisible(false);
@@ -209,7 +244,7 @@ function BrandHeaderContent({
               accessibilityRole="button"
               accessibilityLabel={
                 actionableCount > 0
-                  ? `الإشعارات، ${actionableCount} منشورات تحتاج إلى إجراء`
+                  ? `الإشعارات: ${actionableSummary}`
                   : 'الإشعارات'
               }
               accessibilityState={{ expanded: notificationsVisible }}
@@ -329,7 +364,7 @@ function BrandHeaderContent({
               {pendingReview > 0 ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`${pendingReview} منشورات بانتظار المراجعة`}
+                  accessibilityLabel={pendingReviewPhrase}
                   onPress={() => openPostQueue('review')}
                   style={({ pressed }) => [
                     styles.notificationItem,
@@ -344,7 +379,12 @@ function BrandHeaderContent({
                       منشورات بانتظار المراجعة
                     </Text>
                     <Text style={[styles.notificationSubtitle, { color: colors.mutedForeground }]}>
-                      {pendingReview} منشورات تحتاج إلى اعتماد أو تعديل.
+                      {arabicCountPhrase(pendingReview, {
+                        one: "منشور واحد يحتاج إلى اعتماد أو تعديل.",
+                        two: "منشوران يحتاجان إلى اعتماد أو تعديل.",
+                        few: "منشورات تحتاج إلى اعتماد أو تعديل.",
+                        many: "منشورًا يحتاج إلى اعتماد أو تعديل.",
+                      })}
                     </Text>
                   </View>
                   <Icon name="chevron-left" size={18} color={colors.primary} />
@@ -353,7 +393,7 @@ function BrandHeaderContent({
               {failedPosts > 0 ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`${failedPosts} منشورات تعذر نشرها`}
+                  accessibilityLabel={failedPostsPhrase}
                   onPress={() => openPostQueue('failed')}
                   style={({ pressed }) => [
                     styles.notificationItem,
@@ -368,7 +408,12 @@ function BrandHeaderContent({
                       تعذّر نشر بعض المنشورات
                     </Text>
                     <Text style={[styles.notificationSubtitle, { color: colors.mutedForeground }]}>
-                      {failedPosts} منشورات تحتاج إلى مراجعة نتيجة النشر.
+                      {arabicCountPhrase(failedPosts, {
+                        one: "منشور واحد يحتاج إلى مراجعة نتيجة النشر.",
+                        two: "منشوران يحتاجان إلى مراجعة نتيجة النشر.",
+                        few: "منشورات تحتاج إلى مراجعة نتيجة النشر.",
+                        many: "منشورًا يحتاج إلى مراجعة نتيجة النشر.",
+                      })}
                     </Text>
                   </View>
                   <Icon name="chevron-left" size={18} color={colors.primary} />
@@ -377,7 +422,7 @@ function BrandHeaderContent({
               {orderDraftCount > 0 ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={`${orderDraftCount} مسودات طلب بانتظار المراجعة`}
+                  accessibilityLabel={orderDraftsPhrase}
                   onPress={openOrders}
                   style={({ pressed }) => [
                     styles.notificationItem,

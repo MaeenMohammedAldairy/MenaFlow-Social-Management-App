@@ -61,7 +61,7 @@ import { isLocalAuthDisabled } from "@/constants/auth";
 import { applyAppearanceMode, readAppearanceMode } from "@/lib/appearance";
 import { signOutAndClearQueryCache } from "@/lib/sign-out";
 import {
-  installAlertCacheInvalidation,
+  installAlertRefresh,
   installAlertNavigation,
   installForegroundAlertBehaviour,
   registerDeviceForPush,
@@ -69,6 +69,12 @@ import {
 } from "@/lib/push-notifications";
 import { installQueryFocusTracking } from "@/lib/query-focus";
 import { onboardingRedirectTarget } from "@/lib/onboarding-guard";
+import {
+  postsSyncForAlertData,
+  queryPrefixesForAlertData,
+} from "@/lib/alert-invalidation";
+import { requestPostsSync } from "@/lib/posts-sync-signal";
+import { workspaceStorageNamespace } from "@/lib/studio-storage-key";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { useColors } from "@/hooks/useColors";
 import { WebFocusRing } from "@/components/WebFocusRing";
@@ -163,6 +169,11 @@ queryClient = new QueryClient({
       retry: (failureCount, error) => {
         const status = apiErrorStatus(error);
         if (status !== null && status >= 400 && status < 500) return false;
+        // A deadline expiring means twenty seconds already went by; three of those
+        // in a row is a minute of spinner before the merchant is told anything.
+        if (error instanceof Error && error.name === "TimeoutError") {
+          return failureCount < 1;
+        }
         return failureCount < 2;
       },
     },
@@ -462,8 +473,14 @@ function AuthenticatedAppNavigator() {
   useEffect(() => {
     installForegroundAlertBehaviour();
     const unsubscribeNavigation = installAlertNavigation();
-    const unsubscribeInvalidation = installAlertCacheInvalidation((prefix) => {
-      void queryClient.invalidateQueries({ queryKey: [...prefix] });
+    const unsubscribeInvalidation = installAlertRefresh((data) => {
+      for (const prefix of queryPrefixesForAlertData(data)) {
+        void queryClient.invalidateQueries({ queryKey: [...prefix] });
+      }
+      // The post list is not a query, so invalidation cannot reach it — and a
+      // publish-failure alert is precisely the event the dashboard hero and the
+      // header bell are computed from.
+      if (postsSyncForAlertData(data)) requestPostsSync();
     });
     return () => {
       unsubscribeNavigation();
@@ -526,7 +543,15 @@ function AuthenticatedAppNavigator() {
     >
       <StudioProvider
         key={userId ?? "signed-out"}
-        storageNamespace={userId ? `user:${userId}` : null}
+        storageNamespace={
+          // Scoped by workspace as well as by user: the cached page of posts and
+          // the auto-publish settings belong to one workspace, and the switcher in
+          // settings is reachable, so a user-scoped key showed the previous
+          // workspace's posts until a manual pull-to-refresh. Null while the
+          // active workspace is still being resolved, which the store reads as
+          // "not ready" rather than as "this workspace has no posts".
+          workspaceStorageNamespace(userId, activeWorkspaceId)
+        }
       >
         <AppFeedbackProvider>
           <View style={styles.navigator}>
