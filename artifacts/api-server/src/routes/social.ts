@@ -12,7 +12,7 @@ import {
 } from "@workspace/db";
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
-import { requestOwnerId } from "../lib/owner-access";
+import { requestOwnerId, requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import { metaAuthorizationStatus } from "../lib/meta-oauth";
 import {
@@ -51,12 +51,9 @@ const MAX_WHATSAPP_GROUP_SELECTIONS = 500;
 export { extractRemoteJidFromEnvelope, filterHistoryRecordsForGroup };
 
 router.get("/social/connections", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   const [connection] = await db
     .select()
@@ -180,12 +177,9 @@ router.get("/social/connections", requireWorkspace, async (req, res) => {
 });
 
 router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   const channelAccess = await canConnectChannel(workspaceId, "whatsapp");
   if (!channelAccess.allowed) {
@@ -574,12 +568,9 @@ router.get(
   "/social/whatsapp/group-selections",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
 
     try {
       const [connection] = await db
@@ -645,12 +636,9 @@ router.put(
   "/social/whatsapp/group-selections",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
 
     const groupJids: unknown = req.body?.groupJids;
     if (

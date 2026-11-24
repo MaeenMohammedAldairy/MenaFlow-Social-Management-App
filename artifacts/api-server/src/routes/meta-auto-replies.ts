@@ -24,7 +24,7 @@ import {
   productPosts,
   products,
 } from "@workspace/db";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import {
   metaAutoReplyPermission,
   missingMetaIntegrationPermissions,
@@ -406,10 +406,7 @@ router.get(
   "/social/meta-auto-replies/historical-comments",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     const workspaceId = requestWorkspaceId(req);
     const [[settings], [connection]] = await Promise.all([
       db
@@ -499,11 +496,8 @@ router.post(
   "/social/meta-auto-replies/historical-comments",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    const ownerId = requireOwnerId(req, res);
+    if (!ownerId) return;
     const platform = req.body?.platform;
     const allEligible = req.body?.allEligible === true;
     const postIds = req.body?.postIds;
@@ -633,12 +627,9 @@ router.post(
 );
 
 router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const [[settings], [connection]] = await Promise.all([
     db
       .select()
@@ -753,12 +744,9 @@ router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
 });
 
 router.put("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const settings = parseSettings(req.body);
   if (!settings) {
     res.status(400).json({ error: "إعدادات الرد الآلي غير صالحة." });
@@ -875,12 +863,9 @@ router.post(
   "/social/meta-auto-replies/test",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const message =
       typeof req.body?.message === "string" ? req.body.message.trim() : "";
     const platform =

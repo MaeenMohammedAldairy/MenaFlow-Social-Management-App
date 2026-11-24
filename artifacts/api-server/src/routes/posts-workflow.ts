@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { db, menaContentSettings, menaMetaConnections } from "@workspace/db";
 
 import { Router, type IRouter } from "express";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 import { unconnectedMetaChannels } from "../lib/meta-channel-routing";
@@ -17,12 +17,9 @@ router.get(
   "/posts/auto-publish-settings",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     try {
       const [settings] = await db
         .select()
@@ -49,12 +46,9 @@ router.put(
   "/posts/auto-publish-settings",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const enabled = req.body?.enabled;
     const requestedChannels = normalizeChannels(req.body?.channels);
     const channels = requestedChannels.filter(
@@ -141,12 +135,9 @@ router.post(
   "/posts/process-whatsapp-backlog",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const requestedLimit = Number(req.body?.limit ?? 50);
     if (
       !Number.isInteger(requestedLimit) ||

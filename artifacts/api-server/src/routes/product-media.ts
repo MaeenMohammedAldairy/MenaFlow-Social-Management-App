@@ -13,7 +13,7 @@ import {
   streamMediaObject,
   thumbnailObjectPath,
 } from "../lib/whatsapp-media-storage";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import {
   PRODUCT_MEDIA_TYPES,
   storeProductMedia,
@@ -127,11 +127,8 @@ router.post(
     limit: "20mb",
   }),
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    const ownerId = requireOwnerId(req, res);
+    if (!ownerId) return;
     const workspaceId = requestWorkspaceId(req);
     const declaredType = typeof req.query.mediaType === "string"
       ? req.query.mediaType.split(";", 1)[0].trim().toLowerCase()

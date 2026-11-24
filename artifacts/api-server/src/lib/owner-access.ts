@@ -1,5 +1,5 @@
 import { getAuth } from "@clerk/express";
-import type { Request, RequestHandler } from "express";
+import type { Request, RequestHandler, Response } from "express";
 
 export function isLocalAuthDisabled(): boolean {
   return (
@@ -96,6 +96,24 @@ export function assertProductionConfiguration(): void {
   }
 }
 
+/** The one wording of "you are not signed in", for every route that has to say it. */
+export const signInRequiredMessage = "سجّل الدخول أولاً.";
+
+/**
+ * The caller's owner id, or null after answering the request with 401.
+ *
+ * Routes need the id itself, not just a yes/no, so a middleware alone never
+ * replaced the check — `requireOwner` below sat unused while 70-odd handlers
+ * each wrote out "read the id, refuse if missing". This is the half they share;
+ * the caller keeps `if (!ownerId) return;` because only it knows what to do next.
+ */
+export function requireOwnerId(req: Request, res: Response): string | null {
+  const ownerId = requestOwnerId(req);
+  if (ownerId) return ownerId;
+  res.status(401).json({ error: signInRequiredMessage });
+  return null;
+}
+
 /** Returns the verified Clerk user ID, or the explicitly configured single local-dev identity. */
 export function requestOwnerId(req: Request): string | null {
   if (isLocalAuthDisabled()) {
@@ -116,11 +134,6 @@ export const requireOwner: RequestHandler = (req, res, next) => {
     next();
     return;
   }
-
-  const auth = getAuth(req);
-  if (!auth.userId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!requireOwnerId(req, res)) return;
   next();
 };

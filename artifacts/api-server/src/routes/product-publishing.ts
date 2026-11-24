@@ -14,7 +14,7 @@ import {
   productPublicationBlockers,
 } from "../lib/product-draft-policy";
 import { requireWorkspace, requestWorkspaceId, requestWorkspaceUserId } from "../lib/workspace-context";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireProductWriter } from "../lib/product-intake-service.ts";
 import { processProductPublicationQueue } from "../lib/product-publishing";
 import { logger } from "../lib/logger.ts";
@@ -78,11 +78,8 @@ router.post(
   requireWorkspace,
   requireProductWriter,
   async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const body = req.body as Record<string, unknown> | null;
   const requestKey = typeof body?.requestKey === "string"
     ? body.requestKey.trim()
@@ -266,11 +263,8 @@ router.post(
 });
 
 router.get("/social/products/publish-jobs", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const requestKey = typeof req.query.requestKey === "string"
     ? req.query.requestKey.trim()
     : "";
@@ -298,11 +292,8 @@ router.post(
   requireWorkspace,
   requireProductWriter,
   async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const rawJobIds: unknown[] = Array.isArray(req.body?.jobIds)
     ? req.body.jobIds
     : [];

@@ -8,7 +8,7 @@ import {
   products,
 } from "@workspace/db";
 import { Router, type IRouter, type Response } from "express";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { generateWhatsAppAutoReply } from "../lib/whatsapp-auto-reply";
 import {
   matchMetaAutoReplyProduct,
@@ -277,12 +277,9 @@ router.get(
   "/social/whatsapp/auto-reply-settings",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const connection = await connectionForRequest(ownerId, workspaceId);
     if (!connection) {
       res.status(404).json({ error: "لا يوجد حساب واتساب مربوط بهذه المساحة." });
@@ -314,12 +311,9 @@ router.put(
   "/social/whatsapp/auto-reply-settings",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const settings = parseAutoReplySettings(req.body);
     if (!settings) {
       res.status(400).json({
@@ -423,12 +417,9 @@ router.post(
   "/social/whatsapp/auto-reply-test",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const settings = parseAutoReplySettings({
       ...req.body,
       enabled: false,

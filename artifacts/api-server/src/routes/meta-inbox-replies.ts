@@ -19,7 +19,7 @@ import {
 } from "../lib/meta-inbox-reply-reservation";
 import { metaString } from "../lib/meta-inbox-utils";
 import { metaAutoReplyRetryableStatus } from "../lib/meta-auto-reply";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
   missingMetaIntegrationPermissions,
@@ -119,12 +119,9 @@ router.post(
   "/social/meta-inbox/items/:id/reply",
   requireWorkspace,
   async (req: Request, res: Response) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const text = metaString(
       req.body && typeof req.body === "object"
         ? (req.body as Record<string, unknown>).text
@@ -387,12 +384,9 @@ router.post(
   "/social/meta-inbox/items/:id/auto-reply",
   requireWorkspace,
   async (req: Request, res: Response) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const itemId = metaString(req.params.id);
     if (!itemId) {
       res.status(400).json({ error: "معرّف الرسالة أو التعليق غير صالح." });
@@ -496,12 +490,9 @@ router.post(
   "/social/meta-inbox/items/:id/retry-confirmation",
   requireWorkspace,
   async (req: Request, res: Response) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const itemId = metaString(req.params.id);
     if (!itemId) {
       res.status(400).json({ error: "معرّف الرسالة أو التعليق غير صالح." });

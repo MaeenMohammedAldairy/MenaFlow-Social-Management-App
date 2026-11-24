@@ -17,7 +17,7 @@ import {
   PostMetaConnectBody,
   PostMetaConnectResponse,
 } from "@workspace/api-zod";
-import { requestOwnerId } from "../lib/owner-access";
+import { requestOwnerId, requireOwnerId } from "../lib/owner-access";
 import {
   requireWorkspace,
   requestWorkspaceContext,
@@ -928,12 +928,9 @@ router.get("/social/meta/callback", async (req, res) => {
 });
 
 router.delete("/social/meta", requireWorkspace, requireMetaConnectionManager, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const platform = req.query.platform ?? "facebook";
   if (platform !== "facebook" && platform !== "instagram") {
     res.status(400).json({ error: "حدد منصة Meta المراد فصلها." });
