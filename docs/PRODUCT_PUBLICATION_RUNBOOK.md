@@ -91,6 +91,37 @@ A message that has media but no text is only queued when its media is complete;
 otherwise the call returns `queuedMessages: 0` and the job appears later through
 the media requeue path.
 
+**The queue fills itself.** Selecting a group is the merchant's opt-in to having
+that conversation read, so the `product-extraction-queue` worker calls the same
+function every 60 s for every workspace with a selection — ten workspaces per
+pass, rotating through a cursor, so a large deployment is served round-robin
+rather than always starting from the same first ten. Before this worker existed
+the manual endpoint was the *only* caller, which meant a message arriving after
+the merchant's last tap was never extracted at all: the catalog looked idle while
+the queue was simply never filled.
+
+The automatic pass is deliberately not the manual button
+(`settledJobQueuePolicy()` in `lib/whatsapp-product-autoqueue-policy.ts`):
+
+| | manual (`POST …/extract-whatsapp`) | automatic (worker) |
+| --- | --- | --- |
+| Messages that already have a job row | Selected again | Skipped |
+| `failed` and `PRODUCT_TEXT_REQUIRED` jobs | Reset to `pending`, `attempts = 0` | Left alone |
+| Workspace paused for an exhausted AI quota | Queue anyway (the merchant asked) | Skipped for this pass |
+
+Each difference exists because the timer has no opinion about any particular
+message. Reviving a settled job every minute would retry a durable failure
+forever and spend the workspace's AI quota doing it; re-selecting messages that
+already have jobs would keep hitting the oldest-200 cap on the same page and
+never reach newer messages; and queueing over an active quota pause would insert
+jobs at `next_run_at = now`, each failing on the same quota and re-pausing the
+workspace, once per message. `WHATSAPP_PRODUCT_AUTOQUEUE_WORKER_ENABLED=false`
+stops the pass and returns the chain to manual-only queueing.
+
+Every pass logs `WHATSAPP_PRODUCT_AUTOQUEUE_PASS` with `workspaces`, `queued`,
+`quotaPaused`, `errored` and the `cursor`, so "is anything being extracted at
+all?" is one log query rather than an inference from the catalog.
+
 ### Extraction outcomes worth recognising
 
 | `last_error` | Cause | Action |
@@ -128,15 +159,57 @@ never auto-create anything.
 Required fields for publication (`PRODUCT_PUBLICATION_REQUIRED_FIELDS`): `name`,
 `price`, `currency`, `availability`, `media`. `description` is advisory — worth
 completing, never a blocker. Price and currency are accepted only as a verified
-pair quoted from the source text; a message saying «45 ريال» without a currency
-the extractor can map yields a null price, which then shows up as a blocker.
+pair quoted from the source text.
+
+**How a currency is resolved** (`lib/product-currency-resolution.ts`). The quote
+the model returns must contain the currency, and it is read strictly first:
+
+1. A bare three-letter code (`YER`, `SAR`, `USD`, …) is taken as-is.
+2. A currency named with its nationality is taken as that code — «ريال يمني» →
+   `YER`, «الريال السعودي» → `SAR`. The definite article is optional on both
+   halves.
+3. Two different codes in one quote cancel to `null`. Conflicting evidence is
+   never resolved by picking one.
+4. Only then does the workspace's own country
+   (`mena_workspaces.country`) settle an *ambiguous* word, and only when that
+   country actually uses the word: «٤٥ ريال» in `YE` → `YER`, in `SA` → `SAR`, in
+   `QA` → `QAR`. «٤٥ دولار» in `YE` still yields nothing, because guessing `USD`
+   from a country that does not use it is invention. A country that is `null`
+   (three of the five live workspaces) or that does not use the word changes
+   nothing, so the behaviour is exactly as strict as it was before.
+
+Arabic needs its own word boundaries here: JavaScript's `\b` is ASCII, so a
+plain `/ريال/` matched inside «ريالة» and «البرازيل». The patterns are built from
+a lookaround over the Arabic block instead.
+
+A currency that came from the country rather than from the message is grounded
+only as far as the word «ريال» goes — which rial came from a setting — so it
+forces `manualReviewRequired` exactly like a vision candidate does
+(`isCurrencyDerivedFromCountry()`). It can never become an automatic draft with a
+price the merchant has not seen, and the model's own claimed `currency` must
+still equal the resolved code.
 
 Endpoints:
 
-- `GET /api/social/products/whatsapp-extractions` → `{ suggestions, pendingJobs }`
-  where `pendingJobs` counts `pending`, `processing`, `waitingMedia`,
-  `waitingAssociation`, `failed` and `quotaPaused` (pending jobs held back by an
-  exhausted AI quota). This is the fastest single health check.
+- `GET /api/social/products/whatsapp-extractions` →
+  `{ suggestions, pendingJobs, suggestionCounts, pagination }`.
+  - Query: `classification=product|not_product`, `status` (repeatable or comma
+    separated, `review|draft_created|possible_duplicate`), `limit` (1–50,
+    clamped), `offset` (0–10 000, clamped). An unknown classification or status
+    is a `400`; `dismissed` cannot be requested at all. Out-of-range paging is
+    clamped rather than rejected so an older client still gets a usable page.
+    Rules in `lib/product-extraction-list-policy.ts`.
+  - `pendingJobs` counts `pending`, `processing`, `waitingMedia`,
+    `waitingAssociation`, `failed`, `quotaPaused` (pending jobs held back by an
+    exhausted AI quota) and `noText` — jobs that completed with nothing readable
+    (a photo with no caption, a sticker, a voice note). `noText` matters because
+    those jobs are neither failed nor waiting, so nothing else on screen mentions
+    them; six such messages sat on the live workspace invisible.
+  - `suggestionCounts` is counted over the whole queue ignoring the page filters,
+    so the catalog badge (`pendingProductReview`) does not change while the
+    merchant moves between slices, and `pagination.nextOffset` is `null` on the
+    last page.
+  - This is the fastest single health check.
 - `POST /api/social/products/extract-whatsapp` (`{ messageId? }`) → `202 { queuedMessages }`.
 - `POST /api/social/products/whatsapp-extractions/:id/create-draft`.
 - `POST /api/social/products/whatsapp-extractions/:id/dismiss`.
@@ -334,6 +407,7 @@ behaviour stays fixed.
 | Variable | Purpose |
 | --- | --- |
 | `WHATSAPP_PRODUCT_EXTRACTION_WORKER_ENABLED` | `false` stops the extraction worker |
+| `WHATSAPP_PRODUCT_AUTOQUEUE_WORKER_ENABLED` | `false` stops the pass that fills the queue on its own (§2); queueing becomes manual-only again |
 | `PRODUCT_EXTRACTION_QUOTA_PAUSE_MS` | How long the queue waits after the AI quota runs out (floored at 5 minutes) |
 | `WHATSAPP_SYNC_GROUP_CONCURRENCY`, `WHATSAPP_SYNC_RUN_BUDGET_MS`, `WHATSAPP_SYNC_HEARTBEAT_MS` | Bounds for the historical sync that feeds this chain — see `docs/WHATSAPP_SYNC.md` |
 | `PRODUCT_PUBLICATION_WORKER_ENABLED` | `false` stops the publication worker |

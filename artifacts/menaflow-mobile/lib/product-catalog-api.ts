@@ -284,6 +284,12 @@ export type ProductExtractionQueueCounts = {
   failed: number;
   /** Held back by an exhausted AI quota; resumes on its own. */
   quotaPaused: number;
+  /**
+   * Read and found to hold nothing extractable: a photo with no caption, a
+   * sticker, a voice note. Their jobs completed, so they are neither a failure
+   * nor waiting on anything — without this counter they simply disappear.
+   */
+  noText: number;
 };
 
 export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
@@ -293,6 +299,7 @@ export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
   waitingAssociation: 0,
   failed: 0,
   quotaPaused: 0,
+  noText: 0,
 };
 
 /**

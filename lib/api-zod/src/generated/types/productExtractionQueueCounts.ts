@@ -7,7 +7,7 @@
  */
 
 /**
- * Extraction jobs by state. `waitingMedia` and `waitingAssociation` are the states only a download or a merchant decision can clear.
+ * Extraction jobs by state. `waitingMedia` and `waitingAssociation` are the states only a download or a merchant decision can clear, and `noText` counts the messages that will never yield a product on their own.
  */
 export interface ProductExtractionQueueCounts {
   pending: number;
@@ -17,4 +17,6 @@ export interface ProductExtractionQueueCounts {
   failed: number;
   /** Pending jobs held back because the workspace AI quota is exhausted. They resume on their own; no attempt is spent while paused. */
   quotaPaused: number;
+  /** Jobs that completed with nothing readable to extract: a photo with no caption, a sticker, a voice note. Not a failure and not waiting on anything, so without this counter they simply vanish from the merchant's view. A deployment with vision extraction enabled reads the text visible inside stored images instead of counting them here. */
+  noText: number;
 }

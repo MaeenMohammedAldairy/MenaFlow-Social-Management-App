@@ -3363,6 +3363,15 @@ function ProductExtractionQueueStrip({
       tone: "warning",
     });
   }
+  if (counts.noText > 0) {
+    // These jobs completed, so nothing else on screen mentions them. Saying it
+    // plainly — and saying what the merchant can do — is the difference between
+    // "the feature ignored six messages" and "six messages had no text in them".
+    lines.push({
+      text: `${formatArabicNumber(counts.noText)} رسالة بلا نص مقروء (صورة أو ملصق أو تسجيل صوتي) فلم يُستخرج منها منتج. اكتب وصف المنتج مع الصورة ليُستخرج تلقائيًا.`,
+      tone: "muted",
+    });
+  }
   if (working > 0) {
     lines.push({
       text: `جارٍ تحليل ${formatArabicNumber(working)} رسالة.`,

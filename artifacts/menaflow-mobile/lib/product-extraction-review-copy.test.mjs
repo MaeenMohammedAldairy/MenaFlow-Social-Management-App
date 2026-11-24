@@ -172,3 +172,20 @@ test("the rejected-message slice says what it is, so it is not read as a failure
     "the note must say these rows are not review work",
   );
 });
+
+test("messages with nothing readable are counted and explained", () => {
+  // Their jobs complete, so no other counter mentions them: six such messages sat
+  // on the live workspace with nothing on screen to say where they went.
+  assert.ok(mobileClient.includes("noText: number;"));
+  assert.ok(mobileClient.includes("noText: 0,"));
+  assert.ok(mobileScreen.includes("counts.noText > 0"));
+  assert.ok(
+    mobileScreen.includes("بلا نص مقروء"),
+    "the strip must say why nothing was extracted",
+  );
+  assert.ok(
+    mobileScreen.includes("اكتب وصف المنتج مع الصورة"),
+    "and what the merchant can do about it",
+  );
+  assert.ok(serverRoute.includes('eq(whatsappProductExtractionJobs.lastError, "PRODUCT_TEXT_REQUIRED")'));
+});

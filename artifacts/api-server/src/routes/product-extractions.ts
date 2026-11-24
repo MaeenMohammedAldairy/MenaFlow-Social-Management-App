@@ -293,6 +293,19 @@ router.get(
         eq(whatsappProductExtractionJobs.status, "pending"),
         sql`${whatsappProductExtractionJobs.lastError} like ${`${QUOTA_EXHAUSTED_REASON_PREFIX}%`}`,
       ));
+    // Messages that were read and held nothing readable: a photo with no
+    // caption, a sticker, a voice note. Their jobs are `complete`, so they are
+    // not a failure and not waiting on anything — which is exactly why they were
+    // invisible until now. Six such messages sat on the live workspace with no
+    // suggestion row, no error and nothing on screen to say where they went.
+    const [noTextRow] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(whatsappProductExtractionJobs)
+      .where(and(
+        eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+        eq(whatsappProductExtractionJobs.status, "complete"),
+        eq(whatsappProductExtractionJobs.lastError, "PRODUCT_TEXT_REQUIRED"),
+      ));
     const pendingJobs = {
       pending: jobCounts.pending ?? 0,
       processing: jobCounts.processing ?? 0,
@@ -300,6 +313,7 @@ router.get(
       waitingAssociation: jobCounts.waiting_association ?? 0,
       failed: jobCounts.failed ?? 0,
       quotaPaused: quotaPausedRow?.total ?? 0,
+      noText: noTextRow?.total ?? 0,
     };
     const requestOrigin = mediaRequestOrigin(req);
     const sourceMediaByMessageId = new Map<string, ProductMediaPreview[]>();
