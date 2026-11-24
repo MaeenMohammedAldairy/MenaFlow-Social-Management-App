@@ -83,13 +83,30 @@ Queueing rules (`queueUnprocessedWhatsAppProductMessages`, also behind
 - at least one selected group in `mena_whatsapp_group_selections`
   (`selected = true`), matched by group or parent group;
 - `message_status = 'received'`;
-- non-empty `text_body` or `caption`;
+- non-empty `text_body` or `caption` — **or** `media_available`, but only when
+  `PRODUCT_VISION_EXTRACTION_ENABLED` is set (§6);
 - no row for that message in `mena_product_extraction_sources` yet;
 - at most 200 messages per call, oldest first.
+
+The text-or-media rule is `queueEligibilityPolicy()`
+(`lib/product-extraction-queue-eligibility.ts`), and it exists because the
+extractor reads text and never receives image bytes unless vision extraction is
+on. Admitting a caption-less photo while vision is off creates a job that can
+only end in `PRODUCT_TEXT_REQUIRED`; refusing it while vision is on means the
+stored image is never read by anything. `media_available` deliberately includes a
+`failed` download: queueing the message is what resets its media (§2 above), so
+this is the only path that can repair an image-only message whose download gave
+up. A message with neither text nor media is never eligible.
 
 A message that has media but no text is only queued when its media is complete;
 otherwise the call returns `queuedMessages: 0` and the job appears later through
 the media requeue path.
+
+Note that the historical sync also creates one job per imported received message
+(`persistImportedMessage`), without the eligibility filter — which is why
+caption-less photos have job rows at all. Queueing is therefore not manual-only
+for newly imported messages; the button and the automatic pass are how *older*
+messages get (re)queued and how settled jobs get retried.
 
 **The queue fills itself.** Selecting a group is the merchant's opt-in to having
 that conversation read, so the `product-extraction-queue` worker calls the same
@@ -126,7 +143,7 @@ all?" is one log query rather than an inference from the catalog.
 
 | `last_error` | Cause | Action |
 | --- | --- | --- |
-| `PRODUCT_TEXT_REQUIRED` | No text and vision extraction produced nothing (disabled, no stored image, or unreadable) | Expected for pure emoji/sticker messages. Enable `PRODUCT_VISION_EXTRACTION_ENABLED` if photo-only offers matter (§6) |
+| `PRODUCT_TEXT_REQUIRED` | No text and vision extraction produced nothing (disabled, no stored image, or unreadable) | Expected for pure emoji/sticker messages. Enable `PRODUCT_VISION_EXTRACTION_ENABLED` if photo-only offers matter (§6), then re-run extraction: with the flag on the queue admits caption-less photos, so their stored images are finally read. Counted in `pendingJobs.noText` |
 | `WHATSAPP_MEDIA_DOWNLOAD_PENDING` | Media still downloading | Automatic; the download worker requeues on completion |
 | `WHATSAPP_MEDIA_DOWNLOAD_FAILED` | The download gave up for good: a non-retryable error, or 5 attempts spent | Re-run extraction (`POST /api/social/products/extract-whatsapp`); it resets the media to `pending` with a fresh set of attempts and the job is requeued when the object is stored |
 | `WHATSAPP_ASSOCIATED_MESSAGE_UNAVAILABLE` | A bundled message row disappeared | Data problem; requeue the remaining message |

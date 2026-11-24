@@ -42,6 +42,11 @@ screen's «تحليل الرسائل» button queues the same work by hand and, 
 automatic pass, also retries messages whose job had already failed. The API
 queues up to 200 eligible messages per request; the extraction worker polls
 every three seconds by default and claims up to three pending jobs per cycle.
+A message is eligible when it has text or a caption, or — only if the deployment
+enables extraction from images — when it has media at all. A photo sent with no
+words attached is therefore read only where `PRODUCT_VISION_EXTRACTION_ENABLED`
+is on; elsewhere it is counted in the queue state as a message with nothing
+readable rather than being silently dropped.
 The automatic pass never revives a settled job, never queues over a workspace
 paused for an exhausted AI quota, and never re-selects a message that already
 has a job row — see `docs/PRODUCT_PUBLICATION_RUNBOOK.md` §2. The configured AI provider may

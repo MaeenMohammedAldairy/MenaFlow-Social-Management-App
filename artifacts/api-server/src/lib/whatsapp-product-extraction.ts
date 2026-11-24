@@ -37,6 +37,7 @@ import {
   settledJobQueuePolicy,
   type ProductQueueIntent,
 } from "./whatsapp-product-autoqueue-policy.ts";
+import { queueEligibilityPolicy } from "./product-extraction-queue-eligibility.ts";
 import {
   decideWhatsAppMediaGate,
   shouldResetMediaForRequeue,
@@ -249,6 +250,9 @@ export async function queueUnprocessedWhatsAppProductMessages(
   if (!connection) return 0;
 
   const settledJobs = settledJobQueuePolicy(intent);
+  const eligibility = queueEligibilityPolicy({
+    visionExtractionEnabled: visionProductExtractionEnabled(),
+  });
   const messages = await db
     .select({
       id: menaWhatsAppMessages.id,
@@ -284,6 +288,16 @@ export async function queueUnprocessedWhatsAppProductMessages(
       or(
         sql`length(trim(coalesce(${menaWhatsAppMessages.textBody}, ''))) > 0`,
         sql`length(trim(coalesce(${menaWhatsAppMessages.caption}, ''))) > 0`,
+        // A photo with nothing written on it is worth queueing only when
+        // something downstream can read it. With vision extraction off, such a
+        // job could only finish as `PRODUCT_TEXT_REQUIRED`; with it on, refusing
+        // the message would mean the stored image is never looked at by anything.
+        // `media_available` also covers a `failed` download, which is the point:
+        // queueing the message is what resets its media and hands the download
+        // worker a fresh set of attempts.
+        ...(eligibility.admitMediaOnlyMessages
+          ? [eq(menaWhatsAppMessages.mediaAvailable, true)]
+          : []),
       ),
       notExists(
         db.select({ messageId: productExtractionSources.messageId })
