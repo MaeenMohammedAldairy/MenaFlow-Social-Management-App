@@ -15,7 +15,10 @@ import {
 } from "@workspace/db";
 import { metaAuthorizationStatus } from "../lib/meta-oauth";
 import { transitionOnboardingProgress } from "../lib/onboarding-progress";
-import { getWorkspaceOnboardingStatus } from "../lib/onboarding-status";
+import {
+  getWorkspaceOnboardingStatus,
+  socialAccountsCompletedForWorkspace,
+} from "../lib/onboarding-status";
 import {
   EvolutionApiError,
   evolutionConnectionState,
@@ -127,7 +130,8 @@ router.post(
           started: !progress.completed,
           currentStep: progress.step,
           completed: progress.completed,
-          socialAccountsCompleted: progress.socialAccountsCompleted,
+          socialAccountsCompleted:
+            await socialAccountsCompletedForWorkspace(workspaceId),
         }),
       );
     } catch (error) {
