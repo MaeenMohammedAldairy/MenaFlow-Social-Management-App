@@ -38,7 +38,24 @@ export type CatalogProduct = {
   updatedAt: string;
   postIds: string[];
   publicationHistory?: ProductPublicationHistory[];
+  /** Field keys the merchant still has to fill. */
+  missingFields?: ProductFieldKey[];
+  /** Arabic labels for `missingFields`, ready to render. */
+  missingFieldMessages?: string[];
+  /** Missing fields that stop publication. */
+  publicationBlockers?: ProductFieldKey[];
+  publicationBlockerMessages?: string[];
+  publicationBlocked?: boolean;
+  advisoryFields?: ProductFieldKey[];
 };
+
+export type ProductFieldKey =
+  | "name"
+  | "description"
+  | "price"
+  | "currency"
+  | "availability"
+  | "media";
 
 export type ProductPublicationHistory = {
   channel: "facebook" | "instagram";
@@ -82,6 +99,9 @@ export type ProductExtractionSuggestion = {
   evidence: Record<string, string | null>;
   confidence: Record<string, number>;
   fieldReview: Record<string, boolean>;
+  /** Field keys still empty in this suggestion. */
+  missingFields?: ProductFieldKey[];
+  missingFieldMessages?: string[];
   aiModel: string;
   status: "review" | "draft_created" | "possible_duplicate";
   productId: string | null;
@@ -256,16 +276,45 @@ export async function getProductCandidates(): Promise<ProductCandidate[]> {
   return result.candidates;
 }
 
+export type ProductExtractionQueueCounts = {
+  pending: number;
+  processing: number;
+  waitingMedia: number;
+  waitingAssociation: number;
+  failed: number;
+};
+
+export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
+  pending: 0,
+  processing: 0,
+  waitingMedia: 0,
+  waitingAssociation: 0,
+  failed: 0,
+};
+
+export type WhatsAppProductExtractions = {
+  suggestions: ProductExtractionSuggestion[];
+  /** Jobs stuck on something the merchant or a download has to resolve. */
+  pendingJobs: ProductExtractionQueueCounts;
+};
+
 export async function getWhatsAppProductExtractions(): Promise<
-  ProductExtractionSuggestion[]
+  WhatsAppProductExtractions
 > {
   const response = await fetchApiResponse(
     "/api/social/products/whatsapp-extractions",
   );
   const result = await readJsonResponse<{
     suggestions: ProductExtractionSuggestion[];
+    pendingJobs?: Partial<ProductExtractionQueueCounts>;
   }>(response);
-  return result.suggestions;
+  return {
+    suggestions: result.suggestions ?? [],
+    pendingJobs: {
+      ...emptyProductExtractionQueueCounts,
+      ...(result.pendingJobs ?? {}),
+    },
+  };
 }
 
 export async function analyzeWhatsAppProductMessages(
