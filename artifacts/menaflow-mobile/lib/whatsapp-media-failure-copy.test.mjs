@@ -8,7 +8,9 @@ import {
   MEDIA_DOWNLOAD_FAILED_COPY,
   MEDIA_DOWNLOAD_PENDING_COPY,
   MEDIA_UPSTREAM_EXPIRED_COPY,
+  MEDIA_UPSTREAM_EXPIRED_REASON,
   describeMediaDownloadFailure,
+  isExpiredWhatsAppMediaFailure,
 } from "./whatsapp-media-failure-copy.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -97,6 +99,25 @@ test("an unknown send date never blames WhatsApp", () => {
       now,
     }),
     MEDIA_DOWNLOAD_FAILED_COPY,
+  );
+});
+
+test("a recorded expiry reason survives an age-less or re-queued row", () => {
+  assert.equal(
+    describeMediaDownloadFailure({
+      downloadStatus: "failed",
+      failureReason: MEDIA_UPSTREAM_EXPIRED_REASON,
+      messageTimestamp: new Date(now - days(2)).toISOString(),
+      now,
+    }),
+    MEDIA_UPSTREAM_EXPIRED_COPY,
+  );
+  assert.equal(
+    isExpiredWhatsAppMediaFailure({
+      failureReason: MEDIA_UPSTREAM_EXPIRED_REASON,
+      now,
+    }),
+    true,
   );
 });
 

@@ -91,3 +91,23 @@ export function mediaDownloadFailureReason(input: {
   }
   return input.errorCode;
 }
+
+/**
+ * Whether a media item is gone from WhatsApp for good.
+ *
+ * The recorded reason wins: a merchant can re-queue an old row, and the retry
+ * writes a fresh transport error over `failure_reason`'s predecessor. A row
+ * written before the reason existed falls back to the message's age, which is
+ * the same evidence the original download attempt used.
+ */
+export function isExpiredWhatsAppMediaFailure(input: {
+  downloadStatus?: string | null;
+  failureReason?: string | null;
+  messageTimestamp?: Date | string | null;
+  now?: Date;
+}): boolean {
+  if (input.downloadStatus && input.downloadStatus !== "failed") return false;
+  if (input.failureReason === MEDIA_UPSTREAM_EXPIRED_REASON) return true;
+  const age = messageAgeMs(input.messageTimestamp, input.now ?? new Date());
+  return age !== null && age > MEDIA_UPSTREAM_EXPIRY_AGE_MS;
+}

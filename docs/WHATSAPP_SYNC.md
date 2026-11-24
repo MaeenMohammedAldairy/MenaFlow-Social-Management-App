@@ -32,6 +32,18 @@ All content sync settings default to enabled to preserve existing behavior.
 Changing a setting affects new imports and pending media retries; it does not
 delete previously stored messages or media.
 
+WhatsApp stops serving a message's media roughly three weeks after it was sent.
+An old import therefore records `WHATSAPP_MEDIA_EXPIRED_UPSTREAM`, spends no
+further download attempts, and is excluded from the post's expected media
+count: a group with text and at least one stored item is still turned into a
+reviewable post instead of being held open by an object that cannot return.
+When every item expired, the card says so and asks for the media to be re-sent.
+
+When the message history is opened, a text paired with one media candidate —
+and that candidate paired with no other text — is linked automatically and
+queued for content creation. Greetings beside captioned products and cases with
+several candidates stay in the manual association review list.
+
 Apply `supabase/migrations/20261021003000_whatsapp_media_sync_settings.sql`
 before deploying the WhatsApp sync content filters.
 

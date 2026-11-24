@@ -20,6 +20,7 @@ export type WhatsAppAssociationSuggestion = {
   candidateMessageId: string;
   candidateGroupKey: string;
   candidateMediaGroupId: string | null;
+  sourceText: string | null;
   candidateText: string | null;
   candidateMediaCount: number;
   reason: string;
@@ -85,6 +86,7 @@ export function findWhatsAppAssociationSuggestions(
         candidateMediaGroupId: isConfirmedCandidateAlbum(candidate)
           ? candidate.mediaGroupId
           : null,
+        sourceText: textMessage.textBody,
         candidateText: candidate.textBody || candidate.caption,
         candidateMediaCount: isConfirmedCandidateAlbum(candidate)
           ? messages
@@ -102,6 +104,54 @@ export function findWhatsAppAssociationSuggestions(
     );
   }
   return suggestionsByMessage;
+}
+
+/**
+ * Suggestions safe to accept without a merchant decision.
+ *
+ * A text paired with exactly one media candidate — and that candidate paired
+ * with no other text — is a single content bundle, not a choice between
+ * independent products. Everything else stays in the review queue: the
+ * 30-second window alone cannot tell two consecutive product posts apart.
+ */
+export function selectAutoAcceptableWhatsAppAssociations(
+  suggestionsByMessage: Map<string, WhatsAppAssociationSuggestion[]>,
+): WhatsAppAssociationSuggestion[] {
+  const candidateCounts = new Map<string, number>();
+  for (const suggestions of suggestionsByMessage.values()) {
+    for (const suggestion of suggestions) {
+      candidateCounts.set(
+        suggestion.candidateMessageId,
+        (candidateCounts.get(suggestion.candidateMessageId) ?? 0) + 1,
+      );
+    }
+  }
+  const seenPairs = new Set<string>();
+  return [...suggestionsByMessage.values()]
+    .flat()
+    .filter((suggestion) => {
+      if (
+        (suggestionsByMessage.get(suggestion.sourceMessageId)?.length ?? 0) !== 1 ||
+        suggestion.candidateMediaCount === 0 ||
+        candidateCounts.get(suggestion.candidateMessageId) !== 1
+      ) return false;
+      // A greeting next to a captioned product post is not its description.
+      // Merging it would put the greeting into the post body, so leave it for
+      // review even though the pairing itself is unambiguous.
+      if (
+        isGreetingLike(suggestion.sourceText) &&
+        Boolean(suggestion.candidateText?.trim())
+      ) return false;
+      const pairKey = `${suggestion.sourceMessageId}:${suggestion.candidateMessageId}`;
+      if (seenPairs.has(pairKey)) return false;
+      seenPairs.add(pairKey);
+      return true;
+    });
+}
+
+function isGreetingLike(text: string | null): boolean {
+  const value = text?.trim() ?? "";
+  return value.length > 0 && value.length < 16 && !/\d/.test(value);
 }
 
 function isConfirmedCandidateAlbum(message: WhatsAppSuggestionMessage): boolean {
