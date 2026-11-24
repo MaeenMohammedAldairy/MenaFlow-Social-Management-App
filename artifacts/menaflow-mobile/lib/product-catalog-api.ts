@@ -3,20 +3,19 @@
  *
  * A thin adapter over the client generated from `lib/api-spec/openapi.yaml`. The
  * shapes live in the contract now; what is left here is the mapping between the
- * contract's names and the positional signatures the screens already call, plus
- * the two calls that cannot go through the generated client:
+ * contract's names and the positional signatures the screens already call:
  *
- *  - `getPublishableAccounts` reads `/social/connections`, which returns
- *    facebook/instagram slots rather than a list.
- *  - nothing else. `uploadProductMedia` used to be here too: the contract
- *    declared the body as `image/*`, which a code generator pins as a literal
- *    content type and the server's `express.raw` filter rejects. The contract now
- *    declares `application/octet-stream` plus a `mediaType` query parameter, so
- *    the endpoint goes through the generated client like the rest.
+ *  - `getPublishableAccounts` flattens `/social/connections`, which returns
+ *    facebook/instagram slots rather than a list, into the list the publish
+ *    dialog selects from. The request itself goes through the generated
+ *    `getSocialConnections`, so a refusal is an `ApiError` like everywhere else.
+ *  - `uploadProductMedia` used to be hand-written too: the contract declared the
+ *    body as `image/*`, which a code generator pins as a literal content type
+ *    and the server's `express.raw` filter rejects. The contract now declares
+ *    `application/octet-stream` plus a `mediaType` query parameter, so the
+ *    endpoint goes through the generated client like the rest.
  */
 import {
-  fetchApiResponse,
-  readJsonResponse,
   createCatalogProduct as generatedCreateCatalogProduct,
   createProductExtractionDraft,
   decideProductChangeProposal as generatedDecideProductChangeProposal,
@@ -25,6 +24,7 @@ import {
   extractWhatsAppProductMessages,
   getProductExtractionMetrics as generatedGetProductExtractionMetrics,
   getProductPublicationJobs as generatedGetProductPublicationJobs,
+  getSocialConnections,
   getWhatsAppProductExtractions as generatedGetWhatsAppProductExtractions,
   importPostAsProduct,
   listCatalogProducts,
@@ -48,6 +48,7 @@ import {
   type ProductChangeDecisionResponse,
   type ProductChangeDiff,
   type ProductChangeProposal,
+  type SocialAccountStatus,
   type ProductChangeRecord,
   type ProductExtractionListResponse,
   type ProductExtractionMetrics,
@@ -148,12 +149,14 @@ export type ProductInput = Omit<
   inventoryReason?: string;
 };
 
-export type PublishableAccount = {
+/**
+ * One Meta account the publish dialog can target: the contract's slot plus the
+ * channel it came from. `authorizationStatus` is optional in the contract, and
+ * the one comparison the screens make (`=== "ready"`) reads correctly when it is
+ * absent: an account whose authorization is unknown is not a target.
+ */
+export type PublishableAccount = SocialAccountStatus & {
   channel: "facebook" | "instagram";
-  accountId: string;
-  accountName: string;
-  authorizationStatus: string;
-  authorizationReason: string | null;
 };
 
 /** The contract calls it `ScannedPostExtraction`; the screens call it this. */
@@ -172,11 +175,7 @@ export async function getInventoryMovements(
 }
 
 export async function getPublishableAccounts(): Promise<PublishableAccount[]> {
-  const response = await fetchApiResponse("/api/social/connections");
-  const result = await readJsonResponse<{
-    facebook: Omit<PublishableAccount, "channel"> | null;
-    instagram: Omit<PublishableAccount, "channel"> | null;
-  }>(response);
+  const result = await getSocialConnections();
   return [
     result.facebook ? { ...result.facebook, channel: "facebook" } : null,
     result.instagram ? { ...result.instagram, channel: "instagram" } : null,
