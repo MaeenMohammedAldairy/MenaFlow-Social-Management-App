@@ -699,6 +699,18 @@ router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
   // no workspace: a rejected signature happens before the object type is read,
   // and it is the one attempt that explains "Meta is calling but nothing is
   // stored" for every merchant on the deployment at once.
+  // Error codes of the reply jobs still waiting, for the same reason: a job
+  // postponed by an exhausted quota is `queued` like any other.
+  const waitingJobRows = await db
+    .select({ errorCode: menaMetaAutoReplyJobs.errorCode })
+    .from(menaMetaAutoReplyJobs)
+    .where(
+      and(
+        eq(menaMetaAutoReplyJobs.workspaceId, workspaceId),
+        inArray(menaMetaAutoReplyJobs.status, ["queued", "processing"]),
+      ),
+    )
+    .limit(500);
   const webhookAttempts = await fetchInboundWebhookAttempts({
     workspaceId,
     platforms: ["facebook", "instagram"],
@@ -720,6 +732,7 @@ router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
     ),
     appSecretConfigured: Boolean(process.env.FACEBOOK_APP_SECRET?.trim()),
     webhookAttempts,
+    queuedJobErrorCodes: waitingJobRows.map((row) => row.errorCode),
   });
   res.json({
     settings: settings

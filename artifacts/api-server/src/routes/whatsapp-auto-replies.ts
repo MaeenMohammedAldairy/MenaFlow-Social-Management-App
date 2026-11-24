@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { autoReplySettingsHash } from "../lib/whatsapp-auto-reply-policy";
 import {
   db,
@@ -200,8 +200,12 @@ async function whatsAppInboundForWorkspace(
   workspaceId: string,
   instanceNames: readonly string[] = [],
 ) {
-  const [[directSummary], autoReplyEventCounts, webhookAttempts] =
-    await Promise.all([
+  const [
+    [directSummary],
+    autoReplyEventCounts,
+    webhookAttempts,
+    waitingReplyRows,
+  ] = await Promise.all([
     db
       .select({
         lastAt: sql<string | null>`max(${menaWhatsAppDirectMessages.messageTimestamp})`,
@@ -230,6 +234,22 @@ async function whatsAppInboundForWorkspace(
         platforms: ["whatsapp"],
         instanceNames,
       }),
+      // Error codes of the replies still waiting. A reply postponed by a limit
+      // is `queued` like any other, and the settings screen cannot tell "the
+      // worker is busy" from "the AI quota ran out" without reading the code.
+      db
+        .select({ errorCode: menaWhatsAppAutoReplyEvents.errorCode })
+        .from(menaWhatsAppAutoReplyEvents)
+        .where(
+          and(
+            eq(menaWhatsAppAutoReplyEvents.workspaceId, workspaceId),
+            inArray(menaWhatsAppAutoReplyEvents.status, [
+              "queued",
+              "processing",
+            ]),
+          ),
+        )
+        .limit(500),
     ]);
   let webhookUrl: string | null = null;
   let webhookUrlError: string | null = null;
@@ -249,6 +269,7 @@ async function whatsAppInboundForWorkspace(
     webhookUrl,
     webhookUrlError,
     webhookAttempts,
+    queuedReplyErrorCodes: waitingReplyRows.map((row) => row.errorCode),
   });
 }
 

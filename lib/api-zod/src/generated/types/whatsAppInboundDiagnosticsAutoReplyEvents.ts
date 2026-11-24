@@ -11,4 +11,6 @@ export type WhatsAppInboundDiagnosticsAutoReplyEvents = {
   sent: number;
   failed: number;
   other: number;
+  /** Waiting on a limit that lifts by itself (an exhausted AI quota, an unconfigured provider) rather than on the worker */
+  postponedByLimit: number;
 };

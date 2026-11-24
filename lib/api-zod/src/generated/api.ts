@@ -367,7 +367,8 @@ export const GetWhatsAppAutoReplySettingsResponse = zod.object({
   "queued": zod.number().int(),
   "sent": zod.number().int(),
   "failed": zod.number().int(),
-  "other": zod.number().int()
+  "other": zod.number().int(),
+  "postponedByLimit": zod.number().int().describe('Waiting on a limit that lifts by itself (an exhausted AI quota, an unconfigured provider) rather than on the worker')
 }),
   "webhookSecretConfigured": zod.boolean(),
   "webhookUrl": zod.string().url().nullish(),
@@ -820,7 +821,8 @@ export const GetMetaAutoReplySettingsResponse = zod.object({
   "queued": zod.number().int(),
   "completed": zod.number().int(),
   "failed": zod.number().int(),
-  "skipped": zod.number().int()
+  "skipped": zod.number().int(),
+  "postponedByLimit": zod.number().int().describe('Waiting on a limit that lifts by itself (an exhausted AI quota, an unconfigured provider) rather than on the worker')
 }),
   "subscriptions": zod.array(zod.object({
   "platform": zod.enum(['facebook', 'instagram']),

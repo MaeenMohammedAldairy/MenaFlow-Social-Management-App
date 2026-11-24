@@ -240,6 +240,19 @@ function WhatsAppReplyContent({
           label: "ردود في الانتظار",
           value: formatArabicNumber(inbound.autoReplyEvents.queued),
         },
+        // Only shown when non-zero: "0 replies postponed" is noise, while a
+        // non-zero number explains waiting replies the merchant cannot
+        // otherwise distinguish from a busy worker.
+        ...(inbound.autoReplyEvents.postponedByLimit > 0
+          ? [
+              {
+                label: "منها مؤجَّلة بسبب حدّ",
+                value: formatArabicNumber(
+                  inbound.autoReplyEvents.postponedByLimit,
+                ),
+              },
+            ]
+          : []),
         {
           label: "ردود فشلت",
           value: formatArabicNumber(inbound.autoReplyEvents.failed),

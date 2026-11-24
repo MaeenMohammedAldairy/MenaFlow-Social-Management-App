@@ -293,6 +293,14 @@ export function MetaAutoReplySettingsPanel({
           label: "ردود في الانتظار",
           value: formatArabicNumber(inbound.autoReplyJobs.queued),
         },
+        ...(inbound.autoReplyJobs.postponedByLimit > 0
+          ? [
+              {
+                label: "منها مؤجَّلة بسبب حدّ",
+                value: formatArabicNumber(inbound.autoReplyJobs.postponedByLimit),
+              },
+            ]
+          : []),
         {
           label: "ردود فشلت",
           value: formatArabicNumber(inbound.autoReplyJobs.failed),

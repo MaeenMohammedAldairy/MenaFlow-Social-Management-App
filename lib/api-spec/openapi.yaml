@@ -2786,7 +2786,12 @@ components:
               type: integer
             other:
               type: integer
-          required: [queued, sent, failed, other]
+            postponedByLimit:
+              type: integer
+              description: >-
+                Waiting on a limit that lifts by itself (an exhausted AI quota,
+                an unconfigured provider) rather than on the worker
+          required: [queued, sent, failed, other, postponedByLimit]
         webhookSecretConfigured:
           type: boolean
         webhookUrl:
@@ -2849,7 +2854,12 @@ components:
               type: integer
             skipped:
               type: integer
-          required: [queued, completed, failed, skipped]
+            postponedByLimit:
+              type: integer
+              description: >-
+                Waiting on a limit that lifts by itself (an exhausted AI quota,
+                an unconfigured provider) rather than on the worker
+          required: [queued, completed, failed, skipped, postponedByLimit]
         subscriptions:
           type: array
           items:
