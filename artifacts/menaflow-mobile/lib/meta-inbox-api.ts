@@ -2,6 +2,7 @@ import {
   fetchApiResponse,
   readJsonResponse,
 } from "@workspace/api-client-react";
+import type { WebhookAttemptSummary } from "./inbound-webhook-copy";
 
 export type MetaInboxPlatform = "facebook" | "instagram";
 export type MetaInboxKind = "message" | "comment";
@@ -124,6 +125,12 @@ export type MetaInboundDiagnostics = {
   }>;
   verifyTokenConfigured: boolean;
   appSecretConfigured: boolean;
+  /**
+   * Recorded Meta webhook calls, or null when the server did not read the
+   * delivery log. This is what tells "Meta never called" apart from "Meta
+   * called and we refused it".
+   */
+  webhookAttempts: WebhookAttemptSummary | null;
   issues: InboundDiagnosticIssue[];
 };
 

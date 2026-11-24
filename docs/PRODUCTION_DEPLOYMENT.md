@@ -146,6 +146,15 @@ The authenticated inbox is available in the app's **الوارد** tab. Before r
 
 Apply `20261025002000_meta_inbox.sql` before deploying inbox routes. The webhook callback is unauthenticated by design for Meta delivery; its GET verification token and POST HMAC signature are validated. Inbox reads and replies remain authenticated and workspace-scoped. Replies are subject to Meta messaging windows, account eligibility, app review, and each platform's policies. A Meta permission grant alone does not prove app review or webhook delivery is active.
 
+Apply `20261124010000_inbound_webhook_events.sql` before deploying the inbound
+delivery log. Every webhook decision — accepted, refused, or ignored — is then
+recorded for seven days in `mena_inbound_webhook_events` and surfaced on the
+reply-settings screens, which is what separates "Meta never called" from "Meta
+called and we refused it" without log access. The
+`inbound-webhook-retention` worker purges hourly;
+`INBOUND_WEBHOOK_EVENT_RETENTION_MS` and `INBOUND_WEBHOOK_EVENT_QUERY_LIMIT`
+bound the window and the read. See `docs/INBOUND_DELIVERY_DIAGNOSTICS.md`.
+
 The inbox displays HTTPS image previews and links to video or other attachments when Meta includes media URLs in the event. If a preview cannot load, the UI offers the media link as a fallback; media is not copied to application storage, so availability remains subject to Meta's URL lifetime. The inbox also shows the timestamp of the latest stored message or comment to help verify event delivery.
 
 ### Meta automatic replies
@@ -176,6 +185,12 @@ window when rotating keys so conversations indexed under the previous key
 remain discoverable until their messages expire. The inbox and reply routes
 require workspace authentication; uncertain sends are not retried until an
 operator confirms the message did not arrive.
+
+The same delivery log records every Evolution webhook decision, including the
+refusals that cannot be attributed to a workspace because the secret check
+happens first. `docs/INBOUND_DELIVERY_DIAGNOSTICS.md` covers the outcome
+vocabulary, the retention bounds, and the queries that decide which side of the
+webhook a delivery failure is on.
 
 ## Expo application
 

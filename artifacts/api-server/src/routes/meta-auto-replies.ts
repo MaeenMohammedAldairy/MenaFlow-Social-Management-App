@@ -32,6 +32,7 @@ import {
 } from "../lib/meta-oauth";
 import { isRecord } from "../lib/value-utils.ts";
 import { metaInboundDiagnostics } from "../lib/inbound-diagnostics";
+import { fetchInboundWebhookAttempts } from "../lib/inbound-delivery-log";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
   generateMetaAutoReply,
@@ -694,6 +695,20 @@ router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
         .from(menaMetaWebhookSubscriptions)
         .where(eq(menaMetaWebhookSubscriptions.workspaceId, workspaceId)),
     ]);
+  // Recorded Meta webhook calls, including the server-wide refusals that carry
+  // no workspace: a rejected signature happens before the object type is read,
+  // and it is the one attempt that explains "Meta is calling but nothing is
+  // stored" for every merchant on the deployment at once.
+  const webhookAttempts = await fetchInboundWebhookAttempts({
+    workspaceId,
+    platforms: ["facebook", "instagram"],
+    accountIds: [
+      ...subscriptions.map((subscription) => subscription.accountId),
+      connection?.pageId ?? "",
+      connection?.instagramUserId ?? "",
+    ],
+    includeUnattributed: true,
+  });
   const inbound = metaInboundDiagnostics({
     lastInboxItemAt: inboxSummary?.lastAt ? new Date(inboxSummary.lastAt) : null,
     inboxItemCount: inboxSummary?.total ?? 0,
@@ -704,6 +719,7 @@ router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
       process.env.MENA_META_WEBHOOK_VERIFY_TOKEN?.trim(),
     ),
     appSecretConfigured: Boolean(process.env.FACEBOOK_APP_SECRET?.trim()),
+    webhookAttempts,
   });
   res.json({
     settings: settings

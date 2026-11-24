@@ -67,7 +67,9 @@ import {
   describeWhatsAppAutoReplySkip,
   describeWhatsAppInboundOutcome,
   logInboundWebhookOutcome,
+  type InboundWebhookOutcome,
 } from "../lib/inbound-webhook-diagnostics";
+import { recordInboundWebhookAttempt } from "../lib/inbound-delivery-log";
 import { processWhatsAppOrderIntake } from "../lib/whatsapp-order-intake";
 import {
   resolveWhatsAppAlbumSource,
@@ -2055,22 +2057,49 @@ async function coalesceQueuedWhatsAppAutoReply(input: {
   return updated.length > 0;
 }
 
+/**
+ * Logs one inbound outcome and keeps it in the delivery log.
+ *
+ * A log line disappears with the deployment; the merchant's question — "did
+ * Evolution ever call us?" — needs the answer to still exist hours later. The
+ * persisted contexts here carry event names, instance names and hashed
+ * conversation keys only, never message text.
+ *
+ * Recording is fire-and-forget: `recordInboundWebhookAttempt` swallows its own
+ * failures, so a broken delivery log can never turn a received message into a
+ * failed webhook.
+ */
+function recordWhatsAppInboundOutcome(
+  outcome: InboundWebhookOutcome,
+  context: Record<string, unknown> = {},
+): void {
+  logInboundWebhookOutcome(logger, outcome, context);
+  void recordInboundWebhookAttempt({
+    platform: "whatsapp",
+    event: outcome.event,
+    deliveryConfirmed: outcome.deliveryConfirmed,
+    workspaceId:
+      typeof context.workspaceId === "string" ? context.workspaceId : null,
+    instanceName:
+      typeof context.instanceName === "string" ? context.instanceName : null,
+    context,
+  });
+}
+
 export async function processWebhookEvent(
   body: unknown,
   req: { headers?: Record<string, string | string[] | undefined> },
 ): Promise<void> {
   const payload = asRecord(body);
   if (!payload) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("PAYLOAD_NOT_OBJECT"),
     );
     return;
   }
 
   if (!verifyWhatsAppWebhookSecret(req.headers?.["x-evolution-api-key"])) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("REJECTED_SECRET"),
     );
     return;
@@ -2080,8 +2109,7 @@ export async function processWebhookEvent(
     payload.event ?? payload.type,
   );
   if (!isWhatsAppMessageWebhookEvent(eventName)) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("IGNORED_EVENT"),
       { eventName },
     );
@@ -2115,8 +2143,7 @@ export async function processWebhookEvent(
     queryString(payload?.instanceName) ??
     null;
   if (!remoteJid || !instanceName) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("MISSING_INSTANCE_OR_JID"),
       { eventName, hasInstance: Boolean(instanceName), hasJid: Boolean(remoteJid) },
     );
@@ -2129,8 +2156,7 @@ export async function processWebhookEvent(
     .where(eq(menaWhatsAppConnections.instanceName, instanceName))
     .limit(2);
   if (matchingConnections.length !== 1) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome(
         matchingConnections.length > 1 ? "AMBIGUOUS_INSTANCE" : "UNKNOWN_INSTANCE",
       ),
@@ -2140,8 +2166,7 @@ export async function processWebhookEvent(
   }
   const [connection] = matchingConnections;
   if (!connection) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("UNKNOWN_INSTANCE"),
       { eventName, instanceName, matches: 0 },
     );
@@ -2260,10 +2285,10 @@ export async function processWebhookEvent(
   if (!autoReplyDecision.shouldQueue && isDirectIncoming && isDirectPhoneJid) {
     // A real customer message that produced no reply is the one case an
     // operator must be able to find in the log, with the reason next to it.
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppAutoReplySkip(autoReplyDecision.reason),
       {
+        workspaceId: connection.workspaceId,
         instanceName,
         eventName,
         autoReplyEnabled: connection.autoReplyEnabled,
@@ -2272,10 +2297,10 @@ export async function processWebhookEvent(
     );
   }
   if (eventName === "MESSAGES_UPSERT") {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("PROCESSED"),
       {
+        workspaceId: connection.workspaceId,
         instanceName,
         eventName,
         directIncoming: isDirectIncoming,

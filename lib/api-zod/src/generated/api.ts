@@ -371,6 +371,16 @@ export const GetWhatsAppAutoReplySettingsResponse = zod.object({
 }),
   "webhookSecretConfigured": zod.boolean(),
   "webhookUrl": zod.string().url().nullish(),
+  "webhookAttempts": zod.union([zod.object({
+  "count": zod.number().int(),
+  "lastAt": zod.coerce.date().nullish(),
+  "lastEvent": zod.string().nullish(),
+  "lastHint": zod.string().nullish().describe('Arabic guidance recorded for the last outcome'),
+  "acceptedCount": zod.number().int(),
+  "rejectedCount": zod.number().int(),
+  "lastRejectedEvent": zod.string().nullish(),
+  "lastRejectedHint": zod.string().nullish()
+}).describe('What the provider\'s webhook calls did over the retention window. This is the evidence that separates "the provider never called us" from "it called and we refused it" — two faults with different fixes that both look like "no messages are arriving". Null when the delivery log was not read for this platform.'),zod.null()]),
   "issues": zod.array(zod.object({
   "code": zod.string(),
   "message": zod.string(),
@@ -821,6 +831,16 @@ export const GetMetaAutoReplySettingsResponse = zod.object({
 })),
   "verifyTokenConfigured": zod.boolean(),
   "appSecretConfigured": zod.boolean(),
+  "webhookAttempts": zod.union([zod.object({
+  "count": zod.number().int(),
+  "lastAt": zod.coerce.date().nullish(),
+  "lastEvent": zod.string().nullish(),
+  "lastHint": zod.string().nullish().describe('Arabic guidance recorded for the last outcome'),
+  "acceptedCount": zod.number().int(),
+  "rejectedCount": zod.number().int(),
+  "lastRejectedEvent": zod.string().nullish(),
+  "lastRejectedHint": zod.string().nullish()
+}).describe('What the provider\'s webhook calls did over the retention window. This is the evidence that separates "the provider never called us" from "it called and we refused it" — two faults with different fixes that both look like "no messages are arriving". Null when the delivery log was not read for this platform.'),zod.null()]),
   "issues": zod.array(zod.object({
   "code": zod.string(),
   "message": zod.string(),

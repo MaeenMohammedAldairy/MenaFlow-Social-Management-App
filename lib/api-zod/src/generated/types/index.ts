@@ -37,6 +37,7 @@ export * from './getPostsPage200';
 export * from './getPostsPageParams';
 export * from './getWhatsAppConnectionStatusParams';
 export * from './healthStatus';
+export * from './inboundWebhookAttemptSummary';
 export * from './incompletePublicationProduct';
 export * from './knownPostIdsInput';
 export * from './metaAutoReplyReadiness';

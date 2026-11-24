@@ -42,6 +42,7 @@ import {
   describeWhatsAppInboundOutcome,
   logInboundWebhookOutcome,
 } from "../lib/inbound-webhook-diagnostics";
+import { recordInboundWebhookAttempt } from "../lib/inbound-delivery-log";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
@@ -658,11 +659,18 @@ router.post("/social/whatsapp/webhook", async (req, res) => {
   if (!verifyWhatsAppWebhookSecret(req.headers["x-evolution-api-key"])) {
     // Proves Evolution reached us with the wrong key — the alternative reading
     // of "no automatic replies" is that it never called us at all.
-    logInboundWebhookOutcome(
-      logger,
-      describeWhatsAppInboundOutcome("REJECTED_SECRET"),
-      { path: "/social/whatsapp/webhook" },
-    );
+    const rejected = describeWhatsAppInboundOutcome("REJECTED_SECRET");
+    logInboundWebhookOutcome(logger, rejected, {
+      path: "/social/whatsapp/webhook",
+    });
+    // The refusal happens before any instance lookup, so the row carries no
+    // workspace; it is still the evidence that Evolution reached us.
+    void recordInboundWebhookAttempt({
+      platform: "whatsapp",
+      event: rejected.event,
+      deliveryConfirmed: rejected.deliveryConfirmed,
+      context: { path: "/social/whatsapp/webhook" },
+    });
     res.status(401).json({ ok: false });
     return;
   }

@@ -514,6 +514,28 @@ export interface WhatsAppAutoReplySettings {
   instructions: string;
 }
 
+/**
+ * What the provider's webhook calls did over the retention window. This is the evidence that separates "the provider never called us" from "it called and we refused it" — two faults with different fixes that both look like "no messages are arriving". Null when the delivery log was not read for this platform.
+ */
+export interface InboundWebhookAttemptSummary {
+  count: number;
+  /** @nullable */
+  lastAt?: string | null;
+  /** @nullable */
+  lastEvent?: string | null;
+  /**
+     * Arabic guidance recorded for the last outcome
+     * @nullable
+     */
+  lastHint?: string | null;
+  acceptedCount: number;
+  rejectedCount: number;
+  /** @nullable */
+  lastRejectedEvent?: string | null;
+  /** @nullable */
+  lastRejectedHint?: string | null;
+}
+
 export type DiagnosticIssueSeverity = typeof DiagnosticIssueSeverity[keyof typeof DiagnosticIssueSeverity];
 
 
@@ -550,6 +572,7 @@ export interface WhatsAppInboundDiagnostics {
   webhookSecretConfigured: boolean;
   /** @nullable */
   webhookUrl?: string | null;
+  webhookAttempts: InboundWebhookAttemptSummary | null;
   issues: DiagnosticIssue[];
 }
 
@@ -1133,6 +1156,7 @@ export interface MetaInboundDiagnostics {
   subscriptions: MetaInboundDiagnosticsSubscriptionsItem[];
   verifyTokenConfigured: boolean;
   appSecretConfigured: boolean;
+  webhookAttempts: InboundWebhookAttemptSummary | null;
   issues: DiagnosticIssue[];
 }
 

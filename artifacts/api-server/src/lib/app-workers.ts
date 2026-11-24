@@ -17,6 +17,7 @@ import { processMetaAutoReplyQueue } from "./meta-auto-reply-worker";
 import { processMetaOrderConfirmationsQueue } from "./meta-order-confirmation-queue";
 import { markStaleWhatsAppAutoRepliesUnknown } from "./whatsapp-auto-reply-recovery";
 import { purgeExpiredWhatsAppDirectMessages } from "./whatsapp-direct-message-retention";
+import { purgeOldInboundWebhookEvents } from "./inbound-delivery-log";
 import { processScheduledPostsQueue } from "./scheduled-posts";
 import { processWorkspaceDeletionQueue } from "./workspace-deletion";
 import {
@@ -34,6 +35,7 @@ type WorkerName =
   | "whatsapp-auto-replies"
   | "whatsapp-order-confirmations"
   | "whatsapp-direct-message-retention"
+  | "inbound-webhook-retention"
   | "meta-webhook-subscriptions"
   | "product-extraction"
   | "product-publication"
@@ -94,6 +96,17 @@ const workers: WorkerDefinition[] = [
     run: purgeExpiredWhatsAppDirectMessages,
     disabledMessage: "",
     errorMessage: "WhatsApp direct-message retention cleanup failed",
+  },
+  {
+    // The inbound delivery log is a diagnostics table, not a record: one row per
+    // webhook call would otherwise grow without bound. Hourly is far coarser
+    // than the 7-day window it enforces, and it runs wherever workers run.
+    name: "inbound-webhook-retention",
+    intervalMs: 60 * 60_000,
+    enabled: () => true,
+    run: purgeOldInboundWebhookEvents,
+    disabledMessage: "",
+    errorMessage: "Inbound webhook event retention cleanup failed",
   },
   {
     // Meta replies used to run from an inline loop inside the API process only,

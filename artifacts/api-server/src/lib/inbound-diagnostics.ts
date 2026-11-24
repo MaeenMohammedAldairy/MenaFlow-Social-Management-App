@@ -11,6 +11,11 @@
  * the wording and the thresholds are testable.
  */
 
+import {
+  inboundWebhookOutcomeForEvent,
+  isInboundWebhookRejection,
+} from "./inbound-webhook-diagnostics.ts";
+
 export type DiagnosticIssue = {
   /** Stable code a client can branch on. */
   code: string;
@@ -19,6 +24,71 @@ export type DiagnosticIssue = {
   severity: "warning" | "critical";
 };
 
+/** One recorded webhook attempt, as the delivery log stores it. */
+export type InboundWebhookAttemptRow = {
+  event: string;
+  deliveryConfirmed: boolean;
+  createdAt: Date | string | null;
+};
+
+export type InboundWebhookAttemptSummary = {
+  count: number;
+  lastAt: string | null;
+  lastEvent: string | null;
+  /** Arabic guidance recorded for that outcome. */
+  lastHint: string | null;
+  acceptedCount: number;
+  rejectedCount: number;
+  lastRejectedEvent: string | null;
+  lastRejectedHint: string | null;
+};
+
+function attemptTime(row: InboundWebhookAttemptRow): number {
+  if (row.createdAt instanceof Date) return row.createdAt.getTime();
+  if (typeof row.createdAt === "string") {
+    const parsed = Date.parse(row.createdAt);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+/**
+ * Folds recorded attempts into the facts a screen can show.
+ *
+ * The distinction that matters is between "the provider never called" and "it
+ * called and we refused it": the first is a registration problem on the
+ * provider side, the second names a variable to fix here. Both are invisible
+ * without this log, and both read as "no messages arrive".
+ */
+export function summarizeInboundWebhookAttempts(
+  rows: ReadonlyArray<InboundWebhookAttemptRow>,
+): InboundWebhookAttemptSummary {
+  const ordered = [...rows].sort((a, b) => attemptTime(b) - attemptTime(a));
+  const last = ordered[0];
+  const lastRejected = ordered.find((row) =>
+    isInboundWebhookRejection(row.event),
+  );
+  const rejectedCount = ordered.filter((row) =>
+    isInboundWebhookRejection(row.event),
+  ).length;
+  const lastOutcome = last ? inboundWebhookOutcomeForEvent(last.event) : null;
+  const rejectedOutcome = lastRejected
+    ? inboundWebhookOutcomeForEvent(lastRejected.event)
+    : null;
+  return {
+    count: ordered.length,
+    lastAt: last
+      ? new Date(attemptTime(last)).toISOString()
+      : null,
+    lastEvent: last?.event ?? null,
+    lastHint: lastOutcome?.hint ?? null,
+    acceptedCount: ordered.length - rejectedCount,
+    rejectedCount,
+    lastRejectedEvent: lastRejected?.event ?? null,
+    lastRejectedHint: rejectedOutcome?.hint ?? null,
+  };
+}
+
 export type WhatsAppInboundDiagnosticsInput = {
   lastDirectMessageAt: Date | null;
   directMessageCount: number;
@@ -26,6 +96,11 @@ export type WhatsAppInboundDiagnosticsInput = {
   webhookSecretConfigured: boolean;
   webhookUrl: string | null;
   webhookUrlError: string | null;
+  /**
+   * Recorded webhook attempts. Omitted when the caller has not read the log, in
+   * which case the summary stays null and no attempt-based conclusion is drawn.
+   */
+  webhookAttempts?: ReadonlyArray<InboundWebhookAttemptRow>;
 };
 
 export type WhatsAppInboundDiagnostics = {
@@ -40,6 +115,7 @@ export type WhatsAppInboundDiagnostics = {
   };
   webhookSecretConfigured: boolean;
   webhookUrl: string | null;
+  webhookAttempts: InboundWebhookAttemptSummary | null;
   issues: DiagnosticIssue[];
 };
 
@@ -72,13 +148,31 @@ export function whatsAppInboundDiagnostics(
       severity: "critical",
     });
   }
+  const attempts = input.webhookAttempts
+    ? summarizeInboundWebhookAttempts(input.webhookAttempts)
+    : null;
   if (input.directMessageCount === 0) {
-    issues.push({
-      code: "WHATSAPP_NO_INBOUND_EVENTS",
-      message:
-        "لم تصل أي رسالة واتساب فردية إلى الخادم. تحقق من أن Evolution يرسل الأحداث إلى رابط الويب هوك، ثم أعد تسجيله من هذا الزر وأرسل رسالة تجريبية.",
-      severity: "warning",
-    });
+    if (!attempts || attempts.count === 0) {
+      issues.push({
+        code: "WHATSAPP_NO_WEBHOOK_ATTEMPTS",
+        message:
+          "لم يسجّل الخادم أي محاولة استقبال من Evolution خلال الفترة المحفوظة، أي أن المزوّد لا يرسل الأحداث أصلًا. أعد تسجيل رابط الويب هوك من هذا الزر، وتحقق من أن Evolution يستطيع الوصول إلى نطاق الخادم، ثم أرسل رسالة تجريبية.",
+        severity: "critical",
+      });
+    } else if (attempts.acceptedCount === 0) {
+      issues.push({
+        code: "WHATSAPP_WEBHOOK_ATTEMPTS_REJECTED",
+        message: `يصل Evolution إلى الخادم لكن كل محاولة رُفضت (آخرها ${attempts.lastRejectedEvent}). ${attempts.lastRejectedHint ?? ""}`.trim(),
+        severity: "critical",
+      });
+    } else {
+      issues.push({
+        code: "WHATSAPP_NO_INBOUND_EVENTS",
+        message:
+          "تصل أحداث من Evolution إلى الخادم، لكن لم تُحفظ أي رسالة فردية من عميل. الأحداث الواصلة أحداث مجموعات على الأرجح؛ أرسل رسالة فردية تجريبية من هاتف العميل للتحقق.",
+        severity: "warning",
+      });
+    }
   }
   return {
     deliveryConfirmed: input.directMessageCount > 0,
@@ -96,6 +190,7 @@ export function whatsAppInboundDiagnostics(
     },
     webhookSecretConfigured: input.webhookSecretConfigured,
     webhookUrl: input.webhookUrl,
+    webhookAttempts: attempts,
     issues,
   };
 }
@@ -114,6 +209,8 @@ export type MetaInboundDiagnosticsInput = {
   }>;
   verifyTokenConfigured: boolean;
   appSecretConfigured: boolean;
+  /** Recorded webhook attempts; omitted when the log was not read. */
+  webhookAttempts?: ReadonlyArray<InboundWebhookAttemptRow>;
 };
 
 export type MetaInboundDiagnostics = {
@@ -136,6 +233,7 @@ export type MetaInboundDiagnostics = {
   }>;
   verifyTokenConfigured: boolean;
   appSecretConfigured: boolean;
+  webhookAttempts: InboundWebhookAttemptSummary | null;
   issues: DiagnosticIssue[];
 };
 
@@ -179,13 +277,31 @@ export function metaInboundDiagnostics(
       severity: "warning",
     });
   }
+  const metaAttempts = input.webhookAttempts
+    ? summarizeInboundWebhookAttempts(input.webhookAttempts)
+    : null;
   if (input.inboxItemCount === 0) {
-    issues.push({
-      code: "META_NO_INBOUND_EVENTS",
-      message:
-        "لم يصل أي حدث من فيسبوك أو إنستغرام إلى الخادم. تحقق من وضع التطبيق في لوحة Meta (Development يلزمه مراجعة) ومن أن رابط الويب هوك يشير إلى نطاق الخادم، ثم أرسل رسالة تجريبية.",
-      severity: "warning",
-    });
+    if (!metaAttempts || metaAttempts.count === 0) {
+      issues.push({
+        code: "META_NO_WEBHOOK_ATTEMPTS",
+        message:
+          "لم يسجّل الخادم أي محاولة استقبال من Meta خلال الفترة المحفوظة، أي أن Meta لا ترسل الأحداث أصلًا. تحقق من وضع التطبيق في لوحة Meta (وضع Development يلزمه مراجعة التطبيق) ومن أن رابط الويب هوك يشير إلى نطاق الخادم، ثم أرسل رسالة تجريبية.",
+        severity: "critical",
+      });
+    } else if (metaAttempts.acceptedCount === 0) {
+      issues.push({
+        code: "META_WEBHOOK_ATTEMPTS_REJECTED",
+        message: `تصل Meta إلى الخادم لكن كل محاولة رُفضت (آخرها ${metaAttempts.lastRejectedEvent}). ${metaAttempts.lastRejectedHint ?? ""}`.trim(),
+        severity: "critical",
+      });
+    } else {
+      issues.push({
+        code: "META_NO_INBOUND_EVENTS",
+        message:
+          "تصل أحداث من Meta إلى الخادم، لكن لم يُحفظ أي تفاعل في صندوق الوارد. الأحداث الواصلة لا تخص الحسابات المرتبطة على الأرجح؛ جدّد الاشتراك وتأكد من مطابقة معرّف الصفحة أو حساب إنستغرام.",
+        severity: "warning",
+      });
+    }
   }
   return {
     deliveryConfirmed: input.inboxItemCount > 0,
@@ -217,6 +333,7 @@ export function metaInboundDiagnostics(
     })),
     verifyTokenConfigured: input.verifyTokenConfigured,
     appSecretConfigured: input.appSecretConfigured,
+    webhookAttempts: metaAttempts,
     issues,
   };
 }

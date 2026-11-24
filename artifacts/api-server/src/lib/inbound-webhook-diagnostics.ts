@@ -265,6 +265,68 @@ export function logInboundWebhookOutcome(
   );
 }
 
+/**
+ * Looks an emitted event name back up to its outcome.
+ *
+ * The delivery log stores the event name, and whoever reads it later — the
+ * diagnostics endpoints, the merchant's screen — needs the Arabic hint and the
+ * severity that went with it. Deriving the map from the same tables that emit
+ * the events keeps a recorded name from ever becoming unreadable.
+ */
+function outcomesByEvent(): Map<string, InboundWebhookOutcome> {
+  const map = new Map<string, InboundWebhookOutcome>();
+  for (const reason of Object.keys(
+    whatsAppOutcomes,
+  ) as WhatsAppInboundReason[]) {
+    const outcome = describeWhatsAppInboundOutcome(reason);
+    map.set(outcome.event, outcome);
+  }
+  for (const reason of Object.keys(metaOutcomes) as MetaInboundReason[]) {
+    const outcome = describeMetaInboundOutcome(reason);
+    map.set(outcome.event, outcome);
+  }
+  for (const reason of Object.keys(
+    autoReplySkipOutcomes,
+  ) as WhatsAppAutoReplySkipReason[]) {
+    const outcome = describeWhatsAppAutoReplySkip(reason);
+    map.set(outcome.event, outcome);
+  }
+  return map;
+}
+
+export function inboundWebhookOutcomeForEvent(
+  event: string | null | undefined,
+): InboundWebhookOutcome | null {
+  const name = event?.trim();
+  if (!name) return null;
+  return outcomesByEvent().get(name) ?? null;
+}
+
+/** Prefix of the auto-reply skip outcomes, which are not delivery refusals. */
+const AUTO_REPLY_SKIP_PREFIX = "WHATSAPP_AUTO_REPLY_SKIPPED_";
+
+/**
+ * True when a recorded event means the attempt was refused or was unusable,
+ * rather than accepted.
+ *
+ * Warn and error outcomes are exactly those — the accepted ones (`PROCESSED`,
+ * `INBOX_STORED`, `AUTO_REPLY_QUEUED`) are info or debug, and so are the
+ * deliberately ignored ones. Auto-reply skips are excluded by name even though
+ * some are logged at warn: by the time a reply is skipped the message was
+ * already stored, so counting it as a refusal would send the merchant to fix
+ * their webhook when the setting that mattered was the reply policy.
+ */
+export function isInboundWebhookRejection(
+  event: string | null | undefined,
+): boolean {
+  const name = event?.trim();
+  if (!name) return false;
+  if (name.startsWith(AUTO_REPLY_SKIP_PREFIX)) return false;
+  const outcome = inboundWebhookOutcomeForEvent(name);
+  if (!outcome) return false;
+  return outcome.level === "warn" || outcome.level === "error";
+}
+
 /** Every event name this module can emit, for documentation and tests. */
 export function inboundWebhookEventNames(): string[] {
   return [

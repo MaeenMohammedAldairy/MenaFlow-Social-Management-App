@@ -2719,6 +2719,37 @@ components:
                 stopped the request and the fields each one is missing.
               items:
                 $ref: "#/components/schemas/IncompletePublicationProduct"
+    InboundWebhookAttemptSummary:
+      type: object
+      description: >-
+        What the provider's webhook calls did over the retention window. This is
+        the evidence that separates "the provider never called us" from "it
+        called and we refused it" — two faults with different fixes that both
+        look like "no messages are arriving". Null when the delivery log was not
+        read for this platform.
+      properties:
+        count:
+          type: integer
+        lastAt:
+          type: [string, "null"]
+          format: date-time
+        lastEvent:
+          type: [string, "null"]
+        lastHint:
+          type: [string, "null"]
+          description: Arabic guidance recorded for the last outcome
+        acceptedCount:
+          type: integer
+        rejectedCount:
+          type: integer
+        lastRejectedEvent:
+          type: [string, "null"]
+        lastRejectedHint:
+          type: [string, "null"]
+      required:
+        - count
+        - acceptedCount
+        - rejectedCount
     DiagnosticIssue:
       type: object
       description: One actionable problem, worded for the merchant
@@ -2761,6 +2792,10 @@ components:
         webhookUrl:
           type: [string, "null"]
           format: uri
+        webhookAttempts:
+          oneOf:
+            - $ref: "#/components/schemas/InboundWebhookAttemptSummary"
+            - type: "null"
         issues:
           type: array
           items:
@@ -2770,6 +2805,7 @@ components:
         - directMessageCount
         - autoReplyEvents
         - webhookSecretConfigured
+        - webhookAttempts
         - issues
     WhatsAppWebhookReconfiguration:
       type: object
@@ -2838,6 +2874,10 @@ components:
           type: boolean
         appSecretConfigured:
           type: boolean
+        webhookAttempts:
+          oneOf:
+            - $ref: "#/components/schemas/InboundWebhookAttemptSummary"
+            - type: "null"
         issues:
           type: array
           items:
@@ -2850,6 +2890,7 @@ components:
         - subscriptions
         - verifyTokenConfigured
         - appSecretConfigured
+        - webhookAttempts
         - issues
     MetaAutoReplySettings:
       type: object

@@ -33,6 +33,10 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
+import {
+  webhookAttemptFacts,
+  webhookAttemptHeadline,
+} from "@/lib/inbound-webhook-copy";
 
 const defaultSettings: WhatsAppAutoReplySettings = {
   enabled: false,
@@ -213,6 +217,10 @@ function WhatsAppReplyContent({
     }
   };
 
+  const attemptFormatters = {
+    formatNumber: formatArabicNumber,
+    formatDateTime: formatArabicDateTime,
+  };
   const inbound = settingsQuery.data?.inbound;
   const inboundFacts: InboundDeliveryFact[] = inbound
     ? [
@@ -240,8 +248,13 @@ function WhatsAppReplyContent({
           label: "سر الويب هوك",
           value: inbound.webhookSecretConfigured ? "مهيأ" : "غير مهيأ",
         },
+        ...webhookAttemptFacts(inbound.webhookAttempts, attemptFormatters),
       ]
     : [];
+  const inboundSummary = webhookAttemptHeadline(
+    inbound?.webhookAttempts,
+    attemptFormatters,
+  );
 
   const retrySettings = () => void settingsQuery.refetch();
   const returnHref: Href =
@@ -301,6 +314,7 @@ function WhatsAppReplyContent({
               <InboundDeliveryCard
                 title="استقبال رسائل العملاء"
                 delivered={inbound.deliveryConfirmed}
+                summary={inboundSummary}
                 facts={inboundFacts}
                 issues={inbound.issues}
                 action={{

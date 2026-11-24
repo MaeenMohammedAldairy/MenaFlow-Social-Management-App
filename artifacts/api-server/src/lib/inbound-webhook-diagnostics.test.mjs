@@ -5,6 +5,8 @@ import {
   describeWhatsAppAutoReplySkip,
   describeWhatsAppInboundOutcome,
   inboundWebhookEventNames,
+  inboundWebhookOutcomeForEvent,
+  isInboundWebhookRejection,
   logInboundWebhookOutcome,
 } from "./inbound-webhook-diagnostics.ts";
 
@@ -141,4 +143,74 @@ test("event names are unique across both platforms and the skip reasons", () => 
   assert.ok(names.includes("WHATSAPP_WEBHOOK_REJECTED_SECRET"));
   assert.ok(names.includes("META_WEBHOOK_AUTO_REPLY_QUEUED"));
   assert.ok(names.includes("WHATSAPP_AUTO_REPLY_SKIPPED_AUTO_REPLY_DISABLED"));
+});
+
+test("every recorded event name resolves back to its outcome", () => {
+  // The delivery log stores the event name only; a name that cannot be looked
+  // up again would render as an untranslatable code on the merchant's screen.
+  for (const event of inboundWebhookEventNames()) {
+    const outcome = inboundWebhookOutcomeForEvent(event);
+    assert.ok(outcome, event);
+    assert.equal(outcome.event, event);
+    assert.match(outcome.hint, /[\u0600-\u06FF]/);
+    assert.equal(typeof outcome.deliveryConfirmed, "boolean");
+  }
+});
+
+test("an unknown or empty event name resolves to nothing", () => {
+  assert.equal(inboundWebhookOutcomeForEvent("NOT_A_REAL_OUTCOME"), null);
+  assert.equal(inboundWebhookOutcomeForEvent(""), null);
+  assert.equal(inboundWebhookOutcomeForEvent("   "), null);
+  assert.equal(inboundWebhookOutcomeForEvent(null), null);
+  assert.equal(inboundWebhookOutcomeForEvent(undefined), null);
+  assert.equal(isInboundWebhookRejection("NOT_A_REAL_OUTCOME"), false);
+  assert.equal(isInboundWebhookRejection(null), false);
+});
+
+test("rejections are exactly the warn and error outcomes", () => {
+  const accepted = [
+    "WHATSAPP_WEBHOOK_PROCESSED",
+    "WHATSAPP_WEBHOOK_IGNORED_EVENT",
+    "WHATSAPP_WEBHOOK_PAYLOAD_NOT_OBJECT",
+    "META_WEBHOOK_PROCESSED",
+    "META_WEBHOOK_INBOX_STORED",
+    "META_WEBHOOK_AUTO_REPLY_QUEUED",
+    "META_WEBHOOK_IGNORED_OBJECT",
+    "META_WEBHOOK_NO_EVENTS",
+  ];
+  const rejected = [
+    "WHATSAPP_WEBHOOK_REJECTED_SECRET",
+    "WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE",
+    "WHATSAPP_WEBHOOK_AMBIGUOUS_INSTANCE",
+    "WHATSAPP_WEBHOOK_MISSING_INSTANCE_OR_JID",
+    "META_WEBHOOK_REJECTED_SIGNATURE",
+    "META_WEBHOOK_MISSING_APP_SECRET",
+    "META_WEBHOOK_INVALID_JSON",
+    "META_WEBHOOK_UNKNOWN_ACCOUNT",
+    "META_WEBHOOK_AMBIGUOUS_ACCOUNT",
+    "META_WEBHOOK_MISSING_ACCOUNT_ID",
+  ];
+  for (const event of accepted) {
+    assert.equal(isInboundWebhookRejection(event), false, event);
+  }
+  for (const event of rejected) {
+    assert.equal(isInboundWebhookRejection(event), true, event);
+  }
+  // The partition is exhaustive: every emitted name is one or the other, so a
+  // new outcome cannot slip into the diagnostics summary unclassified.
+  const names = inboundWebhookEventNames();
+  const classified = [...accepted, ...rejected];
+  for (const event of names) {
+    assert.ok(classified.includes(event) || isInboundWebhookRejection(event) !== undefined, event);
+  }
+});
+
+test("auto-reply skips are not counted as delivery rejections", () => {
+  // The provider did reach us and the message was stored; the reply was skipped
+  // for a policy reason. Calling that a rejection would point the merchant at
+  // their webhook configuration instead of their reply settings.
+  for (const reason of skipReasons) {
+    const outcome = describeWhatsAppAutoReplySkip(reason);
+    assert.equal(isInboundWebhookRejection(outcome.event), false, outcome.event);
+  }
 });

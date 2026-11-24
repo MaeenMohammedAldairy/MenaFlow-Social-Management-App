@@ -28,6 +28,7 @@ export type InboundDeliveryIssue = {
 export function InboundDeliveryCard({
   title,
   delivered,
+  summary,
   facts,
   issues,
   action,
@@ -35,6 +36,12 @@ export function InboundDeliveryCard({
   title: string;
   /** True once at least one event from the provider has been stored. */
   delivered: boolean;
+  /**
+   * One sentence over the recorded webhook attempts. The fact rows give the
+   * numbers; this says what they mean, which is the part a merchant cannot
+   * derive from "١٢ / ٣" on their own.
+   */
+  summary?: string | null;
   facts: InboundDeliveryFact[];
   issues: InboundDeliveryIssue[];
   action?: {
@@ -74,6 +81,12 @@ export function InboundDeliveryCard({
           tone={delivered ? "green" : "amber"}
         />
       </View>
+
+      {summary && summary.trim().length > 0 ? (
+        <Text style={[styles.summary, { color: colors.mutedForeground }]}>
+          {summary}
+        </Text>
+      ) : null}
 
       {visibleFacts.length > 0 ? (
         <View style={styles.facts}>
@@ -157,6 +170,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   title: { flex: 1, fontSize: 14, fontWeight: "800", textAlign: "right" },
+  summary: { fontSize: 12.5, lineHeight: 19, textAlign: "right" },
   facts: { gap: 6 },
   factRow: {
     flexDirection: "row",

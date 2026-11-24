@@ -69,3 +69,14 @@ live run alive without writing per page.
 Groups are claimed in a single batched `UPDATE … RETURNING` before any fetching
 begins, so two processes never sync the same group, and the fan-out then runs
 through the concurrency limit instead of `Promise.all`.
+
+## Inbound delivery
+
+Sync pulls history; the webhook pushes new messages. When neither produces
+customer messages the two failures look the same on screen, so every inbound
+decision is named, logged and recorded for seven days in
+`mena_inbound_webhook_events`. The reply-settings screen reports whether
+Evolution called at all, whether every call was refused and why, and whether the
+calls that were accepted simply carried group traffic instead of direct
+messages. See `docs/INBOUND_DELIVERY_DIAGNOSTICS.md` for the outcome vocabulary,
+the retention variables, and the production queries.
