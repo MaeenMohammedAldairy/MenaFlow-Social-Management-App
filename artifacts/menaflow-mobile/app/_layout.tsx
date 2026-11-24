@@ -46,7 +46,7 @@ import {
   getGetOnboardingStatusQueryKey,
   getOnboardingStatus,
   getOnboardingStatusQueryKey,
-  fetchApiResponse,
+  listWorkspaces,
   setAuthTokenGetter,
   setBaseUrl,
   setWorkspaceIdGetter,
@@ -307,14 +307,13 @@ function AuthenticatedAppNavigator() {
 
   const workspaceListQuery = useQuery({
     queryKey: ["workspace-list", userId ?? null],
-    queryFn: async (): Promise<WorkspaceSummary[]> => {
-      const response = await fetchApiResponse("/api/workspaces");
-      if (!response.ok) throw new Error("WORKSPACE_LIST_LOAD_FAILED");
-      const payload = (await response.json()) as { workspaces?: unknown };
-      return Array.isArray(payload.workspaces)
-        ? payload.workspaces.filter(isWorkspaceSummary)
-        : [];
-    },
+    // Through the generated client so a refusal arrives as an `ApiError`: the
+    // cache-level `reportApiError` raises the session banner on 401 and the
+    // retryable notice on 5xx, which a bare `Error("WORKSPACE_LIST_LOAD_FAILED")`
+    // never did. The filter stays: the client types the payload but does not
+    // validate it, and a malformed entry must not become the active workspace.
+    queryFn: async (): Promise<WorkspaceSummary[]> =>
+      (await listWorkspaces()).workspaces.filter(isWorkspaceSummary),
     enabled: Boolean(isSignedIn && userId && authTokenGetterReady),
     retry: false,
   });

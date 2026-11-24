@@ -1,13 +1,10 @@
 import { createContext, useContext } from "react";
+import { type WorkspaceSummary } from "@workspace/api-client-react";
 
-export type WorkspaceSummary = {
-  id: string;
-  name: string;
-  /** نوع النشاط التجاري؛ null حتى يكمله التاجر من شاشة الإعداد. */
-  businessType?: string | null;
-  country?: string | null;
-  role: string;
-};
+// The shape is the contract's. The hand-written copy that used to live here had
+// already drifted from it (no `timezone`), and every screen reads workspaces
+// through this context, so there is no second place for the type to be wrong.
+export type { WorkspaceSummary };
 
 export type WorkspaceContextValue = {
   workspaces: WorkspaceSummary[];
