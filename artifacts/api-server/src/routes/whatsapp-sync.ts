@@ -23,6 +23,10 @@ import {
 import { resolveWhatsAppGroupSyncTargets } from "../lib/whatsapp-group-identity";
 import { buildWhatsAppSyncStatusGroups } from "../lib/whatsapp-sync-status";
 import { hasEnabledWhatsAppSyncType } from "../lib/whatsapp-sync-options";
+import {
+  mapWithConcurrency,
+  resolveSyncGroupConcurrency,
+} from "../lib/sync-run-control";
 
 import {
   ensureSyncState,
@@ -243,8 +247,13 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
       return;
     }
 
-    void Promise.all(
-      claimedGroups.map(async (group) => {
+    // Bounded: forty selected groups used to mean forty parallel history
+    // scans against one Evolution instance and one database pool. The limit is
+    // configurable and clamped, so a typo cannot reintroduce the flood.
+    void mapWithConcurrency(
+      claimedGroups,
+      resolveSyncGroupConcurrency(),
+      async (group) => {
         try {
           await syncGroupHistory(
             workspaceId,
@@ -304,7 +313,7 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
             );
           }
         }
-      }),
+      },
     ).catch((error: unknown) => {
       logger.error(
         {

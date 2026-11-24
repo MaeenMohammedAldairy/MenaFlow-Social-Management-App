@@ -49,6 +49,12 @@ import {
 } from "../lib/whatsapp-message-scope";
 import { isWhatsAppOptOutMessage } from "../lib/whatsapp-opt-out";
 import {
+  createHeartbeat,
+  createRunDeadline,
+  resolveSyncHeartbeatMs,
+  resolveSyncRunBudgetMs,
+} from "../lib/sync-run-control";
+import {
   shouldQueueWhatsAppAutoReply,
   whatsAppAutoReplyHourlyLimit,
   whatsAppAutoReplyLoopGuardCode,
@@ -848,6 +854,14 @@ async function persistImportedMessage(
 // remoteJid filter (50 pages × 100 records per sync run per group).
 const WHATSAPP_HISTORY_SCAN_PAGE_CAP = 50;
 
+/** Cooperative controls for a history scan: a liveness beat and a stop check. */
+type WhatsAppHistoryFetchControls = {
+  /** Called after every page; the caller uses it to prove the run is alive. */
+  onPage?: (info: { page: number; recordCount: number }) => void | Promise<void>;
+  /** Returning false stops the scan and keeps whatever was collected. */
+  shouldContinue?: () => boolean;
+};
+
 async function fetchHistoryForGroup(
   instanceName: string,
   groupJid: string,
@@ -855,8 +869,10 @@ async function fetchHistoryForGroup(
   beforeCursor?: Date,
   maxNewMessages?: number,
   fullyPersistedMessageIds: ReadonlySet<string> = new Set(),
-): Promise<unknown[]> {
+  controls: WhatsAppHistoryFetchControls = {},
+): Promise<{ records: unknown[]; budgetReached: boolean }> {
   const matchingRecords = new Map<string, unknown>();
+  let budgetReached = false;
   let receivedRecordCount = 0;
   let newMessageCount = 0;
   // When the upstream Evolution deployment ignores the remoteJid filter it
@@ -868,7 +884,7 @@ async function fetchHistoryForGroup(
   let filterIgnored = false;
   let scannedPages = 0;
   for (const jidField of ["remoteJid", "remoteJidAlt"] as const) {
-    if (filterIgnored) break;
+    if (filterIgnored || budgetReached) break;
     if (
       maxNewMessages !== undefined &&
       newMessageCount >= maxNewMessages
@@ -877,6 +893,13 @@ async function fetchHistoryForGroup(
     }
     const seenPageRecordIds = new Set<string>();
     for (let page = 1; page <= 1000; page += 1) {
+      // Checked before the request, not after: a run that is out of budget must
+      // not start another 30-second page fetch. What was already collected is
+      // kept, and the next sync continues from the advanced cursor.
+      if (controls.shouldContinue && !controls.shouldContinue()) {
+        budgetReached = true;
+        break;
+      }
       const response = await evolutionRequest(
         `chat/findMessages/${encodeURIComponent(instanceName)}`,
         {
@@ -892,6 +915,9 @@ async function fetchHistoryForGroup(
         throw new Error("EVOLUTION_HISTORY_INVALID_RESPONSE");
       }
       receivedRecordCount += records.length;
+      if (controls.onPage) {
+        await controls.onPage({ page, recordCount: records.length });
+      }
       const pageRecordIds = records.map((record) => {
         const envelope = asRecord(record);
         const key = asRecord(envelope?.key);
@@ -982,12 +1008,24 @@ async function fetchHistoryForGroup(
   }
   if (
     !filterIgnored &&
+    !budgetReached &&
     receivedRecordCount > 0 &&
     matchingRecords.size === 0
   ) {
     throw new Error("EVOLUTION_HISTORY_GROUP_MISMATCH");
   }
-  return [...matchingRecords.values()];
+  if (budgetReached) {
+    logger.warn(
+      {
+        instanceName,
+        groupJid,
+        receivedRecordCount,
+        matchedRecordCount: matchingRecords.size,
+      },
+      "WHATSAPP_HISTORY_RUN_BUDGET_REACHED",
+    );
+  }
+  return { records: [...matchingRecords.values()], budgetReached };
 }
 
 export async function syncGroupHistory(
@@ -1080,6 +1118,9 @@ export async function syncGroupHistory(
   );
   const stats = { imported: 0, skipped: 0, failed: 0, status: "running" };
   const runStartedAt = Date.now();
+  const runDeadline = createRunDeadline(resolveSyncRunBudgetMs());
+  const heartbeat = createHeartbeat(resolveSyncHeartbeatMs());
+  let historyBudgetReached = false;
   let fetchedHistoryCount = 0;
   let alreadyPersistedCount = 0;
   const logSyncResult = (fetchedCount: number) => {
@@ -1094,6 +1135,7 @@ export async function syncGroupHistory(
         importedCount: stats.imported,
         skippedCount: stats.skipped,
         failedCount: stats.failed,
+        historyBudgetReached,
         durationMs: Date.now() - runStartedAt,
       },
       "WhatsApp historical sync completed",
@@ -1123,14 +1165,30 @@ export async function syncGroupHistory(
 
     if (await cancelIfAutoSyncDisabled()) return stats;
 
-    let messages = await fetchHistoryForGroup(
+    const history = await fetchHistoryForGroup(
       instanceName,
       groupJid,
       100,
       historyCursor,
       includeHistory ? historyLimit : undefined,
       fullyPersistedMessageIds,
+      {
+        shouldContinue: () => !runDeadline.expired(),
+        // The fetch phase can run for minutes without touching the database,
+        // and stale-run cancellation in another process only looks at
+        // updated_at. Beating once per interval keeps a live run alive without
+        // writing on every page.
+        onPage: async () => {
+          if (!heartbeat.due()) return;
+          heartbeat.beat();
+          await updateSyncState(workspaceId, instanceName, groupJid, groupId, {
+            status: "running",
+          });
+        },
+      },
     );
+    let messages = history.records;
+    historyBudgetReached = history.budgetReached;
     fetchedHistoryCount = messages.length;
     if (!includeHistory) {
       messages = filterWhatsAppHistoryFrom(messages, syncStartedAt);
@@ -1143,15 +1201,23 @@ export async function syncGroupHistory(
     alreadyPersistedCount = candidateMessageCount - messages.length;
     if (await cancelIfAutoSyncDisabled()) return stats;
     if (messages.length === 0) {
-      stats.status =
-        includeHistory && fetchedHistoryCount === 0 ? "empty" : "complete";
+      stats.status = historyBudgetReached
+        ? "partial"
+        : includeHistory && fetchedHistoryCount === 0
+          ? "empty"
+          : "complete";
       await updateSyncState(workspaceId, instanceName, groupJid, groupId, {
         status: stats.status,
         lastSyncedAt: new Date(),
         importedCount: 0,
         skippedCount: 0,
         failedCount: 0,
-        lastError: stats.status === "empty" ? "EVOLUTION_HISTORY_EMPTY" : null,
+        lastError:
+          stats.status === "empty"
+            ? "EVOLUTION_HISTORY_EMPTY"
+            : historyBudgetReached
+              ? "WHATSAPP_HISTORY_RUN_BUDGET_REACHED"
+              : null,
         completedAt: new Date(),
       });
       logSyncResult(fetchedHistoryCount);
@@ -1249,7 +1315,9 @@ export async function syncGroupHistory(
     if (await cancelIfAutoSyncDisabled()) return stats;
 
     const status =
-      stats.failed > 0 || (stats.imported === 0 && stats.skipped > 0)
+      stats.failed > 0 ||
+      historyBudgetReached ||
+      (stats.imported === 0 && stats.skipped > 0)
         ? "partial"
         : "complete";
     const cursorUpdates = latestCursor
@@ -1268,9 +1336,13 @@ export async function syncGroupHistory(
       lastError:
         stats.failed > 0
           ? (firstFailureCode ?? "WHATSAPP_MESSAGE_IMPORT_FAILED")
-          : stats.imported === 0 && stats.skipped > 0
-            ? "EVOLUTION_HISTORY_MESSAGES_SKIPPED"
-            : null,
+          : historyBudgetReached
+            // Not a fault: the run stopped on its budget and the next sync
+            // continues from the cursor this one advanced.
+            ? "WHATSAPP_HISTORY_RUN_BUDGET_REACHED"
+            : stats.imported === 0 && stats.skipped > 0
+              ? "EVOLUTION_HISTORY_MESSAGES_SKIPPED"
+              : null,
       completedAt: new Date(),
     });
     stats.status = status;

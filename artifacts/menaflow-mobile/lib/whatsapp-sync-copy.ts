@@ -51,6 +51,8 @@ const SYNC_FAILURE_MESSAGES: Record<string, string> = {
     "سجل هذه المجموعة أطول من الحد الأقصى للاستيراد في محاولة واحدة. كرّر المزامنة لمتابعة الاستيراد من حيث توقّف.",
   EVOLUTION_HISTORY_MESSAGES_SKIPPED:
     "وصلت رسائل لهذه المجموعة، لكن تعذّر حفظها كلها. أعد المزامنة، وإذا تكرر الأمر فتواصل مع الدعم.",
+  WHATSAPP_HISTORY_RUN_BUDGET_REACHED:
+    "استورد الخادم جزءًا من سجل هذه المجموعة لأن المزامنة بلغت أقصى مدة مسموحة. المزامنة التالية تكمل من حيث توقفت، ويمكنك إعادة المزامنة الآن لمتابعة الاستيراد.",
 
   // Local persistence and identity.
   WHATSAPP_DATABASE_UNAVAILABLE:
