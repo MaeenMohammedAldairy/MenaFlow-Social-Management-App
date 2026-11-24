@@ -9,8 +9,6 @@ export {
 export type { WhatsAppAutoReplyLanguage, WhatsAppAutoReplyTone } from "./whatsapp-auto-replies";
 export type { WhatsAppSyncStatusEntry } from "./whatsapp-groups";
 export * from "./social-connections";
-export * from "./social-account-details";
-export * from "./content-management";
 export * from "./onboarding";
 
 export {

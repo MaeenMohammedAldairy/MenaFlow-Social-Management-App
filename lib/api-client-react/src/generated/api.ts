@@ -24,15 +24,20 @@ import type {
   AiContentResponse,
   ApiError,
   AuthAccessResponse,
+  AutoPublishSettings,
+  AutoPublishSettingsInput,
   CatalogProductListResponse,
   CreateCatalogProductInput,
   CreateOrderRequest,
+  CreatePostFromMessageInput,
   CreatePostInput,
   CreateProductDraftInput,
+  CurrentWorkspace,
   DeleteMetaConnectionParams,
   DeleteWhatsAppConnectionParams,
   ExtractWhatsAppProductsInput,
   ExtractWhatsAppProductsResponse,
+  FacebookPostVerification,
   GetKnownPostIds200,
   GetPostReportSummaryParams,
   GetPostsPage200,
@@ -75,9 +80,13 @@ import type {
   OrderResponse,
   OrderStatusUpdateRequest,
   OrderSummary,
+  PlansResponse,
   PostDeleteResult,
   PostItem,
+  PostPublishResponse,
   PostReportSummary,
+  ProcessWhatsAppBacklogInput,
+  ProcessWhatsAppBacklogResult,
   ProductCandidateListResponse,
   ProductChangeDecisionInput,
   ProductChangeDecisionResponse,
@@ -101,12 +110,15 @@ import type {
   ProductUpdateProposalResponse,
   ProductWriteResponse,
   PublishCatalogProductsInput,
+  PublishPostInput,
   PushTokenInput,
   PushTokenListResponse,
   PushTokenRegisteredResponse,
   PushTokenRemovedResponse,
+  ReadinessResponse,
   ScannedPostExtraction,
   ScannedPostExtractionInput,
+  SocialAccountDetails,
   SocialConnectionsResponse,
   SubscriptionOverview,
   TestWhatsAppAutoReply200,
@@ -482,6 +494,84 @@ export function useListWorkspaces<TData = Awaited<ReturnType<typeof listWorkspac
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListWorkspacesQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWorkspaceCurrentUrl = () => {
+
+
+
+
+  return `/api/workspaces/current`
+}
+
+/**
+ * Resolves the `x-workspace-id` header, or the caller's only workspace when the header is absent. The app uses it to label the switcher and to learn the caller's role, which decides what the settings screens allow.
+ * @summary The workspace the request is scoped to
+ */
+export const getWorkspaceCurrent = async ( options?: Parameters<typeof customFetch>[1]): Promise<CurrentWorkspace> => {
+
+  return customFetch<CurrentWorkspace>(getGetWorkspaceCurrentUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWorkspaceCurrentQueryKey = () => {
+    return [
+    `/api/workspaces/current`
+    ] as const;
+    }
+
+
+export const getGetWorkspaceCurrentQueryOptions = <TData = Awaited<ReturnType<typeof getWorkspaceCurrent>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceCurrent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWorkspaceCurrentQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWorkspaceCurrent>>> = ({ signal }) => getWorkspaceCurrent({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceCurrent>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWorkspaceCurrentQueryResult = NonNullable<Awaited<ReturnType<typeof getWorkspaceCurrent>>>
+export type GetWorkspaceCurrentQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary The workspace the request is scoped to
+ */
+
+export function useGetWorkspaceCurrent<TData = Awaited<ReturnType<typeof getWorkspaceCurrent>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWorkspaceCurrent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWorkspaceCurrentQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -1127,6 +1217,84 @@ export const useCompleteSocialAccountsSetup = <TError = ErrorType<ApiError>,
       > => {
       return useMutation(getCompleteSocialAccountsSetupMutationOptions(options));
     }
+
+export const getGetSocialAccountDetailsUrl = (platform: 'facebook' | 'instagram' | 'whatsapp',) => {
+
+
+
+
+  return `/api/social/account-details/${platform}`
+}
+
+/**
+ * Asks the platform for the profile, permissions, metrics and recent posts, so a permissions problem shows as a missing permission rather than an empty chart. Every platform answers the same core shape; the extras are marked below with the platform that sends them. Field values that the platform did not provide are null, not missing.
+ * @summary One connected account as the platform sees it
+ */
+export const getSocialAccountDetails = async (platform: 'facebook' | 'instagram' | 'whatsapp', options?: Parameters<typeof customFetch>[1]): Promise<SocialAccountDetails> => {
+
+  return customFetch<SocialAccountDetails>(getGetSocialAccountDetailsUrl(platform),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSocialAccountDetailsQueryKey = (platform: 'facebook' | 'instagram' | 'whatsapp',) => {
+    return [
+    `/api/social/account-details/${platform}`
+    ] as const;
+    }
+
+
+export const getGetSocialAccountDetailsQueryOptions = <TData = Awaited<ReturnType<typeof getSocialAccountDetails>>, TError = ErrorType<ApiError>>(platform: 'facebook' | 'instagram' | 'whatsapp', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSocialAccountDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSocialAccountDetailsQueryKey(platform);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSocialAccountDetails>>> = ({ signal }) => getSocialAccountDetails(platform, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: platform !== null && platform !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSocialAccountDetails>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSocialAccountDetailsQueryResult = NonNullable<Awaited<ReturnType<typeof getSocialAccountDetails>>>
+export type GetSocialAccountDetailsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary One connected account as the platform sees it
+ */
+
+export function useGetSocialAccountDetails<TData = Awaited<ReturnType<typeof getSocialAccountDetails>>, TError = ErrorType<ApiError>>(
+ platform: 'facebook' | 'instagram' | 'whatsapp', options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSocialAccountDetails>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSocialAccountDetailsQueryOptions(platform,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetSocialConnectionsUrl = () => {
 
@@ -7410,5 +7578,748 @@ export const useDecideWhatsAppContentAssociation = <TError = ErrorType<ApiError>
         TContext
       > => {
       return useMutation(getDecideWhatsAppContentAssociationMutationOptions(options));
+    }
+
+export const getListPlansUrl = () => {
+
+
+
+
+  return `/api/plans`
+}
+
+/**
+ * Public and cacheable for five minutes — it is the same for everyone and changes only when the pricing does. `paymentAvailable` says whether this deployment can take a payment at all, so the app can hide an upgrade button it could not complete.
+ * @summary The subscription plans and the trial on offer
+ */
+export const listPlans = async ( options?: Parameters<typeof customFetch>[1]): Promise<PlansResponse> => {
+
+  return customFetch<PlansResponse>(getListPlansUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListPlansQueryKey = () => {
+    return [
+    `/api/plans`
+    ] as const;
+    }
+
+
+export const getListPlansQueryOptions = <TData = Awaited<ReturnType<typeof listPlans>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListPlansQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listPlans>>> = ({ signal }) => listPlans({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListPlansQueryResult = NonNullable<Awaited<ReturnType<typeof listPlans>>>
+export type ListPlansQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary The subscription plans and the trial on offer
+ */
+
+export function useListPlans<TData = Awaited<ReturnType<typeof listPlans>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listPlans>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListPlansQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetReadinessUrl = () => {
+
+
+
+
+  return `/api/readyz`
+}
+
+/**
+ * Distinct from `/healthz`: this one answers 503 when the database is unreachable or when a column the code needs is absent, which is the state a half-applied migration leaves behind. `missingSchema` names the exact columns so the operator knows what to run.
+ * @summary Whether the server can serve, and which migrations are missing
+ */
+export const getReadiness = async ( options?: Parameters<typeof customFetch>[1]): Promise<ReadinessResponse> => {
+
+  return customFetch<ReadinessResponse>(getGetReadinessUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetReadinessQueryKey = () => {
+    return [
+    `/api/readyz`
+    ] as const;
+    }
+
+
+export const getGetReadinessQueryOptions = <TData = Awaited<ReturnType<typeof getReadiness>>, TError = ErrorType<ReadinessResponse>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReadiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetReadinessQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getReadiness>>> = ({ signal }) => getReadiness({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getReadiness>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetReadinessQueryResult = NonNullable<Awaited<ReturnType<typeof getReadiness>>>
+export type GetReadinessQueryError = ErrorType<ReadinessResponse>
+
+
+/**
+ * @summary Whether the server can serve, and which migrations are missing
+ */
+
+export function useGetReadiness<TData = Awaited<ReturnType<typeof getReadiness>>, TError = ErrorType<ReadinessResponse>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getReadiness>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetReadinessQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSubscribeToPostEventsUrl = () => {
+
+
+
+
+  return `/api/posts/events`
+}
+
+/**
+ * Emits `posts_changed` whenever a post in this workspace is created, edited or published, so the app can refetch instead of polling. Heartbeat comments every 25 seconds keep proxies from closing an idle connection.
+ * @summary A server-sent-events stream that says when posts change
+ */
+export const subscribeToPostEvents = async ( options?: Parameters<typeof customFetch>[1]): Promise<string> => {
+
+  return customFetch<string>(getSubscribeToPostEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSubscribeToPostEventsQueryKey = () => {
+    return [
+    `/api/posts/events`
+    ] as const;
+    }
+
+
+export const getSubscribeToPostEventsQueryOptions = <TData = Awaited<ReturnType<typeof subscribeToPostEvents>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof subscribeToPostEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSubscribeToPostEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof subscribeToPostEvents>>> = ({ signal }) => subscribeToPostEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof subscribeToPostEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SubscribeToPostEventsQueryResult = NonNullable<Awaited<ReturnType<typeof subscribeToPostEvents>>>
+export type SubscribeToPostEventsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary A server-sent-events stream that says when posts change
+ */
+
+export function useSubscribeToPostEvents<TData = Awaited<ReturnType<typeof subscribeToPostEvents>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof subscribeToPostEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSubscribeToPostEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreatePostFromWhatsAppMessageUrl = () => {
+
+
+
+
+  return `/api/posts/from-message`
+}
+
+/**
+ * Runs the same intake the backlog worker uses, but for a single message the merchant picked. `201` when a post was created, `200` when the message already had one. Automatic publishing is deliberately off here: the merchant is reviewing this message by hand.
+ * @summary Turn one WhatsApp message into a post
+ */
+export const createPostFromWhatsAppMessage = async (createPostFromMessageInput: CreatePostFromMessageInput, options?: Parameters<typeof customFetch>[1]): Promise<PostItem> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PostItem>(getCreatePostFromWhatsAppMessageUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createPostFromMessageInput)
+  }
+);}
+
+
+
+
+
+export const getCreatePostFromWhatsAppMessageMutationKey = () => ['createPostFromWhatsAppMessage'] as const;
+
+export const getCreatePostFromWhatsAppMessageMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPostFromWhatsAppMessage>>, TError,CreatePostFromWhatsAppMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createPostFromWhatsAppMessage>>, TError,CreatePostFromWhatsAppMessageMutationVariables, TContext> => {
+
+const mutationKey = getCreatePostFromWhatsAppMessageMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createPostFromWhatsAppMessage>>, CreatePostFromWhatsAppMessageMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createPostFromWhatsAppMessage(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreatePostFromWhatsAppMessageMutationResult = NonNullable<Awaited<ReturnType<typeof createPostFromWhatsAppMessage>>>
+    export type CreatePostFromWhatsAppMessageMutationBody = BodyType<CreatePostFromMessageInput>
+    export type CreatePostFromWhatsAppMessageMutationError = ErrorType<ApiError>
+    export type CreatePostFromWhatsAppMessageMutationVariables = {data: BodyType<CreatePostFromMessageInput>}
+
+    /**
+ * @summary Turn one WhatsApp message into a post
+ */
+export const useCreatePostFromWhatsAppMessage = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createPostFromWhatsAppMessage>>, TError,CreatePostFromWhatsAppMessageMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createPostFromWhatsAppMessage>>,
+        TError,
+        CreatePostFromWhatsAppMessageMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreatePostFromWhatsAppMessageMutationOptions(options));
+    }
+
+export const getGetAutoPublishSettingsUrl = () => {
+
+
+
+
+  return `/api/posts/auto-publish-settings`
+}
+
+/**
+ * @summary Whether approved posts are published without a click, and where
+ */
+export const getAutoPublishSettings = async ( options?: Parameters<typeof customFetch>[1]): Promise<AutoPublishSettings> => {
+
+  return customFetch<AutoPublishSettings>(getGetAutoPublishSettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetAutoPublishSettingsQueryKey = () => {
+    return [
+    `/api/posts/auto-publish-settings`
+    ] as const;
+    }
+
+
+export const getGetAutoPublishSettingsQueryOptions = <TData = Awaited<ReturnType<typeof getAutoPublishSettings>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAutoPublishSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetAutoPublishSettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAutoPublishSettings>>> = ({ signal }) => getAutoPublishSettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAutoPublishSettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAutoPublishSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getAutoPublishSettings>>>
+export type GetAutoPublishSettingsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Whether approved posts are published without a click, and where
+ */
+
+export function useGetAutoPublishSettings<TData = Awaited<ReturnType<typeof getAutoPublishSettings>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAutoPublishSettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAutoPublishSettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateAutoPublishSettingsUrl = () => {
+
+
+
+
+  return `/api/posts/auto-publish-settings`
+}
+
+/**
+ * Turning it on publishes the posts already sitting in `approved` as well, and reports how that went in `initialPublish` — otherwise the merchant would enable the setting and watch nothing happen.
+ * @summary Turn automatic publishing on or off, and choose the channels
+ */
+export const updateAutoPublishSettings = async (autoPublishSettingsInput: AutoPublishSettingsInput, options?: Parameters<typeof customFetch>[1]): Promise<AutoPublishSettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<AutoPublishSettings>(getUpdateAutoPublishSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(autoPublishSettingsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateAutoPublishSettingsMutationKey = () => ['updateAutoPublishSettings'] as const;
+
+export const getUpdateAutoPublishSettingsMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAutoPublishSettings>>, TError,UpdateAutoPublishSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateAutoPublishSettings>>, TError,UpdateAutoPublishSettingsMutationVariables, TContext> => {
+
+const mutationKey = getUpdateAutoPublishSettingsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateAutoPublishSettings>>, UpdateAutoPublishSettingsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateAutoPublishSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateAutoPublishSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateAutoPublishSettings>>>
+    export type UpdateAutoPublishSettingsMutationBody = BodyType<AutoPublishSettingsInput>
+    export type UpdateAutoPublishSettingsMutationError = ErrorType<ApiError>
+    export type UpdateAutoPublishSettingsMutationVariables = {data: BodyType<AutoPublishSettingsInput>}
+
+    /**
+ * @summary Turn automatic publishing on or off, and choose the channels
+ */
+export const useUpdateAutoPublishSettings = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateAutoPublishSettings>>, TError,UpdateAutoPublishSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateAutoPublishSettings>>,
+        TError,
+        UpdateAutoPublishSettingsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateAutoPublishSettingsMutationOptions(options));
+    }
+
+export const getProcessWhatsAppBacklogUrl = () => {
+
+
+
+
+  return `/api/posts/process-whatsapp-backlog`
+}
+
+/**
+ * The manual counterpart of the scheduled sweep. Reports what it found in each bucket, so the merchant can tell "nothing new" from "everything was skipped" — the two look identical without the counts.
+ * @summary Sweep unprocessed WhatsApp messages for posts
+ */
+export const processWhatsAppBacklog = async (processWhatsAppBacklogInput?: ProcessWhatsAppBacklogInput, options?: Parameters<typeof customFetch>[1]): Promise<ProcessWhatsAppBacklogResult> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<ProcessWhatsAppBacklogResult>(getProcessWhatsAppBacklogUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(processWhatsAppBacklogInput)
+  }
+);}
+
+
+
+
+
+export const getProcessWhatsAppBacklogMutationKey = () => ['processWhatsAppBacklog'] as const;
+
+export const getProcessWhatsAppBacklogMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof processWhatsAppBacklog>>, TError,ProcessWhatsAppBacklogMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof processWhatsAppBacklog>>, TError,ProcessWhatsAppBacklogMutationVariables, TContext> => {
+
+const mutationKey = getProcessWhatsAppBacklogMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof processWhatsAppBacklog>>, ProcessWhatsAppBacklogMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  processWhatsAppBacklog(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ProcessWhatsAppBacklogMutationResult = NonNullable<Awaited<ReturnType<typeof processWhatsAppBacklog>>>
+    export type ProcessWhatsAppBacklogMutationBody = BodyType<ProcessWhatsAppBacklogInput> | undefined
+    export type ProcessWhatsAppBacklogMutationError = ErrorType<ApiError>
+    export type ProcessWhatsAppBacklogMutationVariables = {data?: BodyType<ProcessWhatsAppBacklogInput>}
+
+    /**
+ * @summary Sweep unprocessed WhatsApp messages for posts
+ */
+export const useProcessWhatsAppBacklog = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof processWhatsAppBacklog>>, TError,ProcessWhatsAppBacklogMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof processWhatsAppBacklog>>,
+        TError,
+        ProcessWhatsAppBacklogMutationVariables,
+        TContext
+      > => {
+      return useMutation(getProcessWhatsAppBacklogMutationOptions(options));
+    }
+
+export const getPublishPostUrl = (id: string,) => {
+
+
+
+
+  return `/api/posts/${id}/publish`
+}
+
+/**
+ * Claims the post, publishes to each channel in turn and records every outcome as it lands, so a failure part-way leaves a post with one channel live and the result saying which. The response is `400` when any channel failed, but still carries `results` and `post` — read them, do not show a generic error over a half-successful publish.
+ * @summary Publish a post to Facebook and Instagram
+ */
+export const publishPost = async (id: string,
+    publishPostInput: PublishPostInput, options?: Parameters<typeof customFetch>[1]): Promise<PostPublishResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<PostPublishResponse>(getPublishPostUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(publishPostInput)
+  }
+);}
+
+
+
+
+
+export const getPublishPostMutationKey = () => ['publishPost'] as const;
+
+export const getPublishPostMutationOptions = <TError = ErrorType<PostPublishResponse | ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishPost>>, TError,PublishPostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof publishPost>>, TError,PublishPostMutationVariables, TContext> => {
+
+const mutationKey = getPublishPostMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof publishPost>>, PublishPostMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  publishPost(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PublishPostMutationResult = NonNullable<Awaited<ReturnType<typeof publishPost>>>
+    export type PublishPostMutationBody = BodyType<PublishPostInput>
+    export type PublishPostMutationError = ErrorType<PostPublishResponse | ApiError>
+    export type PublishPostMutationVariables = {id: string;data: BodyType<PublishPostInput>}
+
+    /**
+ * @summary Publish a post to Facebook and Instagram
+ */
+export const usePublishPost = <TError = ErrorType<PostPublishResponse | ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof publishPost>>, TError,PublishPostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof publishPost>>,
+        TError,
+        PublishPostMutationVariables,
+        TContext
+      > => {
+      return useMutation(getPublishPostMutationOptions(options));
+    }
+
+export const getVerifyFacebookPostUrl = (id: string,) => {
+
+
+
+
+  return `/api/posts/${id}/verify-facebook`
+}
+
+/**
+ * Closes out a publish whose result the server never learned. Three outcomes, and the difference matters: `found` means it is live and the post is marked published, `not-found` means it is not and the post is marked failed, `unavailable` means Facebook would not say — the post must stay unresolved rather than be retried into a duplicate.
+ * @summary Ask Facebook whether a post it never confirmed actually went live
+ */
+export const verifyFacebookPost = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<FacebookPostVerification> => {
+
+  return customFetch<FacebookPostVerification>(getVerifyFacebookPostUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getVerifyFacebookPostMutationKey = () => ['verifyFacebookPost'] as const;
+
+export const getVerifyFacebookPostMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyFacebookPost>>, TError,VerifyFacebookPostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof verifyFacebookPost>>, TError,VerifyFacebookPostMutationVariables, TContext> => {
+
+const mutationKey = getVerifyFacebookPostMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof verifyFacebookPost>>, VerifyFacebookPostMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  verifyFacebookPost(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VerifyFacebookPostMutationResult = NonNullable<Awaited<ReturnType<typeof verifyFacebookPost>>>
+
+    export type VerifyFacebookPostMutationError = ErrorType<ApiError>
+    export type VerifyFacebookPostMutationVariables = {id: string}
+
+    /**
+ * @summary Ask Facebook whether a post it never confirmed actually went live
+ */
+export const useVerifyFacebookPost = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof verifyFacebookPost>>, TError,VerifyFacebookPostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof verifyFacebookPost>>,
+        TError,
+        VerifyFacebookPostMutationVariables,
+        TContext
+      > => {
+      return useMutation(getVerifyFacebookPostMutationOptions(options));
     }
 

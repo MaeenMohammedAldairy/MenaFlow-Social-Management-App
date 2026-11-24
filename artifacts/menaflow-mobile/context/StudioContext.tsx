@@ -6,11 +6,11 @@ import {
   deletePost as apiDeletePost,
   getAutoPublishSettings,
   processWhatsAppBacklog,
-  publishPostToChannels,
-  saveAutoPublishSettings,
+  publishPost as apiPublishPost,
+  updateAutoPublishSettings as apiUpdateAutoPublishSettings,
   updatePost,
   type AutoPublishSettings,
-  type WhatsAppBacklogResult,
+  type ProcessWhatsAppBacklogResult,
   type PostPublishResponse,
 } from '@workspace/api-client-react';
 import { AppState, Platform } from 'react-native';
@@ -152,7 +152,7 @@ interface StudioContextValue extends StudioState {
   updatePostStatus: (id: string, status: PostStatus) => Promise<void>;
   publishPost: (id: string, channels?: Channel[], retryUncertain?: boolean) => Promise<PostPublishResponse>;
   updateAutoPublishSettings: (enabled: boolean, channels: Channel[]) => Promise<AutoPublishSettings>;
-  analyzeWhatsAppBacklog: () => Promise<WhatsAppBacklogResult>;
+  analyzeWhatsAppBacklog: () => Promise<ProcessWhatsAppBacklogResult>;
   deletePost: (id: string) => Promise<void>;
   updatePreference: (key: keyof Preferences, value: boolean) => void;
   refreshPosts: () => Promise<void>;
@@ -713,7 +713,10 @@ export function StudioProvider({
         (channel): channel is 'facebook' | 'instagram' =>
           channel === 'facebook' || channel === 'instagram',
       );
-      const payload = await publishPostToChannels(id, selectedChannels, retryUncertain);
+      const payload = await apiPublishPost(id, {
+        channels: selectedChannels,
+        ...(retryUncertain === undefined ? {} : { retryUncertain }),
+      });
       commit((current) => ({
         ...current,
         posts: current.posts.map((post) =>
@@ -741,12 +744,12 @@ export function StudioProvider({
         (channel): channel is 'facebook' | 'instagram' =>
           channel === 'facebook' || channel === 'instagram',
       );
-      const saved = await saveAutoPublishSettings({ enabled, channels: validChannels });
+      const saved = await apiUpdateAutoPublishSettings({ enabled, channels: validChannels });
       commit((current) => ({ ...current, autoPublishSettings: saved }));
       return saved;
     },
     analyzeWhatsAppBacklog: async () => {
-      const result = await processWhatsAppBacklog(50);
+      const result = await processWhatsAppBacklog({ limit: 50 });
       await syncWithServer();
       return result;
     },

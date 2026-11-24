@@ -36,8 +36,8 @@ const root = new URL("..", import.meta.url).pathname;
 const routesDir = join(root, "artifacts", "api-server", "src", "routes");
 const specPath = join(root, "lib", "api-spec", "openapi.yaml");
 
-/** Highest coverage reached so far: 88 of 99. Raise it, never lower it. */
-const MINIMUM_COVERED = 88;
+/** Highest coverage reached so far: 99 of 104. Raise it, never lower it. */
+const MINIMUM_COVERED = 99;
 
 /**
  * Paths excluded from the count. The owner console is an internal read-only SPA
@@ -47,24 +47,18 @@ const MINIMUM_COVERED = 88;
  */
 const OUT_OF_CONTRACT = [/^\/owner(?:\/|$)/, /\/webhook$/];
 
-/** Everything still undocumented. Shrink it; do not grow it. */
+/**
+ * Everything still undocumented. Shrink it; do not grow it.
+ *
+ * Only the owner console's reads remain. They are listed so the gate can see
+ * them, and excluded from the count by `OUT_OF_CONTRACT` below.
+ */
 const UNDOCUMENTED = [
-  ["account-details", "GET /social/account-details/:platform"],
-  ["health", "GET /readyz"],
   ["owner", "GET /auto-replies"],
   ["owner", "GET /overview"],
   ["owner", "GET /session"],
   ["owner", "GET /workers"],
   ["owner", "GET /workspaces/:id"],
-  ["plans", "GET /plans"],
-  ["posts-publishing", "POST /posts/:id/publish"],
-  ["posts-publishing", "POST /posts/:id/verify-facebook"],
-  ["posts-read", "GET /posts/events"],
-  ["posts-whatsapp", "POST /posts/from-message"],
-  ["posts-workflow", "GET /posts/auto-publish-settings"],
-  ["posts-workflow", "POST /posts/process-whatsapp-backlog"],
-  ["posts-workflow", "PUT /posts/auto-publish-settings"],
-  ["workspaces", "GET /workspaces/current"],
 ];
 
 // Express path params (`:id`) and OpenAPI path params (`{id}`) name the same
@@ -162,7 +156,7 @@ test("the gate can see both sides", () => {
   const operations = serverOperations();
   assert.ok(operations.length > 90, `parsed ${operations.length} server operations`);
   assert.ok(contractOperations().size > 40, `parsed ${contractOperations().size} contract operations`);
-  assert.ok(UNDOCUMENTED.length > 10, `backlog holds ${UNDOCUMENTED.length} entries`);
+  assert.ok(UNDOCUMENTED.length >= 5, `backlog holds ${UNDOCUMENTED.length} entries`);
 
   // The two lists must account for every merchant-facing operation between them,
   // with nothing in both. If the sum is short, an operation is in neither list and

@@ -134,6 +134,41 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
   /workspaces/current:
+    get:
+      operationId: getWorkspaceCurrent
+      tags: [workspaces]
+      security:
+        - bearerAuth: []
+      summary: The workspace the request is scoped to
+      description: >-
+        Resolves the `x-workspace-id` header, or the caller's only workspace when
+        the header is absent. The app uses it to label the switcher and to learn
+        the caller's role, which decides what the settings screens allow.
+      responses:
+        "200":
+          description: The workspace and the caller's role in it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentWorkspace"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Not a member of the requested workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: The workspace could not be resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
     patch:
       operationId: updateWorkspaceCurrent
       tags: [auth]
@@ -372,6 +407,59 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "409":
           description: Workspace selection required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/account-details/{platform}:
+    get:
+      operationId: getSocialAccountDetails
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: One connected account as the platform sees it
+      description: >-
+        Asks the platform for the profile, permissions, metrics and recent posts,
+        so a permissions problem shows as a missing permission rather than an
+        empty chart. Every platform answers the same core shape; the extras are
+        marked below with the platform that sends them. Field values that the
+        platform did not provide are null, not missing.
+      parameters:
+        - name: platform
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [facebook, instagram, whatsapp]
+      responses:
+        "200":
+          description: The account, as far as the platform would say
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SocialAccountDetails"
+        "400":
+          description: Unknown platform
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such account connected to this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: >-
+            The platform could not be reached (or refused). For WhatsApp this is
+            the provider's own status code.
           content:
             application/json:
               schema:
@@ -3521,6 +3609,349 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /plans:
+    get:
+      operationId: listPlans
+      tags: [plans]
+      summary: The subscription plans and the trial on offer
+      description: >-
+        Public and cacheable for five minutes — it is the same for everyone and
+        changes only when the pricing does. `paymentAvailable` says whether this
+        deployment can take a payment at all, so the app can hide an upgrade
+        button it could not complete.
+      responses:
+        "200":
+          description: Plans, the trial, and whether payment is possible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlansResponse"
+  /readyz:
+    get:
+      operationId: getReadiness
+      tags: [health]
+      summary: Whether the server can serve, and which migrations are missing
+      description: >-
+        Distinct from `/healthz`: this one answers 503 when the database is
+        unreachable or when a column the code needs is absent, which is the state
+        a half-applied migration leaves behind. `missingSchema` names the exact
+        columns so the operator knows what to run.
+      responses:
+        "200":
+          description: Database reachable and the expected schema present
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: Unready, with the missing columns named when that is the cause
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+  /posts/events:
+    get:
+      operationId: subscribeToPostEvents
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: A server-sent-events stream that says when posts change
+      description: >-
+        Emits `posts_changed` whenever a post in this workspace is created,
+        edited or published, so the app can refetch instead of polling. Heartbeat
+        comments every 25 seconds keep proxies from closing an idle connection.
+      responses:
+        "200":
+          description: The stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /posts/from-message:
+    post:
+      operationId: createPostFromWhatsAppMessage
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Turn one WhatsApp message into a post
+      description: >-
+        Runs the same intake the backlog worker uses, but for a single message the
+        merchant picked. `201` when a post was created, `200` when the message
+        already had one. Automatic publishing is deliberately off here: the
+        merchant is reviewing this message by hand.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePostFromMessageInput"
+      responses:
+        "200":
+          description: The message already had a post; here it is
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostItem"
+        "201":
+          description: Post created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostItem"
+        "400":
+          description: No message id in the body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: The message holds nothing that can become a post, with the reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: The post could not be created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /posts/auto-publish-settings:
+    get:
+      operationId: getAutoPublishSettings
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Whether approved posts are published without a click, and where
+      responses:
+        "200":
+          description: The current settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoPublishSettings"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: The settings could not be read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      operationId: updateAutoPublishSettings
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Turn automatic publishing on or off, and choose the channels
+      description: >-
+        Turning it on publishes the posts already sitting in `approved` as well,
+        and reports how that went in `initialPublish` — otherwise the merchant
+        would enable the setting and watch nothing happen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AutoPublishSettingsInput"
+      responses:
+        "200":
+          description: The settings as saved, plus the result of publishing the backlog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutoPublishSettings"
+        "400":
+          description: >-
+            `enabled` is not a boolean, or no channel was chosen
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: The settings could not be saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /posts/process-whatsapp-backlog:
+    post:
+      operationId: processWhatsAppBacklog
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Sweep unprocessed WhatsApp messages for posts
+      description: >-
+        The manual counterpart of the scheduled sweep. Reports what it found in
+        each bucket, so the merchant can tell "nothing new" from "everything was
+        skipped" — the two look identical without the counts.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProcessWhatsAppBacklogInput"
+      responses:
+        "200":
+          description: What the sweep did
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProcessWhatsAppBacklogResult"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: The sweep failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /posts/{id}/publish:
+    post:
+      operationId: publishPost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Publish a post to Facebook and Instagram
+      description: >-
+        Claims the post, publishes to each channel in turn and records every
+        outcome as it lands, so a failure part-way leaves a post with one channel
+        live and the result saying which. The response is `400` when any channel
+        failed, but still carries `results` and `post` — read them, do not show a
+        generic error over a half-successful publish.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PublishPostInput"
+      responses:
+        "200":
+          description: Every requested channel published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostPublishResponse"
+        "400":
+          description: >-
+            Invalid body, id or channel; or a channel failed — `results` says
+            which, and `post` is the post as recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostPublishResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such post in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Another publish attempt for this post is already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: The post is not ready to publish, with the reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /posts/{id}/verify-facebook:
+    post:
+      operationId: verifyFacebookPost
+      tags: [posts]
+      security:
+        - bearerAuth: []
+      summary: Ask Facebook whether a post it never confirmed actually went live
+      description: >-
+        Closes out a publish whose result the server never learned. Three
+        outcomes, and the difference matters: `found` means it is live and the
+        post is marked published, `not-found` means it is not and the post is
+        marked failed, `unavailable` means Facebook would not say — the post must
+        stay unresolved rather than be retried into a duplicate.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: What Facebook said, and the post as now recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FacebookPostVerification"
+        "400":
+          description: Invalid post identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such post in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: The post's state changed while it was being verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Facebook could not be reached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   securitySchemes:
     bearerAuth:
@@ -4527,6 +4958,132 @@ components:
             type: string
             maxLength: 150
       required: [ids]
+    CurrentWorkspace:
+      type: object
+      required: [id, name, role]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          description: The caller's role in this workspace, which the settings screens consult.
+    PlansResponse:
+      type: object
+      required: [plans, trial, paymentAvailable]
+      properties:
+        plans:
+          type: array
+          items:
+            $ref: "#/components/schemas/SubscriptionPlan"
+        trial:
+          type: object
+          required: [planId, days]
+          properties:
+            planId:
+              type: string
+            days:
+              type: integer
+        paymentAvailable:
+          type: boolean
+    ReadinessResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        workers:
+          type: object
+          description: >-
+            Per worker, the state of its last run. Present only on the success
+            path, so a client must not rely on it.
+          additionalProperties: true
+        missingSchema:
+          type: array
+          description: "`table.column` pairs the database is missing."
+          items:
+            type: string
+    FacebookPostVerification:
+      type: object
+      required: [status, reason, post]
+      properties:
+        status:
+          type: string
+          enum: [found, not-found, unavailable]
+        reason:
+          type: [string, "null"]
+          enum: [FACEBOOK_PAGES_READ_ENGAGEMENT_REQUIRED, FACEBOOK_RESULT_CANNOT_BE_VERIFIED, FACEBOOK_POST_NOT_FOUND_AFTER_VERIFICATION, "null"]
+        post:
+          $ref: "#/components/schemas/PostItem"
+    CreatePostFromMessageInput:
+      type: object
+      required: [messageId]
+      properties:
+        messageId:
+          type: string
+      additionalProperties: false
+    AutoPublishSettings:
+      type: object
+      required: [enabled, channels, enabledAt]
+      properties:
+        enabled:
+          type: boolean
+          description: False for a workspace that has never saved the setting.
+        channels:
+          $ref: "#/components/schemas/AutoPublishChannels"
+        enabledAt:
+          type: [string, "null"]
+          format: date-time
+        initialPublish:
+          type: object
+          description: >-
+            Present only on the save that turned the setting on: what happened to
+            the posts already waiting in `approved`.
+          required: [processed, published, failed]
+          properties:
+            processed:
+              type: integer
+            published:
+              type: integer
+            failed:
+              type: integer
+    AutoPublishChannels:
+      type: array
+      items:
+        type: string
+        enum: [facebook, instagram, whatsapp]
+    AutoPublishSettingsInput:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+        channels:
+          $ref: "#/components/schemas/AutoPublishChannels"
+      additionalProperties: false
+    ProcessWhatsAppBacklogInput:
+      type: object
+      properties:
+        limit:
+          type: integer
+          default: 50
+      additionalProperties: false
+    ProcessWhatsAppBacklogResult:
+      type: object
+      required: [scanned, created, existing, skipped, deferred]
+      properties:
+        scanned:
+          type: integer
+        created:
+          type: integer
+        existing:
+          type: integer
+        skipped:
+          type: integer
+        deferred:
+          type: integer
     SubscriptionPlan:
       type: object
       properties:
@@ -4663,6 +5220,218 @@ components:
               format: date-time
             - type: "null"
       required: [accountId, accountName, connectedAt]
+    AccountPlatform:
+      type: string
+      enum: [facebook, instagram, whatsapp]
+    SocialAccountMetric:
+      type: object
+      required: [key, label, value]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+          description: Already worded for the merchant.
+        value:
+          type: number
+        period:
+          type: string
+    SocialAccountPost:
+      type: object
+      required: [id, text, publishedAt, url, imageUrl, mediaType, likes, comments, views]
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        publishedAt:
+          type: [string, "null"]
+          format: date-time
+        url:
+          type: [string, "null"]
+        imageUrl:
+          type: [string, "null"]
+        mediaType:
+          type: [string, "null"]
+        likes:
+          type: [number, "null"]
+        comments:
+          type: [number, "null"]
+        views:
+          type: [number, "null"]
+    SocialAccountPermissions:
+      type: object
+      required: [required, granted, missing]
+      properties:
+        required:
+          type: array
+          items:
+            type: string
+        granted:
+          type: [array, "null"]
+          description: Null when the platform did not answer the permissions query.
+          items:
+            type: string
+        missing:
+          type: array
+          items:
+            type: string
+    SocialAccountPerformance:
+      type: object
+      description: Facebook only. What this workspace's publishing actually achieved.
+      required:
+        - publishedCount
+        - attemptedCount
+        - successRate
+        - scheduledCount
+        - reviewCount
+        - failedCount
+        - aiPublishedCount
+        - weeklyPublished
+        - recentActivity
+      properties:
+        publishedCount:
+          type: integer
+        attemptedCount:
+          type: integer
+        successRate:
+          type: [number, "null"]
+          description: Null when nothing has been attempted yet, rather than a misleading 0.
+        scheduledCount:
+          type: integer
+        reviewCount:
+          type: integer
+        failedCount:
+          type: integer
+        aiPublishedCount:
+          type: integer
+        weeklyPublished:
+          type: array
+          items:
+            type: object
+            required: [label, count]
+            properties:
+              label:
+                type: string
+              count:
+                type: integer
+        recentActivity:
+          type: array
+          items:
+            type: object
+            required: [id, postId, title, eventType, occurredAt, actorLabel, attempt, reason]
+            properties:
+              id:
+                type: string
+              postId:
+                type: string
+              title:
+                type: string
+              eventType:
+                type: string
+              occurredAt:
+                type: string
+                format: date-time
+              actorLabel:
+                type: string
+              attempt:
+                type: [integer, "null"]
+              reason:
+                type: [string, "null"]
+    SocialAccountDetails:
+      type: object
+      required:
+        - platform
+        - accountId
+        - accountName
+        - connectedAt
+        - connectionState
+        - profileImageUrl
+        - externalUrl
+        - lastSyncedAt
+        - permissions
+        - metrics
+        - issues
+      properties:
+        platform:
+          $ref: "#/components/schemas/AccountPlatform"
+        accountId:
+          type: string
+        accountName:
+          type: string
+        connectedAt:
+          type: string
+          format: date-time
+        connectionState:
+          type: string
+        profileImageUrl:
+          type: [string, "null"]
+        coverImageUrl:
+          type: [string, "null"]
+          description: Facebook.
+        externalUrl:
+          type: [string, "null"]
+        category:
+          type: [string, "null"]
+          description: Facebook.
+        description:
+          type: [string, "null"]
+          description: Facebook and Instagram.
+        lastSyncedAt:
+          type: [string, "null"]
+          format: date-time
+        autoSyncEnabled:
+          type: boolean
+          description: WhatsApp. Whether new messages are pulled without a click.
+        permissions:
+          $ref: "#/components/schemas/SocialAccountPermissions"
+        metrics:
+          type: array
+          items:
+            $ref: "#/components/schemas/SocialAccountMetric"
+        posts:
+          type: array
+          description: Facebook and Instagram. The most recent 25.
+          items:
+            $ref: "#/components/schemas/SocialAccountPost"
+        performance:
+          $ref: "#/components/schemas/SocialAccountPerformance"
+        groups:
+          type: array
+          description: WhatsApp. The groups chosen for syncing.
+          items:
+            type: object
+            required: [groupJid, groupName]
+            properties:
+              groupJid:
+                type: string
+              groupName:
+                type: string
+        messages:
+          type: array
+          description: WhatsApp. The latest messages from those groups.
+          items:
+            type: object
+            required: [id, groupName, text, messageType, sentAt, source]
+            properties:
+              id:
+                type: string
+              groupName:
+                type: string
+              text:
+                type: string
+              messageType:
+                type: string
+              sentAt:
+                type: string
+                format: date-time
+              source:
+                type: string
+        issues:
+          type: array
+          description: Problems met while assembling this, already worded for the merchant.
+          items:
+            type: string
     SocialConnectionsResponse:
       type: object
       properties:
@@ -4728,30 +5497,133 @@ components:
             enum: [instagram, facebook, whatsapp]
         status:
           type: string
-          enum: [draft, review, approved, scheduled, published]
+          enum: [draft, review, approved, scheduled, publishing, published, failed]
+          description: >-
+            `publishing` while a publish attempt is in flight, `failed` when one
+            failed — the two the app needs most and the contract used to omit.
+        sourceType:
+          type: string
+          description: How the post came to exist; "manual" unless it came from a message.
+        sourceMessageId:
+          type: [string, "null"]
+        sourceGroupJid:
+          type: [string, "null"]
+        sourceGroupName:
+          type: [string, "null"]
+        sourceMessageDate:
+          type: [string, "null"]
+          format: date-time
+        sourceText:
+          type: [string, "null"]
         metadata:
           type: object
           additionalProperties: true
         mediaUrls:
           type: array
+          description: Signed URLs, valid for a limited time; re-fetch rather than cache.
           items:
             type: string
         mediaPreviewUrls:
           type: array
           items:
             type: string
+        autoPublish:
+          type: boolean
+        autoPublishChannels:
+          type: array
+          items:
+            type: string
+            enum: [facebook, instagram, whatsapp]
+        publishResults:
+          type: object
+          description: The last publish attempt per channel.
+          additionalProperties:
+            $ref: "#/components/schemas/ChannelPublishResult"
         scheduledAt:
           type: string
           format: date-time
           nullable: true
           description: Due time for posts with status "scheduled"; null otherwise.
+        error:
+          type: [string, "null"]
+          description: Why the last publish failed, already worded for the merchant.
         createdAt:
           type: string
           format: date-time
         updatedAt:
+          type: [string, "null"]
+          format: date-time
+      required:
+        - id
+        - title
+        - body
+        - channels
+        - status
+        - sourceType
+        - sourceMessageId
+        - sourceGroupJid
+        - sourceGroupName
+        - sourceMessageDate
+        - sourceText
+        - metadata
+        - mediaUrls
+        - mediaPreviewUrls
+        - autoPublish
+        - autoPublishChannels
+        - publishResults
+        - scheduledAt
+        - error
+        - createdAt
+        - updatedAt
+    ChannelPublishResult:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [published, failed, unknown, publishing, skipped]
+          description: >-
+            `unknown` means the platform was asked but did not answer; the post
+            may be live. Verify before retrying or the merchant gets a duplicate.
+        postId:
+          type: string
+        url:
+          type: [string, "null"]
+        reason:
+          type: string
+        attemptedAt:
           type: string
           format: date-time
-      required: [id, title, body, channels, status, createdAt]
+    PostPublishResponse:
+      type: object
+      required: [success, results, post]
+      properties:
+        success:
+          type: boolean
+          description: True only when every requested channel published.
+        results:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ChannelPublishResult"
+        post:
+          $ref: "#/components/schemas/PostItem"
+    PublishPostInput:
+      type: object
+      required: [channels]
+      properties:
+        channels:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            enum: [facebook, instagram]
+        retryUncertain:
+          type: boolean
+          default: false
+          description: >-
+            Required to re-attempt a post whose previous result was `unknown`.
+            Without it the server refuses, to avoid posting twice.
+      additionalProperties: false
     CreatePostInput:
       type: object
       properties:

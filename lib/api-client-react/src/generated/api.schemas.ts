@@ -680,6 +680,18 @@ export interface KnownPostIdsInput {
   ids: string[];
 }
 
+export interface CurrentWorkspace {
+  id: string;
+  name: string;
+  /** The caller's role in this workspace, which the settings screens consult. */
+  role: string;
+}
+
+export type PlansResponseTrial = {
+  planId: string;
+  days: number;
+};
+
 export type SubscriptionPlanId = typeof SubscriptionPlanId[keyof typeof SubscriptionPlanId];
 
 
@@ -700,6 +712,217 @@ export interface SubscriptionPlan {
   name: string;
   monthlyPriceUsd: number;
   limits: SubscriptionPlanLimits;
+}
+
+export interface PlansResponse {
+  plans: SubscriptionPlan[];
+  trial: PlansResponseTrial;
+  paymentAvailable: boolean;
+}
+
+export type ReadinessResponseStatus = typeof ReadinessResponseStatus[keyof typeof ReadinessResponseStatus];
+
+
+export const ReadinessResponseStatus = {
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+/**
+ * Per worker, the state of its last run. Present only on the success path, so a client must not rely on it.
+ */
+export type ReadinessResponseWorkers = { [key: string]: unknown };
+
+export interface ReadinessResponse {
+  status: ReadinessResponseStatus;
+  /** Per worker, the state of its last run. Present only on the success path, so a client must not rely on it. */
+  workers?: ReadinessResponseWorkers;
+  /** `table.column` pairs the database is missing. */
+  missingSchema?: string[];
+}
+
+export type FacebookPostVerificationStatus = typeof FacebookPostVerificationStatus[keyof typeof FacebookPostVerificationStatus];
+
+
+export const FacebookPostVerificationStatus = {
+  found: 'found',
+  'not-found': 'not-found',
+  unavailable: 'unavailable',
+} as const;
+
+/**
+ * @nullable
+ */
+export type FacebookPostVerificationReason = typeof FacebookPostVerificationReason[keyof typeof FacebookPostVerificationReason] | null;
+
+
+export const FacebookPostVerificationReason = {
+  FACEBOOK_PAGES_READ_ENGAGEMENT_REQUIRED: 'FACEBOOK_PAGES_READ_ENGAGEMENT_REQUIRED',
+  FACEBOOK_RESULT_CANNOT_BE_VERIFIED: 'FACEBOOK_RESULT_CANNOT_BE_VERIFIED',
+  FACEBOOK_POST_NOT_FOUND_AFTER_VERIFICATION: 'FACEBOOK_POST_NOT_FOUND_AFTER_VERIFICATION',
+  null: 'null',
+} as const;
+
+export type PostItemChannelsItem = typeof PostItemChannelsItem[keyof typeof PostItemChannelsItem];
+
+
+export const PostItemChannelsItem = {
+  instagram: 'instagram',
+  facebook: 'facebook',
+  whatsapp: 'whatsapp',
+} as const;
+
+/**
+ * `publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit.
+ */
+export type PostItemStatus = typeof PostItemStatus[keyof typeof PostItemStatus];
+
+
+export const PostItemStatus = {
+  draft: 'draft',
+  review: 'review',
+  approved: 'approved',
+  scheduled: 'scheduled',
+  publishing: 'publishing',
+  published: 'published',
+  failed: 'failed',
+} as const;
+
+export type PostItemAutoPublishChannelsItem = typeof PostItemAutoPublishChannelsItem[keyof typeof PostItemAutoPublishChannelsItem];
+
+
+export const PostItemAutoPublishChannelsItem = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+  whatsapp: 'whatsapp',
+} as const;
+
+/**
+ * `unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate.
+ */
+export type ChannelPublishResultStatus = typeof ChannelPublishResultStatus[keyof typeof ChannelPublishResultStatus];
+
+
+export const ChannelPublishResultStatus = {
+  published: 'published',
+  failed: 'failed',
+  unknown: 'unknown',
+  publishing: 'publishing',
+  skipped: 'skipped',
+} as const;
+
+export interface ChannelPublishResult {
+  /** `unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate. */
+  status: ChannelPublishResultStatus;
+  postId?: string;
+  /** @nullable */
+  url?: string | null;
+  reason?: string;
+  attemptedAt?: string;
+}
+
+export type PostItemMetadata = { [key: string]: unknown };
+
+/**
+ * The last publish attempt per channel.
+ */
+export type PostItemPublishResults = {[key: string]: ChannelPublishResult};
+
+export interface PostItem {
+  id: string;
+  title: string;
+  body: string;
+  channels: PostItemChannelsItem[];
+  /** `publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit. */
+  status: PostItemStatus;
+  /** How the post came to exist; "manual" unless it came from a message. */
+  sourceType: string;
+  /** @nullable */
+  sourceMessageId: string | null;
+  /** @nullable */
+  sourceGroupJid: string | null;
+  /** @nullable */
+  sourceGroupName: string | null;
+  /** @nullable */
+  sourceMessageDate: string | null;
+  /** @nullable */
+  sourceText: string | null;
+  metadata: PostItemMetadata;
+  /** Signed URLs, valid for a limited time; re-fetch rather than cache. */
+  mediaUrls: string[];
+  mediaPreviewUrls: string[];
+  autoPublish: boolean;
+  autoPublishChannels: PostItemAutoPublishChannelsItem[];
+  /** The last publish attempt per channel. */
+  publishResults: PostItemPublishResults;
+  /** Due time for posts with status "scheduled"; null otherwise. */
+  scheduledAt: string | null;
+  /**
+     * Why the last publish failed, already worded for the merchant.
+     * @nullable
+     */
+  error: string | null;
+  createdAt: string;
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+export interface FacebookPostVerification {
+  status: FacebookPostVerificationStatus;
+  /** @nullable */
+  reason: FacebookPostVerificationReason;
+  post: PostItem;
+}
+
+export interface CreatePostFromMessageInput {
+  messageId: string;
+}
+
+/**
+ * Present only on the save that turned the setting on: what happened to the posts already waiting in `approved`.
+ */
+export type AutoPublishSettingsInitialPublish = {
+  processed: number;
+  published: number;
+  failed: number;
+};
+
+export type AutoPublishChannelsItem = typeof AutoPublishChannelsItem[keyof typeof AutoPublishChannelsItem];
+
+
+export const AutoPublishChannelsItem = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+  whatsapp: 'whatsapp',
+} as const;
+
+export type AutoPublishChannels = AutoPublishChannelsItem[];
+
+export interface AutoPublishSettings {
+  /** False for a workspace that has never saved the setting. */
+  enabled: boolean;
+  channels: AutoPublishChannels;
+  /** @nullable */
+  enabledAt: string | null;
+  /** Present only on the save that turned the setting on: what happened to the posts already waiting in `approved`. */
+  initialPublish?: AutoPublishSettingsInitialPublish;
+}
+
+export interface AutoPublishSettingsInput {
+  enabled: boolean;
+  channels?: AutoPublishChannels;
+}
+
+export interface ProcessWhatsAppBacklogInput {
+  limit?: number;
+}
+
+export interface ProcessWhatsAppBacklogResult {
+  scanned: number;
+  created: number;
+  existing: number;
+  skipped: number;
+  deferred: number;
 }
 
 export interface SubscriptionUsage {
@@ -802,6 +1025,145 @@ export interface SocialAccountStatus {
   accessTokenExpiresAt?: string | null;
 }
 
+export type AccountPlatform = typeof AccountPlatform[keyof typeof AccountPlatform];
+
+
+export const AccountPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+  whatsapp: 'whatsapp',
+} as const;
+
+export interface SocialAccountMetric {
+  key: string;
+  /** Already worded for the merchant. */
+  label: string;
+  value: number;
+  period?: string;
+}
+
+export interface SocialAccountPost {
+  id: string;
+  text: string;
+  /** @nullable */
+  publishedAt: string | null;
+  /** @nullable */
+  url: string | null;
+  /** @nullable */
+  imageUrl: string | null;
+  /** @nullable */
+  mediaType: string | null;
+  /** @nullable */
+  likes: number | null;
+  /** @nullable */
+  comments: number | null;
+  /** @nullable */
+  views: number | null;
+}
+
+export interface SocialAccountPermissions {
+  required: string[];
+  /**
+     * Null when the platform did not answer the permissions query.
+     * @nullable
+     */
+  granted: string[] | null;
+  missing: string[];
+}
+
+export type SocialAccountPerformanceWeeklyPublishedItem = {
+  label: string;
+  count: number;
+};
+
+export type SocialAccountPerformanceRecentActivityItem = {
+  id: string;
+  postId: string;
+  title: string;
+  eventType: string;
+  occurredAt: string;
+  actorLabel: string;
+  /** @nullable */
+  attempt: number | null;
+  /** @nullable */
+  reason: string | null;
+};
+
+/**
+ * Facebook only. What this workspace's publishing actually achieved.
+ */
+export interface SocialAccountPerformance {
+  publishedCount: number;
+  attemptedCount: number;
+  /**
+     * Null when nothing has been attempted yet, rather than a misleading 0.
+     * @nullable
+     */
+  successRate: number | null;
+  scheduledCount: number;
+  reviewCount: number;
+  failedCount: number;
+  aiPublishedCount: number;
+  weeklyPublished: SocialAccountPerformanceWeeklyPublishedItem[];
+  recentActivity: SocialAccountPerformanceRecentActivityItem[];
+}
+
+export type SocialAccountDetailsGroupsItem = {
+  groupJid: string;
+  groupName: string;
+};
+
+export type SocialAccountDetailsMessagesItem = {
+  id: string;
+  groupName: string;
+  text: string;
+  messageType: string;
+  sentAt: string;
+  source: string;
+};
+
+export interface SocialAccountDetails {
+  platform: AccountPlatform;
+  accountId: string;
+  accountName: string;
+  connectedAt: string;
+  connectionState: string;
+  /** @nullable */
+  profileImageUrl: string | null;
+  /**
+     * Facebook.
+     * @nullable
+     */
+  coverImageUrl?: string | null;
+  /** @nullable */
+  externalUrl: string | null;
+  /**
+     * Facebook.
+     * @nullable
+     */
+  category?: string | null;
+  /**
+     * Facebook and Instagram.
+     * @nullable
+     */
+  description?: string | null;
+  /** @nullable */
+  lastSyncedAt: string | null;
+  /** WhatsApp. Whether new messages are pulled without a click. */
+  autoSyncEnabled?: boolean;
+  permissions: SocialAccountPermissions;
+  metrics: SocialAccountMetric[];
+  /** Facebook and Instagram. The most recent 25. */
+  posts?: SocialAccountPost[];
+  performance?: SocialAccountPerformance;
+  /** WhatsApp. The groups chosen for syncing. */
+  groups?: SocialAccountDetailsGroupsItem[];
+  /** WhatsApp. The latest messages from those groups. */
+  messages?: SocialAccountDetailsMessagesItem[];
+  /** Problems met while assembling this, already worded for the merchant. */
+  issues: string[];
+}
+
 export interface SocialConnectionsResponse {
   facebook: SocialAccountStatus | null;
   instagram: SocialAccountStatus | null;
@@ -848,41 +1210,28 @@ export interface MetaDisconnectResponse {
   externalRevocation?: MetaDisconnectResponseExternalRevocation;
 }
 
-export type PostItemChannelsItem = typeof PostItemChannelsItem[keyof typeof PostItemChannelsItem];
+export type PostPublishResponseResults = {[key: string]: ChannelPublishResult};
+
+export interface PostPublishResponse {
+  /** True only when every requested channel published. */
+  success: boolean;
+  results: PostPublishResponseResults;
+  post: PostItem;
+}
+
+export type PublishPostInputChannelsItem = typeof PublishPostInputChannelsItem[keyof typeof PublishPostInputChannelsItem];
 
 
-export const PostItemChannelsItem = {
-  instagram: 'instagram',
+export const PublishPostInputChannelsItem = {
   facebook: 'facebook',
-  whatsapp: 'whatsapp',
+  instagram: 'instagram',
 } as const;
 
-export type PostItemStatus = typeof PostItemStatus[keyof typeof PostItemStatus];
-
-
-export const PostItemStatus = {
-  draft: 'draft',
-  review: 'review',
-  approved: 'approved',
-  scheduled: 'scheduled',
-  published: 'published',
-} as const;
-
-export type PostItemMetadata = { [key: string]: unknown };
-
-export interface PostItem {
-  id: string;
-  title: string;
-  body: string;
-  channels: PostItemChannelsItem[];
-  status: PostItemStatus;
-  metadata?: PostItemMetadata;
-  mediaUrls?: string[];
-  mediaPreviewUrls?: string[];
-  /** Due time for posts with status "scheduled"; null otherwise. */
-  scheduledAt?: string | null;
-  createdAt: string;
-  updatedAt?: string;
+export interface PublishPostInput {
+  /** @minItems 1 */
+  channels: PublishPostInputChannelsItem[];
+  /** Required to re-attempt a post whose previous result was `unknown`. Without it the server refuses, to avoid posting twice. */
+  retryUncertain?: boolean;
 }
 
 export type CreatePostInputChannelsItem = typeof CreatePostInputChannelsItem[keyof typeof CreatePostInputChannelsItem];

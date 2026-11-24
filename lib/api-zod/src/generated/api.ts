@@ -78,6 +78,17 @@ export const ListWorkspacesResponse = zod.object({
 
 
 /**
+ * Resolves the `x-workspace-id` header, or the caller's only workspace when the header is absent. The app uses it to label the switcher and to learn the caller's role, which decides what the settings screens allow.
+ * @summary The workspace the request is scoped to
+ */
+export const GetWorkspaceCurrentResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "role": zod.string().describe('The caller\'s role in this workspace, which the settings screens consult.')
+})
+
+
+/**
  * Owner-only. Backs the concise post-signup setup and the dashboard checklist edit path.
  * @summary Update the current workspace's business name and type
  */
@@ -225,6 +236,88 @@ export const CompleteSocialAccountsSetupResponse = zod.object({
   "currentStep": zod.number().int().min(completeSocialAccountsSetupResponseCurrentStepMin).max(completeSocialAccountsSetupResponseCurrentStepMax),
   "completed": zod.boolean(),
   "socialAccountsCompleted": zod.boolean()
+})
+
+
+/**
+ * Asks the platform for the profile, permissions, metrics and recent posts, so a permissions problem shows as a missing permission rather than an empty chart. Every platform answers the same core shape; the extras are marked below with the platform that sends them. Field values that the platform did not provide are null, not missing.
+ * @summary One connected account as the platform sees it
+ */
+export const GetSocialAccountDetailsParams = zod.object({
+  "platform": zod.enum(['facebook', 'instagram', 'whatsapp'])
+})
+
+export const GetSocialAccountDetailsResponse = zod.object({
+  "platform": zod.enum(['facebook', 'instagram', 'whatsapp']),
+  "accountId": zod.string(),
+  "accountName": zod.string(),
+  "connectedAt": zod.coerce.date(),
+  "connectionState": zod.string(),
+  "profileImageUrl": zod.string().nullable(),
+  "coverImageUrl": zod.string().nullish().describe('Facebook.'),
+  "externalUrl": zod.string().nullable(),
+  "category": zod.string().nullish().describe('Facebook.'),
+  "description": zod.string().nullish().describe('Facebook and Instagram.'),
+  "lastSyncedAt": zod.coerce.date().nullable(),
+  "autoSyncEnabled": zod.boolean().optional().describe('WhatsApp. Whether new messages are pulled without a click.'),
+  "permissions": zod.object({
+  "required": zod.array(zod.string()),
+  "granted": zod.array(zod.string()).nullable().describe('Null when the platform did not answer the permissions query.'),
+  "missing": zod.array(zod.string())
+}),
+  "metrics": zod.array(zod.object({
+  "key": zod.string(),
+  "label": zod.string().describe('Already worded for the merchant.'),
+  "value": zod.number(),
+  "period": zod.string().optional()
+})),
+  "posts": zod.array(zod.object({
+  "id": zod.string(),
+  "text": zod.string(),
+  "publishedAt": zod.coerce.date().nullable(),
+  "url": zod.string().nullable(),
+  "imageUrl": zod.string().nullable(),
+  "mediaType": zod.string().nullable(),
+  "likes": zod.number().nullable(),
+  "comments": zod.number().nullable(),
+  "views": zod.number().nullable()
+})).optional().describe('Facebook and Instagram. The most recent 25.'),
+  "performance": zod.object({
+  "publishedCount": zod.number().int(),
+  "attemptedCount": zod.number().int(),
+  "successRate": zod.number().nullable().describe('Null when nothing has been attempted yet, rather than a misleading 0.'),
+  "scheduledCount": zod.number().int(),
+  "reviewCount": zod.number().int(),
+  "failedCount": zod.number().int(),
+  "aiPublishedCount": zod.number().int(),
+  "weeklyPublished": zod.array(zod.object({
+  "label": zod.string(),
+  "count": zod.number().int()
+})),
+  "recentActivity": zod.array(zod.object({
+  "id": zod.string(),
+  "postId": zod.string(),
+  "title": zod.string(),
+  "eventType": zod.string(),
+  "occurredAt": zod.coerce.date(),
+  "actorLabel": zod.string(),
+  "attempt": zod.number().int().nullable(),
+  "reason": zod.string().nullable()
+}))
+}).optional().describe('Facebook only. What this workspace\'s publishing actually achieved.'),
+  "groups": zod.array(zod.object({
+  "groupJid": zod.string(),
+  "groupName": zod.string()
+})).optional().describe('WhatsApp. The groups chosen for syncing.'),
+  "messages": zod.array(zod.object({
+  "id": zod.string(),
+  "groupName": zod.string(),
+  "text": zod.string(),
+  "messageType": zod.string(),
+  "sentAt": zod.coerce.date(),
+  "source": zod.string()
+})).optional().describe('WhatsApp. The latest messages from those groups.'),
+  "issues": zod.array(zod.string()).describe('Problems met while assembling this, already worded for the merchant.')
 })
 
 
@@ -986,13 +1079,29 @@ export const GetPostsResponseItem = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
-  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
-  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
-  "mediaUrls": zod.array(zod.string()).optional(),
-  "mediaPreviewUrls": zod.array(zod.string()).optional(),
-  "scheduledAt": zod.coerce.date().nullish().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'publishing', 'published', 'failed']).describe('`publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit.'),
+  "sourceType": zod.string().describe('How the post came to exist; "manual" unless it came from a message.'),
+  "sourceMessageId": zod.string().nullable(),
+  "sourceGroupJid": zod.string().nullable(),
+  "sourceGroupName": zod.string().nullable(),
+  "sourceMessageDate": zod.coerce.date().nullable(),
+  "sourceText": zod.string().nullable(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "mediaUrls": zod.array(zod.string()).describe('Signed URLs, valid for a limited time; re-fetch rather than cache.'),
+  "mediaPreviewUrls": zod.array(zod.string()),
+  "autoPublish": zod.boolean(),
+  "autoPublishChannels": zod.array(zod.enum(['facebook', 'instagram', 'whatsapp'])),
+  "publishResults": zod.record(zod.string(), zod.object({
+  "status": zod.enum(['published', 'failed', 'unknown', 'publishing', 'skipped']).describe('`unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate.'),
+  "postId": zod.string().optional(),
+  "url": zod.string().nullish(),
+  "reason": zod.string().optional(),
+  "attemptedAt": zod.coerce.date().optional()
+})).describe('The last publish attempt per channel.'),
+  "scheduledAt": zod.coerce.date().nullable().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "error": zod.string().nullable().describe('Why the last publish failed, already worded for the merchant.'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date().optional()
+  "updatedAt": zod.coerce.date().nullable()
 })
 export const GetPostsResponse = zod.array(GetPostsResponseItem)
 
@@ -1016,13 +1125,29 @@ export const CreatePostResponse = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
-  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
-  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
-  "mediaUrls": zod.array(zod.string()).optional(),
-  "mediaPreviewUrls": zod.array(zod.string()).optional(),
-  "scheduledAt": zod.coerce.date().nullish().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'publishing', 'published', 'failed']).describe('`publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit.'),
+  "sourceType": zod.string().describe('How the post came to exist; "manual" unless it came from a message.'),
+  "sourceMessageId": zod.string().nullable(),
+  "sourceGroupJid": zod.string().nullable(),
+  "sourceGroupName": zod.string().nullable(),
+  "sourceMessageDate": zod.coerce.date().nullable(),
+  "sourceText": zod.string().nullable(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "mediaUrls": zod.array(zod.string()).describe('Signed URLs, valid for a limited time; re-fetch rather than cache.'),
+  "mediaPreviewUrls": zod.array(zod.string()),
+  "autoPublish": zod.boolean(),
+  "autoPublishChannels": zod.array(zod.enum(['facebook', 'instagram', 'whatsapp'])),
+  "publishResults": zod.record(zod.string(), zod.object({
+  "status": zod.enum(['published', 'failed', 'unknown', 'publishing', 'skipped']).describe('`unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate.'),
+  "postId": zod.string().optional(),
+  "url": zod.string().nullish(),
+  "reason": zod.string().optional(),
+  "attemptedAt": zod.coerce.date().optional()
+})).describe('The last publish attempt per channel.'),
+  "scheduledAt": zod.coerce.date().nullable().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "error": zod.string().nullable().describe('Why the last publish failed, already worded for the merchant.'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date().optional()
+  "updatedAt": zod.coerce.date().nullable()
 })
 
 
@@ -1045,13 +1170,29 @@ export const GetPostsPageResponse = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
-  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
-  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
-  "mediaUrls": zod.array(zod.string()).optional(),
-  "mediaPreviewUrls": zod.array(zod.string()).optional(),
-  "scheduledAt": zod.coerce.date().nullish().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'publishing', 'published', 'failed']).describe('`publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit.'),
+  "sourceType": zod.string().describe('How the post came to exist; "manual" unless it came from a message.'),
+  "sourceMessageId": zod.string().nullable(),
+  "sourceGroupJid": zod.string().nullable(),
+  "sourceGroupName": zod.string().nullable(),
+  "sourceMessageDate": zod.coerce.date().nullable(),
+  "sourceText": zod.string().nullable(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "mediaUrls": zod.array(zod.string()).describe('Signed URLs, valid for a limited time; re-fetch rather than cache.'),
+  "mediaPreviewUrls": zod.array(zod.string()),
+  "autoPublish": zod.boolean(),
+  "autoPublishChannels": zod.array(zod.enum(['facebook', 'instagram', 'whatsapp'])),
+  "publishResults": zod.record(zod.string(), zod.object({
+  "status": zod.enum(['published', 'failed', 'unknown', 'publishing', 'skipped']).describe('`unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate.'),
+  "postId": zod.string().optional(),
+  "url": zod.string().nullish(),
+  "reason": zod.string().optional(),
+  "attemptedAt": zod.coerce.date().optional()
+})).describe('The last publish attempt per channel.'),
+  "scheduledAt": zod.coerce.date().nullable().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "error": zod.string().nullable().describe('Why the last publish failed, already worded for the merchant.'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date().optional()
+  "updatedAt": zod.coerce.date().nullable()
 })),
   "nextCursor": zod.string().nullable()
 })
@@ -1117,13 +1258,29 @@ export const UpdatePostResponse = zod.object({
   "title": zod.string(),
   "body": zod.string(),
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
-  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']),
-  "metadata": zod.record(zod.string(), zod.unknown()).optional(),
-  "mediaUrls": zod.array(zod.string()).optional(),
-  "mediaPreviewUrls": zod.array(zod.string()).optional(),
-  "scheduledAt": zod.coerce.date().nullish().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'publishing', 'published', 'failed']).describe('`publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit.'),
+  "sourceType": zod.string().describe('How the post came to exist; "manual" unless it came from a message.'),
+  "sourceMessageId": zod.string().nullable(),
+  "sourceGroupJid": zod.string().nullable(),
+  "sourceGroupName": zod.string().nullable(),
+  "sourceMessageDate": zod.coerce.date().nullable(),
+  "sourceText": zod.string().nullable(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "mediaUrls": zod.array(zod.string()).describe('Signed URLs, valid for a limited time; re-fetch rather than cache.'),
+  "mediaPreviewUrls": zod.array(zod.string()),
+  "autoPublish": zod.boolean(),
+  "autoPublishChannels": zod.array(zod.enum(['facebook', 'instagram', 'whatsapp'])),
+  "publishResults": zod.record(zod.string(), zod.object({
+  "status": zod.enum(['published', 'failed', 'unknown', 'publishing', 'skipped']).describe('`unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate.'),
+  "postId": zod.string().optional(),
+  "url": zod.string().nullish(),
+  "reason": zod.string().optional(),
+  "attemptedAt": zod.coerce.date().optional()
+})).describe('The last publish attempt per channel.'),
+  "scheduledAt": zod.coerce.date().nullable().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "error": zod.string().nullable().describe('Why the last publish failed, already worded for the merchant.'),
   "createdAt": zod.coerce.date(),
-  "updatedAt": zod.coerce.date().optional()
+  "updatedAt": zod.coerce.date().nullable()
 })
 
 
@@ -2761,6 +2918,241 @@ export const DecideWhatsAppContentAssociationBody = zod.object({
 export const DecideWhatsAppContentAssociationResponse = zod.object({
   "decision": zod.enum(['accepted', 'rejected']),
   "contentBundleId": zod.string().nullable().describe('The bundle the pair was linked into. Null when rejected.')
+})
+
+
+/**
+ * Public and cacheable for five minutes — it is the same for everyone and changes only when the pricing does. `paymentAvailable` says whether this deployment can take a payment at all, so the app can hide an upgrade button it could not complete.
+ * @summary The subscription plans and the trial on offer
+ */
+export const ListPlansResponse = zod.object({
+  "plans": zod.array(zod.object({
+  "id": zod.enum(['free', 'starter', 'growth']),
+  "name": zod.string(),
+  "monthlyPriceUsd": zod.number().int(),
+  "limits": zod.object({
+  "postsCreated": zod.number().int(),
+  "aiGenerations": zod.number().int(),
+  "channels": zod.number().int()
+})
+})),
+  "trial": zod.object({
+  "planId": zod.string(),
+  "days": zod.number().int()
+}),
+  "paymentAvailable": zod.boolean()
+})
+
+
+/**
+ * Distinct from `/healthz`: this one answers 503 when the database is unreachable or when a column the code needs is absent, which is the state a half-applied migration leaves behind. `missingSchema` names the exact columns so the operator knows what to run.
+ * @summary Whether the server can serve, and which migrations are missing
+ */
+export const GetReadinessResponse = zod.object({
+  "status": zod.enum(['ok', 'error']),
+  "workers": zod.record(zod.string(), zod.unknown()).optional().describe('Per worker, the state of its last run. Present only on the success path, so a client must not rely on it.'),
+  "missingSchema": zod.array(zod.string()).optional().describe('`table.column` pairs the database is missing.')
+})
+
+
+/**
+ * Emits `posts_changed` whenever a post in this workspace is created, edited or published, so the app can refetch instead of polling. Heartbeat comments every 25 seconds keep proxies from closing an idle connection.
+ * @summary A server-sent-events stream that says when posts change
+ */
+export const SubscribeToPostEventsResponse = zod.unknown()
+
+
+/**
+ * Runs the same intake the backlog worker uses, but for a single message the merchant picked. `201` when a post was created, `200` when the message already had one. Automatic publishing is deliberately off here: the merchant is reviewing this message by hand.
+ * @summary Turn one WhatsApp message into a post
+ */
+export const CreatePostFromWhatsAppMessageBody = zod.object({
+  "messageId": zod.string()
+})
+
+export const CreatePostFromWhatsAppMessageResponse = zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'publishing', 'published', 'failed']).describe('`publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit.'),
+  "sourceType": zod.string().describe('How the post came to exist; "manual" unless it came from a message.'),
+  "sourceMessageId": zod.string().nullable(),
+  "sourceGroupJid": zod.string().nullable(),
+  "sourceGroupName": zod.string().nullable(),
+  "sourceMessageDate": zod.coerce.date().nullable(),
+  "sourceText": zod.string().nullable(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "mediaUrls": zod.array(zod.string()).describe('Signed URLs, valid for a limited time; re-fetch rather than cache.'),
+  "mediaPreviewUrls": zod.array(zod.string()),
+  "autoPublish": zod.boolean(),
+  "autoPublishChannels": zod.array(zod.enum(['facebook', 'instagram', 'whatsapp'])),
+  "publishResults": zod.record(zod.string(), zod.object({
+  "status": zod.enum(['published', 'failed', 'unknown', 'publishing', 'skipped']).describe('`unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate.'),
+  "postId": zod.string().optional(),
+  "url": zod.string().nullish(),
+  "reason": zod.string().optional(),
+  "attemptedAt": zod.coerce.date().optional()
+})).describe('The last publish attempt per channel.'),
+  "scheduledAt": zod.coerce.date().nullable().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "error": zod.string().nullable().describe('Why the last publish failed, already worded for the merchant.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullable()
+})
+
+
+/**
+ * @summary Whether approved posts are published without a click, and where
+ */
+export const GetAutoPublishSettingsResponse = zod.object({
+  "enabled": zod.boolean().describe('False for a workspace that has never saved the setting.'),
+  "channels": zod.array(zod.enum(['facebook', 'instagram', 'whatsapp'])),
+  "enabledAt": zod.coerce.date().nullable(),
+  "initialPublish": zod.object({
+  "processed": zod.number().int(),
+  "published": zod.number().int(),
+  "failed": zod.number().int()
+}).optional().describe('Present only on the save that turned the setting on: what happened to the posts already waiting in `approved`.')
+})
+
+
+/**
+ * Turning it on publishes the posts already sitting in `approved` as well, and reports how that went in `initialPublish` — otherwise the merchant would enable the setting and watch nothing happen.
+ * @summary Turn automatic publishing on or off, and choose the channels
+ */
+export const UpdateAutoPublishSettingsBody = zod.object({
+  "enabled": zod.boolean(),
+  "channels": zod.array(zod.enum(['facebook', 'instagram', 'whatsapp'])).optional()
+})
+
+export const UpdateAutoPublishSettingsResponse = zod.object({
+  "enabled": zod.boolean().describe('False for a workspace that has never saved the setting.'),
+  "channels": zod.array(zod.enum(['facebook', 'instagram', 'whatsapp'])),
+  "enabledAt": zod.coerce.date().nullable(),
+  "initialPublish": zod.object({
+  "processed": zod.number().int(),
+  "published": zod.number().int(),
+  "failed": zod.number().int()
+}).optional().describe('Present only on the save that turned the setting on: what happened to the posts already waiting in `approved`.')
+})
+
+
+/**
+ * The manual counterpart of the scheduled sweep. Reports what it found in each bucket, so the merchant can tell "nothing new" from "everything was skipped" — the two look identical without the counts.
+ * @summary Sweep unprocessed WhatsApp messages for posts
+ */
+export const processWhatsAppBacklogBodyLimitDefault = 50;
+
+export const ProcessWhatsAppBacklogBody = zod.object({
+  "limit": zod.number().int().default(processWhatsAppBacklogBodyLimitDefault)
+})
+
+export const ProcessWhatsAppBacklogResponse = zod.object({
+  "scanned": zod.number().int(),
+  "created": zod.number().int(),
+  "existing": zod.number().int(),
+  "skipped": zod.number().int(),
+  "deferred": zod.number().int()
+})
+
+
+/**
+ * Claims the post, publishes to each channel in turn and records every outcome as it lands, so a failure part-way leaves a post with one channel live and the result saying which. The response is `400` when any channel failed, but still carries `results` and `post` — read them, do not show a generic error over a half-successful publish.
+ * @summary Publish a post to Facebook and Instagram
+ */
+export const PublishPostParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+
+export const publishPostBodyRetryUncertainDefault = false;
+
+export const PublishPostBody = zod.object({
+  "channels": zod.array(zod.enum(['facebook', 'instagram'])).min(1),
+  "retryUncertain": zod.boolean().default(publishPostBodyRetryUncertainDefault).describe('Required to re-attempt a post whose previous result was `unknown`. Without it the server refuses, to avoid posting twice.')
+})
+
+export const PublishPostResponse = zod.object({
+  "success": zod.boolean().describe('True only when every requested channel published.'),
+  "results": zod.record(zod.string(), zod.object({
+  "status": zod.enum(['published', 'failed', 'unknown', 'publishing', 'skipped']).describe('`unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate.'),
+  "postId": zod.string().optional(),
+  "url": zod.string().nullish(),
+  "reason": zod.string().optional(),
+  "attemptedAt": zod.coerce.date().optional()
+})),
+  "post": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'publishing', 'published', 'failed']).describe('`publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit.'),
+  "sourceType": zod.string().describe('How the post came to exist; "manual" unless it came from a message.'),
+  "sourceMessageId": zod.string().nullable(),
+  "sourceGroupJid": zod.string().nullable(),
+  "sourceGroupName": zod.string().nullable(),
+  "sourceMessageDate": zod.coerce.date().nullable(),
+  "sourceText": zod.string().nullable(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "mediaUrls": zod.array(zod.string()).describe('Signed URLs, valid for a limited time; re-fetch rather than cache.'),
+  "mediaPreviewUrls": zod.array(zod.string()),
+  "autoPublish": zod.boolean(),
+  "autoPublishChannels": zod.array(zod.enum(['facebook', 'instagram', 'whatsapp'])),
+  "publishResults": zod.record(zod.string(), zod.object({
+  "status": zod.enum(['published', 'failed', 'unknown', 'publishing', 'skipped']).describe('`unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate.'),
+  "postId": zod.string().optional(),
+  "url": zod.string().nullish(),
+  "reason": zod.string().optional(),
+  "attemptedAt": zod.coerce.date().optional()
+})).describe('The last publish attempt per channel.'),
+  "scheduledAt": zod.coerce.date().nullable().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "error": zod.string().nullable().describe('Why the last publish failed, already worded for the merchant.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullable()
+})
+})
+
+
+/**
+ * Closes out a publish whose result the server never learned. Three outcomes, and the difference matters: `found` means it is live and the post is marked published, `not-found` means it is not and the post is marked failed, `unavailable` means Facebook would not say — the post must stay unresolved rather than be retried into a duplicate.
+ * @summary Ask Facebook whether a post it never confirmed actually went live
+ */
+export const VerifyFacebookPostParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const VerifyFacebookPostResponse = zod.object({
+  "status": zod.enum(['found', 'not-found', 'unavailable']),
+  "reason": zod.enum(['FACEBOOK_PAGES_READ_ENGAGEMENT_REQUIRED', 'FACEBOOK_RESULT_CANNOT_BE_VERIFIED', 'FACEBOOK_POST_NOT_FOUND_AFTER_VERIFICATION', 'null']).nullable(),
+  "post": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])),
+  "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'publishing', 'published', 'failed']).describe('`publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit.'),
+  "sourceType": zod.string().describe('How the post came to exist; "manual" unless it came from a message.'),
+  "sourceMessageId": zod.string().nullable(),
+  "sourceGroupJid": zod.string().nullable(),
+  "sourceGroupName": zod.string().nullable(),
+  "sourceMessageDate": zod.coerce.date().nullable(),
+  "sourceText": zod.string().nullable(),
+  "metadata": zod.record(zod.string(), zod.unknown()),
+  "mediaUrls": zod.array(zod.string()).describe('Signed URLs, valid for a limited time; re-fetch rather than cache.'),
+  "mediaPreviewUrls": zod.array(zod.string()),
+  "autoPublish": zod.boolean(),
+  "autoPublishChannels": zod.array(zod.enum(['facebook', 'instagram', 'whatsapp'])),
+  "publishResults": zod.record(zod.string(), zod.object({
+  "status": zod.enum(['published', 'failed', 'unknown', 'publishing', 'skipped']).describe('`unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate.'),
+  "postId": zod.string().optional(),
+  "url": zod.string().nullish(),
+  "reason": zod.string().optional(),
+  "attemptedAt": zod.coerce.date().optional()
+})).describe('The last publish attempt per channel.'),
+  "scheduledAt": zod.coerce.date().nullable().describe('Due time for posts with status "scheduled"; null otherwise.'),
+  "error": zod.string().nullable().describe('Why the last publish failed, already worded for the merchant.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date().nullable()
+})
 })
 
 
