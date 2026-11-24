@@ -2,6 +2,7 @@ import type {
   AiProviderCallOptions,
   AiProviderResult,
 } from "./ai-provider.ts";
+import { textAiProviderOptions } from "./metered-ai-provider.ts";
 import { logger } from "./logger.ts";
 
 export type AiDraft = {
@@ -36,13 +37,8 @@ export async function generateDraft(
 
   const systemInstruction = "حلّل النص بحذر ولا تستنتج معلومات غير مذكورة فيه.";
   let generatedResult = await callProvider({
-    openAiMessages: [
-      { role: "system", content: systemInstruction },
-      { role: "user", content: prompt },
-    ],
+    ...textAiProviderOptions({ system: systemInstruction, user: prompt }),
     openAiResponseFormat: { type: "json_object" },
-    geminiContents: [{ parts: [{ text: prompt }] }],
-    geminiSystemInstruction: systemInstruction,
     geminiResponseFormat: {
       text: {
         mimeType: "application/json",
