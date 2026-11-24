@@ -683,6 +683,7 @@ router.get(
           remoteMessageId: message.remoteMessageId,
           senderId: message.senderId,
           senderName: message.senderName,
+          fromMe: message.fromMe,
           messageType: message.messageType,
           textBody: message.textBody,
           caption: message.caption,

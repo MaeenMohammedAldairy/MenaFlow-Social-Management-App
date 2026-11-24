@@ -459,6 +459,7 @@ export const menaWhatsAppMessages = pgTable(
     remoteMessageId: text("remote_message_id").notNull(),
     senderId: text("sender_id"),
     senderName: text("sender_name"),
+    fromMe: boolean("from_me").notNull().default(false),
     messageType: text("message_type").notNull(),
     textBody: text("text_body"),
     caption: text("caption"),

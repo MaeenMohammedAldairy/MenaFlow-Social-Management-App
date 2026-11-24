@@ -556,6 +556,7 @@ async function persistImportedMessage(
     remoteMessageId,
     senderId,
     senderName,
+    fromMe: fromBusiness,
     messageType,
     textBody: textBody ?? null,
     caption,
@@ -688,6 +689,7 @@ async function persistImportedMessage(
             effectiveRow.senderId ?? sql`${menaWhatsAppMessages.senderId}`,
           senderName:
             effectiveRow.senderName ?? sql`${menaWhatsAppMessages.senderName}`,
+          fromMe: effectiveRow.fromMe || sql`${menaWhatsAppMessages.fromMe}`,
           messageType:
             effectiveRow.messageType === "unknown"
               ? sql`${menaWhatsAppMessages.messageType}`

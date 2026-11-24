@@ -15,6 +15,7 @@ import {
 } from "../lib/product-draft-policy";
 import { requireWorkspace, requestWorkspaceId, requestWorkspaceUserId } from "../lib/workspace-context";
 import { requestOwnerId } from "../lib/owner-access";
+import { requireProductWriter } from "../lib/product-intake-service.ts";
 import { processProductPublicationQueue } from "../lib/product-publishing";
 import { logger } from "../lib/logger.ts";
 
@@ -72,7 +73,11 @@ function connectionIssue(
   return missing.length ? `META_PERMISSIONS_MISSING:${missing.join(",")}` : null;
 }
 
-router.post("/social/products/publish", requireWorkspace, async (req, res) => {
+router.post(
+  "/social/products/publish",
+  requireWorkspace,
+  requireProductWriter,
+  async (req, res) => {
   const ownerId = requestOwnerId(req);
   if (!ownerId) {
     res.status(401).json({ error: "سجّل الدخول أولاً." });
@@ -288,7 +293,11 @@ router.get("/social/products/publish-jobs", requireWorkspace, async (req, res) =
   });
 });
 
-router.post("/social/products/publish-jobs/retry", requireWorkspace, async (req, res) => {
+router.post(
+  "/social/products/publish-jobs/retry",
+  requireWorkspace,
+  requireProductWriter,
+  async (req, res) => {
   const ownerId = requestOwnerId(req);
   if (!ownerId) {
     res.status(401).json({ error: "سجّل الدخول أولاً." });

@@ -11,6 +11,7 @@ import {
 import {
   autoQueueWhatsAppProductExtractions,
   processWhatsAppProductExtractionQueue,
+  relinkCompletedExtractionMedia,
 } from "./whatsapp-product-extraction";
 import { processWhatsAppAutoReplyQueue } from "./whatsapp-sync";
 import { processWhatsAppOrderConfirmationsQueue } from "./whatsapp-order-confirmation-queue";
@@ -42,6 +43,7 @@ type WorkerName =
   | "meta-webhook-subscriptions"
   | "product-extraction"
   | "product-extraction-queue"
+  | "product-extraction-media-relink"
   | "product-publication"
   | "media-download"
   | "media-thumbnails"
@@ -164,6 +166,15 @@ const workers: WorkerDefinition[] = [
     run: processWhatsAppProductExtractionQueue,
     disabledMessage: "WhatsApp product extraction worker disabled",
     errorMessage: "WhatsApp product extraction queue poll failed",
+  },
+  {
+    name: "product-extraction-media-relink",
+    intervalMs: 60_000,
+    enabled: () =>
+      process.env.WHATSAPP_PRODUCT_EXTRACTION_WORKER_ENABLED !== "false",
+    run: relinkCompletedExtractionMedia,
+    disabledMessage: "Product extraction media relink worker disabled",
+    errorMessage: "Product extraction media relink poll failed",
   },
   {
     // Selecting a WhatsApp group is the merchant's opt-in to extracting products

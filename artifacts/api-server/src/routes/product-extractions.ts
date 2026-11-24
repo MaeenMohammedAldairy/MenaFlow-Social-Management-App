@@ -1,12 +1,16 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
-import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
 import { Router } from "express";
 import {
   db,
   menaWhatsAppGroups,
   menaWhatsAppMessageMedia,
   menaInventoryMovements,
+  menaProductChanges,
+  menaProductChangeProposals,
+  menaProductExtractionEvents,
+  menaProductMatchCandidates,
   menaWhatsAppMessages,
   productExtractionSources,
   productExtractionSuggestions,
@@ -35,6 +39,12 @@ import {
   summarizeProductExtractionSuggestions,
 } from "../lib/product-extraction-list-policy";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
+import { buildChangeDiff } from "../lib/product-intake-policy.ts";
+import {
+  recordExtractionEvent,
+  recordProductChanges,
+  requireProductWriter,
+} from "../lib/product-intake-service.ts";
 
 const router = Router();
 
@@ -117,6 +127,11 @@ router.get(
         productExtractionSuggestions.status,
       );
     const suggestionCounts = summarizeProductExtractionSuggestions(countRows);
+    const senderRoleFilter =
+      typeof req.query.senderRole === "string" &&
+      ["merchant", "customer", "unknown"].includes(req.query.senderRole)
+        ? (req.query.senderRole as "merchant" | "customer" | "unknown")
+        : null;
     const filteredWhere = and(
       notDismissed,
       ...(listQuery.classification
@@ -124,6 +139,9 @@ router.get(
         : []),
       ...(listQuery.statuses.length > 0
         ? [inArray(productExtractionSuggestions.status, listQuery.statuses)]
+        : []),
+      ...(senderRoleFilter
+        ? [eq(productExtractionSuggestions.senderRole, senderRoleFilter)]
         : []),
     );
     const suggestions = await db
@@ -134,7 +152,9 @@ router.get(
       .limit(listQuery.limit)
       .offset(listQuery.offset);
     const unfiltered =
-      listQuery.classification === null && listQuery.statuses.length === 0;
+      listQuery.classification === null &&
+      listQuery.statuses.length === 0 &&
+      senderRoleFilter === null;
     const total = unfiltered
       ? suggestionCounts.total
       : (
@@ -439,6 +459,7 @@ router.post(
 router.post(
   "/social/products/whatsapp-extractions/:id/create-draft",
   requireWorkspace,
+  requireProductWriter,
   async (req, res) => {
     const ownerId = requestOwnerId(req);
     const workspaceId = requestWorkspaceId(req);
@@ -481,6 +502,17 @@ router.post(
       }
       const manualProduct = req.body?.product;
       const hasManualProduct = manualProduct !== undefined;
+      const overrideReason =
+        typeof req.body?.overrideReason === "string"
+          ? req.body.overrideReason.trim()
+          : "";
+      if (
+        suggestion.status === "possible_duplicate" &&
+        hasManualProduct &&
+        !overrideReason
+      ) {
+        return { status: "override_reason_required" as const };
+      }
       if (
         suggestion.status !== "review" &&
         !(suggestion.status === "possible_duplicate" && hasManualProduct)
@@ -558,6 +590,11 @@ router.post(
           ownerId,
           workspaceId,
           ...productInput,
+          normalizedName: normalizedProductName(productInput.name),
+          sourceTrust:
+            suggestion.senderRole === "merchant" ? "merchant" : "customer",
+          lastExtractionSuggestionId: suggestionId,
+          updatedReason: overrideReason ? "duplicate_override" : "extraction",
           availability:
             input.inventoryTracked && (input.stockOnHand ?? 0) <= 0
               ? "out_of_stock"
@@ -587,6 +624,7 @@ router.post(
         .set({
           status: "draft_created",
           productId: product.id,
+          overrideReason: overrideReason || null,
           updatedAt: new Date(),
         })
         .where(
@@ -613,6 +651,12 @@ router.post(
       });
       return;
     }
+    if (result.status === "override_reason_required") {
+      res.status(409).json({
+        error: "هذا الاقتراح مطابق لمنتج موجود. اكتب سبباً واضحاً لإنشاء منتج مختلف قبل المتابعة.",
+      });
+      return;
+    }
     res.status(201).json({
       product: await catalogProductResponse(
         result.product,
@@ -628,6 +672,7 @@ router.post(
 router.post(
   "/social/products/whatsapp-extractions/:id/dismiss",
   requireWorkspace,
+  requireProductWriter,
   async (req, res) => {
     if (!requestOwnerId(req)) {
       res.status(401).json({ error: "سجّل الدخول أولاً." });
@@ -663,6 +708,7 @@ router.post(
 router.post(
   "/social/products/whatsapp-extractions/:id/review",
   requireWorkspace,
+  requireProductWriter,
   async (req, res) => {
     const ownerId = requestOwnerId(req);
     const workspaceId = requestWorkspaceId(req);
@@ -713,6 +759,357 @@ router.post(
       return;
     }
     res.json({ reviewed: true, field, correct });
+  },
+);
+
+router.post(
+  "/social/products/whatsapp-extractions/:id/reprocess",
+  requireWorkspace,
+  requireProductWriter,
+  async (req, res) => {
+    const workspaceId = requestWorkspaceId(req);
+    const suggestionId = metaString(req.params.id);
+    if (!suggestionId) {
+      res.status(400).json({ error: "معرّف الاقتراح غير صالح." });
+      return;
+    }
+    const [suggestion] = await db
+      .select()
+      .from(productExtractionSuggestions)
+      .where(and(
+        eq(productExtractionSuggestions.id, suggestionId),
+        eq(productExtractionSuggestions.workspaceId, workspaceId),
+      ))
+      .limit(1);
+    if (!suggestion) {
+      res.status(404).json({ error: "لم يتم العثور على الاقتراح." });
+      return;
+    }
+    const sourceRows = await db
+      .select({ messageId: productExtractionSources.messageId })
+      .from(productExtractionSources)
+      .where(and(
+        eq(productExtractionSources.workspaceId, workspaceId),
+        eq(productExtractionSources.suggestionId, suggestionId),
+      ))
+      .limit(1);
+    const messageId = sourceRows[0]?.messageId;
+    if (!messageId) {
+      res.status(422).json({ error: "لا توجد رسالة مصدر يمكن إعادة تحليلها." });
+      return;
+    }
+    const nextVersion = (suggestion.version ?? 1) + 1;
+    const rulesetVersion = `v${nextVersion}`;
+    const idempotencyKey = createHash("sha256")
+      .update(`${workspaceId}:${messageId}:${rulesetVersion}`)
+      .digest("hex");
+    await db.insert(whatsappProductExtractionJobs).values({
+      id: randomUUID(),
+      ownerId: suggestion.ownerId,
+      workspaceId,
+      messageId,
+      status: "pending",
+      stage: "received",
+      rulesetVersion,
+      idempotencyKey,
+      dedupeKey: null,
+      nextRunAt: new Date(),
+      updatedAt: new Date(),
+    }).onConflictDoNothing();
+    await recordExtractionEvent({
+      workspaceId,
+      event: "EXTRACTION_REPROCESSED",
+      suggestionId,
+      context: { rulesetVersion, messageId },
+    });
+    res.status(202).json({ rulesetVersion, queued: true });
+  },
+);
+
+router.post(
+  "/social/products/whatsapp-extractions/:id/propose-update",
+  requireWorkspace,
+  requireProductWriter,
+  async (req, res) => {
+    const workspaceId = requestWorkspaceId(req);
+    const ownerId = requestOwnerId(req);
+    const suggestionId = metaString(req.params.id);
+    if (!suggestionId || !ownerId) {
+      res.status(400).json({ error: "معرّف الاقتراح غير صالح." });
+      return;
+    }
+    const [suggestion] = await db
+      .select()
+      .from(productExtractionSuggestions)
+      .where(and(
+        eq(productExtractionSuggestions.id, suggestionId),
+        eq(productExtractionSuggestions.workspaceId, workspaceId),
+      ))
+      .limit(1);
+    if (!suggestion) {
+      res.status(404).json({ error: "لم يتم العثور على الاقتراح." });
+      return;
+    }
+    const productId =
+      typeof req.body?.productId === "string"
+        ? req.body.productId
+        : suggestion.matchedProductId;
+    if (!productId) {
+      res.status(422).json({ error: "لا يوجد منتج مطابق لتحديثه." });
+      return;
+    }
+    const [product] = await db
+      .select()
+      .from(products)
+      .where(and(eq(products.id, productId), eq(products.workspaceId, workspaceId)))
+      .limit(1);
+    if (!product) {
+      res.status(404).json({ error: "المنتج المطابق غير موجود في المساحة." });
+      return;
+    }
+    const candidate = suggestion.extractedData as Record<string, unknown>;
+    const diff = buildChangeDiff(
+      ["name", "description", "price", "currency", "availability", "aliases"],
+      {
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        currency: product.currency,
+        availability: product.availability,
+        aliases: product.aliases,
+      },
+      {
+        name: typeof candidate.name === "string" ? candidate.name : product.name,
+        description:
+          typeof candidate.description === "string"
+            ? candidate.description
+            : product.description,
+        price: typeof candidate.price === "string" ? candidate.price : product.price,
+        currency:
+          typeof candidate.currency === "string" ? candidate.currency : product.currency,
+        availability:
+          typeof candidate.availability === "string"
+            ? candidate.availability
+            : product.availability,
+        aliases: Array.isArray(candidate.aliases) ? candidate.aliases : product.aliases,
+      },
+      suggestion.evidence as Record<string, string | null>,
+    );
+    if (!Object.keys(diff).length) {
+      res.status(422).json({ error: "لا توجد تغييرات جديدة في هذا الاقتراح." });
+      return;
+    }
+    const proposalId = randomUUID();
+    await db.insert(menaProductChangeProposals).values({
+      id: proposalId,
+      workspaceId,
+      productId,
+      suggestionId,
+      diff,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).onConflictDoNothing();
+    await db
+      .update(productExtractionSuggestions)
+      .set({ status: "update_proposed", updatedAt: new Date() })
+      .where(and(
+        eq(productExtractionSuggestions.id, suggestionId),
+        eq(productExtractionSuggestions.workspaceId, workspaceId),
+      ));
+    await recordExtractionEvent({
+      workspaceId,
+      event: "PROPOSAL_CREATED",
+      suggestionId,
+      context: { productId, fields: Object.keys(diff) },
+    });
+    res.status(201).json({ proposalId, diff });
+  },
+);
+
+router.post(
+  "/social/products/change-proposals/:id/decide",
+  requireWorkspace,
+  requireProductWriter,
+  async (req, res) => {
+    const workspaceId = requestWorkspaceId(req);
+    const actorId = requestOwnerId(req);
+    const proposalId = metaString(req.params.id);
+    const decision = req.body?.decision;
+    if (!proposalId || (decision !== "accepted" && decision !== "rejected")) {
+      res.status(400).json({ error: "قرار التحديث غير صالح." });
+      return;
+    }
+    const [proposal] = await db
+      .select()
+      .from(menaProductChangeProposals)
+      .where(and(
+        eq(menaProductChangeProposals.id, proposalId),
+        eq(menaProductChangeProposals.workspaceId, workspaceId),
+      ))
+      .limit(1);
+    if (!proposal || proposal.status !== "proposed") {
+      res.status(404).json({ error: "مقترح التحديث غير موجود أو تم البت فيه." });
+      return;
+    }
+    const [product] = await db
+      .select()
+      .from(products)
+      .where(and(
+        eq(products.id, proposal.productId),
+        eq(products.workspaceId, workspaceId),
+      ))
+      .limit(1);
+    if (!product) {
+      res.status(404).json({ error: "المنتج المرتبط بالمقترح غير موجود." });
+      return;
+    }
+    const diff = proposal.diff as Record<string, { before: unknown; after: unknown }>;
+    if (decision === "accepted") {
+      const patch: Record<string, unknown> = {};
+      for (const [field, change] of Object.entries(diff)) {
+        if (field in product) patch[field] = change.after;
+      }
+      const nextName =
+        typeof patch.name === "string" ? patch.name : product.name;
+      patch.normalizedName = normalizedProductName(nextName);
+      patch.updatedBy = actorId;
+      patch.updatedReason = "extraction_update";
+      patch.updatedAt = new Date();
+      await db
+        .update(products)
+        .set(patch)
+        .where(and(
+          eq(products.id, product.id),
+          eq(products.workspaceId, workspaceId),
+        ));
+      await recordProductChanges(
+        Object.entries(diff)
+          .filter(([field]) => field in product)
+          .map(([field, change]) => ({
+            workspaceId,
+            productId: product.id,
+            field,
+            before: change.before,
+            after: change.after,
+            sourceType: "extraction" as const,
+            sourceId: proposal.suggestionId,
+            actorId,
+          })),
+      );
+    }
+    await db
+      .update(menaProductChangeProposals)
+      .set({
+        status: decision,
+        decidedBy: actorId,
+        decidedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(menaProductChangeProposals.id, proposalId),
+        eq(menaProductChangeProposals.workspaceId, workspaceId),
+      ));
+    await db
+      .update(productExtractionSuggestions)
+      .set({
+        status: decision === "accepted" ? "accepted_update" : "rejected_update",
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(productExtractionSuggestions.id, proposal.suggestionId),
+        eq(productExtractionSuggestions.workspaceId, workspaceId),
+      ));
+    await recordExtractionEvent({
+      workspaceId,
+      event: decision === "accepted" ? "PROPOSAL_ACCEPTED" : "PROPOSAL_REJECTED",
+      suggestionId: proposal.suggestionId,
+      context: { proposalId, productId: proposal.productId },
+    });
+    res.json({ status: decision, changedFields: Object.keys(diff) });
+  },
+);
+
+router.get(
+  "/social/products/:id/changes",
+  requireWorkspace,
+  async (req, res) => {
+    const workspaceId = requestWorkspaceId(req);
+    const productId = metaString(req.params.id);
+    if (!productId) {
+      res.status(400).json({ error: "معرّف المنتج غير صالح." });
+      return;
+    }
+    const [product] = await db
+      .select({ id: products.id })
+      .from(products)
+      .where(and(eq(products.id, productId), eq(products.workspaceId, workspaceId)))
+      .limit(1);
+    if (!product) {
+      res.status(404).json({ error: "المنتج غير موجود." });
+      return;
+    }
+    const changes = await db
+      .select()
+      .from(menaProductChanges)
+      .where(and(
+        eq(menaProductChanges.workspaceId, workspaceId),
+        eq(menaProductChanges.productId, productId),
+      ))
+      .orderBy(desc(menaProductChanges.createdAt))
+      .limit(200);
+    res.json({ changes });
+  },
+);
+
+router.get(
+  "/social/products/extraction-metrics",
+  requireWorkspace,
+  async (req, res) => {
+    const workspaceId = requestWorkspaceId(req);
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const events = await db
+      .select({
+        event: menaProductExtractionEvents.event,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(menaProductExtractionEvents)
+      .where(and(
+        eq(menaProductExtractionEvents.workspaceId, workspaceId),
+        gte(menaProductExtractionEvents.createdAt, since),
+      ))
+      .groupBy(menaProductExtractionEvents.event);
+    const suggestions = await db
+      .select({
+        status: productExtractionSuggestions.status,
+        classification: productExtractionSuggestions.classification,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(productExtractionSuggestions)
+      .where(and(
+        eq(productExtractionSuggestions.workspaceId, workspaceId),
+        gte(productExtractionSuggestions.createdAt, since),
+      ))
+      .groupBy(
+        productExtractionSuggestions.status,
+        productExtractionSuggestions.classification,
+      );
+    const countEvent = (name: string) =>
+      events.find((item) => item.event === name)?.total ?? 0;
+    const created = suggestions
+      .filter((item) => item.classification === "product")
+      .reduce((sum, item) => sum + item.total, 0);
+    const activated = suggestions.find(
+      (item) => item.status === "draft_created",
+    )?.total ?? 0;
+    res.json({
+      events,
+      suggestions,
+      extractionSucceeded: countEvent("EXTRACTION_SUCCEEDED"),
+      extractionFailed: countEvent("EXTRACTION_FAILED"),
+      reprocessed: countEvent("EXTRACTION_REPROCESSED"),
+      proposalsAccepted: countEvent("PROPOSAL_ACCEPTED"),
+      conversionRate: created ? activated / created : 0,
+    });
   },
 );
 

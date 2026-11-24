@@ -256,7 +256,7 @@ test("classifies every non-product message for recall review", () => {
   assert.equal(candidates[0].data.name, null);
 });
 
-test("rejects unknown and multiply assigned source messages", () => {
+test("rejects unknown sources and shared sources without evidence spans", () => {
   const unknownSource = extraction();
   unknownSource.products[0].sourceMessageIds = ["not-imported"];
   assert.throws(
@@ -279,8 +279,22 @@ test("rejects unknown and multiply assigned source messages", () => {
         JSON.stringify(duplicateSource),
         [source],
       ),
-    /PRODUCT_EXTRACTION_INVALID_SOURCE_GROUPING/,
+    /PRODUCT_EXTRACTION_SHARED_SOURCE_NEEDS_EVIDENCE/,
   );
+
+  duplicateSource.products[1].evidence_spans = {
+    name: { source_id: source.id, start: 0, end: 4 },
+  };
+  const shared = normalizeProductExtractionResponse(
+    JSON.stringify(duplicateSource),
+    [source],
+  );
+  assert.equal(shared.candidates.length, 2);
+  assert.deepEqual(shared.candidates[1].evidenceSpans.name, {
+    sourceId: source.id,
+    start: 0,
+    end: 4,
+  });
 });
 
 test("rejects omitted messages and cross-group product clusters", () => {

@@ -72,6 +72,10 @@ import {
   retryProductPublicationJobs,
   importProductCandidate,
   reviewProductExtraction,
+  proposeProductUpdate,
+  reprocessProductExtraction,
+  getProductChanges,
+  type ProductChangeRecord,
   PRODUCT_EXTRACTION_PAGE_SIZE,
   emptyProductExtractionPagination,
   emptyProductExtractionSuggestionCounts,
@@ -605,6 +609,11 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
       (isLocalAuthDisabled || Boolean(userId)) &&
       Boolean(editor?.id && editor.value.inventoryTracked),
   });
+  const productChanges = useQuery<ProductChangeRecord[]>({
+    queryKey: ["product-changes", userId ?? "local", editor?.id ?? "new"],
+    queryFn: () => getProductChanges(editor!.id!),
+    enabled: (isLocalAuthDisabled || Boolean(userId)) && Boolean(editor?.id),
+  });
   const analyzeWhatsAppMessages = useMutation({
     mutationFn: analyzeWhatsAppProductMessages,
     onSuccess: async (result) => {
@@ -937,6 +946,37 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     onError: (cause) =>
       setError(
         cause instanceof Error ? cause.message : "تعذر حفظ تقييم الاقتراح.",
+      ),
+  });
+  const proposeUpdate = useMutation({
+    mutationFn: (input: { suggestionId: string; productId?: string }) =>
+      proposeProductUpdate(input.suggestionId, input.productId),
+    onSuccess: async () => {
+      showAppNotice({
+        title: "مقترح التحديث جاهز",
+        message: "راجع الفرق بين المنتج الحالي والبيانات المستخرجة قبل تطبيقه.",
+        tone: "success",
+      });
+      await refresh();
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "تعذر إنشاء مقترح التحديث.",
+      ),
+  });
+  const reprocessExtraction = useMutation({
+    mutationFn: reprocessProductExtraction,
+    onSuccess: async () => {
+      showAppNotice({
+        title: "أُعيد إدخال الرسالة في الطابور",
+        message: "ستظهر نسخة جديدة من الاقتراح بعد اكتمال التحليل.",
+        tone: "success",
+      });
+      await refresh();
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "تعذرت إعادة تحليل الرسالة.",
       ),
   });
   const importPost = useMutation({
@@ -1658,7 +1698,9 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     actionPending={
                       createExtractionDraft.isPending ||
                       dismissExtraction.isPending ||
-                      reviewExtraction.isPending
+                      reviewExtraction.isPending ||
+                      proposeUpdate.isPending ||
+                      reprocessExtraction.isPending
                     }
                     onCreateDraft={() =>
                       suggestion.status === "possible_duplicate" ||
@@ -1667,6 +1709,15 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                         : createExtractionDraft.mutate(suggestion.id)
                     }
                     onDismiss={() => confirmDismissExtraction(suggestion.id)}
+                    onProposeUpdate={(productId) =>
+                      proposeUpdate.mutate({
+                        suggestionId: suggestion.id,
+                        productId,
+                      })
+                    }
+                    onReprocess={() =>
+                      reprocessExtraction.mutate(suggestion.id)
+                    }
                     onReview={(field, correct) => {
                       reviewExtraction.mutate(
                         {
@@ -2615,6 +2666,56 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   )}
                 </View>
               ) : null}
+              {editor?.extractionSuggestionId &&
+              extractionsForDisplay.find(
+                (item) => item.id === editor.extractionSuggestionId,
+              )?.status === "possible_duplicate" ? (
+                <Panel>
+                  <Text style={[styles.description, { color: colors.foreground }]}>
+                    سبب إنشاء منتج مختلف عن المنتج المطابق (إلزامي)
+                  </Text>
+                  <CairoTextInput
+                    accessibilityLabel="سبب إنشاء منتج مختلف"
+                    value={editor.overrideReason ?? ""}
+                    onChangeText={(value) =>
+                      setEditor((current) =>
+                        current
+                          ? { ...current, overrideReason: value }
+                          : current,
+                      )
+                    }
+                    placeholder="مثال: مقاس مختلف ولونه متطابق"
+                    style={[
+                      styles.input,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                  />
+                </Panel>
+              ) : null}
+              {editor?.id && productChanges.data?.length ? (
+                <Panel>
+                  <Text style={[styles.description, { color: colors.foreground }]}>
+                    سجل تغييرات المنتج
+                  </Text>
+                  {productChanges.data.slice(0, 8).map((change) => (
+                    <Text
+                      key={change.id}
+                      style={[
+                        styles.helper,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      {change.field}: {JSON.stringify(change.beforeValue)} ←{" "}
+                      {JSON.stringify(change.afterValue)} ·{" "}
+                      {formatArabicDate(change.createdAt)}
+                    </Text>
+                  ))}
+                </Panel>
+              ) : null}
               {!editor?.extractionSuggestionId ? (
                 <ChoiceField
                   label="حالة السجل"
@@ -2654,7 +2755,16 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 }
                 icon={save.isPending ? "refresh-cw" : "save"}
                 disabled={
-                  save.isPending || mediaUploading || !editor?.value.name.trim()
+                  save.isPending ||
+                  mediaUploading ||
+                  !editor?.value.name.trim() ||
+                  Boolean(
+                    editor?.extractionSuggestionId &&
+                      extractionsForDisplay.find(
+                        (item) => item.id === editor.extractionSuggestionId,
+                      )?.status === "possible_duplicate" &&
+                      !editor.overrideReason?.trim(),
+                  )
                 }
                 onPress={() => void saveProduct()}
               />
@@ -3001,6 +3111,8 @@ function ProductExtractionCard({
   actionPending,
   onCreateDraft,
   onDismiss,
+  onProposeUpdate,
+  onReprocess,
   onReview,
   onEditProduct,
 }: {
@@ -3009,6 +3121,8 @@ function ProductExtractionCard({
   actionPending: boolean;
   onCreateDraft: () => void;
   onDismiss: () => void;
+  onProposeUpdate: (productId?: string) => void;
+  onReprocess: () => void;
   onReview: (field: string, correct: boolean) => void;
   onEditProduct: (product: CatalogProduct) => void;
 }) {
@@ -3038,6 +3152,13 @@ function ProductExtractionCard({
     ],
     ["رقم المنتج", suggestion.extractedData.sku ?? "غير مستخرج", "sku"],
   ];
+  const senderLabel =
+    suggestion.senderRole === "merchant"
+      ? "رسالة من التاجر"
+      : suggestion.senderRole === "customer"
+        ? "إشارة من عميل — غير موثوقة"
+        : "مصدر الرسالة غير معروف";
+  const computedConfidence = suggestion.confidence?._overall;
   const statusLabel =
     suggestion.status === "draft_created"
       ? "أُنشئت مسودة"
@@ -3068,6 +3189,22 @@ function ProductExtractionCard({
         >
           {statusLabel}
         </Text>
+      </View>
+      <View style={styles.sourceMetaRow}>
+        <Text style={[styles.description, { color: colors.mutedForeground }]}>
+          {senderLabel}
+          {suggestion.version > 1
+            ? ` · النسخة ${formatArabicNumber(suggestion.version)}`
+            : ""}
+        </Text>
+        {typeof computedConfidence === "number" ? (
+          <Text
+            accessibilityLabel={`الثقة المحسوبة ${Math.round(computedConfidence * 100)} في المئة`}
+            style={[styles.badge, { color: colors.primary, backgroundColor: colors.secondary }]}
+          >
+            ثقة {Math.round(computedConfidence * 100)}%
+          </Text>
+        ) : null}
       </View>
       {suggestion.classification === "product"
         ? fields.map(([label, value, key]) => (
@@ -3302,7 +3439,7 @@ function ProductExtractionCard({
         <ActionButton
           label={
             suggestion.status === "possible_duplicate"
-              ? "إنشاء مسودة جديدة بعد المقارنة"
+              ? "مقارنة وإنشاء منتج مختلف"
               : suggestion.extractedData.name?.trim()
                 ? "إنشاء مسودة للمراجعة"
                 : "إكمال بيانات المنتج يدويًا"
@@ -3310,6 +3447,27 @@ function ProductExtractionCard({
           icon="file-plus"
           disabled={actionPending}
           onPress={onCreateDraft}
+        />
+      ) : null}
+      {suggestion.matchedProductId &&
+      suggestion.classification === "product" &&
+      suggestion.status !== "accepted_update" ? (
+        <ActionButton
+          label="اقتراح تحديث المنتج المطابق"
+          icon="refresh-cw"
+          secondary
+          disabled={actionPending}
+          onPress={() => onProposeUpdate(suggestion.matchedProductId ?? undefined)}
+        />
+      ) : null}
+      {suggestion.classification === "product" &&
+      suggestion.status !== "draft_created" ? (
+        <ActionButton
+          label="إعادة تحليل هذه الرسالة"
+          icon="refresh-cw"
+          secondary
+          disabled={actionPending}
+          onPress={onReprocess}
         />
       ) : null}
       {suggestion.status !== "draft_created" ? (
@@ -3353,7 +3511,7 @@ function ProductExtractionQueueStrip({
   }
   if (counts.failed > 0) {
     lines.push({
-      text: `${formatArabicNumber(counts.failed)} رسالة تعذر استخراج بياناتها — أعد التحليل من زر «تحليل الرسائل».`,
+      text: `${formatArabicNumber(counts.failed)} رسالة تعذر استخراج بياناتها — أعد المحاولة من زر «إضافة إلى مراجعة المنتجات» في نافذة رسائل المجموعة.`,
       tone: "warning",
     });
   }
@@ -4272,6 +4430,13 @@ const styles = StyleSheet.create({
   description: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   candidate: { gap: 9 },
   extractionCard: { gap: 9 },
+  sourceMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    flexWrap: "wrap",
+  },
   fieldReview: {
     flexDirection: "row",
     flexWrap: "wrap",
