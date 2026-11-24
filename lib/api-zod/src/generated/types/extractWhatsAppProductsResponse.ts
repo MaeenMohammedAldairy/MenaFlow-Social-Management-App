@@ -5,7 +5,9 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ExtractionQuotaEstimate } from './extractionQuotaEstimate';
 
 export interface ExtractWhatsAppProductsResponse {
   queuedMessages: number;
+  quota?: ExtractionQuotaEstimate;
 }

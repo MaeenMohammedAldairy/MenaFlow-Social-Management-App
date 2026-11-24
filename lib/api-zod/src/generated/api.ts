@@ -371,6 +371,16 @@ export const GetWhatsAppAutoReplySettingsResponse = zod.object({
 }),
   "webhookSecretConfigured": zod.boolean(),
   "webhookUrl": zod.string().url().nullish(),
+  "webhookAttempts": zod.union([zod.object({
+  "count": zod.number().int(),
+  "lastAt": zod.coerce.date().nullish(),
+  "lastEvent": zod.string().nullish(),
+  "lastHint": zod.string().nullish().describe('Arabic guidance recorded for the last outcome'),
+  "acceptedCount": zod.number().int(),
+  "rejectedCount": zod.number().int(),
+  "lastRejectedEvent": zod.string().nullish(),
+  "lastRejectedHint": zod.string().nullish()
+}).describe('What the provider\'s webhook calls did over the retention window. This is the evidence that separates "the provider never called us" from "it called and we refused it" — two faults with different fixes that both look like "no messages are arriving". Null when the delivery log was not read for this platform.'),zod.null()]),
   "issues": zod.array(zod.object({
   "code": zod.string(),
   "message": zod.string(),
@@ -575,7 +585,8 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
   "processing": zod.number().int(),
   "waitingMedia": zod.number().int(),
   "waitingAssociation": zod.number().int(),
-  "failed": zod.number().int()
+  "failed": zod.number().int(),
+  "quotaPaused": zod.number().int().describe('Pending jobs held back because the workspace AI quota is exhausted. They resume on their own; no attempt is spent while paused.')
 }).describe('Extraction jobs by state. `waitingMedia` and `waitingAssociation` are the states only a download or a merchant decision can clear.')
 })
 
@@ -588,7 +599,17 @@ export const ExtractWhatsAppProductMessagesBody = zod.object({
 })
 
 export const ExtractWhatsAppProductMessagesResponse = zod.object({
-  "queuedMessages": zod.number().int()
+  "queuedMessages": zod.number().int(),
+  "quota": zod.object({
+  "messages": zod.number().int(),
+  "estimatedGenerations": zod.number().int(),
+  "worstCaseGenerations": zod.number().int(),
+  "used": zod.number().int(),
+  "limit": zod.number().int(),
+  "remaining": zod.number().int(),
+  "fitsWithinQuota": zod.boolean(),
+  "messagesWithinQuota": zod.number().int()
+}).optional().describe('What the queued batch costs in AI quota. One extraction is one metered generation; a response the grounding rejects is retried once against the other provider, which is metered again, hence the worst case.')
 })
 
 
@@ -810,6 +831,16 @@ export const GetMetaAutoReplySettingsResponse = zod.object({
 })),
   "verifyTokenConfigured": zod.boolean(),
   "appSecretConfigured": zod.boolean(),
+  "webhookAttempts": zod.union([zod.object({
+  "count": zod.number().int(),
+  "lastAt": zod.coerce.date().nullish(),
+  "lastEvent": zod.string().nullish(),
+  "lastHint": zod.string().nullish().describe('Arabic guidance recorded for the last outcome'),
+  "acceptedCount": zod.number().int(),
+  "rejectedCount": zod.number().int(),
+  "lastRejectedEvent": zod.string().nullish(),
+  "lastRejectedHint": zod.string().nullish()
+}).describe('What the provider\'s webhook calls did over the retention window. This is the evidence that separates "the provider never called us" from "it called and we refused it" — two faults with different fixes that both look like "no messages are arriving". Null when the delivery log was not read for this platform.'),zod.null()]),
   "issues": zod.array(zod.object({
   "code": zod.string(),
   "message": zod.string(),

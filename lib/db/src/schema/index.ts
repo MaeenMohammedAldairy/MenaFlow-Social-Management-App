@@ -21,6 +21,7 @@ export * from "./social";
 export * from "./whatsapp-content";
 export * from "./posts";
 export * from "./meta-inbox";
+export * from "./inbound-webhook";
 export * from "./meta-order-intake";
 export * from "./workspaces";
 export * from "./products";

@@ -9,6 +9,7 @@ import type { MetaInboxItem } from "@/lib/meta-inbox-api";
 import {
   canRetryMetaAutoReply,
   describeMetaAutoReplyFailure,
+  describeMetaAutoReplyPostponed,
 } from "@/lib/meta-auto-reply-failure";
 import { MetaInboxMedia } from "./MetaInboxMedia";
 
@@ -44,9 +45,17 @@ export function MetaInboxItemCard({
   const autoReplyReason = autoReplyPaused
     ? describeMetaAutoReplyFailure(item.autoReplyErrorCode)
     : null;
+  // A job postponed by a limit stays queued, and "preparing your reply…" would
+  // hide the one thing the merchant can act on: which limit, and that the reply
+  // resumes by itself.
+  const postponedReason =
+    item.autoReplyStatus === "queued" || item.autoReplyStatus === "processing"
+      ? describeMetaAutoReplyPostponed(item.autoReplyErrorCode)
+      : null;
   const autoReplyNeedsAttention =
     item.autoReplyStatus === "failed" ||
     item.autoReplyStatus === "unknown" ||
+    Boolean(postponedReason) ||
     (item.autoReplyStatus === "skipped" && Boolean(autoReplyReason));
   const media = item.media ?? [];
   const messageText =
@@ -117,7 +126,7 @@ export function MetaInboxItemCard({
           >
             {item.autoReplyStatus === "queued" ||
             item.autoReplyStatus === "processing"
-              ? "جارٍ إعداد الرد الآلي..."
+              ? (postponedReason ?? "جارٍ إعداد الرد الآلي...")
               : item.autoReplyStatus === "sending"
                 ? "جارٍ إرسال الرد الآلي..."
                 : item.autoReplyStatus === "unknown"

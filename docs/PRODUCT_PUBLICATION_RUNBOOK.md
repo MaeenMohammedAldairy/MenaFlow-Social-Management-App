@@ -78,6 +78,7 @@ the media requeue path.
 | `WHATSAPP_ASSOCIATED_MESSAGE_UNAVAILABLE` | A bundled message row disappeared | Data problem; requeue the remaining message |
 | `WHATSAPP_CONTENT_ASSOCIATION_REQUIRES_REVIEW` | Possible bundle, unconfirmed | Confirm/reject in the association screen; retries hourly meanwhile |
 | `MISSING_AI_PROVIDER_KEY` | Neither `OPENAI_API_KEY` nor `GEMINI_API_KEY` set | Set a key and restart; jobs stay `pending` and are retried |
+| `SUBSCRIPTION_LIMIT_REACHED:aiGenerations` | The workspace spent its monthly AI quota | Not a fault: the job stays `pending`, its attempt is returned, and the whole workspace queue is postponed (`PRODUCT_EXTRACTION_QUOTA_PAUSE_MS`, default 6h). It resumes by itself, or immediately after an upgrade |
 | `AI_PROVIDER_COOLING_DOWN` | Both providers recently returned 429/402/401/403 | Wait for the cooldown (default 5 min, `AI_PROVIDER_COOLDOWN_MS`; credential errors wait 6× longer) |
 | `PRODUCT_EXTRACTION_INVALID_JSON` / `_INVALID_RESPONSE` / `_INVALID_CANDIDATE` | The model answered outside the contract | Transient; the job retries. If it repeats for one message, the message is unusual — check the corpus (§9) |
 | `PRODUCT_EXTRACTION_CROSS_GROUP_CANDIDATE` | The model mixed messages from different groups | Rejected by design; evidence must come from one bundle |
@@ -111,7 +112,8 @@ Endpoints:
 
 - `GET /api/social/products/whatsapp-extractions` → `{ suggestions, pendingJobs }`
   where `pendingJobs` counts `pending`, `processing`, `waitingMedia`,
-  `waitingAssociation`, `failed`. This is the fastest single health check.
+  `waitingAssociation`, `failed` and `quotaPaused` (pending jobs held back by an
+  exhausted AI quota). This is the fastest single health check.
 - `POST /api/social/products/extract-whatsapp` (`{ messageId? }`) → `202 { queuedMessages }`.
 - `POST /api/social/products/whatsapp-extractions/:id/create-draft`.
 - `POST /api/social/products/whatsapp-extractions/:id/dismiss`.
@@ -309,6 +311,8 @@ behaviour stays fixed.
 | Variable | Purpose |
 | --- | --- |
 | `WHATSAPP_PRODUCT_EXTRACTION_WORKER_ENABLED` | `false` stops the extraction worker |
+| `PRODUCT_EXTRACTION_QUOTA_PAUSE_MS` | How long the queue waits after the AI quota runs out (floored at 5 minutes) |
+| `WHATSAPP_SYNC_GROUP_CONCURRENCY`, `WHATSAPP_SYNC_RUN_BUDGET_MS`, `WHATSAPP_SYNC_HEARTBEAT_MS` | Bounds for the historical sync that feeds this chain — see `docs/WHATSAPP_SYNC.md` |
 | `PRODUCT_PUBLICATION_WORKER_ENABLED` | `false` stops the publication worker |
 | `MENA_WORKER_NAME` | Run a single worker (`product-extraction`, `product-publication`, …) instead of `all` |
 | `PRODUCT_VISION_EXTRACTION_ENABLED` | Opt into photo-only extraction |

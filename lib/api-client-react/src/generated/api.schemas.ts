@@ -514,6 +514,28 @@ export interface WhatsAppAutoReplySettings {
   instructions: string;
 }
 
+/**
+ * What the provider's webhook calls did over the retention window. This is the evidence that separates "the provider never called us" from "it called and we refused it" — two faults with different fixes that both look like "no messages are arriving". Null when the delivery log was not read for this platform.
+ */
+export interface InboundWebhookAttemptSummary {
+  count: number;
+  /** @nullable */
+  lastAt?: string | null;
+  /** @nullable */
+  lastEvent?: string | null;
+  /**
+     * Arabic guidance recorded for the last outcome
+     * @nullable
+     */
+  lastHint?: string | null;
+  acceptedCount: number;
+  rejectedCount: number;
+  /** @nullable */
+  lastRejectedEvent?: string | null;
+  /** @nullable */
+  lastRejectedHint?: string | null;
+}
+
 export type DiagnosticIssueSeverity = typeof DiagnosticIssueSeverity[keyof typeof DiagnosticIssueSeverity];
 
 
@@ -550,6 +572,7 @@ export interface WhatsAppInboundDiagnostics {
   webhookSecretConfigured: boolean;
   /** @nullable */
   webhookUrl?: string | null;
+  webhookAttempts: InboundWebhookAttemptSummary | null;
   issues: DiagnosticIssue[];
 }
 
@@ -882,6 +905,8 @@ export interface ProductExtractionQueueCounts {
   waitingMedia: number;
   waitingAssociation: number;
   failed: number;
+  /** Pending jobs held back because the workspace AI quota is exhausted. They resume on their own; no attempt is spent while paused. */
+  quotaPaused: number;
 }
 
 export interface ProductExtractionListResponse {
@@ -894,8 +919,23 @@ export interface ExtractWhatsAppProductsInput {
   messageId?: string;
 }
 
+/**
+ * What the queued batch costs in AI quota. One extraction is one metered generation; a response the grounding rejects is retried once against the other provider, which is metered again, hence the worst case.
+ */
+export interface ExtractionQuotaEstimate {
+  messages: number;
+  estimatedGenerations: number;
+  worstCaseGenerations: number;
+  used: number;
+  limit: number;
+  remaining: number;
+  fitsWithinQuota: boolean;
+  messagesWithinQuota: number;
+}
+
 export interface ExtractWhatsAppProductsResponse {
   queuedMessages: number;
+  quota?: ExtractionQuotaEstimate;
 }
 
 export type ProductInputAvailability = typeof ProductInputAvailability[keyof typeof ProductInputAvailability];
@@ -1116,6 +1156,7 @@ export interface MetaInboundDiagnostics {
   subscriptions: MetaInboundDiagnosticsSubscriptionsItem[];
   verifyTokenConfigured: boolean;
   appSecretConfigured: boolean;
+  webhookAttempts: InboundWebhookAttemptSummary | null;
   issues: DiagnosticIssue[];
 }
 

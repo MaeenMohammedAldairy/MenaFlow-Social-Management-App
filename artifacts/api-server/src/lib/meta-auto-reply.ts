@@ -2,6 +2,11 @@ import type {
   AiProviderOptions,
   AiProviderResult,
 } from "./ai-provider.ts";
+import { resolveAutoReplyLimitPauseMs } from "./auto-reply-limit-pause.ts";
+import {
+  autoReplyGenerationPausedCodes,
+  classifyAutoReplyGenerationFailure,
+} from "./error-codes.ts";
 import { callMeteredAiProvider } from "./metered-ai-provider.ts";
 import { boundedString as boundedText, isRecord } from "./value-utils.ts";
 
@@ -1102,6 +1107,22 @@ export function metaAutoReplyHourlyLimit(
   return Math.min(parsed, 100);
 }
 
+/** Environment key for how long a Meta reply waits on a limit that lifts. */
+export const META_AUTO_REPLY_QUOTA_PAUSE_ENV_KEY =
+  "META_AUTO_REPLY_QUOTA_PAUSE_MINUTES";
+
+/**
+ * How long a Meta automatic reply waits when generation was blocked by a limit
+ * that lifts by itself. Shared bounds with the WhatsApp queue: both spend the
+ * same workspace AI quota, and Meta's 24-hour reply window bounds the wait just
+ * as WhatsApp's 12-hour age check does.
+ */
+export function metaAutoReplyLimitPauseMs(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  return resolveAutoReplyLimitPauseMs(META_AUTO_REPLY_QUOTA_PAUSE_ENV_KEY, env);
+}
+
 export function metaAutoReplyEnabled(
   settings: {
     enabled: boolean;
@@ -1140,31 +1161,14 @@ export function retryMetaAutoReplyGeneration(
 }
 
 /**
- * Codes that mean the reply was never generated, so nothing was sent and the
- * customer is not waiting on half a delivery. Recording them as "failed" burns
- * the retry budget and tells the merchant a send failed, which never happened.
+ * The paused-code vocabulary lives in `error-codes.ts` because the WhatsApp
+ * automatic-reply queue needs the same answer: both queues spend the same
+ * workspace AI quota, so a limit that lifts by itself must not be recorded as a
+ * failure on either side. These names stay as the Meta-facing spelling.
  */
-export const metaAutoReplyPausedCodes = [
-  "SUBSCRIPTION_LIMIT_REACHED",
-  "WORKSPACE_SUBSCRIPTION_MISSING",
-  "WORKSPACE_SUBSCRIPTION_PLAN_INVALID",
-  "MISSING_OPENAI_KEY",
-  "MISSING_GEMINI_KEY",
-  "MISSING_AI_PROVIDER_KEY",
-  "AI_MODEL_NAME_INVALID",
-] as const;
+export const metaAutoReplyPausedCodes = autoReplyGenerationPausedCodes;
 
-export function classifyMetaAutoReplyFailure(
-  reason: string,
-): "skipped" | "failed" {
-  const code = reason.trim();
-  const paused = metaAutoReplyPausedCodes.some(
-    (candidate) =>
-      code === candidate || code.startsWith(`${candidate}:`) ||
-      code.includes(candidate),
-  );
-  return paused ? "skipped" : "failed";
-}
+export const classifyMetaAutoReplyFailure = classifyAutoReplyGenerationFailure;
 
 /** Only these states can be requeued without risking a second delivery. */
 export function metaAutoReplyRetryableStatus(

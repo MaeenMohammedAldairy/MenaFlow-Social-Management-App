@@ -146,13 +146,22 @@ The authenticated inbox is available in the app's **الوارد** tab. Before r
 
 Apply `20261025002000_meta_inbox.sql` before deploying inbox routes. The webhook callback is unauthenticated by design for Meta delivery; its GET verification token and POST HMAC signature are validated. Inbox reads and replies remain authenticated and workspace-scoped. Replies are subject to Meta messaging windows, account eligibility, app review, and each platform's policies. A Meta permission grant alone does not prove app review or webhook delivery is active.
 
+Apply `20261124010000_inbound_webhook_events.sql` before deploying the inbound
+delivery log. Every webhook decision — accepted, refused, or ignored — is then
+recorded for seven days in `mena_inbound_webhook_events` and surfaced on the
+reply-settings screens, which is what separates "Meta never called" from "Meta
+called and we refused it" without log access. The
+`inbound-webhook-retention` worker purges hourly;
+`INBOUND_WEBHOOK_EVENT_RETENTION_MS` and `INBOUND_WEBHOOK_EVENT_QUERY_LIMIT`
+bound the window and the read. See `docs/INBOUND_DELIVERY_DIAGNOSTICS.md`.
+
 The inbox displays HTTPS image previews and links to video or other attachments when Meta includes media URLs in the event. If a preview cannot load, the UI offers the media link as a fallback; media is not copied to application storage, so availability remains subject to Meta's URL lifetime. The inbox also shows the timestamp of the latest stored message or comment to help verify event delivery.
 
 ### Meta automatic replies
 
 Automatic replies are enabled by selecting one or more channel controls for Facebook Messenger, Facebook comments, Instagram Direct, or Instagram comments; selecting no channels disables automation. Channel changes are saved together from the inbox settings dialog, and saving requires at least one selected channel unless it is disabling a previously enabled automation. Disabling all channels stops new webhook jobs and cancels queued jobs; in-flight work rechecks the setting before sending. Comment replies are public. New conversations may receive a brief greeting; later customer messages are instructed to receive a direct answer without repeating the greeting. The worker loads up to 30 recent inbox events for the same conversation, giving the AI the latest 20 turns so short follow-ups (such as agreeing to receive photos) can be interpreted using the product discussed earlier. For comments, it first resolves the Meta post ID to a published post saved in the same workspace and platform. For private messages, it first searches recent saved published posts for a unique title/body match. If neither lookup finds a unique relevant post, the worker uses the connected Facebook page or Instagram account to search the 50 most recent published posts, provided the corresponding read permission (`pages_read_engagement` or `instagram_basic`) was actually granted. For comments it looks up the exact parent post ID, including posts older than the recent feed window. It extracts the post text and available photo URLs from the platform response; when a customer sends an image and no text match is found, up to three recent candidate post photos are compared visually with the customer image. The matched post content is supplied as factual context. When relevant facts are absent, ambiguous, inaccessible, or unavailable from Meta, the reply is instructed to direct the customer to the connected account's contact route rather than guess. There is no separate product catalog in the current schema, so only details present in saved or fetched published posts or legacy business facts can be used. Image attachments from Meta CDN are downloaded with size/type limits for visual analysis; when a customer asks for product photos and matching post images are available, the worker sends the images as Messenger/Instagram attachments followed by a short text reply, instead of sending the page link. Customer messages and recent same-conversation inbox turns are sent to the configured AI provider. The worker uses only workspace-scoped data and never treats customer text as system instructions.
 
-The durable queue prevents duplicate webhook events from creating duplicate jobs. AI generation may retry up to three times on transient provider errors. A send whose result is ambiguous is marked `unknown` and is not retried automatically, preventing accidental duplicate replies. Private-message automation skips events older than the 24-hour messaging window; Meta remains authoritative and may reject sends due to app review, permissions, or other platform limits. The inbox shows queued, sending, failed, and uncertain outcomes while preserving manual replies.
+The durable queue prevents duplicate webhook events from creating duplicate jobs. AI generation may retry up to three times on transient provider errors. A reply blocked by a limit that lifts by itself — an exhausted AI quota, a missing provider key, an unreadable subscription row — is not failed and not skipped: the job stays `queued`, its attempt is handed back, and `next_run_at` moves out by `META_AUTO_REPLY_QUOTA_PAUSE_MINUTES` (default 30, clamped to 5–120, the same bounds the WhatsApp queue uses). The 24-hour reply window checked before generation bounds the wait, so a limit that never lifts ends with the job skipped as window-expired and the conversation handed to a human rather than a reply sent a day late. Jobs recorded as `skipped` before this behaviour existed stay terminal and remain requeueable from the inbox. A send whose result is ambiguous is marked `unknown` and is not retried automatically, preventing accidental duplicate replies. Private-message automation skips events older than the 24-hour messaging window; Meta remains authoritative and may reject sends due to app review, permissions, or other platform limits. The inbox shows queued, sending, failed, and uncertain outcomes while preserving manual replies.
 
 The inbox settings also provide a manual action to queue replies for previously received comments. It only lists published posts linked to active, verified products on platforms where comment automation is already ready and enabled. The action uses comments already stored in the workspace inbox (it does not backfill comment history from Meta), excludes replied or already-queued comments and comments outside the current 24-hour worker window, and limits each batch to 20 comments. The user must select posts and confirm before jobs are queued.
 
@@ -176,6 +185,23 @@ window when rotating keys so conversations indexed under the previous key
 remain discoverable until their messages expire. The inbox and reply routes
 require workspace authentication; uncertain sends are not retried until an
 operator confirms the message did not arrive.
+
+An automatic reply that could not be generated because of a limit that lifts by
+itself — an exhausted AI quota, a missing provider key, an unreadable plan — is
+not failed. The event stays `queued`, its attempt is handed back, and
+`next_run_at` moves out by `WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES` (default 30,
+clamped to 5–120), so the reply is sent once the limit clears. The loop is
+bounded by the reply window the queue already enforces
+(`WHATSAPP_AUTO_REPLY_MAX_AGE_MINUTES`, 12 hours): past that age the event is
+dropped as `AUTO_REPLY_WINDOW_EXPIRED` and the conversation waits for a human,
+so a quota that never lifts cannot leave an event queued forever or deliver a
+reply half a day late.
+
+The same delivery log records every Evolution webhook decision, including the
+refusals that cannot be attributed to a workspace because the secret check
+happens first. `docs/INBOUND_DELIVERY_DIAGNOSTICS.md` covers the outcome
+vocabulary, the retention bounds, and the queries that decide which side of the
+webhook a delivery failure is on.
 
 ## Expo application
 

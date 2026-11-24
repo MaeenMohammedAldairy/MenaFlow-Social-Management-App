@@ -282,6 +282,8 @@ export type ProductExtractionQueueCounts = {
   waitingMedia: number;
   waitingAssociation: number;
   failed: number;
+  /** Held back by an exhausted AI quota; resumes on its own. */
+  quotaPaused: number;
 };
 
 export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
@@ -290,6 +292,7 @@ export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
   waitingMedia: 0,
   waitingAssociation: 0,
   failed: 0,
+  quotaPaused: 0,
 };
 
 export type WhatsAppProductExtractions = {
@@ -317,10 +320,15 @@ export async function getWhatsAppProductExtractions(): Promise<
   };
 }
 
+/** Defined with its merchant copy so the two cannot drift apart. */
+export type { ExtractionQuotaEstimate } from "./extraction-quota-copy";
+import type { ExtractionQuotaEstimate } from "./extraction-quota-copy";
+
 export async function analyzeWhatsAppProductMessages(
   messageId?: string,
 ): Promise<{
   queuedMessages: number;
+  quota?: ExtractionQuotaEstimate;
 }> {
   const response = await fetchApiResponse(
     "/api/social/products/extract-whatsapp",

@@ -25,6 +25,7 @@ import {
   whatsappWebhookUrl,
 } from "../lib/whatsapp-evolution";
 import { whatsAppInboundDiagnostics } from "../lib/inbound-diagnostics";
+import { fetchInboundWebhookAttempts } from "../lib/inbound-delivery-log";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import { isRecord } from "../lib/value-utils.ts";
 import { evolutionErrorResponse } from "./whatsapp-route-errors";
@@ -195,8 +196,12 @@ function aiErrorResponse(
  * "replies are off" need different fixes, and the screen cannot tell them apart
  * without this.
  */
-async function whatsAppInboundForWorkspace(workspaceId: string) {
-  const [[directSummary], autoReplyEventCounts] = await Promise.all([
+async function whatsAppInboundForWorkspace(
+  workspaceId: string,
+  instanceNames: readonly string[] = [],
+) {
+  const [[directSummary], autoReplyEventCounts, webhookAttempts] =
+    await Promise.all([
     db
       .select({
         lastAt: sql<string | null>`max(${menaWhatsAppDirectMessages.messageTimestamp})`,
@@ -217,7 +222,15 @@ async function whatsAppInboundForWorkspace(workspaceId: string) {
       .from(menaWhatsAppAutoReplyEvents)
       .where(eq(menaWhatsAppAutoReplyEvents.workspaceId, workspaceId))
       .groupBy(menaWhatsAppAutoReplyEvents.status),
-  ]);
+      // Recorded webhook calls. The instance name is passed in because a
+      // refused secret is rejected before any workspace lookup, so the row
+      // carries the instance name from the payload and nothing else.
+      fetchInboundWebhookAttempts({
+        workspaceId,
+        platforms: ["whatsapp"],
+        instanceNames,
+      }),
+    ]);
   let webhookUrl: string | null = null;
   let webhookUrlError: string | null = null;
   try {
@@ -235,6 +248,7 @@ async function whatsAppInboundForWorkspace(workspaceId: string) {
     webhookSecretConfigured: Boolean(resolveWhatsAppWebhookSecret()),
     webhookUrl,
     webhookUrlError,
+    webhookAttempts,
   });
 }
 
@@ -268,7 +282,9 @@ router.get(
         tone: connection.autoReplyTone,
         instructions: connection.autoReplyInstructions ?? "",
       },
-      inbound: await whatsAppInboundForWorkspace(workspaceId),
+      inbound: await whatsAppInboundForWorkspace(workspaceId, [
+        connection.instanceName,
+      ]),
     });
   },
 );

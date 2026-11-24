@@ -8,9 +8,12 @@ const metaAutoReplyFailureReasons: Array<{
   describe: string;
 }> = [
   {
+    // Terminal rows only. A reply blocked by the quota now stays queued and
+    // resumes by itself, so this wording is for jobs recorded before that
+    // behaviour existed — the honest advice there is a manual reply.
     match: "SUBSCRIPTION_LIMIT_REACHED",
     describe:
-      "توقّف الرد الآلي لأن حصة الذكاء الاصطناعي في خطتك انتهت. رقِّ الخطة أو انتظر تجديد الحصة الشهرية، ويمكنك الرد يدويًا الآن.",
+      "لم يُرسل الرد الآلي لأن حصة الذكاء الاصطناعي كانت مستنفدة. أرسل ردًا يدويًا لهذه الرسالة؛ الرسائل الجديدة تُؤجَّل الآن تلقائيًا حتى تتجدد الحصة بدل أن يفوت الرد عليها.",
   },
   {
     match: "WORKSPACE_SUBSCRIPTION_MISSING",
@@ -104,6 +107,64 @@ export function describeMetaAutoReplyFailure(
     normalized.includes(entry.match),
   );
   return reason?.describe ?? null;
+}
+
+/**
+ * Limits that lift without the merchant doing anything to this message: the
+ * quota returns at the next period, and a missing provider key or unreadable
+ * subscription row is fixed on the server. A job blocked by one of these stays
+ * queued now instead of ending, so the inbox must say "waiting" and not
+ * "failed" — and must not imply the merchant has to press retry.
+ */
+const postponedQuotaCodes = ["SUBSCRIPTION_LIMIT_REACHED"];
+
+const postponedConfigurationCodes = [
+  "WORKSPACE_SUBSCRIPTION_MISSING",
+  "WORKSPACE_SUBSCRIPTION_PLAN_INVALID",
+  "MISSING_OPENAI_KEY",
+  "MISSING_GEMINI_KEY",
+  "MISSING_AI_PROVIDER_KEY",
+  "AI_MODEL_NAME_INVALID",
+];
+
+/** Class names stored before the server recorded stable codes. */
+const postponedLegacyNames = ["SubscriptionAiQuotaError"];
+
+function matchesCode(
+  code: string,
+  candidates: readonly string[],
+): boolean {
+  if (!code) return false;
+  return candidates.some((candidate) => code.includes(candidate));
+}
+
+/** True when the reply is waiting on a limit rather than broken. */
+export function isMetaAutoReplyPostponedCode(
+  code: string | null | undefined,
+): boolean {
+  return describeMetaAutoReplyPostponed(code) !== null;
+}
+
+/**
+ * The sentence for a reply that is waiting on a limit, or null when the code is
+ * not one of those. Mirrors the WhatsApp wording so the same situation reads the
+ * same on both platforms.
+ */
+export function describeMetaAutoReplyPostponed(
+  code: string | null | undefined,
+): string | null {
+  const normalized = code?.trim().toUpperCase() ?? "";
+  if (!normalized) return null;
+  if (
+    matchesCode(normalized, postponedQuotaCodes) ||
+    matchesCode(code?.trim() ?? "", postponedLegacyNames)
+  ) {
+    return "تأجّل الرد الآلي لأن حصة الذكاء الاصطناعي في خطتك انتهت. يُستأنف تلقائيًا عند تجديد الحصة أو فور ترقية خطتك، ويمكنك الرد يدويًا الآن.";
+  }
+  if (matchesCode(normalized, postponedConfigurationCodes)) {
+    return "تأجّل الرد الآلي لأن إعداد الذكاء الاصطناعي على الخادم غير مكتمل. يُستأنف تلقائيًا بمجرد اكتمال الإعداد، ويمكنك الرد يدويًا الآن.";
+  }
+  return null;
 }
 
 /** Mirrors the server: only paused or failed attempts may be requeued. */

@@ -22,6 +22,10 @@ import {
 } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import {
+  describeWhatsAppSyncFailure,
+  describeWhatsAppSyncStatus,
+} from "@/lib/whatsapp-sync-copy";
+import {
   formatArabicDateTime,
   formatArabicNumber,
   normalizeArabicDigits,
@@ -447,7 +451,7 @@ export function WhatsAppSyncStatusPanel({
                           {groupName}
                         </Text>
                         <StatusPill
-                          label={syncGroupStatusLabel(group.status)}
+                          label={describeWhatsAppSyncStatus(group.status)}
                           tone={syncGroupStatusTone(group.status)}
                         />
                       </View>
@@ -467,7 +471,7 @@ export function WhatsAppSyncStatusPanel({
                             { color: colors.destructive },
                           ]}
                         >
-                          {syncGroupErrorMessage(group.lastError)}
+                          {describeWhatsAppSyncFailure(group.lastError)}
                         </Text>
                       ) : null}
                     </View>
@@ -487,25 +491,6 @@ export function WhatsAppSyncStatusPanel({
   );
 }
 
-function syncGroupStatusLabel(status: string): string {
-  switch (status) {
-    case "running":
-      return "جارٍ الاستيراد";
-    case "complete":
-      return "اكتملت المزامنة";
-    case "failed":
-      return "فشلت المزامنة";
-    case "partial":
-      return "اكتملت جزئيًا";
-    case "cancelled":
-      return "أُلغيت";
-    case "empty":
-      return "لا توجد رسائل محفوظة";
-    default:
-      return status || "لم تبدأ";
-  }
-}
-
 function syncGroupStatusTone(
   status: string,
 ): "green" | "blue" | "amber" | "muted" {
@@ -515,22 +500,6 @@ function syncGroupStatusTone(
     return "amber";
   }
   return "muted";
-}
-
-function syncGroupErrorMessage(error: string): string {
-  if (error === "WHATSAPP_DATABASE_UNAVAILABLE") {
-    return "تعذّر الاتصال بقاعدة البيانات أثناء حفظ الرسائل. انتظر حتى استقرار الاتصال ثم أعد المزامنة.";
-  }
-  if (error === "WHATSAPP_MESSAGE_IMPORT_FAILED") {
-    return "تعذّر حفظ بعض الرسائل. أعد المزامنة، وإذا تكرر الخطأ فتواصل مع الدعم.";
-  }
-  if (error === "EVOLUTION_HISTORY_EMPTY") {
-    return "لم يعثر الخادم على رسائل سابقة لهذه المجموعة في سجل واتساب المتاح. تحقّق من توفر سجل المحادثة في خدمة الربط، ثم جرّب المزامنة مرة أخرى.";
-  }
-  if (error === "EVOLUTION_HISTORY_MESSAGES_SKIPPED") {
-    return "وصلت رسائل لهذه المجموعة، لكن تعذّر حفظها كلها. أعد المزامنة، وإذا تكرر الأمر فتواصل مع الدعم.";
-  }
-  return error;
 }
 
 const styles = StyleSheet.create({

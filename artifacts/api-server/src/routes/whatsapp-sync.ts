@@ -23,6 +23,10 @@ import {
 import { resolveWhatsAppGroupSyncTargets } from "../lib/whatsapp-group-identity";
 import { buildWhatsAppSyncStatusGroups } from "../lib/whatsapp-sync-status";
 import { hasEnabledWhatsAppSyncType } from "../lib/whatsapp-sync-options";
+import {
+  mapWithConcurrency,
+  resolveSyncGroupConcurrency,
+} from "../lib/sync-run-control";
 
 import {
   ensureSyncState,
@@ -38,6 +42,7 @@ import {
   describeWhatsAppInboundOutcome,
   logInboundWebhookOutcome,
 } from "../lib/inbound-webhook-diagnostics";
+import { recordInboundWebhookAttempt } from "../lib/inbound-delivery-log";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
@@ -243,8 +248,13 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
       return;
     }
 
-    void Promise.all(
-      claimedGroups.map(async (group) => {
+    // Bounded: forty selected groups used to mean forty parallel history
+    // scans against one Evolution instance and one database pool. The limit is
+    // configurable and clamped, so a typo cannot reintroduce the flood.
+    void mapWithConcurrency(
+      claimedGroups,
+      resolveSyncGroupConcurrency(),
+      async (group) => {
         try {
           await syncGroupHistory(
             workspaceId,
@@ -304,7 +314,7 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
             );
           }
         }
-      }),
+      },
     ).catch((error: unknown) => {
       logger.error(
         {
@@ -649,11 +659,18 @@ router.post("/social/whatsapp/webhook", async (req, res) => {
   if (!verifyWhatsAppWebhookSecret(req.headers["x-evolution-api-key"])) {
     // Proves Evolution reached us with the wrong key — the alternative reading
     // of "no automatic replies" is that it never called us at all.
-    logInboundWebhookOutcome(
-      logger,
-      describeWhatsAppInboundOutcome("REJECTED_SECRET"),
-      { path: "/social/whatsapp/webhook" },
-    );
+    const rejected = describeWhatsAppInboundOutcome("REJECTED_SECRET");
+    logInboundWebhookOutcome(logger, rejected, {
+      path: "/social/whatsapp/webhook",
+    });
+    // The refusal happens before any instance lookup, so the row carries no
+    // workspace; it is still the evidence that Evolution reached us.
+    void recordInboundWebhookAttempt({
+      platform: "whatsapp",
+      event: rejected.event,
+      deliveryConfirmed: rejected.deliveryConfirmed,
+      context: { path: "/social/whatsapp/webhook" },
+    });
     res.status(401).json({ ok: false });
     return;
   }

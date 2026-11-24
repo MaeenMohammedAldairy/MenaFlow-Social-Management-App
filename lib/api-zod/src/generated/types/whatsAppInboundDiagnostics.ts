@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DiagnosticIssue } from './diagnosticIssue';
+import type { InboundWebhookAttemptSummary } from './inboundWebhookAttemptSummary';
 import type { WhatsAppInboundDiagnosticsAutoReplyEvents } from './whatsAppInboundDiagnosticsAutoReplyEvents';
 
 /**
@@ -20,5 +21,6 @@ export interface WhatsAppInboundDiagnostics {
   webhookSecretConfigured: boolean;
   /** @nullable */
   webhookUrl?: string | null;
+  webhookAttempts: InboundWebhookAttemptSummary | null;
   issues: DiagnosticIssue[];
 }

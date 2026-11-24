@@ -2448,7 +2448,18 @@ components:
           type: integer
         failed:
           type: integer
-      required: [pending, processing, waitingMedia, waitingAssociation, failed]
+        quotaPaused:
+          type: integer
+          description: >-
+            Pending jobs held back because the workspace AI quota is exhausted.
+            They resume on their own; no attempt is spent while paused.
+      required:
+        - pending
+        - processing
+        - waitingMedia
+        - waitingAssociation
+        - failed
+        - quotaPaused
     ProductExtractionListResponse:
       type: object
       properties:
@@ -2466,11 +2477,45 @@ components:
           type: string
           description: Queue a single message again; omit to queue every unprocessed message
       additionalProperties: false
+    ExtractionQuotaEstimate:
+      type: object
+      description: >-
+        What the queued batch costs in AI quota. One extraction is one metered
+        generation; a response the grounding rejects is retried once against the
+        other provider, which is metered again, hence the worst case.
+      properties:
+        messages:
+          type: integer
+        estimatedGenerations:
+          type: integer
+        worstCaseGenerations:
+          type: integer
+        used:
+          type: integer
+        limit:
+          type: integer
+        remaining:
+          type: integer
+        fitsWithinQuota:
+          type: boolean
+        messagesWithinQuota:
+          type: integer
+      required:
+        - messages
+        - estimatedGenerations
+        - worstCaseGenerations
+        - used
+        - limit
+        - remaining
+        - fitsWithinQuota
+        - messagesWithinQuota
     ExtractWhatsAppProductsResponse:
       type: object
       properties:
         queuedMessages:
           type: integer
+        quota:
+          $ref: "#/components/schemas/ExtractionQuotaEstimate"
       required: [queuedMessages]
     CreateProductDraftInput:
       type: object
@@ -2674,6 +2719,37 @@ components:
                 stopped the request and the fields each one is missing.
               items:
                 $ref: "#/components/schemas/IncompletePublicationProduct"
+    InboundWebhookAttemptSummary:
+      type: object
+      description: >-
+        What the provider's webhook calls did over the retention window. This is
+        the evidence that separates "the provider never called us" from "it
+        called and we refused it" — two faults with different fixes that both
+        look like "no messages are arriving". Null when the delivery log was not
+        read for this platform.
+      properties:
+        count:
+          type: integer
+        lastAt:
+          type: [string, "null"]
+          format: date-time
+        lastEvent:
+          type: [string, "null"]
+        lastHint:
+          type: [string, "null"]
+          description: Arabic guidance recorded for the last outcome
+        acceptedCount:
+          type: integer
+        rejectedCount:
+          type: integer
+        lastRejectedEvent:
+          type: [string, "null"]
+        lastRejectedHint:
+          type: [string, "null"]
+      required:
+        - count
+        - acceptedCount
+        - rejectedCount
     DiagnosticIssue:
       type: object
       description: One actionable problem, worded for the merchant
@@ -2716,6 +2792,10 @@ components:
         webhookUrl:
           type: [string, "null"]
           format: uri
+        webhookAttempts:
+          oneOf:
+            - $ref: "#/components/schemas/InboundWebhookAttemptSummary"
+            - type: "null"
         issues:
           type: array
           items:
@@ -2725,6 +2805,7 @@ components:
         - directMessageCount
         - autoReplyEvents
         - webhookSecretConfigured
+        - webhookAttempts
         - issues
     WhatsAppWebhookReconfiguration:
       type: object
@@ -2793,6 +2874,10 @@ components:
           type: boolean
         appSecretConfigured:
           type: boolean
+        webhookAttempts:
+          oneOf:
+            - $ref: "#/components/schemas/InboundWebhookAttemptSummary"
+            - type: "null"
         issues:
           type: array
           items:
@@ -2805,6 +2890,7 @@ components:
         - subscriptions
         - verifyTokenConfigured
         - appSecretConfigured
+        - webhookAttempts
         - issues
     MetaAutoReplySettings:
       type: object

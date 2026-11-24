@@ -18,6 +18,11 @@ import { metaString } from "../lib/meta-inbox-utils";
 import { requestOwnerId } from "../lib/owner-access";
 
 import { queueUnprocessedWhatsAppProductMessages } from "../lib/whatsapp-product-extraction";
+import {
+  QUOTA_EXHAUSTED_REASON_PREFIX,
+  estimateExtractionQuota,
+} from "../lib/extraction-quota-policy";
+import { getSubscriptionOverview } from "../lib/subscriptions";
 import { normalizedProductName } from "../lib/product-utils.ts";
 import {
   missingProductFieldMessages,
@@ -27,6 +32,37 @@ import { parseProductInput } from "../lib/product-validation";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 const router = Router();
+
+/**
+ * What the batch just queued will cost in AI quota.
+ *
+ * Queueing two hundred messages on a plan that includes ten generations used to
+ * look free until the queue quietly paused. The estimate is information, so a
+ * subscription read that fails must never block the extraction itself.
+ */
+async function extractionQuotaEstimate(workspaceId: string, messages: number) {
+  try {
+    const overview = await getSubscriptionOverview(workspaceId);
+    const plan = overview.plans.find(
+      (candidate) => candidate.id === overview.planId,
+    );
+    return estimateExtractionQuota({
+      messages,
+      used: overview.usage.aiGenerations,
+      limit: plan?.limits.aiGenerations ?? 0,
+    });
+  } catch (error) {
+    logger.warn(
+      {
+        workspaceId,
+        reason:
+          error instanceof Error ? error.message : "QUOTA_ESTIMATE_FAILED",
+      },
+      "Could not estimate the AI quota cost of product extraction",
+    );
+    return null;
+  }
+}
 import {
   mediaUrls,
   mediaRequestOrigin,
@@ -190,12 +226,24 @@ router.get(
     const jobCounts = Object.fromEntries(
       jobStatusRows.map((row) => [row.status, row.total]),
     ) as Record<string, number>;
+    // Pending jobs held back by an exhausted AI quota. They look like an idle
+    // queue from the outside, so the catalog says why nothing is progressing
+    // and that it resumes on its own.
+    const [quotaPausedRow] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(whatsappProductExtractionJobs)
+      .where(and(
+        eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+        eq(whatsappProductExtractionJobs.status, "pending"),
+        sql`${whatsappProductExtractionJobs.lastError} like ${`${QUOTA_EXHAUSTED_REASON_PREFIX}%`}`,
+      ));
     const pendingJobs = {
       pending: jobCounts.pending ?? 0,
       processing: jobCounts.processing ?? 0,
       waitingMedia: jobCounts.waiting_media ?? 0,
       waitingAssociation: jobCounts.waiting_association ?? 0,
       failed: jobCounts.failed ?? 0,
+      quotaPaused: quotaPausedRow?.total ?? 0,
     };
     const requestOrigin = mediaRequestOrigin(req);
     const sourceMediaByMessageId = new Map<string, ProductMediaPreview[]>();
@@ -295,8 +343,10 @@ router.post(
           workspaceId,
           messageId || undefined,
         );
+      const quota = await extractionQuotaEstimate(workspaceId, queuedMessages);
       res.status(202).json({
         queuedMessages,
+        ...(quota ? { quota } : {}),
       });
     } catch (error) {
       logger.error(

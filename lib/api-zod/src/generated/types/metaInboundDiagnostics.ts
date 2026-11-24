@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { DiagnosticIssue } from './diagnosticIssue';
+import type { InboundWebhookAttemptSummary } from './inboundWebhookAttemptSummary';
 import type { MetaInboundDiagnosticsAutoReplyJobs } from './metaInboundDiagnosticsAutoReplyJobs';
 import type { MetaInboundDiagnosticsInboxCountByPlatform } from './metaInboundDiagnosticsInboxCountByPlatform';
 import type { MetaInboundDiagnosticsSubscriptionsItem } from './metaInboundDiagnosticsSubscriptionsItem';
@@ -23,5 +24,6 @@ export interface MetaInboundDiagnostics {
   subscriptions: MetaInboundDiagnosticsSubscriptionsItem[];
   verifyTokenConfigured: boolean;
   appSecretConfigured: boolean;
+  webhookAttempts: InboundWebhookAttemptSummary | null;
   issues: DiagnosticIssue[];
 }

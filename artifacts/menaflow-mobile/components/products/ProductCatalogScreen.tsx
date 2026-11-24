@@ -77,6 +77,7 @@ import {
   type ProductExtractionSuggestion,
   type ProductPublicationSnapshot,
 } from "@/lib/product-catalog-api";
+import { analysisSummaryMessage } from "@/lib/extraction-quota-copy";
 import {
   draftFromExtraction,
   draftFromProduct,
@@ -460,11 +461,7 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     onSuccess: async (result) => {
       await refresh();
       setError("");
-      setAnalysisSummary(
-        result.queuedMessages > 0
-          ? `أُضيفت ${result.queuedMessages} رسالة إلى طابور تحليل المنتجات. لا تُجدول للنشر تلقائيًا؛ ستظهر النتائج للمراجعة بعد اكتمالها.`
-          : "لا توجد رسائل جديدة أو غير معالجة في المجموعات المحددة.",
-      );
+      setAnalysisSummary(analysisSummaryMessage(result, formatArabicNumber));
       setScannedPosts([]);
     },
     onError: (cause) => {
@@ -3145,6 +3142,12 @@ function ProductExtractionQueueStrip({
   if (counts.failed > 0) {
     lines.push({
       text: `${formatArabicNumber(counts.failed)} رسالة تعذر استخراج بياناتها — أعد التحليل من زر «تحليل الرسائل».`,
+      tone: "warning",
+    });
+  }
+  if (counts.quotaPaused > 0) {
+    lines.push({
+      text: `${formatArabicNumber(counts.quotaPaused)} رسالة توقّف تحليلها مؤقتًا لانتهاء حصة الذكاء الاصطناعي لهذا الشهر. تُستأنف تلقائيًا، أو رقِّ خطتك لمتابعتها الآن.`,
       tone: "warning",
     });
   }
