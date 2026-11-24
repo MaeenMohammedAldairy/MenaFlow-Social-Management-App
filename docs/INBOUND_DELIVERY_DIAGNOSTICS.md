@@ -94,6 +94,33 @@ Two rules govern it:
   WhatsApp and must not be duplicated into a diagnostics table with a longer
   lifetime than the message.
 
+### Write volume
+
+The log is written from the hottest path in the server: Evolution posts presence
+and connection updates continuously, and a busy page produces one outcome per
+message. Recording every accepted outcome would make a diagnostics table the
+largest writer in the system while adding nothing a reader can act on — the
+hundredth identical `WHATSAPP_WEBHOOK_IGNORED_EVENT` row says what the first one
+did.
+
+So accepted outcomes are written **once per outcome, per platform, per instance
+or account, per `INBOUND_WEBHOOK_RECORD_INTERVAL_MS`** (default 60s, floored at
+1s). Refusals are never throttled: they are the rare, load-bearing rows, and a
+burst of refused calls is exactly when an operator needs every one. The
+timestamps behind this live in a per-process map capped at 5,000 keys and cleared
+when it fills — not shared between replicas, because sharing would mean a
+database read on the hot path for a table whose only job is diagnosis.
+
+Two consequences a reader must know:
+
+- The accepted count in `webhookAttempts` is a **floor**, not a total. The
+  merchant-facing sentence says so ("١٢ محاولة مسجَّلة على الأقل").
+- The refusal count **is** exact, so `acceptedCount === 0` really does mean
+  every attempt in the window was refused. One edge remains: the read is capped
+  at the newest 200 rows, so a flood of refusals can push older accepted rows out
+  of the window and make a mixed period read as "all refused". The recorded event
+  names shown next to that conclusion are what an operator should check first.
+
 Reading is `fetchInboundWebhookAttempts()`: attempts for the workspace, plus
 rows matched by the instance names or account ids the merchant does have (that
 is how a refused secret becomes visible), plus — for Meta, with
@@ -108,10 +135,15 @@ no reach into another workspace's data is added.
 | --- | --- | --- |
 | `INBOUND_WEBHOOK_EVENT_RETENTION_MS` | 604800000 (7 days) | How long an attempt is kept. Floored at one hour: a shorter window cannot answer "did anything arrive today". |
 | `INBOUND_WEBHOOK_EVENT_QUERY_LIMIT` | 200 | Rows read per diagnostics call. Clamped to 1–1000. |
+| `INBOUND_WEBHOOK_RECORD_INTERVAL_MS` | 60000 | How often one accepted outcome may be written again for the same platform/instance. Floored at 1000. Refusals ignore it. |
 
 Unparseable or non-positive values fall back to the default; values that parse
 but are merely too small or too large are clamped. `inbound-webhook-retention`
-purges hourly in `app-workers.ts`, wherever workers run. A failed purge logs
+purges hourly in `app-workers.ts`, wherever workers run — in bounded batches
+(1,000 rows, at most 10 per run), because a single unbounded `DELETE` would hold
+locks on a table the inbound handlers are writing to for as long as the statement
+took. Stopping with rows still outside the window logs
+`INBOUND_WEBHOOK_EVENT_PURGE_BATCH_LIMIT`; a failed purge logs
 `INBOUND_WEBHOOK_EVENT_PURGE_FAILED` and returns `-1` rather than reporting
 "nothing to do".
 

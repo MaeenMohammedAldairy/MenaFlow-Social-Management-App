@@ -25,7 +25,7 @@ test("a fully accepted window says so and names the last attempt", () => {
   const headline = webhookAttemptHeadline(healthy, formatters);
   assert.equal(
     headline,
-    "استقبل الخادم 12 محاولة وعالجها جميعًا، آخرها 2026-11-24 03:45.",
+    "استقبل الخادم 12 محاولة مسجَّلة على الأقل وعالجها جميعًا، آخرها 2026-11-24 03:45.",
   );
 });
 
@@ -52,8 +52,11 @@ test("a mixed window reports both halves instead of hiding the refusals", () => 
     { ...healthy, acceptedCount: 9, rejectedCount: 3, lastRejectedEvent: "META_WEBHOOK_REJECTED_SIGNATURE", lastRejectedHint: "التوقيع غير صالح." },
     formatters,
   );
-  assert.match(headline, /استقبل الخادم 12 محاولة ونجح في 9 منها/);
-  assert.match(headline, /رُفضت 3/);
+  // The accepted half is a throttled sample, so the sentence reports the total
+  // as a floor and states only the refusal count, which is exact.
+  assert.match(headline, /استقبل الخادم 12 محاولة مسجَّلة على الأقل/);
+  assert.match(headline, /رُفضت 3 منها/);
+  assert.doesNotMatch(headline, /ونجح في/);
   assert.match(headline, /التوقيع غير صالح/);
 });
 
@@ -127,7 +130,7 @@ test("an unformattable timestamp still yields a usable row and sentence", () => 
   assert.deepEqual(facts[1], { label: "آخر محاولة", value: "غير مؤرّخة" });
   assert.equal(
     webhookAttemptHeadline({ ...healthy, lastAt: null }, formatters),
-    "استقبل الخادم 12 محاولة وعالجها جميعًا.",
+    "استقبل الخادم 12 محاولة مسجَّلة على الأقل وعالجها جميعًا.",
   );
 });
 

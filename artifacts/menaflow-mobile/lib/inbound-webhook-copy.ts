@@ -49,6 +49,13 @@ function text(value: string | null | undefined): string | null {
  * saying. Zero attempts is deliberately not summarized here: the diagnostics
  * issues already name that case with the fix, and repeating it as a neutral
  * sentence would soften a critical finding.
+ *
+ * The total is stated as a floor. The server throttles repeated *accepted*
+ * outcomes to one row per minute, because the inbound path is its hottest code
+ * and a hundred identical "event ignored" rows say what the first one did;
+ * refusals are never throttled. So the accepted count is a sample and the
+ * refusal count is exact — and the wording must not claim a precision the data
+ * does not have.
  */
 export function webhookAttemptHeadline(
   summary: WebhookAttemptSummary | null | undefined,
@@ -63,6 +70,8 @@ export function webhookAttemptHeadline(
   const total = formatters.formatNumber(count);
 
   if (rejected >= count) {
+    // Exact: refusals are never throttled, so "every recorded attempt was
+    // refused" is a statement about all of them, not a sample.
     const reason =
       text(summary.lastRejectedHint) ?? text(summary.lastRejectedEvent);
     const named = reason ? `؛ آخرها ${reason}` : "";
@@ -72,10 +81,10 @@ export function webhookAttemptHeadline(
     const reason =
       text(summary.lastRejectedHint) ?? text(summary.lastRejectedEvent);
     const named = reason ? `؛ آخر رفض ${reason}` : "";
-    return `استقبل الخادم ${total} محاولة ونجح في ${formatters.formatNumber(count - rejected)} منها، ورُفضت ${formatters.formatNumber(rejected)}${named}.`;
+    return `استقبل الخادم ${total} محاولة مسجَّلة على الأقل، ورُفضت ${formatters.formatNumber(rejected)} منها${named}.`;
   }
   const when = formatters.formatDateTime(summary.lastAt ?? null);
-  return `استقبل الخادم ${total} محاولة وعالجها جميعًا${when ? `، آخرها ${when}` : ""}.`;
+  return `استقبل الخادم ${total} محاولة مسجَّلة على الأقل وعالجها جميعًا${when ? `، آخرها ${when}` : ""}.`;
 }
 
 /**
