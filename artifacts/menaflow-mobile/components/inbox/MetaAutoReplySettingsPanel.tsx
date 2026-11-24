@@ -23,6 +23,7 @@ import {
   InboundDeliveryCard,
   type InboundDeliveryFact,
 } from "@/components/inbox/InboundDeliveryCard";
+import { describeMetaSubscriptionFailure } from "@/lib/meta-subscription-failure";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 import { useColors } from "@/hooks/useColors";
@@ -490,7 +491,9 @@ export function MetaAutoReplySettingsPanel({
                     result: subscriptionNote,
                     error:
                       inboundSubscription?.lastErrorCode && !subscriptionNote
-                        ? `آخر خطأ من ميتا: ${inboundSubscription.lastErrorCode}`
+                        ? describeMetaSubscriptionFailure(
+                            inboundSubscription.lastErrorCode,
+                          )
                         : null,
                   }}
                 />
