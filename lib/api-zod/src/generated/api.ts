@@ -589,7 +589,17 @@ export const ExtractWhatsAppProductMessagesBody = zod.object({
 })
 
 export const ExtractWhatsAppProductMessagesResponse = zod.object({
-  "queuedMessages": zod.number().int()
+  "queuedMessages": zod.number().int(),
+  "quota": zod.object({
+  "messages": zod.number().int(),
+  "estimatedGenerations": zod.number().int(),
+  "worstCaseGenerations": zod.number().int(),
+  "used": zod.number().int(),
+  "limit": zod.number().int(),
+  "remaining": zod.number().int(),
+  "fitsWithinQuota": zod.boolean(),
+  "messagesWithinQuota": zod.number().int()
+}).optional().describe('What the queued batch costs in AI quota. One extraction is one metered generation; a response the grounding rejects is retried once against the other provider, which is metered again, hence the worst case.')
 })
 
 

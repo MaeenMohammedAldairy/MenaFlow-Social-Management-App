@@ -896,8 +896,23 @@ export interface ExtractWhatsAppProductsInput {
   messageId?: string;
 }
 
+/**
+ * What the queued batch costs in AI quota. One extraction is one metered generation; a response the grounding rejects is retried once against the other provider, which is metered again, hence the worst case.
+ */
+export interface ExtractionQuotaEstimate {
+  messages: number;
+  estimatedGenerations: number;
+  worstCaseGenerations: number;
+  used: number;
+  limit: number;
+  remaining: number;
+  fitsWithinQuota: boolean;
+  messagesWithinQuota: number;
+}
+
 export interface ExtractWhatsAppProductsResponse {
   queuedMessages: number;
+  quota?: ExtractionQuotaEstimate;
 }
 
 export type ProductInputAvailability = typeof ProductInputAvailability[keyof typeof ProductInputAvailability];

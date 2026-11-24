@@ -320,10 +320,15 @@ export async function getWhatsAppProductExtractions(): Promise<
   };
 }
 
+/** Defined with its merchant copy so the two cannot drift apart. */
+export type { ExtractionQuotaEstimate } from "./extraction-quota-copy";
+import type { ExtractionQuotaEstimate } from "./extraction-quota-copy";
+
 export async function analyzeWhatsAppProductMessages(
   messageId?: string,
 ): Promise<{
   queuedMessages: number;
+  quota?: ExtractionQuotaEstimate;
 }> {
   const response = await fetchApiResponse(
     "/api/social/products/extract-whatsapp",

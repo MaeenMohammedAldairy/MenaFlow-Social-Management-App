@@ -18,7 +18,11 @@ import { metaString } from "../lib/meta-inbox-utils";
 import { requestOwnerId } from "../lib/owner-access";
 
 import { queueUnprocessedWhatsAppProductMessages } from "../lib/whatsapp-product-extraction";
-import { QUOTA_EXHAUSTED_REASON_PREFIX } from "../lib/extraction-quota-policy";
+import {
+  QUOTA_EXHAUSTED_REASON_PREFIX,
+  estimateExtractionQuota,
+} from "../lib/extraction-quota-policy";
+import { getSubscriptionOverview } from "../lib/subscriptions";
 import { normalizedProductName } from "../lib/product-utils.ts";
 import {
   missingProductFieldMessages,
@@ -28,6 +32,37 @@ import { parseProductInput } from "../lib/product-validation";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 const router = Router();
+
+/**
+ * What the batch just queued will cost in AI quota.
+ *
+ * Queueing two hundred messages on a plan that includes ten generations used to
+ * look free until the queue quietly paused. The estimate is information, so a
+ * subscription read that fails must never block the extraction itself.
+ */
+async function extractionQuotaEstimate(workspaceId: string, messages: number) {
+  try {
+    const overview = await getSubscriptionOverview(workspaceId);
+    const plan = overview.plans.find(
+      (candidate) => candidate.id === overview.planId,
+    );
+    return estimateExtractionQuota({
+      messages,
+      used: overview.usage.aiGenerations,
+      limit: plan?.limits.aiGenerations ?? 0,
+    });
+  } catch (error) {
+    logger.warn(
+      {
+        workspaceId,
+        reason:
+          error instanceof Error ? error.message : "QUOTA_ESTIMATE_FAILED",
+      },
+      "Could not estimate the AI quota cost of product extraction",
+    );
+    return null;
+  }
+}
 import {
   mediaUrls,
   mediaRequestOrigin,
@@ -308,8 +343,10 @@ router.post(
           workspaceId,
           messageId || undefined,
         );
+      const quota = await extractionQuotaEstimate(workspaceId, queuedMessages);
       res.status(202).json({
         queuedMessages,
+        ...(quota ? { quota } : {}),
       });
     } catch (error) {
       logger.error(

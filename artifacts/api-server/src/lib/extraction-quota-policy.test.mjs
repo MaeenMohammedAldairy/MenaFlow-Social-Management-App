@@ -10,6 +10,7 @@ const {
   resolveExtractionQuotaPauseMs,
   extractionRetryDelayMs,
   planExtractionFailure,
+  estimateExtractionQuota,
 } = await import("./extraction-quota-policy.ts");
 
 const now = new Date("2026-11-22T10:00:00.000Z");
@@ -121,4 +122,28 @@ test("the quota pause is configurable but floored", () => {
     quotaPauseMs: 90_000,
   });
   assert.equal(plan.nextRunAt.getTime(), now.getTime() + 90_000);
+});
+
+test("a batch estimate reports what fits in the remaining quota", () => {
+  const estimate = estimateExtractionQuota({ messages: 200, used: 190, limit: 200 });
+  assert.equal(estimate.remaining, 10);
+  assert.equal(estimate.estimatedGenerations, 200);
+  assert.equal(estimate.worstCaseGenerations, 400);
+  assert.equal(estimate.fitsWithinQuota, false);
+  assert.equal(estimate.messagesWithinQuota, 10);
+});
+
+test("an estimate never goes negative when usage already exceeds the limit", () => {
+  const estimate = estimateExtractionQuota({ messages: 5, used: 250, limit: 200 });
+  assert.equal(estimate.remaining, 0);
+  assert.equal(estimate.messagesWithinQuota, 0);
+  assert.equal(estimate.fitsWithinQuota, false);
+});
+
+test("an estimate tolerates nonsense input", () => {
+  const estimate = estimateExtractionQuota({ messages: -3, used: NaN, limit: 10 });
+  assert.equal(estimate.messages, 0);
+  assert.equal(estimate.used, 0);
+  assert.equal(estimate.remaining, 10);
+  assert.equal(estimate.fitsWithinQuota, true);
 });

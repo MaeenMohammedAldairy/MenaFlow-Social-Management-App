@@ -27,6 +27,7 @@ export * from './deleteMetaConnectionPlatform';
 export * from './deleteWhatsAppConnectionParams';
 export * from './diagnosticIssue';
 export * from './diagnosticIssueSeverity';
+export * from './extractionQuotaEstimate';
 export * from './extractWhatsAppProductsInput';
 export * from './extractWhatsAppProductsResponse';
 export * from './getKnownPostIds200';

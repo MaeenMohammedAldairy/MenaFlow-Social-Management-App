@@ -116,3 +116,50 @@ export function planExtractionFailure(input: {
     pauseWorkspaceQueue: false,
   };
 }
+
+/**
+ * What a batch of messages will cost in AI quota.
+ *
+ * One extraction is one metered generation; a response the grounding rejects is
+ * retried once against the other provider, which is metered again. The estimate
+ * is therefore a range, and the honest number to show a merchant before he
+ * queues two hundred messages is the low end plus the fact that the high end
+ * exists.
+ */
+export const GENERATIONS_PER_EXTRACTION = 1;
+export const GENERATIONS_PER_EXTRACTION_WITH_RETRY = 2;
+
+export type ExtractionQuotaEstimate = {
+  messages: number;
+  estimatedGenerations: number;
+  worstCaseGenerations: number;
+  used: number;
+  limit: number;
+  remaining: number;
+  /** True when every message in the batch fits in what is left. */
+  fitsWithinQuota: boolean;
+  /** How many of the batch can run before the queue has to wait. */
+  messagesWithinQuota: number;
+};
+
+export function estimateExtractionQuota(input: {
+  messages: number;
+  used: number;
+  limit: number;
+}): ExtractionQuotaEstimate {
+  const messages = Math.max(0, Math.trunc(input.messages) || 0);
+  const used = Math.max(0, Math.trunc(input.used) || 0);
+  const limit = Math.max(0, Math.trunc(input.limit) || 0);
+  const remaining = Math.max(0, limit - used);
+  const estimatedGenerations = messages * GENERATIONS_PER_EXTRACTION;
+  return {
+    messages,
+    estimatedGenerations,
+    worstCaseGenerations: messages * GENERATIONS_PER_EXTRACTION_WITH_RETRY,
+    used,
+    limit,
+    remaining,
+    fitsWithinQuota: estimatedGenerations <= remaining,
+    messagesWithinQuota: Math.min(messages, remaining),
+  };
+}

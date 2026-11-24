@@ -2477,11 +2477,45 @@ components:
           type: string
           description: Queue a single message again; omit to queue every unprocessed message
       additionalProperties: false
+    ExtractionQuotaEstimate:
+      type: object
+      description: >-
+        What the queued batch costs in AI quota. One extraction is one metered
+        generation; a response the grounding rejects is retried once against the
+        other provider, which is metered again, hence the worst case.
+      properties:
+        messages:
+          type: integer
+        estimatedGenerations:
+          type: integer
+        worstCaseGenerations:
+          type: integer
+        used:
+          type: integer
+        limit:
+          type: integer
+        remaining:
+          type: integer
+        fitsWithinQuota:
+          type: boolean
+        messagesWithinQuota:
+          type: integer
+      required:
+        - messages
+        - estimatedGenerations
+        - worstCaseGenerations
+        - used
+        - limit
+        - remaining
+        - fitsWithinQuota
+        - messagesWithinQuota
     ExtractWhatsAppProductsResponse:
       type: object
       properties:
         queuedMessages:
           type: integer
+        quota:
+          $ref: "#/components/schemas/ExtractionQuotaEstimate"
       required: [queuedMessages]
     CreateProductDraftInput:
       type: object
