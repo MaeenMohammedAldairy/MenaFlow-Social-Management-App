@@ -34,6 +34,7 @@ export type DisplayedWhatsAppMessageGroup = {
   postId: string | null;
   postStatus: string | null;
   senderName: string;
+  senderRole: "merchant" | "customer" | "unknown";
   messageTimestamp: string | null;
 };
 
@@ -236,6 +237,13 @@ export function groupWhatsAppMessages(
       postId,
       postStatus: group.messages.find((message) => message.linkedPostStatus)?.linkedPostStatus ?? null,
       senderName: first.senderName || first.senderId || "مستخدم واتساب",
+      senderRole: group.messages.some(
+        (message) => (message as { fromMe?: boolean }).fromMe === true,
+      )
+        ? "merchant"
+        : group.messages.some((message) => message.senderId)
+          ? "customer"
+          : "unknown",
       messageTimestamp: group.messages
         .map((message) => message.messageTimestamp)
         .filter((value): value is string => Boolean(value))

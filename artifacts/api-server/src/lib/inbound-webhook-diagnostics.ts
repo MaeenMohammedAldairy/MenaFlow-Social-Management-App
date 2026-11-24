@@ -32,6 +32,7 @@ export type InboundWebhookOutcome = {
 export type WhatsAppInboundReason =
   | "PAYLOAD_NOT_OBJECT"
   | "REJECTED_SECRET"
+  | "DUPLICATE"
   | "IGNORED_EVENT"
   | "MISSING_INSTANCE_OR_JID"
   | "UNKNOWN_INSTANCE"
@@ -63,6 +64,11 @@ const whatsAppOutcomes: Record<WhatsAppInboundReason, Omit<InboundWebhookOutcome
     level: "warn",
     deliveryConfirmed: true,
     hint: "رأس x-evolution-api-key لا يطابق WHATSAPP_EVOLUTION_WEBHOOK_SECRET. وحّد السر ثم أعد تسجيل رابط الويب هوك من شاشة واتساب.",
+  },
+  DUPLICATE: {
+    level: "debug",
+    deliveryConfirmed: true,
+    hint: "رسالة وصلت مرة أخرى بنفس مفتاح الحدث؛ تم تجاهل التكرار لمنع الازدواج.",
   },
   IGNORED_EVENT: {
     level: "debug",

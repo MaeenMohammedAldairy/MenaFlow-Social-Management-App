@@ -9,6 +9,7 @@ import { getGetSocialConnectionsQueryKey, getPostReportSummary, getSocialConnect
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@clerk/expo';
 import { isLocalAuthDisabled } from '@/constants/auth';
+import { getProductExtractionMetrics } from '@/lib/product-catalog-api';
 
 export function ReportsScreen() {
   if (isLocalAuthDisabled) return <ReportsScreenContent userId={null} />;
@@ -36,6 +37,10 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
     ] as const,
     queryFn: getSocialConnections,
   });
+  const extractionMetricsQuery = useQuery({
+    queryKey: ['product-extraction-metrics', userId ?? 'local'],
+    queryFn: getProductExtractionMetrics,
+  });
   const connections = connectionsQuery.data;
 
   const summary = reportSummaryQuery.data;
@@ -57,7 +62,11 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([reportSummaryQuery.refetch(), connectionsQuery.refetch()]);
+      await Promise.all([
+        reportSummaryQuery.refetch(),
+        connectionsQuery.refetch(),
+        extractionMetricsQuery.refetch(),
+      ]);
     } finally {
       setRefreshing(false);
     }
@@ -82,6 +91,31 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
         subtitle="ملخص المحتوى وحالاته وتوزيعه على القنوات."
         back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
       />
+
+      <SectionTitle title="استخراج المنتجات من الرسائل" />
+      <Panel style={styles.connectionNotice}>
+        {extractionMetricsQuery.isLoading ? (
+          <Text style={[styles.connectionNoticeText, { color: colors.mutedForeground }]}>
+            جارٍ تحميل مؤشرات الاستخراج…
+          </Text>
+        ) : extractionMetricsQuery.isError ? (
+          <Text style={[styles.connectionNoticeText, { color: colors.warning }]}>
+            تعذّر تحميل مؤشرات الاستخراج. أعد المحاولة بالتحديث.
+          </Text>
+        ) : (
+          <>
+            <Text style={[styles.connectionNoticeText, { color: colors.foreground }]}>
+              استخراج ناجح: {extractionMetricsQuery.data?.extractionSucceeded ?? 0} · فاشل:{" "}
+              {extractionMetricsQuery.data?.extractionFailed ?? 0} · أُعيد تحليلها:{" "}
+              {extractionMetricsQuery.data?.reprocessed ?? 0}
+            </Text>
+            <Text style={[styles.connectionNoticeText, { color: colors.mutedForeground }]}>
+              تحديثات مقبولة: {extractionMetricsQuery.data?.proposalsAccepted ?? 0} · نسبة تحويل الاقتراحات إلى مسودات:{" "}
+              {Math.round((extractionMetricsQuery.data?.conversionRate ?? 0) * 100)}%
+            </Text>
+          </>
+        )}
+      </Panel>
 
       {reportSummaryQuery.isError ? (
         <Panel style={styles.connectionNotice}>

@@ -34,6 +34,9 @@ export type CatalogProduct = {
     mediaType: string;
   }>;
   verifiedAt: string | null;
+  sourceTrust?: "merchant" | "customer" | "unknown";
+  updatedBy?: string | null;
+  updatedReason?: string | null;
   createdAt: string;
   updatedAt: string;
   postIds: string[];
@@ -103,7 +106,26 @@ export type ProductExtractionSuggestion = {
   missingFields?: ProductFieldKey[];
   missingFieldMessages?: string[];
   aiModel: string;
-  status: "review" | "draft_created" | "possible_duplicate";
+  senderRole: "merchant" | "customer" | "unknown";
+  version: number;
+  matchStrategy:
+    | "exact_sku"
+    | "exact_name"
+    | "alias_match"
+    | "fuzzy_candidate"
+    | "new_product"
+    | null;
+  matchedProductId: string | null;
+  matchScore: string | null;
+  status:
+    | "review"
+    | "draft_created"
+    | "possible_duplicate"
+    | "dismissed"
+    | "superseded"
+    | "update_proposed"
+    | "accepted_update"
+    | "rejected_update";
   productId: string | null;
   possibleDuplicateProducts?: Array<{
     id: string;
@@ -436,6 +458,7 @@ export async function analyzeWhatsAppProductMessages(
 export async function createExtractionProductDraft(
   suggestionId: string,
   product?: ProductInput,
+  overrideReason?: string,
 ): Promise<CatalogProduct> {
   const response = await fetchApiResponse(
     `/api/social/products/whatsapp-extractions/${encodeURIComponent(suggestionId)}/create-draft`,
@@ -444,7 +467,10 @@ export async function createExtractionProductDraft(
       ...(product
         ? {
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ product }),
+            body: JSON.stringify({
+              product,
+              ...(overrideReason ? { overrideReason } : {}),
+            }),
           }
         : {}),
     },
@@ -477,6 +503,87 @@ export async function reviewProductExtraction(input: {
     },
   );
   await readJsonResponse<{ reviewed: boolean }>(response);
+}
+
+export async function reprocessProductExtraction(
+  suggestionId: string,
+): Promise<{ rulesetVersion: string; queued: boolean }> {
+  const response = await fetchApiResponse(
+    `/api/social/products/whatsapp-extractions/${encodeURIComponent(suggestionId)}/reprocess`,
+    { method: "POST" },
+  );
+  return readJsonResponse(response);
+}
+
+export type ProductChangeDiff = Record<
+  string,
+  { before: unknown; after: unknown; evidence: string | null }
+>;
+
+export async function proposeProductUpdate(
+  suggestionId: string,
+  productId?: string,
+): Promise<{ proposalId: string; diff: ProductChangeDiff }> {
+  const response = await fetchApiResponse(
+    `/api/social/products/whatsapp-extractions/${encodeURIComponent(suggestionId)}/propose-update`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(productId ? { productId } : {}),
+    },
+  );
+  return readJsonResponse(response);
+}
+
+export async function decideProductChangeProposal(
+  proposalId: string,
+  decision: "accepted" | "rejected",
+): Promise<{ status: string; changedFields: string[] }> {
+  const response = await fetchApiResponse(
+    `/api/social/products/change-proposals/${encodeURIComponent(proposalId)}/decide`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision }),
+    },
+  );
+  return readJsonResponse(response);
+}
+
+export type ProductChangeRecord = {
+  id: string;
+  field: string;
+  beforeValue: unknown;
+  afterValue: unknown;
+  sourceType: string;
+  sourceId: string | null;
+  actorId: string | null;
+  createdAt: string;
+};
+
+export async function getProductChanges(
+  productId: string,
+): Promise<ProductChangeRecord[]> {
+  const response = await fetchApiResponse(
+    `/api/social/products/${encodeURIComponent(productId)}/changes`,
+  );
+  const result = await readJsonResponse<{ changes: ProductChangeRecord[] }>(response);
+  return result.changes;
+}
+
+export type ProductExtractionMetrics = {
+  extractionSucceeded: number;
+  extractionFailed: number;
+  reprocessed: number;
+  proposalsAccepted: number;
+  conversionRate: number;
+};
+
+export async function getProductExtractionMetrics(): Promise<ProductExtractionMetrics> {
+  const response = await fetchApiResponse(
+    "/api/social/products/extraction-metrics",
+  );
+  return readJsonResponse(response);
 }
 
 export async function createCatalogProduct(

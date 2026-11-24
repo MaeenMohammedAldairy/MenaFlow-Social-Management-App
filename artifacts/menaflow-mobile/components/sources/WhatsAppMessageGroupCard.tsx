@@ -61,6 +61,16 @@ export function WhatsAppMessageGroupCard({
           ) : (
             <StatusPill label="رسالة منفردة" tone="muted" />
           )}
+          <StatusPill
+            label={
+              group.senderRole === "merchant"
+                ? "من التاجر"
+                : group.senderRole === "customer"
+                  ? "إشارة من عميل"
+                  : "مصدر غير معروف"
+            }
+            tone={group.senderRole === "merchant" ? "blue" : "amber"}
+          />
         </View>
         <View style={styles.senderWrap}>
           <Text style={[styles.sender, { color: colors.foreground }]}>{group.senderName}</Text>

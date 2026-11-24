@@ -44,6 +44,11 @@ import {
 } from "../lib/inbound-webhook-diagnostics";
 import { recordInboundWebhookAttempt } from "../lib/inbound-delivery-log";
 import { sweepOrphanWhatsAppInstances } from "../lib/whatsapp-orphan-instance-sweep";
+import {
+  claimWebhookEvent,
+  evolutionWebhookEventKey,
+  releaseWebhookEvent,
+} from "../lib/product-intake-service.ts";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
@@ -696,12 +701,28 @@ router.post("/social/whatsapp/webhook", async (req, res) => {
     return;
   }
   const body = req.body ?? {};
+  let claimedEventKey: string | null = null;
   try {
+    const eventKey = evolutionWebhookEventKey(body);
+    claimedEventKey = eventKey;
+    if (eventKey && !(await claimWebhookEvent("evolution", eventKey))) {
+      const duplicate = describeWhatsAppInboundOutcome("DUPLICATE");
+      logInboundWebhookOutcome(logger, duplicate, {
+        path: "/social/whatsapp/webhook",
+      });
+      res.status(200).json({ ok: true, duplicate: true });
+      return;
+    }
     await processWebhookEvent(body, {
       headers: req.headers as Record<string, string | string[] | undefined>,
     });
     res.status(200).json({ ok: true });
   } catch (error) {
+    if (claimedEventKey) {
+      await releaseWebhookEvent("evolution", claimedEventKey).catch((releaseError) => {
+        logger.error({ error: releaseError }, "Could not release webhook claim");
+      });
+    }
     logger.error({ error }, "Evolution webhook processing failed");
     res.status(500).json({ ok: false });
   }

@@ -34,6 +34,11 @@ export type ProductExtractionCandidate = {
   data: ExtractedProductData;
   evidence: Record<string, string | null>;
   confidence: Record<string, number>;
+  /** Field → exact position in the source message, for shared-source items. */
+  evidenceSpans?: Record<
+    string,
+    { sourceId: string; start: number; end: number }
+  >;
   complete: boolean;
 };
 
@@ -194,10 +199,41 @@ export function normalizeProductExtractionResponse(
     const sourceMessageIds = [...new Set(rawSourceMessageIds)];
     if (
       sourceMessageIds.length !== rawSourceMessageIds.length ||
-      sourceMessageIds.some((id) => !sourceById.has(id)) ||
-      sourceMessageIds.some((id) => assignedIds.has(id))
+      sourceMessageIds.some((id) => !sourceById.has(id))
     ) {
       throw new Error("PRODUCT_EXTRACTION_INVALID_SOURCE_GROUPING");
+    }
+    // A message may mention several products. Reusing a source is allowed only
+    // when the model also says which part of that message proves each item —
+    // otherwise every item would claim the same evidence and the review card
+    // would be impossible to trust.
+    const reusesSource = sourceMessageIds.some((id) => assignedIds.has(id));
+    const rawSpans = record(candidate.evidence_spans);
+    const evidenceSpans: NonNullable<ProductExtractionCandidate["evidenceSpans"]> = {};
+    if (rawSpans) {
+      for (const [field, value] of Object.entries(rawSpans)) {
+        const span = record(value);
+        const sourceId = typeof span?.sourceId === "string"
+          ? span.sourceId
+          : typeof span?.source_id === "string"
+            ? span.source_id
+            : null;
+        const start = Number(span?.start);
+        const end = Number(span?.end);
+        if (
+          sourceId &&
+          sourceMessageIds.includes(sourceId) &&
+          Number.isInteger(start) &&
+          Number.isInteger(end) &&
+          start >= 0 &&
+          end > start
+        ) {
+          evidenceSpans[field] = { sourceId, start, end };
+        }
+      }
+    }
+    if (reusesSource && !Object.keys(evidenceSpans).length) {
+      throw new Error("PRODUCT_EXTRACTION_SHARED_SOURCE_NEEDS_EVIDENCE");
     }
     sourceMessageIds.forEach((id) => assignedIds.add(id));
 
@@ -345,6 +381,7 @@ export function normalizeProductExtractionResponse(
       confidence: priceAmbiguous
         ? { ...confidence, price: 0, currency: 0 }
         : confidence,
+      evidenceSpans,
       complete,
     });
   }
@@ -484,8 +521,9 @@ export async function extractWhatsAppProductCandidates(
     "إذا احتوى النص على سعرين أو عملتين محتملتين، لا تختر واحدًا: أعد price وcurrency بقيمة null ليبقى السجل للمراجعة.",
     "اجعل name وsku قيمًا حرفية موجودة في النص. اجعل description اقتباسًا حرفيًا متصلًا من النص لا إعادة صياغة ولا مواصفات مستنتجة. أرفق لكل قيمة evidence حرفية؛ اتركها null إذا لم يوجد سند حرفي.",
     "ولّد من اسم المنتج وسياق النص من 1 إلى 5 أسماء بديلة قصيرة وملائمة للبحث، مثل المرادف الدارج أو اسم الفئة المذكورة. لا تضف علامة تجارية أو طرازاً أو صفة أو استخداماً غير مذكور أو غير واضح من النص. أعط evidence.aliases اقتباساً حرفياً يسند هوية المنتج، واترك القائمة فارغة إذا تعذر ذلك.",
-    "أعط confidence بين 0 و1 لكل من name وsku وaliases وdescription وprice وcurrency وavailability. لا ترفع الثقة للرسائل القديمة أو العروض المؤقتة أو الأرقام ذات الوحدات الملتبسة.",
-    "صنّف كل معرّف رسالة مرة واحدة فقط: إما ضمن منتج واضح في products أو ضمن nonProductMessageIds. لا تترك رسائل دون تصنيف. أعد JSON بالشكل {products:[{sourceMessageIds:[],data:{name,sku,aliases:[],description,price,currency,availability},evidence:{name,sku,aliases,description,price,currency,availability},confidence:{name,sku,aliases,description,price,currency,availability}}],nonProductMessageIds:[]}.",
+    "أعط confidence بين 0 و1 لكل من name وsku وaliases وdescription وprice وcurrency وavailability. لا ترفع الثقة للرسائل القديمة أو العروض المؤقتة أو الأرقام ذات الوحدات الملتبسة. الثقة النهائية يحسبها النظام، وقيمتك للمراقبة فقط.",
+    "إذا ذكرت رسالة واحدة أكثر من منتج، أعد منتجًا مستقلًا لكل عنصر مع نفس sourceMessageIds، وأضف evidence_spans يحدد لكل حقل source_id وموضع start/end داخل نص المصدر. بدون مواضع دقيقة تُرفض العناصر المتعددة.",
+    "صنّف كل معرّف رسالة مرة واحدة على الأقل: إما ضمن منتج واضح في products أو ضمن nonProductMessageIds. لا تترك رسائل دون تصنيف. أعد JSON بالشكل {products:[{sourceMessageIds:[],evidence_spans:{},data:{name,sku,aliases:[],description,price,currency,availability},evidence:{name,sku,aliases,description,price,currency,availability},confidence:{name,sku,aliases,description,price,currency,availability}}],nonProductMessageIds:[]}.",
   ].join("\n");
   const providerOptions = {
     openAiMessages: [
@@ -571,6 +609,19 @@ export async function extractWhatsAppProductCandidates(
                       ]),
                     ),
                     required: [...fieldNames],
+                  },
+                  evidence_spans: {
+                    type: "object",
+                    additionalProperties: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        source_id: { type: "string" },
+                        start: { type: "integer" },
+                        end: { type: "integer" },
+                      },
+                      required: ["source_id", "start", "end"],
+                    },
                   },
                 },
                 required: [

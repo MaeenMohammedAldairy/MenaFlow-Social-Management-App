@@ -75,7 +75,14 @@ test("dismissed is not something a client can ask for", () => {
     serverPolicy.includes('return { ok: false, error: "حالة الاقتراح غير صالحة." }'),
     "the server must reject an unknown or dismissed status",
   );
-  assert.ok(!mobileClient.includes('"dismissed"'));
+  const clientStatuses = literals(
+    captured(
+      mobileClient,
+      /export type ProductExtractionListStatus =([^;]*);/,
+      "client list status union",
+    ),
+  );
+  assert.ok(!clientStatuses.includes("dismissed"));
 });
 
 test("an unknown filter is rejected, not silently widened", () => {

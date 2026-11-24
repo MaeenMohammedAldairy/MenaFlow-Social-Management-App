@@ -13,6 +13,7 @@ import {
 const whatsAppReasons = [
   "PAYLOAD_NOT_OBJECT",
   "REJECTED_SECRET",
+  "DUPLICATE",
   "IGNORED_EVENT",
   "MISSING_INSTANCE_OR_JID",
   "UNKNOWN_INSTANCE",

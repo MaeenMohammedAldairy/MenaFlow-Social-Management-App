@@ -22,6 +22,8 @@ export type EditorState = {
   mediaPreviews: CatalogProduct["mediaPreviews"];
   importedFromPost?: boolean;
   extractionSuggestionId?: string;
+  /** Required when a merchant knowingly creates a second, similar product. */
+  overrideReason?: string;
   sourceContext?: string[];
   importedMetaPost?: ImportedMetaPost;
 };
@@ -103,7 +105,11 @@ export function useProductEditorWorkflow({
   const [mediaUploading, setMediaUploading] = useState(false);
 
   const editorSnapshot = (value: EditorState) =>
-    JSON.stringify({ value: value.value, mediaPreviews: value.mediaPreviews });
+    JSON.stringify({
+      value: value.value,
+      mediaPreviews: value.mediaPreviews,
+      overrideReason: value.overrideReason ?? "",
+    });
   const openEditor = (value: EditorState) => {
     setEditorBaseline(editorSnapshot(value));
     setEditor(value);
@@ -120,6 +126,7 @@ export function useProductEditorWorkflow({
           ? createExtractionProductDraft(
               state.extractionSuggestionId,
               state.value,
+              state.overrideReason,
             )
           : createCatalogProduct(state.value, state.importedMetaPost),
     onError: (cause) =>

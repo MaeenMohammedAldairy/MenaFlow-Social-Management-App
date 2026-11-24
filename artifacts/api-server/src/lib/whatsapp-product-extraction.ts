@@ -6,8 +6,10 @@ import {
   eq,
   gt,
   inArray,
+  isNotNull,
   lt,
   lte,
+  ne,
   notExists,
   or,
   sql,
@@ -19,6 +21,8 @@ import {
   menaWhatsAppGroups,
   menaWhatsAppMessageMedia,
   menaWhatsAppMessages,
+  menaProductExtractionEvents,
+  menaProductMatchCandidates,
   productExtractionSources,
   productExtractionSuggestions,
   products,
@@ -45,6 +49,7 @@ import {
 import { resetFailedWhatsAppMedia } from "./whatsapp-media-reset.ts";
 import {
   extractWhatsAppProductCandidates,
+  generatedProductSku,
   isCompleteProductExtraction,
   productExtractionSourceKey,
   type ProductExtractionCandidate,
@@ -53,6 +58,12 @@ import {
 } from "./product-extraction.ts";
 import { isCurrencyDerivedFromCountry } from "./product-currency-resolution.ts";
 import {
+  computeExtractionConfidence,
+  matchProductCandidate,
+  type SenderRole,
+} from "./product-intake-policy.ts";
+import { recordExtractionEvent } from "./product-intake-service.ts";
+import {
   getWhatsAppContentAssociationDecisions,
   getWhatsAppContentBundle,
   whatsappAssociationPairKey,
@@ -60,10 +71,7 @@ import {
 import { findWhatsAppAssociationSuggestions } from "./whatsapp-association-suggestions.ts";
 import type { ProductAvailability } from "./product-validation.ts";
 import { normalizedProductName } from "./product-utils.ts";
-import {
-  productSuggestionStatus,
-  shouldAutoCreateProductDraft,
-} from "./product-draft-policy.ts";
+import { shouldAutoCreateProductDraft } from "./product-draft-policy.ts";
 import {
   extractProductCandidatesFromImages,
   prepareVisionImage,
@@ -355,6 +363,8 @@ export async function queueUnprocessedWhatsAppProductMessages(
       status: "pending" as const,
       stage: "received" as const,
       attempts: 0,
+      dedupeKey: message.id,
+      idempotencyKey: extractionJobId(workspaceId, message.id),
       nextRunAt: now,
       createdAt: now,
       updatedAt: now,
@@ -759,58 +769,108 @@ async function processProductExtractionJob(
   );
   const requiresManualReview = visionExtraction !== null || currencyDerivedFromCountry;
 
+  const senderRole: SenderRole = sourceMessages.some((message) => message.fromMe)
+    ? "merchant"
+    : sourceMessages.some((message) => message.senderId)
+      ? "customer"
+      : "unknown";
   await db.transaction(async (transaction) => {
     await transaction.execute(sql`
       SELECT pg_advisory_xact_lock(
         hashtextextended(${`product-extraction:${job.workspaceId}`}, 0)
       )
     `);
-    const alreadyProcessed = await transaction
-      .select({ messageId: productExtractionSources.messageId })
-      .from(productExtractionSources)
-      .where(and(
-        eq(productExtractionSources.workspaceId, job.workspaceId),
-        inArray(productExtractionSources.messageId, sourceMessageIds),
-      ));
-    if (alreadyProcessed.length > 0) return;
+    const isReprocess = job.rulesetVersion !== "v1";
+    const suggestionVersion = isReprocess
+      ? Number(job.rulesetVersion.replace(/\D/g, "")) || 2
+      : 1;
+    if (!isReprocess) {
+      const alreadyProcessed = await transaction
+        .select({ messageId: productExtractionSources.messageId })
+        .from(productExtractionSources)
+        .where(and(
+          eq(productExtractionSources.workspaceId, job.workspaceId),
+          inArray(productExtractionSources.messageId, sourceMessageIds),
+        ));
+      if (alreadyProcessed.length > 0) return;
+    }
 
     const existingProducts = await transaction
-      .select({ id: products.id, name: products.name, sku: products.sku })
+      .select({
+        id: products.id,
+        name: products.name,
+        sku: products.sku,
+        aliases: products.aliases,
+        normalizedName: products.normalizedName,
+      })
       .from(products)
       .where(eq(products.workspaceId, job.workspaceId));
     const seenNames = new Set(
-      existingProducts.map((product) => normalizedProductName(product.name)),
+      existingProducts.map((product) =>
+        product.normalizedName ?? normalizedProductName(product.name),
+      ),
     );
     const seenSkus = new Set(
       existingProducts.flatMap((product) =>
         product.sku ? [product.sku.toUpperCase()] : [],
       ),
     );
-    const suggestionByMessage = new Map<string, string>();
-    for (const candidate of extraction.candidates) {
+    const manualReviewBySource =
+      requiresManualReview || senderRole !== "merchant";
+    const createdSuggestionIds: string[] = [];
+    for (const [itemIndex, candidate] of extraction.candidates.entries()) {
       const sourceKey = productExtractionSourceKey(candidate.sourceMessageIds);
       const name = candidate.data.name
         ? normalizedProductName(candidate.data.name)
         : "";
       const sku = candidate.data.sku?.toUpperCase() ?? null;
+      const match = matchProductCandidate({
+        name: candidate.data.name,
+        sku: candidate.data.sku,
+        aliases: candidate.data.aliases,
+        products: existingProducts,
+      });
+      const computedConfidence = computeExtractionConfidence({
+        data: candidate.data,
+        evidence: candidate.evidence,
+        senderRole,
+        currencyDerivedFromCountry,
+        vision: visionExtraction !== null,
+        generatedSku: !candidate.data.sku,
+      });
       const draftCandidate = {
         classification: candidate.classification,
         data: candidate.data,
         complete: isCompleteProductExtraction(candidate),
         seenNames,
         seenSkus,
-        manualReviewRequired: requiresManualReview,
+        manualReviewRequired: manualReviewBySource || match.strategy !== "new_product",
       };
       const decision = shouldAutoCreateProductDraft(draftCandidate, name, sku);
+      const canCreate =
+        decision.canCreate && match.strategy === "new_product";
+      const status =
+        candidate.classification !== "product"
+          ? "review"
+          : match.strategy === "exact_sku" ||
+              match.strategy === "exact_name" ||
+              match.strategy === "alias_match"
+            ? "possible_duplicate"
+            : canCreate
+              ? "draft_created"
+              : "review";
       const suggestionId = randomUUID();
-      const productId = decision.canCreate ? randomUUID() : null;
+      const productId = canCreate ? randomUUID() : null;
+      createdSuggestionIds.push(suggestionId);
       logger.info(
         {
           workspaceId: job.workspaceId,
           suggestionId,
           classification: candidate.classification,
-          decision: decision.reason,
+          decision: canCreate ? decision.reason : status,
           source: requiresManualReview ? "vision" : "text",
+          senderRole,
+          matchStrategy: match.strategy,
           model: extraction.model,
         },
         "Product extraction suggestion recorded",
@@ -831,41 +891,114 @@ async function processProductExtractionJob(
           ownerId: job.ownerId,
           workspaceId: job.workspaceId,
           ...extractionProductInput(candidate),
+          sku: candidate.data.sku ?? generatedProductSku(candidate.sourceMessageIds),
+          normalizedName: name || null,
+          sourceTrust: senderRole,
+          lastExtractionSuggestionId: suggestionId,
+          updatedReason: "extraction",
           mediaUrls: sourceMedia.map((item) => item.id),
           verifiedAt: null,
           updatedAt: new Date(),
         });
         if (name) seenNames.add(name);
         if (sku) seenSkus.add(sku);
+        existingProducts.push({
+          id: productId,
+          name: candidate.data.name ?? "",
+          sku: candidate.data.sku ?? null,
+          aliases: candidate.data.aliases,
+          normalizedName: name || null,
+        });
       }
       await transaction.insert(productExtractionSuggestions).values({
         id: suggestionId,
         ownerId: job.ownerId,
         workspaceId: job.workspaceId,
         sourceKey,
+        version: suggestionVersion,
+        senderRole,
+        matchStrategy: match.strategy,
+        matchedProductId: match.productId,
+        matchScore: String(match.score),
+        extractionInputHash: job.idempotencyKey ?? null,
+        rulesetVersion: job.rulesetVersion,
+        modelVersion: extraction.model,
         classification: candidate.classification,
-        extractedData: candidate.data,
+        extractedData: {
+          ...candidate.data,
+          self_confidence: candidate.confidence,
+          computed_confidence: computedConfidence,
+          generated_sku: !candidate.data.sku,
+          sender_role: senderRole,
+          evidence_spans: candidate.evidenceSpans ?? {},
+        },
         evidence: candidate.evidence,
-        confidence: candidate.confidence,
+        confidence: { ...candidate.confidence, _overall: computedConfidence },
         aiModel: extraction.model,
-        status: productSuggestionStatus(draftCandidate, decision),
+        status,
         productId,
         updatedAt: new Date(),
       });
+      await transaction.insert(menaProductMatchCandidates).values({
+        id: randomUUID(),
+        workspaceId: job.workspaceId,
+        suggestionId,
+        productId: match.productId ?? productId ?? "unmatched",
+        strategy: match.strategy,
+        score: String(match.score),
+        reasons: match.reasons,
+      });
       for (const messageId of candidate.sourceMessageIds) {
-        suggestionByMessage.set(messageId, suggestionId);
+        await transaction.insert(productExtractionSources).values({
+          workspaceId: job.workspaceId,
+          messageId,
+          suggestionId,
+          itemIndex: itemIndex + 1,
+        });
       }
     }
-    await transaction.insert(productExtractionSources).values(
-      sourceMessageIds.map((messageId) => ({
-        workspaceId: job.workspaceId,
-        messageId,
-        suggestionId: suggestionByMessage.get(messageId) ?? null,
-      })),
-    );
+    if (isReprocess && createdSuggestionIds.length) {
+      const previous = await transaction
+        .select({ id: productExtractionSuggestions.id })
+        .from(productExtractionSuggestions)
+        .where(and(
+          eq(productExtractionSuggestions.workspaceId, job.workspaceId),
+          eq(productExtractionSuggestions.sourceKey,
+            productExtractionSourceKey(sourceMessageIds)),
+          lt(productExtractionSuggestions.version, suggestionVersion),
+        ))
+        .orderBy(productExtractionSuggestions.version);
+      const previousSuggestionId = previous.at(-1)?.id ?? null;
+      if (previousSuggestionId) {
+        await transaction
+          .update(productExtractionSuggestions)
+          .set({ status: "superseded", updatedAt: new Date() })
+          .where(and(
+            eq(productExtractionSuggestions.workspaceId, job.workspaceId),
+            eq(productExtractionSuggestions.id, previousSuggestionId),
+          ));
+        await transaction
+          .update(productExtractionSuggestions)
+          .set({ previousSuggestionId, updatedAt: new Date() })
+          .where(and(
+            eq(productExtractionSuggestions.workspaceId, job.workspaceId),
+            inArray(productExtractionSuggestions.id, createdSuggestionIds),
+          ));
+      }
+    }
   });
 
   await updateJob(job, { status: "complete", stage: "persistence", lastError: null });
+  await recordExtractionEvent({
+    workspaceId: job.workspaceId,
+    event: "EXTRACTION_SUCCEEDED",
+    jobId: job.id,
+    context: {
+      senderRole,
+      rulesetVersion: job.rulesetVersion,
+      candidateCount: extraction.candidates.length,
+    },
+  });
   logger.info(
     {
       workspaceId: job.workspaceId,
@@ -1222,4 +1355,74 @@ export async function processWhatsAppProductExtractionQueue(): Promise<void> {
   } finally {
     productQueueRunning = false;
   }
+}
+
+/**
+ * Media downloads often finish after a suggestion has already become a draft.
+ * This sweep attaches those late images/videos without touching merchant edits:
+ * it only appends media ids that are not on the product yet.
+ */
+export async function relinkCompletedExtractionMedia(): Promise<number> {
+  const rows = await db
+    .select({
+      workspaceId: productExtractionSuggestions.workspaceId,
+      productId: productExtractionSuggestions.productId,
+      mediaId: menaWhatsAppMessageMedia.id,
+    })
+    .from(productExtractionSuggestions)
+    .innerJoin(
+      productExtractionSources,
+      and(
+        eq(productExtractionSources.workspaceId, productExtractionSuggestions.workspaceId),
+        eq(productExtractionSources.suggestionId, productExtractionSuggestions.id),
+      ),
+    )
+    .innerJoin(
+      menaWhatsAppMessageMedia,
+      and(
+        eq(menaWhatsAppMessageMedia.workspaceId, productExtractionSources.workspaceId),
+        eq(menaWhatsAppMessageMedia.messageId, productExtractionSources.messageId),
+        eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
+      ),
+    )
+    .where(and(
+      isNotNull(productExtractionSuggestions.productId),
+      ne(productExtractionSuggestions.status, "dismissed"),
+    ))
+    .limit(500);
+
+  let relinked = 0;
+  const byProduct = new Map<string, { workspaceId: string; mediaIds: Set<string> }>();
+  for (const row of rows) {
+    if (!row.productId) continue;
+    const current = byProduct.get(row.productId) ?? {
+      workspaceId: row.workspaceId,
+      mediaIds: new Set<string>(),
+    };
+    current.mediaIds.add(row.mediaId);
+    byProduct.set(row.productId, current);
+  }
+
+  for (const [productId, value] of byProduct) {
+    const [product] = await db
+      .select({ id: products.id, mediaUrls: products.mediaUrls })
+      .from(products)
+      .where(and(eq(products.id, productId), eq(products.workspaceId, value.workspaceId)))
+      .limit(1);
+    if (!product) continue;
+    const existing = new Set(product.mediaUrls);
+    const missing = [...value.mediaIds].filter((id) => !existing.has(id));
+    if (!missing.length) continue;
+    await db
+      .update(products)
+      .set({ mediaUrls: [...product.mediaUrls, ...missing], updatedAt: new Date() })
+      .where(and(eq(products.id, productId), eq(products.workspaceId, value.workspaceId)));
+    await recordExtractionEvent({
+      workspaceId: value.workspaceId,
+      event: "MEDIA_RELINKED",
+      context: { productId, mediaCount: missing.length },
+    });
+    relinked += missing.length;
+  }
+  return relinked;
 }

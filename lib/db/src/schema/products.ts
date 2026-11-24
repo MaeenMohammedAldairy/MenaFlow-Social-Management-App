@@ -26,6 +26,14 @@ export const products = pgTable(
       .references(() => workspaces.id, { onDelete: "cascade" }),
     sku: text("sku"),
     name: text("name").notNull(),
+    normalizedName: text("normalized_name"),
+    sourceTrust: text("source_trust")
+      .$type<"merchant" | "customer" | "unknown">()
+      .notNull()
+      .default("merchant"),
+    lastExtractionSuggestionId: text("last_extraction_suggestion_id"),
+    updatedBy: text("updated_by"),
+    updatedReason: text("updated_reason"),
     aliases: jsonb("aliases").$type<string[]>().notNull().default([]),
     description: text("description").notNull().default(""),
     price: numeric("price", { precision: 12, scale: 2 }),
@@ -64,9 +72,17 @@ export const products = pgTable(
       table.status,
       table.updatedAt,
     ),
+    index("mena_products_workspace_normalized_name_idx").on(
+      table.workspaceId,
+      table.normalizedName,
+    ),
     check(
       "mena_products_availability_check",
       sql`${table.availability} IN ('unknown', 'in_stock', 'out_of_stock', 'preorder')`,
+    ),
+    check(
+      "mena_products_source_trust_check",
+      sql`${table.sourceTrust} IN ('merchant', 'customer', 'unknown')`,
     ),
     check(
       "mena_products_status_check",
@@ -185,6 +201,19 @@ export const productExtractionSuggestions = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
     sourceKey: text("source_key").notNull(),
+    version: integer("version").notNull().default(1),
+    previousSuggestionId: text("previous_suggestion_id"),
+    senderRole: text("sender_role")
+      .$type<"merchant" | "customer" | "unknown">()
+      .notNull()
+      .default("unknown"),
+    matchStrategy: text("match_strategy"),
+    matchedProductId: text("matched_product_id"),
+    matchScore: numeric("match_score", { precision: 5, scale: 4 }),
+    extractionInputHash: text("extraction_input_hash"),
+    rulesetVersion: text("ruleset_version").notNull().default("v1"),
+    modelVersion: text("model_version"),
+    overrideReason: text("override_reason"),
     classification: text("classification")
       .$type<"product" | "not_product">()
       .notNull()
@@ -202,7 +231,16 @@ export const productExtractionSuggestions = pgTable(
       .default({}),
     aiModel: text("ai_model").notNull(),
     status: text("status")
-      .$type<"review" | "draft_created" | "possible_duplicate" | "dismissed">()
+      .$type<
+        | "review"
+        | "draft_created"
+        | "possible_duplicate"
+        | "dismissed"
+        | "superseded"
+        | "update_proposed"
+        | "accepted_update"
+        | "rejected_update"
+      >()
       .notNull()
       .default("review"),
     fieldReview: jsonb("field_review")
@@ -237,11 +275,20 @@ export const productExtractionSuggestions = pgTable(
     ),
     check(
       "mena_product_extraction_status_check",
-      sql`${table.status} IN ('review', 'draft_created', 'possible_duplicate', 'dismissed')`,
+      sql`${table.status} IN ('review', 'draft_created', 'possible_duplicate', 'dismissed', 'superseded', 'update_proposed', 'accepted_update', 'rejected_update')`,
     ),
     check(
       "mena_product_extraction_classification_check",
       sql`${table.classification} IN ('product', 'not_product')`,
+    ),
+    check(
+      "mena_product_extraction_sender_role_check",
+      sql`${table.senderRole} IN ('merchant', 'customer', 'unknown')`,
+    ),
+    uniqueIndex("mena_product_extraction_version_key").on(
+      table.workspaceId,
+      table.previousSuggestionId,
+      table.version,
     ),
   ],
 );
@@ -256,6 +303,7 @@ export const productExtractionSources = pgTable(
     messageId: text("message_id")
       .notNull()
       .references(() => menaWhatsAppMessages.id, { onDelete: "cascade" }),
+    itemIndex: integer("item_index").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -264,6 +312,8 @@ export const productExtractionSources = pgTable(
     uniqueIndex("mena_product_extraction_source_workspace_message_key").on(
       table.workspaceId,
       table.messageId,
+      table.suggestionId,
+      table.itemIndex,
     ),
     index("mena_product_extraction_source_suggestion_idx").on(
       table.workspaceId,
@@ -314,6 +364,11 @@ export const whatsappProductExtractionJobs = pgTable(
       .notNull()
       .default("received"),
     attempts: integer("attempts").notNull().default(0),
+    rulesetVersion: text("ruleset_version").notNull().default("v1"),
+    dedupeKey: text("dedupe_key"),
+    idempotencyKey: text("idempotency_key"),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    deadLetterAt: timestamp("dead_letter_at", { withTimezone: true }),
     nextRunAt: timestamp("next_run_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -338,6 +393,10 @@ export const whatsappProductExtractionJobs = pgTable(
       table.status,
       table.nextRunAt,
       table.createdAt,
+    ),
+    uniqueIndex("mena_whatsapp_product_extraction_job_dedupe_key").on(
+      table.workspaceId,
+      table.dedupeKey,
     ),
     check(
       "mena_whatsapp_product_extraction_job_status_check",
@@ -418,6 +477,179 @@ export const productPublicationJobs = pgTable(
       "mena_product_publication_job_status_check",
       sql`${table.status} IN ('queued', 'processing', 'published', 'failed', 'action_required')`,
     ),
+  ],
+);
+
+/** Append-only audit of every product field change, whatever its source. */
+export const menaProductChanges = pgTable(
+  "mena_product_changes",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    productId: text("product_id").notNull(),
+    field: text("field").notNull(),
+    beforeValue: jsonb("before_value"),
+    afterValue: jsonb("after_value"),
+    sourceType: text("source_type")
+      .$type<"manual" | "extraction" | "order" | "publication">()
+      .notNull(),
+    sourceId: text("source_id"),
+    actorId: text("actor_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mena_product_changes_workspace_id_key").on(
+      table.workspaceId,
+      table.id,
+    ),
+    index("mena_product_changes_product_created_idx").on(
+      table.workspaceId,
+      table.productId,
+      table.createdAt,
+    ),
+    foreignKey({
+      columns: [table.workspaceId, table.productId],
+      foreignColumns: [products.workspaceId, products.id],
+      name: "mena_product_changes_product_fk",
+    }).onDelete("cascade"),
+    check(
+      "mena_product_changes_source_type_check",
+      sql`${table.sourceType} IN ('manual', 'extraction', 'order', 'publication')`,
+    ),
+  ],
+);
+
+/** A merchant-facing diff proposed from a later message. Never applied automatically. */
+export const menaProductChangeProposals = pgTable(
+  "mena_product_change_proposals",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    productId: text("product_id").notNull(),
+    suggestionId: text("suggestion_id").notNull(),
+    diff: jsonb("diff").$type<Record<string, unknown>>().notNull(),
+    status: text("status")
+      .$type<"proposed" | "accepted" | "rejected" | "expired">()
+      .notNull()
+      .default("proposed"),
+    decidedBy: text("decided_by"),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mena_product_change_proposals_workspace_id_key").on(
+      table.workspaceId,
+      table.id,
+    ),
+    uniqueIndex("mena_product_change_proposals_suggestion_idx").on(
+      table.workspaceId,
+      table.suggestionId,
+    ),
+    foreignKey({
+      columns: [table.workspaceId, table.productId],
+      foreignColumns: [products.workspaceId, products.id],
+      name: "mena_product_change_proposals_product_fk",
+    }).onDelete("cascade"),
+    check(
+      "mena_product_change_proposals_status_check",
+      sql`${table.status} IN ('proposed', 'accepted', 'rejected', 'expired')`,
+    ),
+  ],
+);
+
+/** Why a suggestion was matched (or not) to an existing product. */
+export const menaProductMatchCandidates = pgTable(
+  "mena_product_match_candidates",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    suggestionId: text("suggestion_id").notNull(),
+    productId: text("product_id").notNull(),
+    strategy: text("strategy").notNull(),
+    score: numeric("score", { precision: 5, scale: 4 }).notNull(),
+    reasons: jsonb("reasons").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mena_product_match_candidates_workspace_id_key").on(
+      table.workspaceId,
+      table.id,
+    ),
+    index("mena_product_match_candidates_suggestion_idx").on(
+      table.workspaceId,
+      table.suggestionId,
+    ),
+    foreignKey({
+      columns: [table.workspaceId, table.suggestionId],
+      foreignColumns: [
+        productExtractionSuggestions.workspaceId,
+        productExtractionSuggestions.id,
+      ],
+      name: "mena_product_match_candidates_suggestion_fk",
+    }).onDelete("cascade"),
+  ],
+);
+
+/** Lifecycle events used by the queue strip, reports and diagnostics. */
+export const menaProductExtractionEvents = pgTable(
+  "mena_product_extraction_events",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    jobId: text("job_id"),
+    suggestionId: text("suggestion_id"),
+    event: text("event").notNull(),
+    context: jsonb("context").$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("mena_product_extraction_events_workspace_created_idx").on(
+      table.workspaceId,
+      table.event,
+      table.createdAt,
+    ),
+  ],
+);
+
+/** Provider event keys already accepted; blocks duplicate webhook deliveries. */
+export const menaWebhookIdempotency = pgTable(
+  "mena_webhook_idempotency",
+  {
+    id: text("id").primaryKey(),
+    provider: text("provider").notNull(),
+    eventKey: text("event_key").notNull(),
+    workspaceId: text("workspace_id").references(() => workspaces.id, {
+      onDelete: "cascade",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mena_webhook_idempotency_provider_event_key").on(
+      table.provider,
+      table.eventKey,
+    ),
+    index("mena_webhook_idempotency_created_idx").on(table.createdAt),
   ],
 );
 
