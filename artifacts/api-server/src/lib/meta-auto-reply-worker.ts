@@ -49,7 +49,7 @@ import {
 import { planAutoReplyFailure } from "./auto-reply-failure";
 import { formatMetaOrderDraftReply } from "./meta-order-messages";
 import { processMetaOrderIntake } from "./meta-order-intake";
-import { signedWhatsAppMediaUrl } from "./meta-publishing";
+import { signedWhatsAppMediaUrl } from "./public-media-url";
 import { workspaceMediaKey } from "./product-utils.ts";
 import {
   getMetaPublishedPosts,

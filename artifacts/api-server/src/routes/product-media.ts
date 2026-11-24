@@ -5,7 +5,7 @@ import express, { Router } from "express";
 
 import { metaString } from "../lib/meta-inbox-utils";
 
-import { verifySignedMediaRequest } from "../lib/meta-publishing";
+import { verifySignedMediaRequest } from "../lib/public-media-url";
 import {
   createMediaJpeg,
   readMediaObject,

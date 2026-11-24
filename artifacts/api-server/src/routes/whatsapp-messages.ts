@@ -19,9 +19,10 @@ import { requestOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 import {
+  PublicMediaUrlError,
   signedWhatsAppMediaUrl,
   verifySignedMediaRequest,
-} from "../lib/meta-publishing";
+} from "../lib/public-media-url";
 import {
   assertMediaObjectPath,
   createMediaJpeg,
@@ -30,7 +31,6 @@ import {
   resolveWhatsAppMediaStorageRoot,
   streamMediaObject,
 } from "../lib/whatsapp-media-storage";
-import { PublicMediaUrlError } from "../lib/meta-media-url";
 import { findWhatsAppAssociationSuggestions } from "../lib/whatsapp-association-suggestions";
 import {
   autoAcceptWhatsAppSuggestions,
