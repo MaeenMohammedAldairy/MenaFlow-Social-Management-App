@@ -1,9 +1,9 @@
 /**
- * whatsapp-auto-reply-failure.ts
+ * auto-reply-failure.ts
  *
- * Decides what a failed WhatsApp automatic-reply attempt turns into.
+ * Decides what a failed automatic-reply attempt turns into, for both queues.
  *
- * The queue used to have two outcomes for anything that was not a transient
+ * The queues used to have two outcomes for anything that was not a transient
  * provider fault: `failed`, terminally. That is correct for a send that broke
  * and wrong for a limit that lifts by itself — an exhausted AI quota resets at
  * the next billing period, and a missing provider key is fixed by the operator
@@ -11,27 +11,27 @@
  * message lost its reply permanently and the merchant was told a send failed
  * that never happened.
  *
- * A third outcome existed for the Meta queue (`skipped`), but the WhatsApp
- * schema has no such status, so the pause is expressed with the states it does
- * have: stay `queued`, push `next_run_at` out, and hand the attempt back.
+ * The Meta queue had a third outcome (`skipped`) and expressed the pause as a
+ * re-queue from inside its worker; the WhatsApp schema has no such status, so
+ * its queue expressed the same pause as "stay `queued`, push `next_run_at` out,
+ * hand the attempt back". Same decision, two implementations, in two files —
+ * which is how the two drifted (a second attempt waited 30 seconds on one side
+ * and 20 on the other). The decision table now lives here, pure, and each queue
+ * applies the resulting plan to its own table.
  *
- * The loop this creates is bounded by a rule the queue already enforces: before
- * generating anything it re-checks the customer message's age
- * (`WHATSAPP_AUTO_REPLY_MAX_AGE_MINUTES`, 12 hours by default) and drops the
- * event as `AUTO_REPLY_WINDOW_EXPIRED`. A quota that never lifts therefore ends
- * with the conversation handed to a human, not with an event queued forever,
- * and never with a reply delivered half a day late.
+ * The loop a pause creates is bounded by a rule each queue already enforces:
+ * before generating anything it re-checks the customer message's age (Meta's
+ * 24-hour window, WhatsApp's `WHATSAPP_AUTO_REPLY_MAX_AGE_MINUTES`, 12 hours by
+ * default) and drops the job as window-expired. A quota that never lifts
+ * therefore ends with the conversation handed to a human, not with a job queued
+ * forever, and never with a reply delivered half a day late.
  *
- * Pure on purpose — the caller computes the error code and whether a send had
- * started, this module only decides, so the table below is testable.
+ * `whatsAppAutoReplyErrorCode` stays here as well: it is how the WhatsApp queue
+ * derives the code the planner is given. Meta derives its own from the Graph
+ * error, because `isUnansweredMetaReply` matches on those exact codes.
  */
 
-import {
-  autoReplyLimitPauseDefaultMinutes,
-  autoReplyLimitPauseMaxMinutes,
-  autoReplyLimitPauseMinMinutes,
-  resolveAutoReplyLimitPauseMs,
-} from "./auto-reply-limit-pause.ts";
+import { autoReplyLimitPauseDefaultMinutes } from "./auto-reply-policy.ts";
 import {
   classifyAutoReplyGenerationFailure,
   MAX_ERROR_CODE_LENGTH,
@@ -39,10 +39,10 @@ import {
 } from "./error-codes.ts";
 
 /** Stored when nothing better is available. */
-export const whatsAppAutoReplyFallbackCode = "AUTO_REPLY_FAILED";
+export const autoReplyFallbackCode = "AUTO_REPLY_FAILED";
 
 /**
- * The code to store for a failed attempt.
+ * The code to store for a failed WhatsApp attempt.
  *
  * Evolution's own errors carry a stable code in `message`, so `trustMessage`
  * passes them through. Everything else is trusted only when the message has the
@@ -72,35 +72,10 @@ export function whatsAppAutoReplyErrorCode(
   const stable = stableErrorCode(trimmed);
   if (stable) return stable;
   const name = error instanceof Error ? error.name.trim() : "";
-  return name.slice(0, MAX_ERROR_CODE_LENGTH) || whatsAppAutoReplyFallbackCode;
+  return name.slice(0, MAX_ERROR_CODE_LENGTH) || autoReplyFallbackCode;
 }
 
-/**
- * The bounds are shared with the Meta queue in `auto-reply-limit-pause.ts`: both
- * queues wait on the same workspace quota and the same provider configuration,
- * so a pause that is sane for one is sane for the other. Only the variable name
- * is queue-specific.
- */
-export const whatsAppAutoReplyDefaultQuotaPauseMinutes =
-  autoReplyLimitPauseDefaultMinutes;
-export const whatsAppAutoReplyMinQuotaPauseMinutes =
-  autoReplyLimitPauseMinMinutes;
-export const whatsAppAutoReplyMaxQuotaPauseMinutes =
-  autoReplyLimitPauseMaxMinutes;
-
-export const WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_ENV_KEY =
-  "WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES";
-
-export function whatsAppAutoReplyQuotaPauseMs(
-  env: NodeJS.ProcessEnv = process.env,
-): number {
-  return resolveAutoReplyLimitPauseMs(
-    WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_ENV_KEY,
-    env,
-  );
-}
-
-export type WhatsAppAutoReplyFailurePlan =
+export type AutoReplyFailurePlan =
   | {
       /** A send may have reached the customer; never retried automatically. */
       kind: "unknown_outcome";
@@ -138,7 +113,7 @@ export type WhatsAppAutoReplyFailurePlan =
       completed: true;
     };
 
-export type WhatsAppAutoReplyFailureInput = {
+export type AutoReplyFailureInput = {
   /** Stable machine code, already normalized by the caller. */
   errorCode: string;
   /** True when the generation-retry predicate accepted this fault. */
@@ -148,24 +123,25 @@ export type WhatsAppAutoReplyFailureInput = {
   /** True once a send request left this server. */
   sendStarted: boolean;
   now?: number;
+  /** This queue's configured pause; the shared half-hour when omitted. */
   quotaPauseMs?: number;
 };
 
 /** Error code recorded when a send's outcome cannot be known. */
-export const whatsAppAutoReplyResultUnknownCode = "AUTO_REPLY_RESULT_UNKNOWN";
+export const autoReplyResultUnknownCode = "AUTO_REPLY_RESULT_UNKNOWN";
 
-export function planWhatsAppAutoReplyFailure(
-  input: WhatsAppAutoReplyFailureInput,
-): WhatsAppAutoReplyFailurePlan {
+export function planAutoReplyFailure(
+  input: AutoReplyFailureInput,
+): AutoReplyFailurePlan {
   const now = input.now ?? Date.now();
   const errorCode =
-    input.errorCode.trim().slice(0, MAX_ERROR_CODE_LENGTH) || "AUTO_REPLY_FAILED";
+    input.errorCode.trim().slice(0, MAX_ERROR_CODE_LENGTH) || autoReplyFallbackCode;
 
   if (input.sendStarted) {
     return {
       kind: "unknown_outcome",
       status: "unknown",
-      errorCode: whatsAppAutoReplyResultUnknownCode,
+      errorCode: autoReplyResultUnknownCode,
       nextRunAt: null,
       returnAttempt: false,
       completed: true,
@@ -178,7 +154,7 @@ export function planWhatsAppAutoReplyFailure(
       status: "queued",
       errorCode,
       nextRunAt: new Date(
-        now + (input.quotaPauseMs ?? whatsAppAutoReplyQuotaPauseMs()),
+        now + (input.quotaPauseMs ?? autoReplyLimitPauseDefaultMinutes * 60_000),
       ),
       returnAttempt: true,
       completed: false,

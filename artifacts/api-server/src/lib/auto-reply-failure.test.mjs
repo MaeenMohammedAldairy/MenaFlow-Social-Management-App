@@ -1,14 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  planWhatsAppAutoReplyFailure,
-  whatsAppAutoReplyDefaultQuotaPauseMinutes,
+  autoReplyResultUnknownCode,
+  planAutoReplyFailure,
   whatsAppAutoReplyErrorCode,
-  whatsAppAutoReplyMaxQuotaPauseMinutes,
-  whatsAppAutoReplyMinQuotaPauseMinutes,
-  whatsAppAutoReplyQuotaPauseMs,
-  whatsAppAutoReplyResultUnknownCode,
-} from "./whatsapp-auto-reply-failure.ts";
+} from "./auto-reply-failure.ts";
 
 const NOW = Date.parse("2026-11-24T04:00:00.000Z");
 
@@ -22,7 +18,7 @@ class FakeError extends Error {
 test("an exhausted AI quota postpones the reply instead of failing it", () => {
   // The quota lifts at the next billing period, so a terminal `failed` row would
   // turn a temporary limit into a permanently lost reply.
-  const plan = planWhatsAppAutoReplyFailure({
+  const plan = planAutoReplyFailure({
     errorCode: "SUBSCRIPTION_LIMIT_REACHED:aiGenerations",
     retryable: false,
     attempts: 1,
@@ -47,7 +43,7 @@ test("configuration limits are postponed by the same rule", () => {
     "MISSING_AI_PROVIDER_KEY",
     "AI_MODEL_NAME_INVALID",
   ]) {
-    const plan = planWhatsAppAutoReplyFailure({
+    const plan = planAutoReplyFailure({
       errorCode: code,
       retryable: false,
       attempts: 3,
@@ -63,7 +59,7 @@ test("configuration limits are postponed by the same rule", () => {
 });
 
 test("a transient provider fault still retries on the existing schedule", () => {
-  const plan = planWhatsAppAutoReplyFailure({
+  const plan = planAutoReplyFailure({
     errorCode: "OPENAI_HTTP_500",
     retryable: true,
     attempts: 2,
@@ -78,7 +74,7 @@ test("a transient provider fault still retries on the existing schedule", () => 
 });
 
 test("the retry backoff stays capped at thirty seconds", () => {
-  const plan = planWhatsAppAutoReplyFailure({
+  const plan = planAutoReplyFailure({
     errorCode: "GEMINI_TIMEOUT",
     retryable: true,
     attempts: 3,
@@ -89,7 +85,7 @@ test("the retry backoff stays capped at thirty seconds", () => {
 });
 
 test("a fault that is neither transient nor a limit fails terminally", () => {
-  const plan = planWhatsAppAutoReplyFailure({
+  const plan = planAutoReplyFailure({
     errorCode: "WHATSAPP_RECIPIENT_PHONE_REQUIRED",
     retryable: false,
     attempts: 1,
@@ -106,7 +102,7 @@ test("a fault that is neither transient nor a limit fails terminally", () => {
 test("a send that already left the server is never retried", () => {
   // Retrying an ambiguous send risks a second reply to the same customer
   // message, which is worse than an unresolved row an operator can confirm.
-  const plan = planWhatsAppAutoReplyFailure({
+  const plan = planAutoReplyFailure({
     errorCode: "EVOLUTION_API_REQUEST_FAILED",
     retryable: true,
     attempts: 1,
@@ -115,12 +111,12 @@ test("a send that already left the server is never retried", () => {
   });
   assert.equal(plan.kind, "unknown_outcome");
   assert.equal(plan.status, "unknown");
-  assert.equal(plan.errorCode, whatsAppAutoReplyResultUnknownCode);
+  assert.equal(plan.errorCode, autoReplyResultUnknownCode);
   assert.equal(plan.completed, true);
 });
 
 test("a quota pause never outranks an ambiguous send", () => {
-  const plan = planWhatsAppAutoReplyFailure({
+  const plan = planAutoReplyFailure({
     errorCode: "SUBSCRIPTION_LIMIT_REACHED:aiGenerations",
     retryable: false,
     attempts: 1,
@@ -131,7 +127,7 @@ test("a quota pause never outranks an ambiguous send", () => {
 });
 
 test("an empty code is stored as the fallback, never as an empty string", () => {
-  const plan = planWhatsAppAutoReplyFailure({
+  const plan = planAutoReplyFailure({
     errorCode: "   ",
     retryable: false,
     attempts: 1,
@@ -143,7 +139,7 @@ test("an empty code is stored as the fallback, never as an empty string", () => 
 });
 
 test("an over-long code is truncated to what the column holds", () => {
-  const plan = planWhatsAppAutoReplyFailure({
+  const plan = planAutoReplyFailure({
     errorCode: "X".repeat(200),
     retryable: false,
     attempts: 1,
@@ -166,7 +162,7 @@ test("a quota error records its stable code, not its class name", () => {
     "SUBSCRIPTION_LIMIT_REACHED:aiGenerations",
   );
   assert.equal(
-    planWhatsAppAutoReplyFailure({
+    planAutoReplyFailure({
       errorCode: whatsAppAutoReplyErrorCode(error),
       retryable: false,
       attempts: 1,
@@ -211,53 +207,16 @@ test("a non-error thrown value still yields a storable code", () => {
   assert.equal(whatsAppAutoReplyErrorCode({}), "AUTO_REPLY_FAILED");
 });
 
-test("the quota pause defaults to thirty minutes", () => {
-  assert.equal(whatsAppAutoReplyDefaultQuotaPauseMinutes, 30);
-  assert.equal(whatsAppAutoReplyQuotaPauseMs({}), 30 * 60_000);
-  assert.equal(
-    whatsAppAutoReplyQuotaPauseMs({ WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES: "" }),
-    30 * 60_000,
-  );
-});
-
-test("an unusable pause falls back and a parsed one is clamped", () => {
-  for (const raw of ["abc", "0", "-15", ""]) {
-    assert.equal(
-      whatsAppAutoReplyQuotaPauseMs({
-        WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES: raw,
-      }),
-      30 * 60_000,
-      raw,
-    );
-  }
-  assert.equal(whatsAppAutoReplyMinQuotaPauseMinutes, 5);
-  assert.equal(whatsAppAutoReplyMaxQuotaPauseMinutes, 120);
-  assert.equal(
-    whatsAppAutoReplyQuotaPauseMs({
-      WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES: "1",
-    }),
-    5 * 60_000,
-  );
-  // A pause longer than this would eat the 12-hour reply window, so the event
-  // would expire before the quota could lift.
-  assert.equal(
-    whatsAppAutoReplyQuotaPauseMs({
-      WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES: "600",
-    }),
-    120 * 60_000,
-  );
-  assert.equal(
-    whatsAppAutoReplyQuotaPauseMs({
-      WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES: "45",
-    }),
-    45 * 60_000,
-  );
-  // Integer minutes, matching the age-window reader beside it: a fractional
-  // value is truncated rather than rejected.
-  assert.equal(
-    whatsAppAutoReplyQuotaPauseMs({
-      WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES: "12.5",
-    }),
-    12 * 60_000,
-  );
+test("a pause with no configured value falls back to the shared half hour", () => {
+  // The planner is pure and queue-agnostic: a queue that has not said how long
+  // it waits gets the shared default, never another queue's environment.
+  const plan = planAutoReplyFailure({
+    errorCode: "MISSING_AI_PROVIDER_KEY",
+    retryable: false,
+    attempts: 1,
+    sendStarted: false,
+    now: NOW,
+  });
+  assert.equal(plan.kind, "quota_pause");
+  assert.equal(plan.nextRunAt.getTime(), NOW + 30 * 60_000);
 });

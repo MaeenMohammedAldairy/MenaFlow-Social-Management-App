@@ -1,21 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  metaAutoReplyDebounceMs,
-  metaAutoReplyDefaultHourlyLimit,
-  metaAutoReplyHourlyLimit,
-  metaAutoReplyLoopGuardCode,
-  metaAutoReplyNextRunAt,
-  metaAutoReplySupersededCode,
-} from "./meta-auto-reply.ts";
+  autoReplyDebounceMs,
+  autoReplyNextRunAt,
+} from "./auto-reply-policy.ts";
 import {
-  whatsAppAutoReplyDebounceMs,
-  whatsAppAutoReplyDefaultHourlyLimit,
   whatsAppAutoReplyDefaultMaxAgeMs,
-  whatsAppAutoReplyHourlyLimit,
-  whatsAppAutoReplyLoopGuardCode,
   whatsAppAutoReplyMaxAgeMs,
-  whatsAppAutoReplyNextRunAt,
   whatsAppAutoReplyWindowExpiredCode,
 } from "./whatsapp-auto-reply-policy.ts";
 import {
@@ -23,35 +14,17 @@ import {
   startBackgroundWorkerLoop,
 } from "./background-worker-loop.ts";
 
-test("meta auto replies wait for the debounce window before running", () => {
+// The debounce, the superseded and loop-guard codes and the hourly ceiling used
+// to be defined once per queue and then asserted equal here. They are one
+// definition now (`auto-reply-policy.ts`, with its own tests); what remains is
+// the behaviour this file is named for, checked once for both queues.
+test("a queued reply waits for the debounce window before running", () => {
   const now = new Date("2026-11-22T10:00:00.000Z");
   assert.equal(
-    metaAutoReplyNextRunAt(now).toISOString(),
-    new Date(now.getTime() + metaAutoReplyDebounceMs).toISOString(),
+    autoReplyNextRunAt(now).toISOString(),
+    new Date(now.getTime() + autoReplyDebounceMs).toISOString(),
   );
-  assert.ok(metaAutoReplyDebounceMs > 0);
-});
-
-test("whatsapp auto replies use the same debounce behaviour", () => {
-  const now = new Date("2026-11-22T10:00:00.000Z");
-  assert.equal(
-    whatsAppAutoReplyNextRunAt(now).getTime(),
-    now.getTime() + whatsAppAutoReplyDebounceMs,
-  );
-  assert.equal(whatsAppAutoReplyDebounceMs, metaAutoReplyDebounceMs);
-});
-
-test("superseded meta replies are recorded with a stable error code", () => {
-  assert.equal(metaAutoReplySupersededCode, "SUPERSEDED_BY_NEWER_MESSAGE");
-});
-
-test("a chat is capped at a sensible number of automatic replies per hour", () => {
-  assert.equal(whatsAppAutoReplyHourlyLimit(undefined), whatsAppAutoReplyDefaultHourlyLimit);
-  assert.equal(whatsAppAutoReplyHourlyLimit("5"), 5);
-  assert.equal(whatsAppAutoReplyHourlyLimit("1000"), 100);
-  assert.equal(whatsAppAutoReplyHourlyLimit("0"), whatsAppAutoReplyDefaultHourlyLimit);
-  assert.equal(whatsAppAutoReplyHourlyLimit("nonsense"), whatsAppAutoReplyDefaultHourlyLimit);
-  assert.equal(whatsAppAutoReplyLoopGuardCode, "AUTO_REPLY_LOOP_GUARD");
+  assert.ok(autoReplyDebounceMs > 0);
 });
 
 test("worker snapshots expose a heartbeat a readiness check can read", async () => {
@@ -72,14 +45,6 @@ test("worker snapshots expose a heartbeat a readiness check can read", async () 
   assert.equal(snapshot.stale, false);
   assert.ok(snapshot.lastRunStartedAt);
   await handle.stop();
-});
-
-test("meta conversations are capped at the same hourly reply limit", () => {
-  assert.equal(metaAutoReplyHourlyLimit(undefined), metaAutoReplyDefaultHourlyLimit);
-  assert.equal(metaAutoReplyHourlyLimit("3"), 3);
-  assert.equal(metaAutoReplyHourlyLimit("500"), 100);
-  assert.equal(metaAutoReplyLoopGuardCode, "AUTO_REPLY_LOOP_GUARD");
-  assert.equal(metaAutoReplyHourlyLimit(undefined), whatsAppAutoReplyHourlyLimit(undefined));
 });
 
 test("a whatsapp reply is dropped once the customer message is too old", () => {
