@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { type AiProviderOptions } from "./ai-provider.ts";
+import { resolvePurposeModelOverrides } from "./ai-provider-fallback.ts";
 import { callMeteredAiProvider } from "./metered-ai-provider.ts";
 import {
   asRecord as record,
@@ -552,6 +553,9 @@ export async function extractWhatsAppProductCandidates(
         },
       },
     },
+    // `AI_EXTRACTION_OPENAI_MODEL` / `AI_EXTRACTION_GEMINI_MODEL` pin the
+    // extraction quality independently of the chat/auto-reply models.
+    ...resolvePurposeModelOverrides("extraction"),
     temperature: 0,
     maxTokens: 3000,
     timeoutMs: 45_000,
