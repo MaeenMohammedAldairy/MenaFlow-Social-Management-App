@@ -28,7 +28,15 @@ export const PRODUCT_EXTRACTION_LIST_MAX_LIMIT = 50;
 export const PRODUCT_EXTRACTION_LIST_MAX_OFFSET = 10_000;
 
 const CLASSIFICATIONS = ["product", "not_product"] as const;
-const STATUSES = ["review", "draft_created", "possible_duplicate"] as const;
+const STATUSES = [
+  "review",
+  "draft_created",
+  "possible_duplicate",
+  "update_proposed",
+  "accepted_update",
+  "rejected_update",
+  "superseded",
+] as const;
 
 export type ProductExtractionClassification = (typeof CLASSIFICATIONS)[number];
 export type ProductExtractionListStatus = (typeof STATUSES)[number];
@@ -166,6 +174,10 @@ export type ProductExtractionSuggestionCounts = {
   pendingProductReview: number;
   draftCreated: number;
   possibleDuplicate: number;
+  updateProposed: number;
+  acceptedUpdate: number;
+  rejectedUpdate: number;
+  superseded: number;
 };
 
 export function summarizeProductExtractionSuggestions(
@@ -183,6 +195,10 @@ export function summarizeProductExtractionSuggestions(
     pendingProductReview: 0,
     draftCreated: 0,
     possibleDuplicate: 0,
+    updateProposed: 0,
+    acceptedUpdate: 0,
+    rejectedUpdate: 0,
+    superseded: 0,
   };
   for (const row of rows) {
     const total = toCount(row.total);
@@ -196,6 +212,10 @@ export function summarizeProductExtractionSuggestions(
     }
     if (row.status === "draft_created") counts.draftCreated += total;
     if (row.status === "possible_duplicate") counts.possibleDuplicate += total;
+    if (row.status === "update_proposed") counts.updateProposed += total;
+    if (row.status === "accepted_update") counts.acceptedUpdate += total;
+    if (row.status === "rejected_update") counts.rejectedUpdate += total;
+    if (row.status === "superseded") counts.superseded += total;
   }
   return counts;
 }

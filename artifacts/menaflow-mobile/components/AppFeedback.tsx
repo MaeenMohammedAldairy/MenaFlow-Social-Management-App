@@ -23,6 +23,9 @@ type NoticeRequest = {
   title: string;
   message: string;
   tone: "info" | "success" | "error";
+  /** Optional single action, used for reversible outcomes such as undo. */
+  actionLabel?: string;
+  onAction?: () => void;
 };
 
 type FeedbackEvent =
@@ -85,7 +88,10 @@ export function AppFeedbackProvider({
 
   useEffect(() => {
     if (!notice) return;
-    const timeout = setTimeout(() => setNotice(null), 5000);
+    const timeout = setTimeout(
+      () => setNotice(null),
+      notice.actionLabel ? 8000 : 5000,
+    );
     return () => clearTimeout(timeout);
   }, [notice]);
 
@@ -131,6 +137,21 @@ export function AppFeedbackProvider({
               {notice.message}
             </Text>
           </View>
+          {notice.actionLabel && notice.onAction ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={notice.actionLabel}
+              hitSlop={8}
+              onPress={() => {
+                notice.onAction?.();
+                setNotice(null);
+              }}
+            >
+              <Text style={[styles.noticeAction, { color: colors.primary }]}>
+                {notice.actionLabel}
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="إغلاق الإشعار"
@@ -240,6 +261,7 @@ const styles = StyleSheet.create({
   noticeCopy: { flex: 1, minWidth: 0, gap: 2 },
   noticeTitle: { fontSize: 14, fontWeight: "800", textAlign: "right" },
   noticeMessage: { fontSize: 13.5, lineHeight: 20, textAlign: "right" },
+  noticeAction: { fontSize: 13, fontWeight: "800", textAlign: "right" },
   overlay: {
     flex: 1,
     alignItems: "center",

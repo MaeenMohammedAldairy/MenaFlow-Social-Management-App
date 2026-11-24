@@ -550,3 +550,23 @@ detected → classified(not_product) → archived
 2. **Backfill مستقل للاقتراحات القديمة**: الـ migration يملأ `normalized_name` و`source_trust` بأمان، لكن إعادة تصنيف آلاف الاقتراحات القديمة حسب المرسل تتطلب سكربتاً منفذاً بعد توفر `from_me` في السجل التاريخي.
 3. **متغيرات المنتج/الكمية المستخرجة**: أُجِّلت قصداً وفق التوصية الافتراضية في القسم 18.
 4. **لوحة مؤشرات خارجية (Owner Console)**: المؤشرات متاحة عبر API && شاشة التقارير، ولم تُضف لوحة داخلية منفصلة.
+
+---
+
+## 21. تحسينات الواجهة والتجربة (الدفعة الكاملة)
+
+نُفذت التوصيات ذات الأولوية P0/P1/P2 دون تغيير القرار الأساسي: الاقتراح يعتمد على موافقة بشرية، ولا يُفعّل منتج أو يُنشر تلقائياً من استخراج غير مؤكد.
+
+| التحسين | مكانه |
+|---|---|
+| شاشة قرار مقترحات التحديث: عرض الفرق قبل/بعد والدليل، مع اعتماد أو رفض عبر `POST /social/products/change-proposals/:id/decide` | `ProductCatalogScreen.tsx` + `product-catalog-api.ts` |
+| توسيع مرشحات الحالة لتشمل `update_proposed` و`accepted_update` و`rejected_update` و`superseded`، وإضافة مرشح «تحديثات المنتجات» | `product-extraction-list-policy.ts` + `ProductCatalogScreen.tsx` |
+| مرشح مصدر الرسالة (التاجر/العميل/غير معروف) | `product-catalog-api.ts` + `routes/product-extractions.ts` + `ProductCatalogScreen.tsx` |
+| أسباب ثقة مقروءة بدلاً من عرض درجة النموذج الخام، وإبراز مواضع الدليل في نص الرسالة | `product-intake-policy.ts` + `whatsapp-product-extraction.ts` + `ProductCatalogScreen.tsx` |
+| بطاقة مقارنة سريعة للتطابق المحتمل، وإجراءات جماعية مع إشعار تراجع | `ProductCatalogScreen.tsx` + `AppFeedback.tsx` + مسار `restore` |
+| معنونة موحّدة للحالات، حالات فراغ توضح الخطوة التالية، هيكل تحميل بدل نص انتظار، وأخطاء قابلة للإعادة | `ProductCatalogScreen.tsx` |
+| شرح سبب تعطيل «إضافة إلى مراجعة المنتجات»، فلاتر سريعة في نافذة المجموعة، تمييز أقوى للوسائط المنتهية | `source-message-groups.ts` + `WhatsAppMessageGroupCard.tsx` + `WhatsAppGroupMessagesModal.tsx` |
+| محرر من ثلاث خطوات، معاينة الفرق قبل التفعيل، حفظ محلي تلقائي، ورسالة واضحة عند نقص سبب التجاوز | `use-product-editor-workflow.ts` + `ProductCatalogScreen.tsx` |
+| بطاقات مؤشرات قابلة للنقر، مسار تحويل، واتجاه سبعة أيام في التقارير | `ReportsScreen.tsx` + `routes/product-extractions.ts` |
+
+تم استبعاد إعادة تصميم نظام التصميم بالكامل، والإشعارات الفورية لكل مقترح (الاكتفاء بالملخص اليومي)، وعرض ثقة النموذج الخام، وتطبيق التحديثات آلياً بعد الاعتماد.

@@ -100,12 +100,19 @@ export type ProductExtractionSuggestion = {
     availability: "in_stock" | "out_of_stock" | "preorder" | null;
   };
   evidence: Record<string, string | null>;
+  /** Where each extracted value came from, as character offsets in a source. */
+  evidenceSpans?: Record<
+    string,
+    { sourceId: string; start: number; end: number }
+  >;
   confidence: Record<string, number>;
   fieldReview: Record<string, boolean>;
   /** Field keys still empty in this suggestion. */
   missingFields?: ProductFieldKey[];
   missingFieldMessages?: string[];
   aiModel: string;
+  /** Human-readable explanation of the computed confidence, not a raw score. */
+  confidenceReasons?: string[];
   senderRole: "merchant" | "customer" | "unknown";
   version: number;
   matchStrategy:
@@ -338,6 +345,10 @@ export type ProductExtractionSuggestionCounts = {
   pendingProductReview: number;
   draftCreated: number;
   possibleDuplicate: number;
+  updateProposed: number;
+  acceptedUpdate: number;
+  rejectedUpdate: number;
+  superseded: number;
 };
 
 export const emptyProductExtractionSuggestionCounts: ProductExtractionSuggestionCounts =
@@ -349,6 +360,10 @@ export const emptyProductExtractionSuggestionCounts: ProductExtractionSuggestion
     pendingProductReview: 0,
     draftCreated: 0,
     possibleDuplicate: 0,
+    updateProposed: 0,
+    acceptedUpdate: 0,
+    rejectedUpdate: 0,
+    superseded: 0,
   };
 
 export type ProductExtractionPagination = {
@@ -372,11 +387,16 @@ export const emptyProductExtractionPagination: ProductExtractionPagination = {
 export type ProductExtractionListStatus =
   | "review"
   | "draft_created"
-  | "possible_duplicate";
+  | "possible_duplicate"
+  | "update_proposed"
+  | "accepted_update"
+  | "rejected_update"
+  | "superseded";
 
 export type WhatsAppProductExtractionsQuery = {
   classification?: "product" | "not_product";
   statuses?: ProductExtractionListStatus[];
+  senderRole?: "merchant" | "customer" | "unknown";
   limit?: number;
   offset?: number;
 };
@@ -403,6 +423,7 @@ export async function getWhatsAppProductExtractions(
   const params = new URLSearchParams();
   if (query.classification) params.set("classification", query.classification);
   for (const status of query.statuses ?? []) params.append("status", status);
+  if (query.senderRole) params.set("senderRole", query.senderRole);
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.offset !== undefined) params.set("offset", String(query.offset));
   const search = params.toString();
@@ -577,11 +598,55 @@ export type ProductExtractionMetrics = {
   reprocessed: number;
   proposalsAccepted: number;
   conversionRate: number;
+  suggestions?: Array<{
+    status: string | null;
+    classification: string | null;
+    total: number;
+  }>;
+  daily?: Array<{ day: string; event: string; total: number }>;
 };
 
 export async function getProductExtractionMetrics(): Promise<ProductExtractionMetrics> {
   const response = await fetchApiResponse(
     "/api/social/products/extraction-metrics",
+  );
+  return readJsonResponse(response);
+}
+
+export async function restoreProductExtraction(
+  suggestionId: string,
+): Promise<{ restored: boolean }> {
+  const response = await fetchApiResponse(
+    `/api/social/products/whatsapp-extractions/${encodeURIComponent(suggestionId)}/restore`,
+    { method: "POST" },
+  );
+  return readJsonResponse(response);
+}
+
+export type ProductChangeProposal = {
+  id: string;
+  productId: string;
+  suggestionId: string;
+  diff: ProductChangeDiff;
+  status: "proposed" | "accepted" | "rejected" | "expired";
+  createdAt: string;
+  decidedAt: string | null;
+  product: {
+    id: string;
+    name: string;
+    sku: string | null;
+    status: string;
+  } | null;
+  evidence: Record<string, string | null>;
+  senderRole: "merchant" | "customer" | "unknown";
+};
+
+export async function getProductChangeProposals(query: {
+  status?: ProductChangeProposal["status"];
+} = {}): Promise<{ proposals: ProductChangeProposal[] }> {
+  const search = query.status ? `?status=${query.status}` : "";
+  const response = await fetchApiResponse(
+    `/api/social/products/change-proposals${search}`,
   );
   return readJsonResponse(response);
 }

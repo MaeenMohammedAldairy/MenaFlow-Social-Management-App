@@ -706,6 +706,39 @@ router.post(
 );
 
 router.post(
+  "/social/products/whatsapp-extractions/:id/restore",
+  requireWorkspace,
+  requireProductWriter,
+  async (req, res) => {
+    const workspaceId = requestWorkspaceId(req);
+    const suggestionId = metaString(req.params.id);
+    if (!suggestionId) {
+      res.status(400).json({ error: "معرّف الاقتراح غير صالح." });
+      return;
+    }
+    const [restored] = await db
+      .update(productExtractionSuggestions)
+      .set({ status: "review", updatedAt: new Date() })
+      .where(and(
+        eq(productExtractionSuggestions.id, suggestionId),
+        eq(productExtractionSuggestions.workspaceId, workspaceId),
+        eq(productExtractionSuggestions.status, "dismissed"),
+      ))
+      .returning({ id: productExtractionSuggestions.id });
+    if (!restored) {
+      res.status(404).json({ error: "الاقتراح غير موجود أو ليس مستبعداً." });
+      return;
+    }
+    await recordExtractionEvent({
+      workspaceId,
+      event: "SUGGESTION_RESTORED",
+      suggestionId,
+    });
+    res.json({ restored: true });
+  },
+);
+
+router.post(
   "/social/products/whatsapp-extractions/:id/review",
   requireWorkspace,
   requireProductWriter,
@@ -1062,6 +1095,78 @@ router.get(
 );
 
 router.get(
+  "/social/products/change-proposals",
+  requireWorkspace,
+  async (req, res) => {
+    const workspaceId = requestWorkspaceId(req);
+    const statusFilter =
+      typeof req.query.status === "string" &&
+      ["proposed", "accepted", "rejected", "expired"].includes(req.query.status)
+        ? (req.query.status as "proposed" | "accepted" | "rejected" | "expired")
+        : null;
+    const proposals = await db
+      .select()
+      .from(menaProductChangeProposals)
+      .where(and(
+        eq(menaProductChangeProposals.workspaceId, workspaceId),
+        ...(statusFilter
+          ? [eq(menaProductChangeProposals.status, statusFilter)]
+          : []),
+      ))
+      .orderBy(desc(menaProductChangeProposals.createdAt))
+      .limit(100);
+    if (!proposals.length) {
+      res.json({ proposals: [] });
+      return;
+    }
+    const productIds = [...new Set(proposals.map((item) => item.productId))];
+    const suggestionIds = [...new Set(proposals.map((item) => item.suggestionId))];
+    const [productRows, suggestionRows] = await Promise.all([
+      db
+        .select({
+          id: products.id,
+          name: products.name,
+          sku: products.sku,
+          status: products.status,
+        })
+        .from(products)
+        .where(and(
+          eq(products.workspaceId, workspaceId),
+          inArray(products.id, productIds),
+        )),
+      db
+        .select({
+          id: productExtractionSuggestions.id,
+          evidence: productExtractionSuggestions.evidence,
+          senderRole: productExtractionSuggestions.senderRole,
+        })
+        .from(productExtractionSuggestions)
+        .where(and(
+          eq(productExtractionSuggestions.workspaceId, workspaceId),
+          inArray(productExtractionSuggestions.id, suggestionIds),
+        )),
+    ]);
+    const productById = new Map(productRows.map((item) => [item.id, item]));
+    const suggestionById = new Map(suggestionRows.map((item) => [item.id, item]));
+    res.json({
+      proposals: proposals.map((proposal) => ({
+        id: proposal.id,
+        productId: proposal.productId,
+        suggestionId: proposal.suggestionId,
+        diff: proposal.diff,
+        status: proposal.status,
+        createdAt: proposal.createdAt,
+        decidedAt: proposal.decidedAt,
+        product: productById.get(proposal.productId) ?? null,
+        evidence: suggestionById.get(proposal.suggestionId)?.evidence ?? {},
+        senderRole:
+          suggestionById.get(proposal.suggestionId)?.senderRole ?? "unknown",
+      })),
+    });
+  },
+);
+
+router.get(
   "/social/products/extraction-metrics",
   requireWorkspace,
   async (req, res) => {
@@ -1093,6 +1198,26 @@ router.get(
         productExtractionSuggestions.status,
         productExtractionSuggestions.classification,
       );
+    const daily = await db
+      .select({
+        day: sql<string>`to_char(date_trunc('day', ${menaProductExtractionEvents.createdAt}), 'YYYY-MM-DD')`,
+        event: menaProductExtractionEvents.event,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(menaProductExtractionEvents)
+      .where(and(
+        eq(menaProductExtractionEvents.workspaceId, workspaceId),
+        gte(menaProductExtractionEvents.createdAt, since),
+        inArray(menaProductExtractionEvents.event, [
+          "EXTRACTION_SUCCEEDED",
+          "EXTRACTION_FAILED",
+        ]),
+      ))
+      .groupBy(
+        sql`date_trunc('day', ${menaProductExtractionEvents.createdAt})`,
+        menaProductExtractionEvents.event,
+      )
+      .orderBy(sql`date_trunc('day', ${menaProductExtractionEvents.createdAt})`);
     const countEvent = (name: string) =>
       events.find((item) => item.event === name)?.total ?? 0;
     const created = suggestions
@@ -1109,6 +1234,7 @@ router.get(
       reprocessed: countEvent("EXTRACTION_REPROCESSED"),
       proposalsAccepted: countEvent("PROPOSAL_ACCEPTED"),
       conversionRate: created ? activated / created : 0,
+      daily,
     });
   },
 );

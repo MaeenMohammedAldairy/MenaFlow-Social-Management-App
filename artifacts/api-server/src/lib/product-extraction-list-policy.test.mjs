@@ -71,6 +71,30 @@ test("status is repeatable and comma separated, deduplicated, order preserved", 
   assert.deepEqual(parseProductExtractionListQuery({ status: [] }).statuses, []);
 });
 
+test("every product-update outcome can be filtered and counted", () => {
+  const statuses = [
+    "update_proposed",
+    "accepted_update",
+    "rejected_update",
+    "superseded",
+  ];
+  assert.deepEqual(
+    parseProductExtractionListQuery({ status: statuses.join(",") }).statuses,
+    statuses,
+  );
+  const counts = summarizeProductExtractionSuggestions(
+    statuses.map((status) => ({
+      classification: "product",
+      status,
+      total: 1,
+    })),
+  );
+  assert.equal(counts.updateProposed, 1);
+  assert.equal(counts.acceptedUpdate, 1);
+  assert.equal(counts.rejectedUpdate, 1);
+  assert.equal(counts.superseded, 1);
+});
+
 test("dismissed is not a filter: those suggestions stay hidden", () => {
   assert.deepEqual(parseProductExtractionListQuery({ status: "dismissed" }), {
     ok: false,
@@ -129,6 +153,10 @@ test("the summary separates products from post candidates", () => {
     pendingProductReview: 3,
     draftCreated: 2,
     possibleDuplicate: 1,
+    updateProposed: 0,
+    acceptedUpdate: 0,
+    rejectedUpdate: 0,
+    superseded: 0,
   });
 });
 
@@ -141,6 +169,10 @@ test("an empty catalog summarizes to zeros, not to missing keys", () => {
     pendingProductReview: 0,
     draftCreated: 0,
     possibleDuplicate: 0,
+    updateProposed: 0,
+    acceptedUpdate: 0,
+    rejectedUpdate: 0,
+    superseded: 0,
   });
 });
 

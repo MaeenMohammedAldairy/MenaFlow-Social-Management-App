@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as ImagePicker from "expo-image-picker";
 import { useEffect, useState } from "react";
 import { confirmDiscardChanges } from "@/components/Ui";
@@ -103,6 +104,7 @@ export function useProductEditorWorkflow({
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [editorBaseline, setEditorBaseline] = useState<string | null>(null);
   const [mediaUploading, setMediaUploading] = useState(false);
+  const [autosavedAt, setAutosavedAt] = useState<string | null>(null);
 
   const editorSnapshot = (value: EditorState) =>
     JSON.stringify({
@@ -110,13 +112,43 @@ export function useProductEditorWorkflow({
       mediaPreviews: value.mediaPreviews,
       overrideReason: value.overrideReason ?? "",
     });
+  const draftStorageKey = (state: EditorState) =>
+    `menaflow.product-editor.${state.id ?? state.extractionSuggestionId ?? "new"}`;
   const openEditor = (value: EditorState) => {
     setEditorBaseline(editorSnapshot(value));
     setEditor(value);
+    setAutosavedAt(null);
+    // An unsaved draft survives a reload or an accidental close. It never
+    // replaces the stored product itself — only what the merchant was typing.
+    void AsyncStorage.getItem(draftStorageKey(value))
+      .then((stored) => {
+        if (!stored) return;
+        const parsed = JSON.parse(stored) as Partial<EditorState>;
+        if (!parsed.value || typeof parsed.value.name !== "string") return;
+        setEditor((current) =>
+          current && draftStorageKey(current) === draftStorageKey(value)
+            ? {
+                ...current,
+                value: { ...current.value, ...parsed.value },
+                mediaPreviews: parsed.mediaPreviews ?? current.mediaPreviews,
+                overrideReason: parsed.overrideReason ?? current.overrideReason,
+              }
+            : current,
+        );
+        setAutosavedAt("تمت استعادة المسودة المحفوظة على الجهاز.");
+      })
+      .catch(() => {
+        // A corrupt or unavailable local draft must not block the editor.
+      });
+  };
+  const clearDraft = (state: EditorState) => {
+    void AsyncStorage.removeItem(draftStorageKey(state)).catch(() => {});
   };
   const closeEditor = () => {
+    if (editor) clearDraft(editor);
     setEditor(null);
     setEditorBaseline(null);
+    setAutosavedAt(null);
   };
   const save = useMutation({
     mutationFn: (state: EditorState) =>
@@ -142,8 +174,25 @@ export function useProductEditorWorkflow({
   };
 
   useEffect(() => {
-    if (!editor) setError("");
-  }, [editor, setError]);
+    if (!editor) {
+      setError("");
+      return;
+    }
+    if (editorBaseline === editorSnapshot(editor)) return;
+    const timeout = setTimeout(() => {
+      const payload = JSON.stringify({
+        value: editor.value,
+        mediaPreviews: editor.mediaPreviews,
+        overrideReason: editor.overrideReason ?? "",
+      });
+      void AsyncStorage.setItem(draftStorageKey(editor), payload)
+        .then(() => setAutosavedAt("حُفظت التعديلات محليًا على هذا الجهاز."))
+        .catch(() => {
+          // Local autosave is best-effort; the product is still saved on the server.
+        });
+    }, 600);
+    return () => clearTimeout(timeout);
+  }, [editor, editorBaseline, setError]);
 
   const updateDraft = (changes: Partial<ProductDraft>) => {
     setEditor((current) =>
@@ -241,7 +290,10 @@ export function useProductEditorWorkflow({
           product.id === savedProduct.id ? savedProduct : product,
         ),
       );
-      closeEditor();
+      clearDraft(editor);
+      setEditor(null);
+      setEditorBaseline(null);
+      setAutosavedAt(null);
       setError("");
       void refresh().catch((cause) =>
         setError(
@@ -258,6 +310,7 @@ export function useProductEditorWorkflow({
   return {
     editor,
     setEditor,
+    autosavedAt,
     save,
     mediaUploading,
     openEditor,
