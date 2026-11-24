@@ -119,6 +119,19 @@ export function isWhatsAppHistoryPageBeforeCursor(
   });
 }
 
+// Some Evolution deployments ignore the findMessages remoteJid filter and
+// return messages from every chat (upstream issue EvolutionAPI/evolution-api
+// #1632; the official Postman collection notes that with MongoDB disabled
+// only key.id is filterable). A filtered response can only contain records
+// of the requested group, so any page where some record does not match
+// proves the upstream filter was not applied.
+export function isWhatsAppHistoryFilterIgnored(
+  recordCount: number,
+  matchingCount: number,
+): boolean {
+  return recordCount > 0 && matchingCount < recordCount;
+}
+
 export function extractWhatsAppHistoryRecords(value: unknown): unknown[] | null {
   if (Array.isArray(value)) return value;
   if (!value || typeof value !== "object") return null;
