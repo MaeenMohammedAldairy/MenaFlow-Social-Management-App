@@ -28,6 +28,11 @@ import { evolutionRequest } from "./whatsapp-evolution";
 import { filterWhatsAppMediaItems } from "./whatsapp-sync-options";
 import { assertWorkspaceContext } from "./workspace-record-access";
 import {
+  mediaDownloadAttemptLimit,
+  mediaDownloadFailureReason,
+  messageAgeMs,
+} from "./whatsapp-media-expiry-policy.ts";
+import {
   createMediaThumbnail,
   hasMediaObject,
   readMediaObject,
@@ -251,7 +256,14 @@ async function storeMedia(
   }
 
   const now = new Date();
-  if (existing.downloadAttempts >= MAX_DOWNLOAD_ATTEMPTS) return "failed";
+  // A message older than WhatsApp's serving window gets one attempt, not five:
+  // the object is gone upstream, and four extra calls only postpone the honest
+  // answer. See `whatsapp-media-expiry-policy.ts` for the measured window.
+  const attemptLimit = mediaDownloadAttemptLimit({
+    messageAgeMs: messageAgeMs(message.messageTimestamp, now),
+    defaultLimit: MAX_DOWNLOAD_ATTEMPTS,
+  });
+  if (existing.downloadAttempts >= attemptLimit) return "failed";
   if (
     existing.downloadStatus === "failed" &&
     !isRetryableMediaError(existing.lastError ?? existing.failureReason ?? "") &&
@@ -426,15 +438,23 @@ async function storeMedia(
     return "stored";
   } catch (error) {
     const errorCode = mediaErrorCode(error);
-    const retry = isRetryableMediaError(errorCode) &&
-      attempt.downloadAttempts < MAX_DOWNLOAD_ATTEMPTS;
+    // For an old message the transport error is the symptom and the age is the
+    // cause; recording the cause is what lets the catalog say the media expired
+    // upstream instead of a generic «فشل التحميل». The expiry reason is not in
+    // the retryable list, so nothing schedules another attempt on its own.
+    const failureReason = mediaDownloadFailureReason({
+      messageAgeMs: messageAgeMs(message.messageTimestamp, new Date()),
+      errorCode,
+    });
+    const retry = isRetryableMediaError(failureReason) &&
+      attempt.downloadAttempts < attemptLimit;
     const retryAt = retry ? nextRetryAt(attempt.downloadAttempts, new Date()) : null;
     await db
       .update(menaWhatsAppMessageMedia)
       .set({
         downloadStatus: retry ? "pending" : "failed",
-        failureReason: errorCode,
-        lastError: errorCode,
+        failureReason,
+        lastError: failureReason,
         nextAttemptAt: retryAt,
         updatedAt: new Date(),
       })
