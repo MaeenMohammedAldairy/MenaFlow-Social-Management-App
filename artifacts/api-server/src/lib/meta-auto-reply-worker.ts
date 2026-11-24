@@ -36,6 +36,7 @@ import {
   formatMetaAutoReplyPrice,
   retryMetaAutoReplyGeneration,
   classifyMetaAutoReplyFailure,
+  metaAutoReplyLimitPauseMs,
   buildMetaAutoReplyConversationContext,
   hasPreviousMetaAutoReplyInteraction,
   matchMetaAutoReplyProductFromPublishedPost,
@@ -540,17 +541,40 @@ async function retryOrFail(
   const reason =
     error instanceof Error ? error.message : "META_AUTO_REPLY_FAILED";
   if (classifyMetaAutoReplyFailure(reason) === "skipped") {
-    // Nothing left the server: the workspace has no AI budget or the provider
-    // is not configured. Pause the queue entry instead of failing it.
-    logger.info(
+    // Nothing left the server: the workspace has no AI budget or the provider is
+    // not configured. Both lift without the merchant — the quota at the next
+    // period, the key as soon as an operator adds it — so the job waits instead
+    // of ending. `skipped` was terminal unless someone pressed retry, which made
+    // a monthly limit cost the merchant a reply they had already paid for.
+    //
+    // The wait is bounded by the reply window checked before generation: a limit
+    // that never lifts ends with the job skipped as window-expired and the
+    // conversation handed to a human, never with a reply sent a day late. The
+    // attempt is handed back because it was claimed but never spent, and the
+    // column is capped at 3 — an attempt burned on nothing would strand the job
+    // even after the quota returned.
+    const errorCode = reason.slice(0, 80);
+    const nextRunAt = new Date(Date.now() + metaAutoReplyLimitPauseMs());
+    logger.warn(
       {
         workspaceId: job.workspaceId,
         jobId: job.id,
-        errorCode: reason.slice(0, 80),
+        errorCode,
+        nextRunAt: nextRunAt.toISOString(),
       },
-      "Meta automatic reply paused before sending",
+      "META_AUTO_REPLY_PAUSED_FOR_LIMIT",
     );
-    await markJob(job.id, job.workspaceId, "skipped", reason.slice(0, 80));
+    await db
+      .update(menaMetaAutoReplyJobs)
+      .set({
+        status: "queued",
+        errorCode,
+        nextRunAt,
+        leaseExpiresAt: null,
+        attempts: sql`GREATEST(${menaMetaAutoReplyJobs.attempts} - 1, 0)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(menaMetaAutoReplyJobs.id, job.id));
     return;
   }
   const retryable =

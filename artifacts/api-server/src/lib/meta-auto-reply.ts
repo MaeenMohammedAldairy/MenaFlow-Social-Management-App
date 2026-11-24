@@ -2,6 +2,7 @@ import type {
   AiProviderOptions,
   AiProviderResult,
 } from "./ai-provider.ts";
+import { resolveAutoReplyLimitPauseMs } from "./auto-reply-limit-pause.ts";
 import {
   autoReplyGenerationPausedCodes,
   classifyAutoReplyGenerationFailure,
@@ -1104,6 +1105,22 @@ export function metaAutoReplyHourlyLimit(
     return metaAutoReplyDefaultHourlyLimit;
   }
   return Math.min(parsed, 100);
+}
+
+/** Environment key for how long a Meta reply waits on a limit that lifts. */
+export const META_AUTO_REPLY_QUOTA_PAUSE_ENV_KEY =
+  "META_AUTO_REPLY_QUOTA_PAUSE_MINUTES";
+
+/**
+ * How long a Meta automatic reply waits when generation was blocked by a limit
+ * that lifts by itself. Shared bounds with the WhatsApp queue: both spend the
+ * same workspace AI quota, and Meta's 24-hour reply window bounds the wait just
+ * as WhatsApp's 12-hour age check does.
+ */
+export function metaAutoReplyLimitPauseMs(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  return resolveAutoReplyLimitPauseMs(META_AUTO_REPLY_QUOTA_PAUSE_ENV_KEY, env);
 }
 
 export function metaAutoReplyEnabled(

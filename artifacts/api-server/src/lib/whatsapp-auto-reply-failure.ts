@@ -27,6 +27,12 @@
  */
 
 import {
+  autoReplyLimitPauseDefaultMinutes,
+  autoReplyLimitPauseMaxMinutes,
+  autoReplyLimitPauseMinMinutes,
+  resolveAutoReplyLimitPauseMs,
+} from "./auto-reply-limit-pause.ts";
+import {
   classifyAutoReplyGenerationFailure,
   MAX_ERROR_CODE_LENGTH,
   stableErrorCode,
@@ -69,35 +75,29 @@ export function whatsAppAutoReplyErrorCode(
   return name.slice(0, MAX_ERROR_CODE_LENGTH) || whatsAppAutoReplyFallbackCode;
 }
 
-export const whatsAppAutoReplyDefaultQuotaPauseMinutes = 30;
-/** Shorter than this and a quota pause is just a retry with extra logging. */
-export const whatsAppAutoReplyMinQuotaPauseMinutes = 5;
 /**
- * Longer than this and the pause eats a visible share of the 12-hour reply
- * window, so the event would expire before the quota could lift.
+ * The bounds are shared with the Meta queue in `auto-reply-limit-pause.ts`: both
+ * queues wait on the same workspace quota and the same provider configuration,
+ * so a pause that is sane for one is sane for the other. Only the variable name
+ * is queue-specific.
  */
-export const whatsAppAutoReplyMaxQuotaPauseMinutes = 120;
+export const whatsAppAutoReplyDefaultQuotaPauseMinutes =
+  autoReplyLimitPauseDefaultMinutes;
+export const whatsAppAutoReplyMinQuotaPauseMinutes =
+  autoReplyLimitPauseMinMinutes;
+export const whatsAppAutoReplyMaxQuotaPauseMinutes =
+  autoReplyLimitPauseMaxMinutes;
 
-/**
- * Unparseable or non-positive falls back to the default; a value that parses but
- * is merely too small or too large is clamped, so an operator who asks for a
- * two-hour pause gets two hours rather than a silent half-hour.
- */
+export const WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_ENV_KEY =
+  "WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES";
+
 export function whatsAppAutoReplyQuotaPauseMs(
   env: NodeJS.ProcessEnv = process.env,
 ): number {
-  const parsed = Number.parseInt(
-    env.WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES?.trim() ?? "",
-    10,
+  return resolveAutoReplyLimitPauseMs(
+    WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_ENV_KEY,
+    env,
   );
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return whatsAppAutoReplyDefaultQuotaPauseMinutes * 60_000;
-  }
-  const minutes = Math.min(
-    whatsAppAutoReplyMaxQuotaPauseMinutes,
-    Math.max(whatsAppAutoReplyMinQuotaPauseMinutes, parsed),
-  );
-  return minutes * 60_000;
 }
 
 export type WhatsAppAutoReplyFailurePlan =
