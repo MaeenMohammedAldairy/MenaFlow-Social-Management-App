@@ -22,6 +22,7 @@ import {
 } from "@workspace/api-client-react";
 import { router, useLocalSearchParams, useSegments } from "expo-router";
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -71,10 +72,15 @@ import {
   retryProductPublicationJobs,
   importProductCandidate,
   reviewProductExtraction,
+  PRODUCT_EXTRACTION_PAGE_SIZE,
+  emptyProductExtractionPagination,
+  emptyProductExtractionSuggestionCounts,
   type CatalogProduct,
   type PublishableAccount,
   type ProductExtractionQueueCounts,
   type ProductExtractionSuggestion,
+  type ProductExtractionSuggestionCounts,
+  type WhatsAppProductExtractionsQuery,
   type ProductPublicationSnapshot,
 } from "@/lib/product-catalog-api";
 import { analysisSummaryMessage } from "@/lib/extraction-quota-copy";
@@ -96,6 +102,57 @@ const catalogTabDefinitions: Array<{ id: CatalogTabId; label: string }> = [
   { id: "archived", label: "الأرشيف" },
   { id: "extractions", label: "الاستخراج والمراجعة" },
 ];
+
+/**
+ * Which slice of the review queue the merchant is looking at.
+ *
+ * The queue holds one row per imported message and most messages are not
+ * products: a greeting, an order, a post candidate. Listed together they buried
+ * the few suggestions that did hold a product under cards saying «لم يستخرج
+ * منتجًا من الرسالة», so the slices are separate and only the first one is
+ * review work. Each slice is fetched from the server, which also means the queue
+ * is no longer capped at whatever fifty rows happened to be newest.
+ */
+type ExtractionFilterId = "pending" | "processed" | "not_product";
+
+const extractionFilterDefinitions: Array<{
+  id: ExtractionFilterId;
+  label: string;
+  query: WhatsAppProductExtractionsQuery;
+  count: (counts: ProductExtractionSuggestionCounts) => number;
+  /** What an empty slice means, in the merchant's own words. */
+  emptyMessage: string;
+}> = [
+  {
+    id: "pending",
+    label: "بانتظار مراجعتك",
+    query: { classification: "product", statuses: ["review"] },
+    count: (counts) => counts.pendingProductReview,
+    emptyMessage:
+      "لا يوجد منتج بانتظار المراجعة. تصل الاقتراحات إلى هنا تلقائيًا بعد مزامنة رسائل المجموعات المحددة.",
+  },
+  {
+    id: "processed",
+    label: "تمت معالجتها",
+    query: { statuses: ["draft_created", "possible_duplicate"] },
+    count: (counts) => counts.draftCreated + counts.possibleDuplicate,
+    emptyMessage: "لم تُنشأ مسودة من أي اقتراح بعد.",
+  },
+  {
+    id: "not_product",
+    label: "ليست منتجات",
+    query: { classification: "not_product" },
+    count: (counts) => counts.notProduct,
+    emptyMessage: "كل رسالة قرأها الاستخراج كانت تحمل منتجًا.",
+  },
+];
+
+/**
+ * Why the «ليست منتجات» slice exists at all. Without this the merchant reads
+ * twenty rejections as twenty failures of the feature.
+ */
+const NOT_PRODUCT_FILTER_NOTE =
+  "هذه رسائل قرأها الاستخراج ولم يجد فيها منتجًا: تحية، أو طلب، أو منشور. تُحفظ لتعرف أين ذهبت كل رسالة، وليست عمل مراجعة.";
 
 function productPublicationPreview(product: CatalogProduct): string {
   const availability = {
@@ -290,6 +347,82 @@ function CatalogTabs({
   );
 }
 
+function ExtractionFilterTabs({
+  activeFilter,
+  counts,
+  loading,
+  onSelect,
+}: {
+  activeFilter: ExtractionFilterId;
+  counts: ProductExtractionSuggestionCounts;
+  loading: boolean;
+  onSelect: (filter: ExtractionFilterId) => void;
+}) {
+  const colors = useColors();
+  return (
+    <View
+      style={[styles.catalogTabsFrame, { backgroundColor: colors.secondary }]}
+    >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.catalogTabsScroll}
+        contentContainerStyle={styles.catalogTabsContent}
+      >
+        {extractionFilterDefinitions.map((filter) => {
+          const selected = activeFilter === filter.id;
+          return (
+            <Pressable
+              key={filter.id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              onPress={() => onSelect(filter.id)}
+              style={({ pressed }) => [
+                styles.catalogTab,
+                {
+                  backgroundColor: selected ? colors.card : "transparent",
+                  borderColor: selected ? colors.border : "transparent",
+                  opacity: pressed ? 0.76 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: selected ? colors.primary : colors.mutedForeground,
+                  fontSize: 12,
+                  fontWeight: selected ? "800" : "600",
+                }}
+              >
+                {filter.label}
+              </Text>
+              <View
+                style={[
+                  styles.catalogTabCount,
+                  {
+                    backgroundColor: selected
+                      ? colors.accent
+                      : colors.secondary,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: selected ? colors.primary : colors.mutedForeground,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  {loading ? "…" : formatArabicNumber(filter.count(counts))}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
 export default function ProductCatalogScreen() {
   if (isLocalAuthDisabled) return <ProductCatalogContent userId={null} />;
   return <AuthenticatedProductCatalog />;
@@ -352,9 +485,16 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   }, [tab, sourceMessageId]);
   const catalogKey = ["product-catalog", userId ?? "local", activeTab] as const;
   const candidatesKey = ["product-post-candidates", userId ?? "local"] as const;
+  const [extractionFilter, setExtractionFilter] =
+    useState<ExtractionFilterId>("pending");
+  const extractionFilterDefinition =
+    extractionFilterDefinitions.find(
+      (filter) => filter.id === extractionFilter,
+    ) ?? extractionFilterDefinitions[0];
   const extractionsKey = [
     "whatsapp-product-extractions",
     userId ?? "local",
+    extractionFilter,
   ] as const;
   const catalog = useQuery({
     queryKey: catalogKey,
@@ -370,9 +510,18 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     retry: false,
     refetchInterval: 45 * 60_000,
   });
-  const extractions = useQuery({
+  // Paged on the server. `getNextPageParam` returns `undefined` once the last
+  // page has been read, which is what stops the "load more" button appearing.
+  const extractions = useInfiniteQuery({
     queryKey: extractionsKey,
-    queryFn: getWhatsAppProductExtractions,
+    queryFn: ({ pageParam }) =>
+      getWhatsAppProductExtractions({
+        ...extractionFilterDefinition.query,
+        limit: PRODUCT_EXTRACTION_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.pagination.nextOffset ?? undefined,
     enabled: isLocalAuthDisabled || Boolean(userId),
     retry: false,
     refetchInterval: POLL_LIST_MS,
@@ -586,8 +735,19 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   const selectableVisibleProducts = visibleProducts.filter(
     (product) => productPublicationDisabledReason(product) === null,
   );
-  const extractionSuggestions = extractions.data?.suggestions ?? [];
-  const extractionQueue = extractions.data?.pendingJobs;
+  const extractionPages = extractions.data?.pages ?? [];
+  const extractionSuggestions = extractionPages.flatMap(
+    (page) => page.suggestions,
+  );
+  const extractionQueue = extractionPages[0]?.pendingJobs;
+  // Counted over the whole queue rather than the loaded pages, so the filter
+  // chips and the tab badge keep their meaning while the merchant pages through.
+  const extractionCounts =
+    extractionPages[0]?.suggestionCounts ??
+    emptyProductExtractionSuggestionCounts;
+  const extractionPagination =
+    extractionPages[extractionPages.length - 1]?.pagination ??
+    emptyProductExtractionPagination;
   const targetedSuggestion = targetedSourceMessageId
     ? extractionSuggestions.find((suggestion) =>
         suggestion.sources.some((source) => source.id === targetedSourceMessageId),
@@ -601,10 +761,13 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         ),
       ]
     : extractionSuggestions;
-  const extractionCount =
-    extractions.isPending || candidates.isPending
-      ? null
-      : extractionSuggestions.length + (candidates.data?.length ?? 0);
+  // Review work only. This badge used to add the scanned post candidates to the
+  // number of loaded suggestion rows, so it counted twenty post candidates and
+  // eighteen «ليست منتجات» rows as twenty things the merchant owed a decision on
+  // — and it could never exceed the fifty rows the first page held.
+  const extractionCount = extractions.isPending
+    ? null
+    : extractionCounts.pendingProductReview;
   const tabCounts: Record<CatalogTabId, number | null> = {
     all: catalog.data === undefined ? null : allProducts.length,
     drafts:
@@ -1444,6 +1607,27 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 ) : null}
               </Panel>
             ))}
+            <ExtractionFilterTabs
+              activeFilter={extractionFilter}
+              counts={extractionCounts}
+              loading={extractions.isPending}
+              onSelect={(filter) => {
+                if (filter === extractionFilter) return;
+                setExtractionFilter(filter);
+                setError("");
+              }}
+            />
+            {extractionFilter === "not_product" ? (
+              <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                {NOT_PRODUCT_FILTER_NOTE}
+              </Text>
+            ) : null}
+            {extractionPagination.total > 0 ? (
+              <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                المعروض {formatArabicNumber(extractionSuggestions.length)} من{" "}
+                {formatArabicNumber(extractionPagination.total)}
+              </Text>
+            ) : null}
             <ProductExtractionQueueStrip counts={extractionQueue} />
             {extractions.isError ? (
               <Text
@@ -1547,11 +1731,39 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     }
                   />
                 ))}
+                {extractionPagination.nextOffset !== null ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="تحميل المزيد من الاقتراحات"
+                    disabled={extractions.isFetchingNextPage}
+                    hitSlop={10}
+                    onPress={() => void extractions.fetchNextPage()}
+                    style={({ pressed }) => [
+                      styles.loadMore,
+                      {
+                        borderColor: colors.border,
+                        opacity:
+                          pressed || extractions.isFetchingNextPage ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.link, { color: colors.primary }]}>
+                      {extractions.isFetchingNextPage
+                        ? "جارٍ تحميل المزيد..."
+                        : `تحميل المزيد (${formatArabicNumber(
+                            Math.max(
+                              0,
+                              extractionPagination.total -
+                                extractionSuggestions.length,
+                            ),
+                          )})`}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </>
             ) : (
               <Text style={[styles.helper, { color: colors.mutedForeground }]}>
-                لا توجد اقتراحات بعد. تظهر هنا نتائج المعالجة التلقائية للرسائل
-                المستوردة.
+                {extractionFilterDefinition.emptyMessage}
               </Text>
             )}
           </View>
@@ -3151,6 +3363,15 @@ function ProductExtractionQueueStrip({
       tone: "warning",
     });
   }
+  if (counts.noText > 0) {
+    // These jobs completed, so nothing else on screen mentions them. Saying it
+    // plainly — and saying what the merchant can do — is the difference between
+    // "the feature ignored six messages" and "six messages had no text in them".
+    lines.push({
+      text: `${formatArabicNumber(counts.noText)} رسالة بلا نص مقروء (صورة أو ملصق أو تسجيل صوتي) فلم يُستخرج منها منتج. اكتب وصف المنتج مع الصورة ليُستخرج تلقائيًا.`,
+      tone: "muted",
+    });
+  }
   if (working > 0) {
     lines.push({
       text: `جارٍ تحليل ${formatArabicNumber(working)} رسالة.`,
@@ -3902,6 +4123,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  loadMore: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
   },
   checkbox: {
     width: 22,

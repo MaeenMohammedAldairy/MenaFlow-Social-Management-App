@@ -4,6 +4,7 @@ import {
   and,
   asc,
   eq,
+  gt,
   inArray,
   lt,
   lte,
@@ -22,18 +23,34 @@ import {
   productExtractionSuggestions,
   products,
   whatsappProductExtractionJobs,
+  workspaces,
 } from "@workspace/db";
 import {
+  QUOTA_EXHAUSTED_REASON_PREFIX,
   planExtractionFailure,
   resolveExtractionQuotaPauseMs,
 } from "./extraction-quota-policy.ts";
+import {
+  AUTOQUEUE_WORKSPACE_BATCH_SIZE,
+  isQuotaPauseRow,
+  planAutoQueuePass,
+  settledJobQueuePolicy,
+  type ProductQueueIntent,
+} from "./whatsapp-product-autoqueue-policy.ts";
+import {
+  decideWhatsAppMediaGate,
+  shouldResetMediaForRequeue,
+} from "./product-extraction-media-policy.ts";
+import { resetFailedWhatsAppMedia } from "./whatsapp-media-reset.ts";
 import {
   extractWhatsAppProductCandidates,
   isCompleteProductExtraction,
   productExtractionSourceKey,
   type ProductExtractionCandidate,
+  type ProductExtractionContext,
   type ProductExtractionSource,
 } from "./product-extraction.ts";
+import { isCurrencyDerivedFromCountry } from "./product-currency-resolution.ts";
 import {
   getWhatsAppContentAssociationDecisions,
   getWhatsAppContentBundle,
@@ -219,6 +236,7 @@ async function hasCompleteWhatsAppProductMedia(
 export async function queueUnprocessedWhatsAppProductMessages(
   workspaceId: string,
   messageId?: string,
+  intent: ProductQueueIntent = "manual",
 ): Promise<number> {
   const [connection] = await db
     .select({ id: menaWhatsAppGroupSelections.id })
@@ -230,10 +248,13 @@ export async function queueUnprocessedWhatsAppProductMessages(
     .limit(1);
   if (!connection) return 0;
 
+  const settledJobs = settledJobQueuePolicy(intent);
   const messages = await db
     .select({
       id: menaWhatsAppMessages.id,
       ownerId: menaWhatsAppMessages.ownerId,
+      mediaAvailable: menaWhatsAppMessages.mediaAvailable,
+      mediaDownloadStatus: menaWhatsAppMessages.mediaDownloadStatus,
     })
     .from(menaWhatsAppMessages)
     .innerJoin(
@@ -272,12 +293,42 @@ export async function queueUnprocessedWhatsAppProductMessages(
             eq(productExtractionSources.messageId, menaWhatsAppMessages.id),
           )),
       ),
+      // The timer only ever looks at messages nobody has queued yet, so it
+      // cannot revive a settled job or keep re-selecting the same oldest page.
+      ...(settledJobs.excludeMessagesWithJobs
+        ? [notExists(
+            db.select({ messageId: whatsappProductExtractionJobs.messageId })
+              .from(whatsappProductExtractionJobs)
+              .where(and(
+                eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+                eq(whatsappProductExtractionJobs.messageId, menaWhatsAppMessages.id),
+              )),
+          )]
+        : []),
     ))
     .orderBy(asc(menaWhatsAppMessages.messageTimestamp))
     .limit(200);
   if (messages.length === 0) return 0;
+
+  // Give the download worker another set of attempts for messages whose media
+  // failed for good. Without this, re-running extraction is a no-op for exactly
+  // the messages that need it: the worker claims only `pending` media, so a
+  // `failed` row is never looked at again by anything.
+  const resettable = messages
+    .filter((message) => shouldResetMediaForRequeue(message))
+    .map((message) => message.id);
+  const resetCount = resettable.length > 0
+    ? await resetFailedWhatsAppMedia(workspaceId, resettable)
+    : 0;
+
   if (messageId && !(await hasCompleteWhatsAppProductMedia(workspaceId, messageId))) {
-    return 0;
+    if (resetCount === 0) return 0;
+    // The media was just put back in the download queue, so it is not complete
+    // yet and will not be for a while. Falling through to create the job anyway
+    // is the point: it parks in `waiting_media`, and the download worker's
+    // completion path requeues it by message id — which needs a job row to
+    // update. Returning 0 here instead would leave the message with a fresh
+    // download and no job, so nothing would ever extract it.
   }
   const now = new Date();
   await db
@@ -295,30 +346,35 @@ export async function queueUnprocessedWhatsAppProductMessages(
       updatedAt: now,
     })))
     .onConflictDoNothing();
-  await db
-    .update(whatsappProductExtractionJobs)
-    .set({
-      status: "pending",
-      stage: "received",
-      attempts: 0,
-      lastError: null,
-      nextRunAt: now,
-      updatedAt: now,
-    })
-    .where(and(
-      eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
-      or(
-        eq(whatsappProductExtractionJobs.status, "failed"),
-        and(
-          eq(whatsappProductExtractionJobs.status, "complete"),
-          eq(whatsappProductExtractionJobs.lastError, "PRODUCT_TEXT_REQUIRED"),
+  if (settledJobs.reviveSettledJobs) {
+    // Pressing «استخراج المنتجات» again means "try these once more", so a job
+    // that failed — or that ended with no text to read — is put back in the
+    // queue with its attempts reset. The timer never reaches this branch.
+    await db
+      .update(whatsappProductExtractionJobs)
+      .set({
+        status: "pending",
+        stage: "received",
+        attempts: 0,
+        lastError: null,
+        nextRunAt: now,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+        or(
+          eq(whatsappProductExtractionJobs.status, "failed"),
+          and(
+            eq(whatsappProductExtractionJobs.status, "complete"),
+            eq(whatsappProductExtractionJobs.lastError, "PRODUCT_TEXT_REQUIRED"),
+          ),
         ),
-      ),
-      inArray(
-        whatsappProductExtractionJobs.messageId,
-        messages.map((message) => message.id),
-      ),
-    ));
+        inArray(
+          whatsappProductExtractionJobs.messageId,
+          messages.map((message) => message.id),
+        ),
+      ));
+  }
   return messages.length;
 }
 
@@ -425,6 +481,7 @@ async function readStoredVisionObject(locator: {
 async function extractCandidatesFromStoredImages(
   workspaceId: string,
   sources: readonly ProductExtractionSource[],
+  context: ProductExtractionContext = {},
 ): Promise<{ model: string; candidates: ProductExtractionCandidate[] } | null> {
   if (!visionProductExtractionEnabled()) return null;
   const rows = await db
@@ -475,7 +532,31 @@ async function extractCandidatesFromStoredImages(
     }
   }
   if (images.length === 0) return null;
-  return extractProductCandidatesFromImages(workspaceId, sources, images);
+  return extractProductCandidatesFromImages(workspaceId, sources, images, context);
+}
+
+/**
+ * The workspace's business country, used only to settle an ambiguous currency
+ * word («45 ريال»). A missing or unknown country leaves extraction exactly as
+ * strict as it was, so this lookup is allowed to fail quietly.
+ */
+async function workspaceExtractionContext(
+  workspaceId: string,
+): Promise<ProductExtractionContext> {
+  try {
+    const [workspace] = await db
+      .select({ country: workspaces.country })
+      .from(workspaces)
+      .where(eq(workspaces.id, workspaceId))
+      .limit(1);
+    return { workspaceCountry: workspace?.country ?? null };
+  } catch (error) {
+    logger.warn(
+      { workspaceId, error },
+      "PRODUCT_EXTRACTION_WORKSPACE_COUNTRY_UNAVAILABLE",
+    );
+    return { workspaceCountry: null };
+  }
 }
 
 async function processProductExtractionJob(
@@ -558,19 +639,36 @@ async function processProductExtractionJob(
     });
     return;
   }
-  const hasMediaPending = sourceMessages.some((item) =>
-    item.mediaAvailable && item.mediaDownloadStatus !== "stored",
-  );
-  if (hasMediaPending) {
-    const failedMedia = sourceMessages.some((item) =>
-      item.mediaAvailable && item.mediaDownloadStatus === "failed",
+  const mediaGate = decideWhatsAppMediaGate(sourceMessages);
+  if (mediaGate.outcome === "terminal") {
+    // `failed` media is never revisited: the download worker claims only
+    // messages whose `media_download_status` is `pending`, and a retryable error
+    // keeps the row `pending` with a scheduled attempt — so `failed` means the
+    // download gave up for good. Parking the job in `waiting_media` for it would
+    // leave it there forever: never resuming, never spending an attempt, never
+    // reaching the `failed` state that shows up in `pendingJobs.failed` as
+    // something a merchant can act on. Failing it is what makes it repairable —
+    // re-running extraction resets the media and requeues the job.
+    await updateJob(job, {
+      status: "failed",
+      stage: "media",
+      lastError: mediaGate.reason,
+    });
+    logger.warn(
+      {
+        workspaceId: job.workspaceId,
+        jobId: job.id,
+        messageIds: mediaGate.messageIds,
+      },
+      "PRODUCT_EXTRACTION_MEDIA_TERMINALLY_FAILED",
     );
+    return;
+  }
+  if (mediaGate.outcome === "waiting") {
     await updateJob(job, {
       status: "waiting_media",
       stage: "media",
-      lastError: failedMedia
-        ? "WHATSAPP_MEDIA_DOWNLOAD_FAILED"
-        : "WHATSAPP_MEDIA_DOWNLOAD_PENDING",
+      lastError: mediaGate.reason,
       nextRunAt: new Date(Date.now() + 60 * 60_000),
     });
     return;
@@ -585,13 +683,18 @@ async function processProductExtractionJob(
     text: messageText(item),
   }));
   await updateJob(job, { status: "processing", stage: "extraction", lastError: null });
+  const extractionContext = await workspaceExtractionContext(job.workspaceId);
   // Messages that carry only a photo used to stop here. When the deployment
   // opts into vision extraction the stored images are read and the product is
   // extracted from the text visible in them; the result always needs a human
   // review, so it never becomes an automatic draft.
   const visionExtraction = sources.some((source) => source.text)
     ? null
-    : await extractCandidatesFromStoredImages(job.workspaceId, sources);
+    : await extractCandidatesFromStoredImages(
+        job.workspaceId,
+        sources,
+        extractionContext,
+      );
   if (!sources.some((source) => source.text) && !visionExtraction) {
     await updateJob(job, {
       status: "complete",
@@ -600,9 +703,24 @@ async function processProductExtractionJob(
     });
     return;
   }
-  const requiresManualReview = visionExtraction !== null;
   const extraction = visionExtraction ??
-    (await extractWhatsAppProductCandidates(job.workspaceId, sources));
+    (await extractWhatsAppProductCandidates(
+      job.workspaceId,
+      sources,
+      extractionContext,
+    ));
+  // A currency the workspace's country settled is grounded in the message only
+  // as far as the word «ريال» goes — which rial came from a setting. It stays
+  // reviewable for the same reason a vision candidate does, so it never becomes
+  // an automatic draft with a price the merchant has not seen.
+  const currencyDerivedFromCountry = extraction.candidates.some((candidate) =>
+    isCurrencyDerivedFromCountry({
+      evidence: candidate.evidence.currency ?? null,
+      code: candidate.data.currency,
+      country: extractionContext.workspaceCountry ?? null,
+    }),
+  );
+  const requiresManualReview = visionExtraction !== null || currencyDerivedFromCountry;
 
   await db.transaction(async (transaction) => {
     await transaction.execute(sql`
@@ -749,12 +867,220 @@ async function pauseWorkspaceExtractionQueue(
   return paused.length;
 }
 
+let autoQueueRunning = false;
+let autoQueueCursor: string | null = null;
+
+/**
+ * Workspaces that have selected at least one group, strictly after a cursor,
+ * ascending. Selecting a group *is* the merchant's opt-in to having that
+ * conversation's messages turned into products.
+ */
+async function workspacesWithSelectedGroups(
+  after: string | null,
+  limit: number,
+): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ workspaceId: menaWhatsAppGroupSelections.workspaceId })
+    .from(menaWhatsAppGroupSelections)
+    .where(and(
+      eq(menaWhatsAppGroupSelections.selected, true),
+      ...(after ? [gt(menaWhatsAppGroupSelections.workspaceId, after)] : []),
+    ))
+    .orderBy(asc(menaWhatsAppGroupSelections.workspaceId))
+    .limit(limit);
+  return rows.map((row) => row.workspaceId);
+}
+
+/**
+ * Whether a workspace's extraction queue is currently postponed for an
+ * exhausted AI quota — see `isQuotaPauseRow` for why queueing over that would
+ * burn the quota twice.
+ */
+export async function hasActiveExtractionQuotaPause(
+  workspaceId: string,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const [paused] = await db
+    .select({
+      status: whatsappProductExtractionJobs.status,
+      lastError: whatsappProductExtractionJobs.lastError,
+      nextRunAt: whatsappProductExtractionJobs.nextRunAt,
+    })
+    .from(whatsappProductExtractionJobs)
+    .where(and(
+      eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+      eq(whatsappProductExtractionJobs.status, "pending"),
+      gt(whatsappProductExtractionJobs.nextRunAt, now),
+      sql`${whatsappProductExtractionJobs.lastError} like ${`${QUOTA_EXHAUSTED_REASON_PREFIX}%`}`,
+    ))
+    .limit(1);
+  return paused ? isQuotaPauseRow(paused, now) : false;
+}
+
+/**
+ * Queues extraction work for every workspace that has selected a group, without
+ * anyone pressing a button.
+ *
+ * Before this existed the only caller of `queueUnprocessedWhatsAppProductMessages`
+ * was the manual endpoint, so a message that arrived after the merchant's last
+ * tap was never extracted at all — the catalog looked idle while the queue was
+ * simply never filled. Selecting a group is the opt-in, so nothing here spends
+ * quota the merchant did not ask for, and the quota is still enforced downstream
+ * where a job that hits the limit is postponed rather than failed.
+ *
+ * Returns the number of messages queued. Never throws: one unreachable
+ * workspace must not stop the others, and a failed pass must not take the worker
+ * loop down with it.
+ */
+export async function autoQueueWhatsAppProductExtractions(): Promise<number> {
+  if (autoQueueRunning) return 0;
+  autoQueueRunning = true;
+  try {
+    const page = await workspacesWithSelectedGroups(
+      autoQueueCursor,
+      AUTOQUEUE_WORKSPACE_BATCH_SIZE,
+    );
+    const restartPage =
+      autoQueueCursor !== null && page.length === 0
+        ? await workspacesWithSelectedGroups(null, AUTOQUEUE_WORKSPACE_BATCH_SIZE)
+        : [];
+    const plan = planAutoQueuePass({
+      cursor: autoQueueCursor,
+      workspaces: page,
+      restartWorkspaces: restartPage,
+    });
+    autoQueueCursor = plan.nextCursor;
+
+    let queued = 0;
+    let quotaPaused = 0;
+    let errored = 0;
+    for (const workspaceId of plan.visit) {
+      try {
+        if (await hasActiveExtractionQuotaPause(workspaceId)) {
+          quotaPaused += 1;
+          continue;
+        }
+        queued += await queueUnprocessedWhatsAppProductMessages(
+          workspaceId,
+          undefined,
+          "automatic",
+        );
+      } catch (error) {
+        errored += 1;
+        logger.warn(
+          { workspaceId, error },
+          "WHATSAPP_PRODUCT_AUTOQUEUE_WORKSPACE_FAILED",
+        );
+      }
+    }
+
+    if (plan.visit.length > 0) {
+      logger.info(
+        {
+          workspaces: plan.visit.length,
+          restarted: plan.restarted,
+          queued,
+          quotaPaused,
+          errored,
+          cursor: autoQueueCursor,
+        },
+        "WHATSAPP_PRODUCT_AUTOQUEUE_PASS",
+      );
+    }
+    return queued;
+  } catch (error) {
+    logger.warn({ error }, "WHATSAPP_PRODUCT_AUTOQUEUE_PASS_FAILED");
+    return 0;
+  } finally {
+    autoQueueRunning = false;
+  }
+}
+
+/** Jobs examined per sweep, and how often the sweep runs. */
+export const waitingMediaSweepLimit = 50;
+export const waitingMediaSweepIntervalMs = 5 * 60_000;
+let lastWaitingMediaSweepAt = 0;
+
+/**
+ * Fails jobs that are parked in `waiting_media` behind media that will never
+ * arrive.
+ *
+ * The gate now refuses to park a job there in the first place, but rows written
+ * before that change are already stuck and nothing else looks at them: the queue
+ * selects `pending` only, so a `waiting_media` job is invisible to every pass.
+ * Three such jobs sat in production for twelve hours behind a
+ * `pendingJobs.waitingMedia` count that read as progress.
+ *
+ * Two conditions, either of which means "this can never complete":
+ * - the job's own message has media that failed for good, or
+ * - the job was parked with `WHATSAPP_MEDIA_DOWNLOAD_FAILED`, which is the mark
+ *   the old gate wrote when *any* message of the bundle — including a sibling
+ *   this join does not reach — had given up.
+ *
+ * Throttled and bounded because it runs inside a 3-second loop: a join over the
+ * jobs table on every pass would cost more than the queue it protects.
+ */
+export async function failJobsWaitingOnTerminalMedia(
+  now: number = Date.now(),
+): Promise<number> {
+  if (now - lastWaitingMediaSweepAt < waitingMediaSweepIntervalMs) return 0;
+  lastWaitingMediaSweepAt = now;
+
+  const stuck = await db
+    .select({
+      id: whatsappProductExtractionJobs.id,
+      workspaceId: whatsappProductExtractionJobs.workspaceId,
+    })
+    .from(whatsappProductExtractionJobs)
+    .leftJoin(
+      menaWhatsAppMessages,
+      and(
+        eq(menaWhatsAppMessages.workspaceId, whatsappProductExtractionJobs.workspaceId),
+        eq(menaWhatsAppMessages.id, whatsappProductExtractionJobs.messageId),
+      ),
+    )
+    .where(and(
+      eq(whatsappProductExtractionJobs.status, "waiting_media"),
+      or(
+        eq(whatsappProductExtractionJobs.lastError, "WHATSAPP_MEDIA_DOWNLOAD_FAILED"),
+        and(
+          eq(menaWhatsAppMessages.mediaAvailable, true),
+          eq(menaWhatsAppMessages.mediaDownloadStatus, "failed"),
+        ),
+      ),
+    ))
+    .orderBy(asc(whatsappProductExtractionJobs.updatedAt))
+    .limit(waitingMediaSweepLimit);
+  if (stuck.length === 0) return 0;
+
+  await db
+    .update(whatsappProductExtractionJobs)
+    .set({
+      status: "failed",
+      stage: "media",
+      lastError: "WHATSAPP_MEDIA_DOWNLOAD_FAILED",
+      updatedAt: new Date(now),
+    })
+    .where(inArray(whatsappProductExtractionJobs.id, stuck.map((job) => job.id)));
+
+  logger.warn(
+    {
+      jobs: stuck.length,
+      workspaces: [...new Set(stuck.map((job) => job.workspaceId))].length,
+      limit: waitingMediaSweepLimit,
+    },
+    "PRODUCT_EXTRACTION_WAITING_MEDIA_DEAD_END_CLEARED",
+  );
+  return stuck.length;
+}
+
 let productQueueRunning = false;
 
 export async function processWhatsAppProductExtractionQueue(): Promise<void> {
   if (productQueueRunning) return;
   productQueueRunning = true;
   try {
+    await failJobsWaitingOnTerminalMedia();
     const staleBefore = new Date(Date.now() - 10 * 60_000);
     await db
       .update(whatsappProductExtractionJobs)

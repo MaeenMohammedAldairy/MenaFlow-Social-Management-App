@@ -35,6 +35,7 @@ import type {
   GetPostsPage200,
   GetPostsPageParams,
   GetWhatsAppConnectionStatusParams,
+  GetWhatsAppProductExtractionsParams,
   HealthStatus,
   KnownPostIdsInput,
   MetaAutoReplySettingsResponse,
@@ -2136,21 +2137,36 @@ export const useDeleteWhatsAppConnection = <TError = ErrorType<ApiError>,
       return useMutation(getDeleteWhatsAppConnectionMutationOptions(options));
     }
 
-export const getGetWhatsAppProductExtractionsUrl = () => {
+export const getGetWhatsAppProductExtractionsUrl = (params?: GetWhatsAppProductExtractionsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
+    const explodeParameters = ["status"];
 
+    if (Array.isArray(value) && explodeParameters.includes(key)) {
+      value.forEach((v) => {
+        normalizedParams.append(key, v === null ? 'null' : String(v));
+      });
+      return;
+    }
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
-  return `/api/social/products/whatsapp-extractions`
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/products/whatsapp-extractions?${stringifiedParams}` : `/api/social/products/whatsapp-extractions`
 }
 
 /**
- * Returns the review queue together with the extraction job counters, so a client can explain why nothing new appeared (a pending download, an association decision the merchant owes, or a failure).
+ * Returns one page of the review queue together with the extraction job counters and the queue's own totals, so a client can explain why nothing new appeared (a pending download, an association decision the merchant owes, or a failure) and can badge the number of suggestions that actually hold a product instead of counting every message the importer saw. Dismissed suggestions are never returned and cannot be asked for.
  * @summary List product suggestions extracted from WhatsApp messages
  */
-export const getWhatsAppProductExtractions = async ( options?: Parameters<typeof customFetch>[1]): Promise<ProductExtractionListResponse> => {
+export const getWhatsAppProductExtractions = async (params?: GetWhatsAppProductExtractionsParams, options?: Parameters<typeof customFetch>[1]): Promise<ProductExtractionListResponse> => {
 
-  return customFetch<ProductExtractionListResponse>(getGetWhatsAppProductExtractionsUrl(),
+  return customFetch<ProductExtractionListResponse>(getGetWhatsAppProductExtractionsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -2163,23 +2179,23 @@ export const getWhatsAppProductExtractions = async ( options?: Parameters<typeof
 
 
 
-export const getGetWhatsAppProductExtractionsQueryKey = () => {
+export const getGetWhatsAppProductExtractionsQueryKey = (params?: GetWhatsAppProductExtractionsParams,) => {
     return [
-    `/api/social/products/whatsapp-extractions`
+    `/api/social/products/whatsapp-extractions`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetWhatsAppProductExtractionsQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetWhatsAppProductExtractionsQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError = ErrorType<ApiError>>(params?: GetWhatsAppProductExtractionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppProductExtractionsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppProductExtractionsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>> = ({ signal }) => getWhatsAppProductExtractions({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>> = ({ signal }) => getWhatsAppProductExtractions(params, { signal, ...requestOptions });
 
 
 
@@ -2197,11 +2213,11 @@ export type GetWhatsAppProductExtractionsQueryError = ErrorType<ApiError>
  */
 
 export function useGetWhatsAppProductExtractions<TData = Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError = ErrorType<ApiError>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: GetWhatsAppProductExtractionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppProductExtractions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetWhatsAppProductExtractionsQueryOptions(options)
+  const queryOptions = getGetWhatsAppProductExtractionsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
