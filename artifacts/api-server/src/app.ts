@@ -10,6 +10,8 @@ import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
 import healthRouter from "./routes/health";
 import { logger } from "./lib/logger";
+import { apiNotFoundHandler } from "./lib/api-not-found";
+import { resolveTrustProxy } from "./lib/trust-proxy";
 import {
   assertProductionConfiguration,
   isLocalAuthDisabled,
@@ -24,6 +26,14 @@ import {
 assertProductionConfiguration();
 
 const app: Express = express();
+
+// Production always sits behind a proxy (Render/Vercel); without this, req.ip
+// is the proxy's address and every IP-keyed rate limiter pools all
+// unauthenticated traffic into one bucket. Bounded to a hop count, never
+// `true`, so a client cannot invent its own apparent address. See
+// lib/trust-proxy.ts — the decision is env-overridable via MENA_TRUST_PROXY.
+app.set("trust proxy", resolveTrustProxy());
+
 const requestIpKey = (req: express.Request): string => {
   const ip = req.ip ?? req.socket.remoteAddress;
   return ip ? ipKeyGenerator(ip) : "unknown";
@@ -224,6 +234,12 @@ if (ownerConsoleAvailable) {
 
 app.use("/api/owner", ownerConsoleRateLimit);
 app.use("/api", router);
+
+// Unknown API paths answer JSON with a code, like every other error, instead of
+// Express's HTML 404 — the mobile error mapper has something to parse and a
+// typo in a client path no longer reads as an outage. Mounted after the router
+// and scoped to /api so the owner console keeps its own asset 404.
+app.use("/api", apiNotFoundHandler);
 
 app.use(
   (
