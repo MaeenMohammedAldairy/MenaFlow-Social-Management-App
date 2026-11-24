@@ -18,6 +18,7 @@ import { metaString } from "../lib/meta-inbox-utils";
 import { requestOwnerId } from "../lib/owner-access";
 
 import { queueUnprocessedWhatsAppProductMessages } from "../lib/whatsapp-product-extraction";
+import { QUOTA_EXHAUSTED_REASON_PREFIX } from "../lib/extraction-quota-policy";
 import { normalizedProductName } from "../lib/product-utils.ts";
 import {
   missingProductFieldMessages,
@@ -190,12 +191,24 @@ router.get(
     const jobCounts = Object.fromEntries(
       jobStatusRows.map((row) => [row.status, row.total]),
     ) as Record<string, number>;
+    // Pending jobs held back by an exhausted AI quota. They look like an idle
+    // queue from the outside, so the catalog says why nothing is progressing
+    // and that it resumes on its own.
+    const [quotaPausedRow] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(whatsappProductExtractionJobs)
+      .where(and(
+        eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+        eq(whatsappProductExtractionJobs.status, "pending"),
+        sql`${whatsappProductExtractionJobs.lastError} like ${`${QUOTA_EXHAUSTED_REASON_PREFIX}%`}`,
+      ));
     const pendingJobs = {
       pending: jobCounts.pending ?? 0,
       processing: jobCounts.processing ?? 0,
       waitingMedia: jobCounts.waiting_media ?? 0,
       waitingAssociation: jobCounts.waiting_association ?? 0,
       failed: jobCounts.failed ?? 0,
+      quotaPaused: quotaPausedRow?.total ?? 0,
     };
     const requestOrigin = mediaRequestOrigin(req);
     const sourceMediaByMessageId = new Map<string, ProductMediaPreview[]>();

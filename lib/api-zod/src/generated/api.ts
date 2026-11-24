@@ -575,7 +575,8 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
   "processing": zod.number().int(),
   "waitingMedia": zod.number().int(),
   "waitingAssociation": zod.number().int(),
-  "failed": zod.number().int()
+  "failed": zod.number().int(),
+  "quotaPaused": zod.number().int().describe('Pending jobs held back because the workspace AI quota is exhausted. They resume on their own; no attempt is spent while paused.')
 }).describe('Extraction jobs by state. `waitingMedia` and `waitingAssociation` are the states only a download or a merchant decision can clear.')
 })
 

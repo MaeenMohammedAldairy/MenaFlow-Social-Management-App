@@ -282,6 +282,8 @@ export type ProductExtractionQueueCounts = {
   waitingMedia: number;
   waitingAssociation: number;
   failed: number;
+  /** Held back by an exhausted AI quota; resumes on its own. */
+  quotaPaused: number;
 };
 
 export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
@@ -290,6 +292,7 @@ export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
   waitingMedia: 0,
   waitingAssociation: 0,
   failed: 0,
+  quotaPaused: 0,
 };
 
 export type WhatsAppProductExtractions = {

@@ -41,3 +41,31 @@ setting; MenaFlow still imports only explicitly selected groups. Existing
 instances keep their current Evolution setting and need to be reconnected or
 re-paired for full-history sync to take effect. Evolution may not be able to
 backfill messages that WhatsApp does not resend.
+
+## Run control
+
+A historical sync is the longest-running work in the app, so three settings
+bound it. All are read per run; no restart is needed beyond redeploying the
+process.
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `WHATSAPP_SYNC_GROUP_CONCURRENCY` | 3 | Selected groups synced in parallel. Clamped to 1–16, so a typo cannot open hundreds of parallel provider scans. |
+| `WHATSAPP_SYNC_RUN_BUDGET_MS` | 600000 | Wall-clock budget for the fetch phase of one group. Floored at 30000. |
+| `WHATSAPP_SYNC_HEARTBEAT_MS` | 60000 | How often a fetching run refreshes `updated_at`. Floored at 5000. |
+
+Reaching the budget is not a failure. The scan stops before starting another
+page, keeps every record it already collected, and the run is recorded as
+`partial` with `last_error = WHATSAPP_HISTORY_RUN_BUDGET_REACHED`. The cursor
+advances over what was imported, so the next sync continues where this one
+stopped rather than restarting the group.
+
+The heartbeat exists because stale-run cancellation only looks at `updated_at`.
+A run that spent ten minutes fetching pages without writing anything looked
+abandoned to any other process — the API cancelling stale runs while a worker
+performed them — and was cancelled mid-flight. One write per interval keeps a
+live run alive without writing per page.
+
+Groups are claimed in a single batched `UPDATE … RETURNING` before any fetching
+begins, so two processes never sync the same group, and the fan-out then runs
+through the concurrency limit instead of `Promise.all`.

@@ -15,4 +15,6 @@ export interface ProductExtractionQueueCounts {
   waitingMedia: number;
   waitingAssociation: number;
   failed: number;
+  /** Pending jobs held back because the workspace AI quota is exhausted. They resume on their own; no attempt is spent while paused. */
+  quotaPaused: number;
 }

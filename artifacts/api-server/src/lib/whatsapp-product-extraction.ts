@@ -10,6 +10,7 @@ import {
   notExists,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 import {
   db,
@@ -22,6 +23,10 @@ import {
   products,
   whatsappProductExtractionJobs,
 } from "@workspace/db";
+import {
+  planExtractionFailure,
+  resolveExtractionQuotaPauseMs,
+} from "./extraction-quota-policy.ts";
 import {
   extractWhatsAppProductCandidates,
   isCompleteProductExtraction,
@@ -385,7 +390,13 @@ async function hasUnresolvedAssociation(message: {
 
 async function updateJob(
   job: typeof whatsappProductExtractionJobs.$inferSelect,
-  updates: Partial<typeof whatsappProductExtractionJobs.$inferInsert>,
+  updates: Omit<
+    Partial<typeof whatsappProductExtractionJobs.$inferInsert>,
+    "attempts"
+  > & {
+    /** A number, or SQL when the attempt counter has to be given back. */
+    attempts?: number | SQL;
+  },
 ): Promise<void> {
   await db
     .update(whatsappProductExtractionJobs)
@@ -714,6 +725,30 @@ async function processProductExtractionJob(
   );
 }
 
+/**
+ * Postpones every other pending job of the workspace to the same resume time.
+ *
+ * Each of them would fail identically within seconds, and each failure would
+ * spend an attempt, so the queue waits for the quota to come back instead of
+ * consuming itself. Only jobs that would run sooner are touched, so an operator
+ * who deliberately requeued one message keeps that intent.
+ */
+async function pauseWorkspaceExtractionQueue(
+  workspaceId: string,
+  resumeAt: Date,
+): Promise<number> {
+  const paused = await db
+    .update(whatsappProductExtractionJobs)
+    .set({ nextRunAt: resumeAt, updatedAt: new Date() })
+    .where(and(
+      eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+      eq(whatsappProductExtractionJobs.status, "pending"),
+      lt(whatsappProductExtractionJobs.nextRunAt, resumeAt),
+    ))
+    .returning({ id: whatsappProductExtractionJobs.id });
+  return paused.length;
+}
+
 let productQueueRunning = false;
 
 export async function processWhatsAppProductExtractionQueue(): Promise<void> {
@@ -765,24 +800,51 @@ export async function processWhatsAppProductExtractionQueue(): Promise<void> {
         const reason = error instanceof Error
           ? error.message
           : "PRODUCT_EXTRACTION_FAILED";
-        const retry = job.attempts < 5;
-        const delayMs = Math.min(60 * 60_000, 30_000 * (2 ** (job.attempts - 1)));
+        const plan = planExtractionFailure({
+          reason,
+          attempts: job.attempts,
+          quotaPauseMs: resolveExtractionQuotaPauseMs(),
+        });
         await updateJob(job, {
-          status: retry ? "pending" : "failed",
+          status: plan.status,
           stage: "extraction",
           lastError: reason,
-          nextRunAt: new Date(Date.now() + (retry ? delayMs : 0)),
+          nextRunAt: plan.nextRunAt,
+          // The attempt was already counted when the job was claimed. A quota
+          // failure is not this job's fault, so the counter is given back —
+          // otherwise a month without quota would fail the backlog permanently.
+          ...(plan.consumeAttempt
+            ? {}
+            : {
+                attempts: sql`greatest(${whatsappProductExtractionJobs.attempts} - 1, 0)`,
+              }),
         });
-        logger.error(
-          {
-            workspaceId: job.workspaceId,
-            messageId: job.messageId,
-            attempt: job.attempts,
-            retry,
-            reason,
-          },
-          "WhatsApp product extraction job failed",
-        );
+        const pausedJobs = plan.pauseWorkspaceQueue
+          ? await pauseWorkspaceExtractionQueue(job.workspaceId, plan.nextRunAt)
+          : 0;
+        if (plan.kind === "quota_pause") {
+          logger.warn(
+            {
+              workspaceId: job.workspaceId,
+              messageId: job.messageId,
+              reason,
+              pausedJobs,
+              resumeAt: plan.nextRunAt.toISOString(),
+            },
+            "PRODUCT_EXTRACTION_PAUSED_FOR_AI_QUOTA",
+          );
+        } else {
+          logger.error(
+            {
+              workspaceId: job.workspaceId,
+              messageId: job.messageId,
+              attempt: job.attempts,
+              retry: plan.kind === "retry",
+              reason,
+            },
+            "WhatsApp product extraction job failed",
+          );
+        }
       }
     }
   } finally {

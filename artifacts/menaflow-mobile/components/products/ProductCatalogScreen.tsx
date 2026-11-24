@@ -3148,6 +3148,12 @@ function ProductExtractionQueueStrip({
       tone: "warning",
     });
   }
+  if (counts.quotaPaused > 0) {
+    lines.push({
+      text: `${formatArabicNumber(counts.quotaPaused)} رسالة توقّف تحليلها مؤقتًا لانتهاء حصة الذكاء الاصطناعي لهذا الشهر. تُستأنف تلقائيًا، أو رقِّ خطتك لمتابعتها الآن.`,
+      tone: "warning",
+    });
+  }
   if (working > 0) {
     lines.push({
       text: `جارٍ تحليل ${formatArabicNumber(working)} رسالة.`,
