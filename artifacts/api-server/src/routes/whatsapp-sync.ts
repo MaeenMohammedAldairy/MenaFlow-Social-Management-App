@@ -29,6 +29,10 @@ import {
   DEFAULT_WHATSAPP_HISTORY_IMPORT_LIMIT,
   MAX_WHATSAPP_HISTORY_IMPORT_LIMIT,
 } from "../lib/whatsapp-sync";
+import {
+  describeWhatsAppInboundOutcome,
+  logInboundWebhookOutcome,
+} from "../lib/inbound-webhook-diagnostics";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
@@ -568,6 +572,13 @@ router.put(
 
 router.post("/social/whatsapp/webhook", async (req, res) => {
   if (!verifyWhatsAppWebhookSecret(req.headers["x-evolution-api-key"])) {
+    // Proves Evolution reached us with the wrong key — the alternative reading
+    // of "no automatic replies" is that it never called us at all.
+    logInboundWebhookOutcome(
+      logger,
+      describeWhatsAppInboundOutcome("REJECTED_SECRET"),
+      { path: "/social/whatsapp/webhook" },
+    );
     res.status(401).json({ ok: false });
     return;
   }

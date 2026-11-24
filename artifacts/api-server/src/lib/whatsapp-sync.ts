@@ -49,6 +49,7 @@ import {
 } from "../lib/whatsapp-message-scope";
 import { isWhatsAppOptOutMessage } from "../lib/whatsapp-opt-out";
 import {
+  shouldQueueWhatsAppAutoReply,
   whatsAppAutoReplyHourlyLimit,
   whatsAppAutoReplyLoopGuardCode,
   whatsAppAutoReplyMaxAgeMs,
@@ -56,6 +57,11 @@ import {
   whatsAppAutoReplySupersededCode,
   whatsAppAutoReplyWindowExpiredCode,
 } from "../lib/whatsapp-auto-reply-policy";
+import {
+  describeWhatsAppAutoReplySkip,
+  describeWhatsAppInboundOutcome,
+  logInboundWebhookOutcome,
+} from "../lib/inbound-webhook-diagnostics";
 import { processWhatsAppOrderIntake } from "../lib/whatsapp-order-intake";
 import {
   resolveWhatsAppAlbumSource,
@@ -1982,16 +1988,33 @@ export async function processWebhookEvent(
   req: { headers?: Record<string, string | string[] | undefined> },
 ): Promise<void> {
   const payload = asRecord(body);
-  if (!payload) return;
+  if (!payload) {
+    logInboundWebhookOutcome(
+      logger,
+      describeWhatsAppInboundOutcome("PAYLOAD_NOT_OBJECT"),
+    );
+    return;
+  }
 
   if (!verifyWhatsAppWebhookSecret(req.headers?.["x-evolution-api-key"])) {
+    logInboundWebhookOutcome(
+      logger,
+      describeWhatsAppInboundOutcome("REJECTED_SECRET"),
+    );
     return;
   }
 
   const eventName = normalizeWhatsAppWebhookEventName(
     payload.event ?? payload.type,
   );
-  if (!isWhatsAppMessageWebhookEvent(eventName)) return;
+  if (!isWhatsAppMessageWebhookEvent(eventName)) {
+    logInboundWebhookOutcome(
+      logger,
+      describeWhatsAppInboundOutcome("IGNORED_EVENT"),
+      { eventName },
+    );
+    return;
+  }
 
   const webhookBatch = extractWhatsAppWebhookBatch(payload);
   if (webhookBatch) {
@@ -2019,7 +2042,14 @@ export async function processWebhookEvent(
     queryString(key?.instance) ??
     queryString(payload?.instanceName) ??
     null;
-  if (!remoteJid || !instanceName) return;
+  if (!remoteJid || !instanceName) {
+    logInboundWebhookOutcome(
+      logger,
+      describeWhatsAppInboundOutcome("MISSING_INSTANCE_OR_JID"),
+      { eventName, hasInstance: Boolean(instanceName), hasJid: Boolean(remoteJid) },
+    );
+    return;
+  }
 
   const matchingConnections = await db
     .select()
@@ -2027,18 +2057,24 @@ export async function processWebhookEvent(
     .where(eq(menaWhatsAppConnections.instanceName, instanceName))
     .limit(2);
   if (matchingConnections.length !== 1) {
-    if (matchingConnections.length > 1) {
-      logger.error(
-        {
-          instanceName,
-        },
-        "WhatsApp webhook instance is ambiguous in the database",
-      );
-    }
+    logInboundWebhookOutcome(
+      logger,
+      describeWhatsAppInboundOutcome(
+        matchingConnections.length > 1 ? "AMBIGUOUS_INSTANCE" : "UNKNOWN_INSTANCE",
+      ),
+      { eventName, instanceName, matches: matchingConnections.length },
+    );
     return;
   }
   const [connection] = matchingConnections;
-  if (!connection) return;
+  if (!connection) {
+    logInboundWebhookOutcome(
+      logger,
+      describeWhatsAppInboundOutcome("UNKNOWN_INSTANCE"),
+      { eventName, instanceName, matches: 0 },
+    );
+    return;
+  }
 
   const eventPayload = asRecord(payloadData ?? payload) ?? payload;
   const eventKey =
@@ -2129,28 +2165,56 @@ export async function processWebhookEvent(
       expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
     }).onConflictDoNothing();
   }
-  const incomingWithinAutoReplyWindow =
-    directMessageTimestamp === null ||
-    Date.now() - directMessageTimestamp.getTime() <=
-      whatsAppAutoReplyMaxAgeMs();
-  if (
-    eventName === "MESSAGES_UPSERT" &&
-    connection.autoReplyEnabled &&
-    !customerOptedOut &&
-    incomingWithinAutoReplyWindow &&
-    isDirectIncoming &&
-    isWhatsAppDirectPhoneJid(directRemoteJid) &&
-    incomingMessageCandidate
-  ) {
-    const customerMessage = extractWhatsAppTextFromMessage(
-      incomingMessageCandidate,
+  const isDirectPhoneJid = isWhatsAppDirectPhoneJid(directRemoteJid);
+  const remoteMessageId =
+    typeof eventKey?.id === "string"
+      ? eventKey.id
+      : typeof eventPayload.id === "string"
+        ? eventPayload.id
+        : "";
+  const autoReplyDecision = shouldQueueWhatsAppAutoReply({
+    eventName,
+    autoReplyEnabled: connection.autoReplyEnabled,
+    customerOptedOut,
+    messageTimestamp: directMessageTimestamp,
+    isDirectIncoming,
+    isPhoneJid: isDirectPhoneJid,
+    hasMessageCandidate: Boolean(incomingMessageCandidate),
+    customerMessageText: incomingMessageCandidate
+      ? extractWhatsAppTextFromMessage(incomingMessageCandidate)
+      : null,
+    remoteMessageId,
+  });
+  if (!autoReplyDecision.shouldQueue && isDirectIncoming && isDirectPhoneJid) {
+    // A real customer message that produced no reply is the one case an
+    // operator must be able to find in the log, with the reason next to it.
+    logInboundWebhookOutcome(
+      logger,
+      describeWhatsAppAutoReplySkip(autoReplyDecision.reason),
+      {
+        instanceName,
+        eventName,
+        autoReplyEnabled: connection.autoReplyEnabled,
+        conversationKey: directConversationKey,
+      },
     );
-    const remoteMessageId =
-      typeof eventKey?.id === "string"
-        ? eventKey.id
-        : typeof eventPayload.id === "string"
-          ? eventPayload.id
-          : "";
+  }
+  if (eventName === "MESSAGES_UPSERT") {
+    logInboundWebhookOutcome(
+      logger,
+      describeWhatsAppInboundOutcome("PROCESSED"),
+      {
+        instanceName,
+        eventName,
+        directIncoming: isDirectIncoming,
+        autoReplyQueued: autoReplyDecision.shouldQueue,
+      },
+    );
+  }
+  if (autoReplyDecision.shouldQueue) {
+    const customerMessage = extractWhatsAppTextFromMessage(
+      incomingMessageCandidate!,
+    );
     if (customerMessage && remoteMessageId) {
       const nextRunAt = whatsAppAutoReplyNextRunAt();
       const coalesced =
@@ -2182,15 +2246,10 @@ export async function processWebhookEvent(
     // A direct customer message that no automatic reply will answer, which is
     // exactly when the merchant has to be told: either automatic replies are
     // switched off for this connection, or this customer asked for a human.
-    eventName === "MESSAGES_UPSERT" &&
-    isDirectIncoming &&
-    isWhatsAppDirectPhoneJid(directRemoteJid) &&
-    Boolean(incomingMessageCandidate) &&
-    // Excludes messages too old to auto-reply. Those arrive from a backlog sync,
-    // where the customer is not sitting there waiting, and alerting on them
-    // turns one reconnect into a wall of notifications.
-    incomingWithinAutoReplyWindow &&
-    (!connection.autoReplyEnabled || customerOptedOut)
+    // Messages too old to answer are excluded — those arrive from a backlog
+    // sync, where the customer is not waiting, and alerting on them turns one
+    // reconnect into a wall of notifications.
+    autoReplyDecision.notifyMerchant
   ) {
     // `directConversationKey` is an HMAC-SHA256 of workspace, instance and JID
     // keyed by ENCRYPTION_KEY, so it identifies the conversation for throttling

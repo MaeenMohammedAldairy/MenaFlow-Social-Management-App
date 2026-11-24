@@ -138,3 +138,98 @@ export function buildWhatsAppAutoReplySystemInstruction(
       : "لا توجد تعليمات أو بيانات خاصة بالنشاط. لا تخمّن الأسعار أو المنتجات أو السياسات.",
   ].join("\n\n");
 }
+
+export type WhatsAppAutoReplyQueueInput = {
+  /** Normalized Evolution event name; null when the payload carried none. */
+  eventName: string | null;
+  /** Connection-level switch the merchant controls from the reply settings. */
+  autoReplyEnabled: boolean;
+  /** The customer asked for a human in this conversation. */
+  customerOptedOut: boolean;
+  /** Message time when known; null means "assume fresh". */
+  messageTimestamp: Date | null;
+  /** Direct (one-to-one) message sent by the customer, not by the business. */
+  isDirectIncoming: boolean;
+  /** The JID is a phone number, so a group or newsletter cannot match. */
+  isPhoneJid: boolean;
+  /** The payload carried a message body to read. */
+  hasMessageCandidate: boolean;
+  /** Text extracted from the candidate; empty means media-only. */
+  customerMessageText?: string | null;
+  /** Provider message id, required to keep the reply idempotent. */
+  remoteMessageId?: string | null;
+  maxAgeMs?: number;
+  now?: number;
+};
+
+/** Why a direct message did not become an automatic reply. */
+export type WhatsAppAutoReplySkipReason =
+  | "not_message_upsert"
+  | "not_direct_incoming"
+  | "not_phone_jid"
+  | "no_message_candidate"
+  | "message_too_old"
+  | "customer_opted_out"
+  | "auto_reply_disabled"
+  | "no_message_text"
+  | "no_remote_message_id";
+
+/**
+ * Discriminated on `shouldQueue`, so a caller that has ruled out queueing can
+ * use `reason` as a skip reason without narrowing by hand.
+ */
+export type WhatsAppAutoReplyQueueDecision =
+  | { shouldQueue: true; reason: "queued"; notifyMerchant: false }
+  | {
+      shouldQueue: false;
+      reason: WhatsAppAutoReplySkipReason;
+      /**
+       * True when a direct customer message will not be answered automatically
+       * and the merchant has to be told: automatic replies are off for this
+       * connection, or this customer opted out.
+       */
+      notifyMerchant: boolean;
+    };
+
+/**
+ * The single place that decides whether an inbound WhatsApp event becomes an
+ * automatic reply.
+ *
+ * Extracted from `processWebhookEvent`, where the same seven conditions were
+ * written twice — once to queue a reply and once, negated, to alert the
+ * merchant — so the two branches could drift apart. The order matters: the
+ * checks that identify a real customer message run before the switches, so a
+ * group message never produces a "replies are off" alert and a message too old
+ * to answer never produces a wall of notifications after a backlog sync.
+ */
+export function shouldQueueWhatsAppAutoReply(
+  input: WhatsAppAutoReplyQueueInput,
+): WhatsAppAutoReplyQueueDecision {
+  const refuse = (
+    reason: WhatsAppAutoReplySkipReason,
+    notifyMerchant = false,
+  ): WhatsAppAutoReplyQueueDecision => ({
+    shouldQueue: false,
+    reason,
+    notifyMerchant,
+  });
+
+  if (input.eventName !== "MESSAGES_UPSERT") return refuse("not_message_upsert");
+  if (!input.isDirectIncoming) return refuse("not_direct_incoming");
+  if (!input.isPhoneJid) return refuse("not_phone_jid");
+  if (!input.hasMessageCandidate) return refuse("no_message_candidate");
+
+  const maxAgeMs = input.maxAgeMs ?? whatsAppAutoReplyMaxAgeMs();
+  const withinWindow =
+    input.messageTimestamp === null ||
+    (input.now ?? Date.now()) - input.messageTimestamp.getTime() <= maxAgeMs;
+  if (!withinWindow) return refuse("message_too_old");
+
+  if (input.customerOptedOut) return refuse("customer_opted_out", true);
+  if (!input.autoReplyEnabled) return refuse("auto_reply_disabled", true);
+
+  if (!input.customerMessageText?.trim()) return refuse("no_message_text");
+  if (!input.remoteMessageId?.trim()) return refuse("no_remote_message_id");
+
+  return { shouldQueue: true, reason: "queued", notifyMerchant: false };
+}
