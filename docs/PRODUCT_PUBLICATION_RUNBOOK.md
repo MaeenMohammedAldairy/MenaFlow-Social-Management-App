@@ -39,7 +39,7 @@ Table `mena_whatsapp_product_extraction_jobs`, one row per message
 | --- | --- | --- |
 | `pending` | Queued, `next_run_at` reached or future | Nothing; the worker picks 3 per pass |
 | `processing` | Claimed with `FOR UPDATE SKIP LOCKED` | Stuck > 10 min is reset to `pending` automatically |
-| `waiting_media` | A source message has media that is not `stored` yet | Requeued automatically when the download finishes; otherwise see §4 |
+| `waiting_media` | A source message has media that is still downloading (a retry is scheduled) | Requeued automatically when the download finishes. Media that gave up does **not** park here — see `failed` below |
 | `waiting_association` | The message may belong to a content bundle that a human has not confirmed | Confirm or reject the association in the app; both messages are requeued |
 | `complete` | Finished. `last_error` explains the outcome when there is no suggestion | `PRODUCT_TEXT_REQUIRED` means "no text and no readable image" |
 | `review` | Reserved for suggestions that need attention | — |
@@ -53,6 +53,29 @@ it, which is a different problem.
 Retry policy: attempts < 5, delay `min(1h, 30s × 2^(attempt-1))`. Persistence
 runs under the advisory lock `product-extraction:{workspaceId}` so two workers
 cannot create the same draft.
+
+**A media failure is terminal, so the job must not wait on it.** The download
+worker claims only messages whose `media_download_status` is `pending`, and a
+retryable error keeps it `pending` with a scheduled attempt — so `failed` means
+nothing will ever look at that message again. `decideWhatsAppMediaGate()`
+(`lib/product-extraction-media-policy.ts`) therefore answers `terminal` rather
+than `waiting`, and the job goes to `failed` where the merchant can see it in
+`pendingJobs.failed`. Before that distinction existed, such a job was parked in
+`waiting_media` forever: the queue selects `pending` only, so no pass ever
+reached it again — three jobs sat like that in production for twelve hours behind
+a `waitingMedia` count that read as progress. Rows written before the fix are
+cleared by `failJobsWaitingOnTerminalMedia()`, which runs inside the extraction
+worker at most once every five minutes over at most 50 jobs.
+
+Repair is a real action rather than a database edit: re-running extraction calls
+`resetFailedWhatsAppMedia()` (`lib/whatsapp-media-reset.ts`) for the messages it
+is about to queue, putting their `failed` media back to `pending` with
+`download_attempts` reset to zero. A message whose `source_media_payload` was
+dropped is skipped and logged (`WHATSAPP_MEDIA_RESET_SKIPPED_NO_PAYLOAD`) because
+there is nothing left to download from. When one specific message is requested
+and its media was just reset, the job is created anyway so it parks in
+`waiting_media` — the download worker requeues by message id, which needs a job
+row to update.
 
 Queueing rules (`queueUnprocessedWhatsAppProductMessages`, also behind
 `POST /api/social/products/extract-whatsapp`):
@@ -74,7 +97,7 @@ the media requeue path.
 | --- | --- | --- |
 | `PRODUCT_TEXT_REQUIRED` | No text and vision extraction produced nothing (disabled, no stored image, or unreadable) | Expected for pure emoji/sticker messages. Enable `PRODUCT_VISION_EXTRACTION_ENABLED` if photo-only offers matter (§6) |
 | `WHATSAPP_MEDIA_DOWNLOAD_PENDING` | Media still downloading | Automatic; the download worker requeues on completion |
-| `WHATSAPP_MEDIA_DOWNLOAD_FAILED` | Evolution could not serve the file | Re-run the media download; the job is requeued when the object is stored |
+| `WHATSAPP_MEDIA_DOWNLOAD_FAILED` | The download gave up for good: a non-retryable error, or 5 attempts spent | Re-run extraction (`POST /api/social/products/extract-whatsapp`); it resets the media to `pending` with a fresh set of attempts and the job is requeued when the object is stored |
 | `WHATSAPP_ASSOCIATED_MESSAGE_UNAVAILABLE` | A bundled message row disappeared | Data problem; requeue the remaining message |
 | `WHATSAPP_CONTENT_ASSOCIATION_REQUIRES_REVIEW` | Possible bundle, unconfirmed | Confirm/reject in the association screen; retries hourly meanwhile |
 | `MISSING_AI_PROVIDER_KEY` | Neither `OPENAI_API_KEY` nor `GEMINI_API_KEY` set | Set a key and restart; jobs stay `pending` and are retried |
