@@ -218,10 +218,77 @@ Then compare with the stored work: `mena_whatsapp_direct_messages` (direction
   callback URL, then send a test message.
 - **Attempts, all refused** → our side, and the recorded event names the
   variable: secret mismatch, missing app secret, unknown instance, unknown
-  account.
+  account. An `UNKNOWN_INSTANCE` refusal with a `menaflow-…` name no connection
+  row holds is an orphaned session — see below, it is the one refusal that keeps
+  an inbox empty while everything else looks healthy.
 - **Attempts accepted, nothing stored** → the events are not the ones that
   produce work: group traffic rather than direct messages, or an account id that
   is not linked to a connection.
 - **Stored, no reply** → read the `WHATSAPP_AUTO_REPLY_SKIPPED_*` reason, or the
   auto-reply job status. Delivery is fine; the reply policy or the AI quota is
   the subject.
+
+## Orphaned WhatsApp sessions
+
+Instance names are deterministic: `whatsappInstanceNameForWorkspace()` in
+`lib/whatsapp-instance.ts` returns `menaflow-` + `sha256(workspaceId)[0:12]`.
+That makes an unrecognised instance name diagnosable rather than mysterious — it
+is the instance of a specific workspace id, and if no `mena_workspaces` row hashes
+to it, that workspace is gone.
+
+**What was found in production on 2026-11-24.** Within minutes of
+`mena_inbound_webhook_events` being created, it filled with
+`WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE` rows — `delivery_confirmed = true`, so
+Evolution was calling us — for instance `menaflow-a898bc54ab23`, with
+`matches: 0` and `workspace_id: null`. The merchant's workspace
+(`c1db5069-…`) was connected as `menaflow-3c247db8a54d`, a duplicate workspace
+(`317629cc-…`) held a disconnected row for `menaflow-31d5ea2ce122` on the same
+phone `+967777187184`, and neither hash is `a898bc54ab23`. So the events were
+arriving from the session of a workspace id that no longer exists — deleted or
+migrated away — and every one of them was refused, which is why
+`mena_whatsapp_direct_messages` held **0** rows and
+`mena_whatsapp_auto_reply_events` held **0** while history sync through
+`menaflow-3c247db8a54d` kept completing normally. A leftover session was holding
+the phone's live events; the workspace's own instance could still serve API
+calls.
+
+Two things follow.
+
+**The sweep.** `POST /api/social/whatsapp/reconfigure-webhook` — the button the
+`UNKNOWN_INSTANCE` hint already pointed at — now lists Evolution's instances and
+deletes the leftovers bound to that phone number before answering, and reports
+each instance it considered in `orphanCleanup`. Pairing
+(`POST /api/social/whatsapp/pair`) runs the same sweep. The rules live in
+`lib/whatsapp-orphan-instance-policy.ts` and are narrow, because deleting an
+instance unlinks a WhatsApp session:
+
+- only names carrying the `menaflow-` prefix — this app never deletes an instance
+  it did not create, and an Evolution server can be shared;
+- never the instance being connected or re-registered;
+- never a name any workspace's `mena_whatsapp_connections` row claims, which is
+  the duplicate-workspace case: it is reported as `CLAIMED_BY_WORKSPACE` for an
+  operator to disconnect, not removed by force;
+- never an instance Evolution reports against a different phone number;
+- at most `ORPHAN_INSTANCE_CLEANUP_LIMIT` (5) deletions per run, the rest
+  reported as `CLEANUP_LIMIT_REACHED`.
+
+An instance whose number Evolution did not report *is* deletable when unclaimed
+and prefixed, because deterministic naming means it can only belong to a
+workspace that no longer exists — requiring a number there would skip exactly the
+orphan found in production.
+
+A failed sweep never fails the action that triggered it: listing errors are
+warn-logged as `WHATSAPP_ORPHAN_INSTANCE_SWEEP_NOT_ATTEMPTED` and reported as
+`attempted: false`, and `sweepOrphanWhatsAppInstances()` is wrapped so it cannot
+throw at all — in pairing, an exception would reach the handler's catch, which
+deletes the instance it just created and marks the connection `failed`, turning a
+cleanup bug into a broken reconnect.
+
+**What the merchant reads.** `orphanCleanupSentence()`
+(`artifacts/menaflow-mobile/lib/whatsapp-orphan-cleanup-copy.ts`) turns the
+result into one or two Arabic sentences appended to the re-registration message:
+what was removed and why the inbox had been empty, a retry line when a deletion
+failed, and — for `CLAIMED_BY_WORKSPACE` — the different fix, which is to
+disconnect that phone number in the other workspace. It stays silent when the
+sweep did not run or found nothing, so the button never claims to have fixed a
+problem it did not find.

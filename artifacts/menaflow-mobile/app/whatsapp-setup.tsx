@@ -33,6 +33,7 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
+import { orphanCleanupSentence } from "@/lib/whatsapp-orphan-cleanup-copy";
 import {
   webhookAttemptFacts,
   webhookAttemptHeadline,
@@ -201,8 +202,16 @@ function WhatsAppReplyContent({
     setWebhookResult(null);
     try {
       const result = await reconfigureWhatsAppWebhook();
+      // The sweep's finding outranks the "send a test message" advice: if a
+      // leftover session was holding this phone number, that is why the inbox was
+      // empty, and the merchant should read it before they test anything.
+      const cleanup = orphanCleanupSentence(result.orphanCleanup, {
+        formatNumber: formatArabicNumber,
+      });
       setWebhookResult(
-        `تم تسجيل الويب هوك على ${result.webhookUrl}. أرسل رسالة تجريبية من هاتف العميل للتحقق من وصولها.`,
+        cleanup
+          ? `تم تسجيل الويب هوك على ${result.webhookUrl}. ${cleanup}`
+          : `تم تسجيل الويب هوك على ${result.webhookUrl}. أرسل رسالة تجريبية من هاتف العميل للتحقق من وصولها.`,
       );
       await queryClient.invalidateQueries({ queryKey });
     } catch (error) {

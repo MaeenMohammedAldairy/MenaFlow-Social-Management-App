@@ -29,6 +29,7 @@ import {
   isExclusiveWhatsAppInstance,
   mapEvolutionConnectionState,
 } from "../lib/whatsapp-evolution";
+import { sweepOrphanWhatsAppInstances } from "../lib/whatsapp-orphan-instance-sweep";
 
 import { whatsappInstanceNameForWorkspace } from "../lib/whatsapp-instance";
 import { subscriptionDenial } from "../lib/subscription-denial.ts";
@@ -403,6 +404,22 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
         "EVOLUTION_API_PAIRING_CODE_UNAVAILABLE",
       );
     }
+
+    // Sweep the leftovers of deleted or migrated-away workspaces before handing
+    // over the pairing code. Instance names are
+    // `menaflow-` + sha256(workspaceId)[0:12], so an instance bound to this phone
+    // that no connection row claims can only belong to a workspace that is gone —
+    // and while it lives it keeps the webhook traffic that this new session needs
+    // (production, 2026-11-24: every inbound event arrived as
+    // `WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE` for an orphan and the merchant's
+    // direct-message table stayed empty). Best effort: pairing must not fail
+    // because a cleanup did.
+    await sweepOrphanWhatsAppInstances({
+      workspaceId,
+      keepInstanceName: instanceName,
+      phoneNumber,
+      trigger: "pairing",
+    });
 
     res.json({
       instanceName,

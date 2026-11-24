@@ -1111,11 +1111,46 @@ export type ProductPublicationConflict = ApiError & {
   incompleteProducts?: IncompletePublicationProduct[];
 };
 
+export type OrphanedWhatsAppInstanceAction = typeof OrphanedWhatsAppInstanceAction[keyof typeof OrphanedWhatsAppInstanceAction];
+
+
+export const OrphanedWhatsAppInstanceAction = {
+  deleted: 'deleted',
+  delete_failed: 'delete_failed',
+  skipped: 'skipped',
+  not_attempted: 'not_attempted',
+} as const;
+
+/**
+ * One Evolution instance considered by the orphan sweep that runs when a webhook is re-registered. Instance names are `menaflow-` + sha256(workspaceId)[0:12], so an unclaimed instance is the session of a workspace that no longer exists; while it lives it can hold the phone's live events and every inbound message is refused as WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE. `action` says what the server did and `reason` why — including why it deliberately did nothing: another workspace still claims the instance, it is bound to a different phone number, or it is not a name this app created.
+ */
+export interface OrphanedWhatsAppInstance {
+  instanceName: string;
+  /** @nullable */
+  phoneNumber?: string | null;
+  /** @nullable */
+  connectionStatus?: string | null;
+  action: OrphanedWhatsAppInstanceAction;
+  reason: string;
+}
+
+/**
+ * Result of the orphan-instance sweep. `attempted` is false when Evolution could not be listed, in which case nothing was deleted and the counts are all zero — the webhook re-registration itself still succeeded.
+ */
+export interface WhatsAppOrphanCleanup {
+  attempted: boolean;
+  deleted: number;
+  failed: number;
+  skipped: number;
+  instances: OrphanedWhatsAppInstance[];
+}
+
 export interface WhatsAppWebhookReconfiguration {
   ok: boolean;
   instanceName: string;
   webhookUrl: string;
   reconfiguredAt: string;
+  orphanCleanup?: WhatsAppOrphanCleanup;
 }
 
 export type MetaInboundDiagnosticsInboxCountByPlatform = {[key: string]: number};

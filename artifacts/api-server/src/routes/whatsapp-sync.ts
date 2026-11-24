@@ -43,6 +43,7 @@ import {
   logInboundWebhookOutcome,
 } from "../lib/inbound-webhook-diagnostics";
 import { recordInboundWebhookAttempt } from "../lib/inbound-delivery-log";
+import { sweepOrphanWhatsAppInstances } from "../lib/whatsapp-orphan-instance-sweep";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
@@ -621,11 +622,31 @@ router.post(
     }
     try {
       await configureWhatsAppWebhook(connection.instanceName);
+      // Re-registering this instance's webhook is only half the repair when an
+      // orphaned session is the one holding the phone: our URL is set on an
+      // instance that Evolution is no longer sending events for, and the events
+      // keep arriving under a name no connection row matches
+      // (`WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE`). The sweep deletes those leftovers
+      // and reports what it decided, and it runs after the webhook is registered
+      // so a failure here cannot turn the repair into an error.
+      const sweep = await sweepOrphanWhatsAppInstances({
+        workspaceId,
+        keepInstanceName: connection.instanceName,
+        phoneNumber: connection.phoneNumber,
+        trigger: "webhook_reconfigure",
+      });
       res.json({
         ok: true,
         instanceName: connection.instanceName,
         webhookUrl: whatsappWebhookUrl(),
         reconfiguredAt: new Date().toISOString(),
+        orphanCleanup: {
+          attempted: sweep.attempted,
+          deleted: sweep.deleted,
+          failed: sweep.failed,
+          skipped: sweep.skipped,
+          instances: sweep.outcomes,
+        },
       });
     } catch (error) {
       const code =

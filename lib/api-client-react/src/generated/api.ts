@@ -2653,7 +2653,7 @@ export const getReconfigureWhatsAppWebhookUrl = () => {
 }
 
 /**
- * Pairing already configures the webhook; this covers the cases that break it afterwards (a rotated secret, a moved API domain) without re-pairing. The response carries the exact URL that was registered.
+ * Pairing already configures the webhook; this covers the cases that break it afterwards (a rotated secret, a moved API domain) without re-pairing. The response carries the exact URL that was registered. It also sweeps orphaned Evolution instances bound to the same phone number — sessions left behind by workspaces that were deleted or migrated away, which keep receiving the inbound events this workspace needs — and reports each instance it considered. The sweep is best effort: it never fails the re-registration.
  * @summary Re-register the Evolution webhook for this workspace instance
  */
 export const reconfigureWhatsAppWebhook = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppWebhookReconfiguration> => {

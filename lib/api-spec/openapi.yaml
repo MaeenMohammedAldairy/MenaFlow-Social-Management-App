@@ -1072,7 +1072,12 @@ paths:
       description: >-
         Pairing already configures the webhook; this covers the cases that break
         it afterwards (a rotated secret, a moved API domain) without re-pairing.
-        The response carries the exact URL that was registered.
+        The response carries the exact URL that was registered. It also sweeps
+        orphaned Evolution instances bound to the same phone number — sessions
+        left behind by workspaces that were deleted or migrated away, which keep
+        receiving the inbound events this workspace needs — and reports each
+        instance it considered. The sweep is best effort: it never fails the
+        re-registration.
       responses:
         "200":
           description: Webhook re-registered
@@ -2812,6 +2817,51 @@ components:
         - webhookSecretConfigured
         - webhookAttempts
         - issues
+    OrphanedWhatsAppInstance:
+      type: object
+      description: >-
+        One Evolution instance considered by the orphan sweep that runs when a
+        webhook is re-registered. Instance names are
+        `menaflow-` + sha256(workspaceId)[0:12], so an unclaimed instance is the
+        session of a workspace that no longer exists; while it lives it can hold
+        the phone's live events and every inbound message is refused as
+        WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE. `action` says what the server did and
+        `reason` why — including why it deliberately did nothing: another
+        workspace still claims the instance, it is bound to a different phone
+        number, or it is not a name this app created.
+      properties:
+        instanceName:
+          type: string
+        phoneNumber:
+          type: [string, "null"]
+        connectionStatus:
+          type: [string, "null"]
+        action:
+          type: string
+          enum: [deleted, delete_failed, skipped, not_attempted]
+        reason:
+          type: string
+      required: [instanceName, action, reason]
+    WhatsAppOrphanCleanup:
+      type: object
+      description: >-
+        Result of the orphan-instance sweep. `attempted` is false when Evolution
+        could not be listed, in which case nothing was deleted and the counts are
+        all zero — the webhook re-registration itself still succeeded.
+      properties:
+        attempted:
+          type: boolean
+        deleted:
+          type: integer
+        failed:
+          type: integer
+        skipped:
+          type: integer
+        instances:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrphanedWhatsAppInstance"
+      required: [attempted, deleted, failed, skipped, instances]
     WhatsAppWebhookReconfiguration:
       type: object
       properties:
@@ -2825,6 +2875,8 @@ components:
         reconfiguredAt:
           type: string
           format: date-time
+        orphanCleanup:
+          $ref: "#/components/schemas/WhatsAppOrphanCleanup"
       required: [ok, instanceName, webhookUrl, reconfiguredAt]
     MetaInboundDiagnostics:
       type: object
