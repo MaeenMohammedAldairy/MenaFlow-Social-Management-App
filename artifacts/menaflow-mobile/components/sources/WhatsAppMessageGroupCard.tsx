@@ -6,6 +6,7 @@ import { StatusPill } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
 import { formatArabicDateTime } from "@/lib/formatting";
 import { mediaUrlForApp } from "@/lib/content-utils";
+import { describeMediaDownloadFailure } from "@/lib/whatsapp-media-failure-copy";
 import {
   canConvertWhatsAppMessageGroup,
   type DisplayedWhatsAppMessageGroup,
@@ -84,7 +85,7 @@ export function WhatsAppMessageGroupCard({
                   accessibilityLabel={`وسائط مقترحة، ${suggestion.candidateMediaCount} عنصر`}
                   style={styles.candidateMediaList}
                 >
-                  {suggestion.candidateMedia.map(({ item }) =>
+                  {suggestion.candidateMedia.map(({ item, message }) =>
                     item.downloadStatus === "stored" &&
                     item.mediaType === "image" &&
                     item.url ? (
@@ -109,15 +110,16 @@ export function WhatsAppMessageGroupCard({
                         ]}
                       >
                         <Text style={[styles.mediaType, { color: colors.primary }]}>
-                          {item.downloadStatus === "failed"
-                            ? "فشل التحميل"
-                            : item.downloadStatus !== "stored"
-                              ? "جارٍ التحميل"
-                              : item.mediaType === "video"
-                                ? "فيديو"
-                                : item.mediaType === "document"
-                                  ? "مستند"
-                                  : item.mediaType}
+                          {item.downloadStatus !== "stored"
+                            ? describeMediaDownloadFailure({
+                                downloadStatus: item.downloadStatus,
+                                messageTimestamp: message.messageTimestamp,
+                              })
+                            : item.mediaType === "video"
+                              ? "فيديو"
+                              : item.mediaType === "document"
+                                ? "مستند"
+                                : item.mediaType}
                         </Text>
                       </View>
                     ),
@@ -172,7 +174,7 @@ export function WhatsAppMessageGroupCard({
       ) : null}
       {group.media.length ? (
         <View style={styles.mediaList}>
-          {group.media.map(({ item }) => item.downloadStatus === "stored" &&
+          {group.media.map(({ item, message }) => item.downloadStatus === "stored" &&
           item.mediaType === "image" && item.url ? (
             <Pressable
               key={item.id}
@@ -189,12 +191,13 @@ export function WhatsAppMessageGroupCard({
           ) : (
             <View key={item.id} style={[styles.mediaPlaceholder, { backgroundColor: colors.accent }]}>
               <Text style={[styles.mediaType, { color: colors.primary }]}>
-                {item.downloadStatus === "failed"
-                  ? "فشل التحميل"
-                  : item.downloadStatus !== "stored"
-                    ? "جارٍ التحميل"
-                    : item.accessError
-                      ? "الرابط غير متاح"
+                {item.downloadStatus !== "stored"
+                  ? describeMediaDownloadFailure({
+                      downloadStatus: item.downloadStatus,
+                      messageTimestamp: message.messageTimestamp,
+                    })
+                  : item.accessError
+                    ? "الرابط غير متاح"
                     : item.mediaType === "video"
                       ? "فيديو"
                       : item.mediaType === "document"

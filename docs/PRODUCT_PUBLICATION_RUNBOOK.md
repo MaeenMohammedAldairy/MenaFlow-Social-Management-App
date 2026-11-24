@@ -87,6 +87,23 @@ and its media was just reset, the job is created anyway so it parks in
 `waiting_media` — the download worker requeues by message id, which needs a job
 row to update.
 
+**Old messages get one download attempt, and an honest failure.** WhatsApp stops
+serving a message's media a few weeks after it was sent — measured on the live
+workspace, where every row whose message was six to twelve days old at import
+downloaded on the first attempt and every row twenty-four to twenty-five days old
+burned all five attempts on `EVOLUTION_API_REQUEST_FAILED` and failed anyway.
+`mediaDownloadAttemptLimit()` (`lib/whatsapp-media-expiry-policy.ts`) therefore
+gives a message older than `MEDIA_UPSTREAM_EXPIRY_AGE_MS` (21 days) a single
+attempt, and `mediaDownloadFailureReason()` records
+`WHATSAPP_MEDIA_EXPIRED_UPSTREAM` — outside the retryable list, so nothing
+schedules another attempt on a timer — instead of the transport error. The
+catalog then reads «انتهت صلاحية الوسيط لدى واتساب — الرسالة أقدم من نحو ثلاثة
+أسابيع» rather than «فشل التحميل», which used to invite retries that could never
+work. The mobile copy carries the same window, pinned by a drift test. The
+operational consequence: import history close to send time; media past the window
+is unrecoverable at any attempt count, and a merchant who needs that product must
+re-send the photo.
+
 Queueing rules (`queueUnprocessedWhatsAppProductMessages`, also behind
 `POST /api/social/products/extract-whatsapp`):
 
