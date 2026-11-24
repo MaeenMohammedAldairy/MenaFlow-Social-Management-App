@@ -42,17 +42,31 @@ import type {
   GetWhatsAppConnectionStatusParams,
   GetWhatsAppMediaUrlParams,
   GetWhatsAppProductExtractionsParams,
+  GetWhatsAppPublicMediaParams,
   HealthStatus,
   InventoryMovementListResponse,
   KnownPostIdsInput,
   ListCatalogProductsParams,
+  ListMetaInboxParams,
   ListOrdersParams,
   ListProductChangeProposalsParams,
+  ListWhatsAppDirectMessagesParams,
   ListWhatsAppGroupMessagesParams,
+  MetaAutoReplyHistoricalPostsResponse,
+  MetaAutoReplyHistoricalQueueInput,
+  MetaAutoReplyHistoricalQueueResponse,
+  MetaAutoReplySettings,
   MetaAutoReplySettingsResponse,
+  MetaAutoReplyTestInput,
+  MetaAutoReplyTestResponse,
   MetaConnectInput,
   MetaConnectResponse,
   MetaDisconnectResponse,
+  MetaInboxAutoReplyResponse,
+  MetaInboxReplyInput,
+  MetaInboxReplyResponse,
+  MetaInboxResponse,
+  MetaInboxRetryConfirmationResponse,
   MetaWebhookSubscriptionsResponse,
   OnboardingProgressInput,
   OnboardingStatus,
@@ -104,6 +118,14 @@ import type {
   WhatsAppAutoReplySettingsResponse,
   WhatsAppAutoReplyTestInput,
   WhatsAppConnectionStatus,
+  WhatsAppContentAssociationDecision,
+  WhatsAppContentAssociationInput,
+  WhatsAppDirectConversationListResponse,
+  WhatsAppDirectMessageEnvelope,
+  WhatsAppDirectMessageListResponse,
+  WhatsAppDirectReplyInput,
+  WhatsAppDirectReplyResponse,
+  WhatsAppDirectReplyUncertain,
   WhatsAppDisconnectResult,
   WhatsAppGroupMessagesResponse,
   WhatsAppGroupSelectionsInput,
@@ -2851,6 +2873,95 @@ export function useGetMetaAutoReplySettings<TData = Awaited<ReturnType<typeof ge
 
 
 
+
+export const getSaveMetaAutoReplySettingsUrl = () => {
+
+
+
+
+  return `/api/social/meta-auto-replies`
+}
+
+/**
+ * A full replace, not a patch: every field is required, so a client that omits one resets it rather than leaving it alone. Settings can be saved before Meta is connected, but not before a connection exists at all.
+ * @summary Replace the Meta automatic-reply settings
+ */
+export const saveMetaAutoReplySettings = async (metaAutoReplySettings: MetaAutoReplySettings, options?: Parameters<typeof customFetch>[1]): Promise<MetaAutoReplySettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MetaAutoReplySettings>(getSaveMetaAutoReplySettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(metaAutoReplySettings)
+  }
+);}
+
+
+
+
+
+export const getSaveMetaAutoReplySettingsMutationKey = () => ['saveMetaAutoReplySettings'] as const;
+
+export const getSaveMetaAutoReplySettingsMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveMetaAutoReplySettings>>, TError,SaveMetaAutoReplySettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveMetaAutoReplySettings>>, TError,SaveMetaAutoReplySettingsMutationVariables, TContext> => {
+
+const mutationKey = getSaveMetaAutoReplySettingsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveMetaAutoReplySettings>>, SaveMetaAutoReplySettingsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveMetaAutoReplySettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveMetaAutoReplySettingsMutationResult = NonNullable<Awaited<ReturnType<typeof saveMetaAutoReplySettings>>>
+    export type SaveMetaAutoReplySettingsMutationBody = BodyType<MetaAutoReplySettings>
+    export type SaveMetaAutoReplySettingsMutationError = ErrorType<ApiError>
+    export type SaveMetaAutoReplySettingsMutationVariables = {data: BodyType<MetaAutoReplySettings>}
+
+    /**
+ * @summary Replace the Meta automatic-reply settings
+ */
+export const useSaveMetaAutoReplySettings = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveMetaAutoReplySettings>>, TError,SaveMetaAutoReplySettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveMetaAutoReplySettings>>,
+        TError,
+        SaveMetaAutoReplySettingsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSaveMetaAutoReplySettingsMutationOptions(options));
+    }
 
 export const getActivateMetaWebhookSubscriptionsUrl = () => {
 
@@ -6046,6 +6157,587 @@ export function useListWhatsAppGroupMessages<TData = Awaited<ReturnType<typeof l
 
 
 
+export const getListMetaInboxUrl = (params?: ListMetaInboxParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/meta-inbox?${stringifiedParams}` : `/api/social/meta-inbox`
+}
+
+/**
+ * Messages and comments from both platforms in one feed, newest first, at most 100 per page. The response opens with the webhook's own state, so a screen can say "Meta has not called us since Tuesday" instead of showing an empty inbox with no explanation.
+ * @summary The Facebook and Instagram inbox
+ */
+export const listMetaInbox = async (params?: ListMetaInboxParams, options?: Parameters<typeof customFetch>[1]): Promise<MetaInboxResponse> => {
+
+  return customFetch<MetaInboxResponse>(getListMetaInboxUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListMetaInboxQueryKey = (params?: ListMetaInboxParams,) => {
+    return [
+    `/api/social/meta-inbox`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListMetaInboxQueryOptions = <TData = Awaited<ReturnType<typeof listMetaInbox>>, TError = ErrorType<ApiError>>(params?: ListMetaInboxParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMetaInbox>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListMetaInboxQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listMetaInbox>>> = ({ signal }) => listMetaInbox(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listMetaInbox>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListMetaInboxQueryResult = NonNullable<Awaited<ReturnType<typeof listMetaInbox>>>
+export type ListMetaInboxQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary The Facebook and Instagram inbox
+ */
+
+export function useListMetaInbox<TData = Awaited<ReturnType<typeof listMetaInbox>>, TError = ErrorType<ApiError>>(
+ params?: ListMetaInboxParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listMetaInbox>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListMetaInboxQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendMetaInboxReplyUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/meta-inbox/items/${id}/reply`
+}
+
+/**
+ * Sends through the Graph API and records the reply on the item. A failure the server cannot classify comes back as `META_SEND_RESULT_UNKNOWN` rather than a plain error: the reply may or may not have landed, so the app must not retry it blindly.
+ * @summary Reply to a message or comment as the page
+ */
+export const sendMetaInboxReply = async (id: string,
+    metaInboxReplyInput: MetaInboxReplyInput, options?: Parameters<typeof customFetch>[1]): Promise<MetaInboxReplyResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MetaInboxReplyResponse>(getSendMetaInboxReplyUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(metaInboxReplyInput)
+  }
+);}
+
+
+
+
+
+export const getSendMetaInboxReplyMutationKey = () => ['sendMetaInboxReply'] as const;
+
+export const getSendMetaInboxReplyMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMetaInboxReply>>, TError,SendMetaInboxReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendMetaInboxReply>>, TError,SendMetaInboxReplyMutationVariables, TContext> => {
+
+const mutationKey = getSendMetaInboxReplyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendMetaInboxReply>>, SendMetaInboxReplyMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  sendMetaInboxReply(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendMetaInboxReplyMutationResult = NonNullable<Awaited<ReturnType<typeof sendMetaInboxReply>>>
+    export type SendMetaInboxReplyMutationBody = BodyType<MetaInboxReplyInput>
+    export type SendMetaInboxReplyMutationError = ErrorType<ApiError>
+    export type SendMetaInboxReplyMutationVariables = {id: string;data: BodyType<MetaInboxReplyInput>}
+
+    /**
+ * @summary Reply to a message or comment as the page
+ */
+export const useSendMetaInboxReply = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendMetaInboxReply>>, TError,SendMetaInboxReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendMetaInboxReply>>,
+        TError,
+        SendMetaInboxReplyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendMetaInboxReplyMutationOptions(options));
+    }
+
+export const getRetryMetaInboxAutoReplyUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/meta-inbox/items/${id}/auto-reply`
+}
+
+/**
+ * For an item whose automatic reply failed or was skipped. Does nothing once a reply exists — manual and automatic replies share one slot, so re-queuing would send a second answer to the same customer.
+ * @summary Re-queue the automatic reply for one item
+ */
+export const retryMetaInboxAutoReply = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<MetaInboxAutoReplyResponse> => {
+
+  return customFetch<MetaInboxAutoReplyResponse>(getRetryMetaInboxAutoReplyUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRetryMetaInboxAutoReplyMutationKey = () => ['retryMetaInboxAutoReply'] as const;
+
+export const getRetryMetaInboxAutoReplyMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryMetaInboxAutoReply>>, TError,RetryMetaInboxAutoReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof retryMetaInboxAutoReply>>, TError,RetryMetaInboxAutoReplyMutationVariables, TContext> => {
+
+const mutationKey = getRetryMetaInboxAutoReplyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof retryMetaInboxAutoReply>>, RetryMetaInboxAutoReplyMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  retryMetaInboxAutoReply(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RetryMetaInboxAutoReplyMutationResult = NonNullable<Awaited<ReturnType<typeof retryMetaInboxAutoReply>>>
+
+    export type RetryMetaInboxAutoReplyMutationError = ErrorType<ApiError>
+    export type RetryMetaInboxAutoReplyMutationVariables = {id: string}
+
+    /**
+ * @summary Re-queue the automatic reply for one item
+ */
+export const useRetryMetaInboxAutoReply = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof retryMetaInboxAutoReply>>, TError,RetryMetaInboxAutoReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof retryMetaInboxAutoReply>>,
+        TError,
+        RetryMetaInboxAutoReplyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRetryMetaInboxAutoReplyMutationOptions(options));
+    }
+
+export const getConfirmMetaInboxReplyNotSentUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/meta-inbox/items/${id}/retry-confirmation`
+}
+
+/**
+ * Clears an unresolved send attempt so the merchant can try again. Only an item whose reply status is still unknown can be cleared, and only once.
+ * @summary Record that a reply with an unknown outcome never arrived
+ */
+export const confirmMetaInboxReplyNotSent = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<MetaInboxRetryConfirmationResponse> => {
+
+  return customFetch<MetaInboxRetryConfirmationResponse>(getConfirmMetaInboxReplyNotSentUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getConfirmMetaInboxReplyNotSentMutationKey = () => ['confirmMetaInboxReplyNotSent'] as const;
+
+export const getConfirmMetaInboxReplyNotSentMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmMetaInboxReplyNotSent>>, TError,ConfirmMetaInboxReplyNotSentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmMetaInboxReplyNotSent>>, TError,ConfirmMetaInboxReplyNotSentMutationVariables, TContext> => {
+
+const mutationKey = getConfirmMetaInboxReplyNotSentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmMetaInboxReplyNotSent>>, ConfirmMetaInboxReplyNotSentMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  confirmMetaInboxReplyNotSent(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmMetaInboxReplyNotSentMutationResult = NonNullable<Awaited<ReturnType<typeof confirmMetaInboxReplyNotSent>>>
+
+    export type ConfirmMetaInboxReplyNotSentMutationError = ErrorType<ApiError>
+    export type ConfirmMetaInboxReplyNotSentMutationVariables = {id: string}
+
+    /**
+ * @summary Record that a reply with an unknown outcome never arrived
+ */
+export const useConfirmMetaInboxReplyNotSent = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmMetaInboxReplyNotSent>>, TError,ConfirmMetaInboxReplyNotSentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmMetaInboxReplyNotSent>>,
+        TError,
+        ConfirmMetaInboxReplyNotSentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getConfirmMetaInboxReplyNotSentMutationOptions(options));
+    }
+
+export const getGetMetaAutoReplyHistoricalPostsUrl = () => {
+
+
+
+
+  return `/api/social/meta-auto-replies/historical-comments`
+}
+
+/**
+ * Per platform, whether the feature is ready and why not if it is not, plus the posts with comments old enough to answer. `posts` is empty when `ready` is false, so the picker can show the reason instead of a dead list.
+ * @summary Published posts that could receive automatic comment replies
+ */
+export const getMetaAutoReplyHistoricalPosts = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetaAutoReplyHistoricalPostsResponse> => {
+
+  return customFetch<MetaAutoReplyHistoricalPostsResponse>(getGetMetaAutoReplyHistoricalPostsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMetaAutoReplyHistoricalPostsQueryKey = () => {
+    return [
+    `/api/social/meta-auto-replies/historical-comments`
+    ] as const;
+    }
+
+
+export const getGetMetaAutoReplyHistoricalPostsQueryOptions = <TData = Awaited<ReturnType<typeof getMetaAutoReplyHistoricalPosts>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMetaAutoReplyHistoricalPosts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMetaAutoReplyHistoricalPostsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMetaAutoReplyHistoricalPosts>>> = ({ signal }) => getMetaAutoReplyHistoricalPosts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMetaAutoReplyHistoricalPosts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMetaAutoReplyHistoricalPostsQueryResult = NonNullable<Awaited<ReturnType<typeof getMetaAutoReplyHistoricalPosts>>>
+export type GetMetaAutoReplyHistoricalPostsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Published posts that could receive automatic comment replies
+ */
+
+export function useGetMetaAutoReplyHistoricalPosts<TData = Awaited<ReturnType<typeof getMetaAutoReplyHistoricalPosts>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMetaAutoReplyHistoricalPosts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMetaAutoReplyHistoricalPostsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getQueueMetaAutoReplyHistoricalCommentsUrl = () => {
+
+
+
+
+  return `/api/social/meta-auto-replies/historical-comments`
+}
+
+/**
+ * Either `allEligible` or an explicit `postIds` list, never both. Replies are queued in batches, so the response reports how many were queued and how many batches that became.
+ * @summary Queue every eligible comment on the selected posts for an automatic reply
+ */
+export const queueMetaAutoReplyHistoricalComments = async (metaAutoReplyHistoricalQueueInput: MetaAutoReplyHistoricalQueueInput, options?: Parameters<typeof customFetch>[1]): Promise<MetaAutoReplyHistoricalQueueResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MetaAutoReplyHistoricalQueueResponse>(getQueueMetaAutoReplyHistoricalCommentsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(metaAutoReplyHistoricalQueueInput)
+  }
+);}
+
+
+
+
+
+export const getQueueMetaAutoReplyHistoricalCommentsMutationKey = () => ['queueMetaAutoReplyHistoricalComments'] as const;
+
+export const getQueueMetaAutoReplyHistoricalCommentsMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof queueMetaAutoReplyHistoricalComments>>, TError,QueueMetaAutoReplyHistoricalCommentsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof queueMetaAutoReplyHistoricalComments>>, TError,QueueMetaAutoReplyHistoricalCommentsMutationVariables, TContext> => {
+
+const mutationKey = getQueueMetaAutoReplyHistoricalCommentsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof queueMetaAutoReplyHistoricalComments>>, QueueMetaAutoReplyHistoricalCommentsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  queueMetaAutoReplyHistoricalComments(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type QueueMetaAutoReplyHistoricalCommentsMutationResult = NonNullable<Awaited<ReturnType<typeof queueMetaAutoReplyHistoricalComments>>>
+    export type QueueMetaAutoReplyHistoricalCommentsMutationBody = BodyType<MetaAutoReplyHistoricalQueueInput>
+    export type QueueMetaAutoReplyHistoricalCommentsMutationError = ErrorType<ApiError>
+    export type QueueMetaAutoReplyHistoricalCommentsMutationVariables = {data: BodyType<MetaAutoReplyHistoricalQueueInput>}
+
+    /**
+ * @summary Queue every eligible comment on the selected posts for an automatic reply
+ */
+export const useQueueMetaAutoReplyHistoricalComments = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof queueMetaAutoReplyHistoricalComments>>, TError,QueueMetaAutoReplyHistoricalCommentsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof queueMetaAutoReplyHistoricalComments>>,
+        TError,
+        QueueMetaAutoReplyHistoricalCommentsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getQueueMetaAutoReplyHistoricalCommentsMutationOptions(options));
+    }
+
+export const getTestMetaAutoReplyUrl = () => {
+
+
+
+
+  return `/api/social/meta-auto-replies/test`
+}
+
+/**
+ * Runs the same composition the worker uses, against settings the merchant has not saved yet, so the settings screen can show what a reply would look like. Nothing is sent and nothing is stored.
+ * @summary Draft a reply to a sample message, without sending it
+ */
+export const testMetaAutoReply = async (metaAutoReplyTestInput: MetaAutoReplyTestInput, options?: Parameters<typeof customFetch>[1]): Promise<MetaAutoReplyTestResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MetaAutoReplyTestResponse>(getTestMetaAutoReplyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(metaAutoReplyTestInput)
+  }
+);}
+
+
+
+
+
+export const getTestMetaAutoReplyMutationKey = () => ['testMetaAutoReply'] as const;
+
+export const getTestMetaAutoReplyMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testMetaAutoReply>>, TError,TestMetaAutoReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof testMetaAutoReply>>, TError,TestMetaAutoReplyMutationVariables, TContext> => {
+
+const mutationKey = getTestMetaAutoReplyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof testMetaAutoReply>>, TestMetaAutoReplyMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  testMetaAutoReply(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TestMetaAutoReplyMutationResult = NonNullable<Awaited<ReturnType<typeof testMetaAutoReply>>>
+    export type TestMetaAutoReplyMutationBody = BodyType<MetaAutoReplyTestInput>
+    export type TestMetaAutoReplyMutationError = ErrorType<ApiError>
+    export type TestMetaAutoReplyMutationVariables = {data: BodyType<MetaAutoReplyTestInput>}
+
+    /**
+ * @summary Draft a reply to a sample message, without sending it
+ */
+export const useTestMetaAutoReply = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof testMetaAutoReply>>, TError,TestMetaAutoReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof testMetaAutoReply>>,
+        TError,
+        TestMetaAutoReplyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTestMetaAutoReplyMutationOptions(options));
+    }
+
 export const getGetWhatsAppMediaUrlUrl = (mediaId: string,
     params?: GetWhatsAppMediaUrlParams,) => {
   const normalizedParams = new URLSearchParams();
@@ -6135,4 +6827,588 @@ export function useGetWhatsAppMediaUrl<TData = Awaited<ReturnType<typeof getWhat
 
 
 
+
+export const getGetWhatsAppMediaUrl = (mediaId: string,) => {
+
+
+
+
+  return `/api/social/whatsapp/media/${mediaId}`
+}
+
+/**
+ * The authenticated counterpart of the public signed link, for callers that already hold a session — the app uses it where it has a token and no signature to hand. Returns the original file; thumbnails come from the public endpoint with `variant=thumbnail`.
+ * @summary Serve a stored WhatsApp attachment to a signed-in member
+ */
+export const getWhatsAppMedia = async (mediaId: string, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getGetWhatsAppMediaUrl(mediaId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsAppMediaQueryKey = (mediaId: string,) => {
+    return [
+    `/api/social/whatsapp/media/${mediaId}`
+    ] as const;
+    }
+
+
+export const getGetWhatsAppMediaQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppMedia>>, TError = ErrorType<ApiError>>(mediaId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppMediaQueryKey(mediaId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppMedia>>> = ({ signal }) => getWhatsAppMedia(mediaId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: mediaId !== null && mediaId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppMedia>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsAppMediaQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsAppMedia>>>
+export type GetWhatsAppMediaQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Serve a stored WhatsApp attachment to a signed-in member
+ */
+
+export function useGetWhatsAppMedia<TData = Awaited<ReturnType<typeof getWhatsAppMedia>>, TError = ErrorType<ApiError>>(
+ mediaId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsAppMediaQueryOptions(mediaId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWhatsAppPublicMediaUrl = (mediaId: string,
+    params: GetWhatsAppPublicMediaParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/whatsapp/public-media/${mediaId}?${stringifiedParams}` : `/api/social/whatsapp/public-media/${mediaId}`
+}
+
+/**
+ * No bearer token: message media previews point here and are rendered directly by an image tag, so access is granted by the signature instead. The signature covers the media id, the expiry and the variant, which is why a thumbnail link cannot be swapped for the original.
+ * @summary Serve a WhatsApp attachment over a signed link
+ */
+export const getWhatsAppPublicMedia = async (mediaId: string,
+    params: GetWhatsAppPublicMediaParams, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getGetWhatsAppPublicMediaUrl(mediaId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsAppPublicMediaQueryKey = (mediaId: string,
+    params?: GetWhatsAppPublicMediaParams,) => {
+    return [
+    `/api/social/whatsapp/public-media/${mediaId}`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWhatsAppPublicMediaQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppPublicMedia>>, TError = ErrorType<ApiError>>(mediaId: string,
+    params: GetWhatsAppPublicMediaParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppPublicMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppPublicMediaQueryKey(mediaId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppPublicMedia>>> = ({ signal }) => getWhatsAppPublicMedia(mediaId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: mediaId !== null && mediaId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppPublicMedia>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsAppPublicMediaQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsAppPublicMedia>>>
+export type GetWhatsAppPublicMediaQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Serve a WhatsApp attachment over a signed link
+ */
+
+export function useGetWhatsAppPublicMedia<TData = Awaited<ReturnType<typeof getWhatsAppPublicMedia>>, TError = ErrorType<ApiError>>(
+ mediaId: string,
+    params: GetWhatsAppPublicMediaParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppPublicMedia>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsAppPublicMediaQueryOptions(mediaId,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListWhatsAppDirectConversationsUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/direct-conversations`
+}
+
+/**
+ * One row per customer number, newest message first, at most 100. Only conversations with a message still inside the retention window appear, and every row carries the preview and the last delivery status so the list can be rendered without a second request per conversation.
+ * @summary The workspace's one-to-one WhatsApp conversations
+ */
+export const listWhatsAppDirectConversations = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppDirectConversationListResponse> => {
+
+  return customFetch<WhatsAppDirectConversationListResponse>(getListWhatsAppDirectConversationsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWhatsAppDirectConversationsQueryKey = () => {
+    return [
+    `/api/social/whatsapp/direct-conversations`
+    ] as const;
+    }
+
+
+export const getListWhatsAppDirectConversationsQueryOptions = <TData = Awaited<ReturnType<typeof listWhatsAppDirectConversations>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWhatsAppDirectConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWhatsAppDirectConversationsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWhatsAppDirectConversations>>> = ({ signal }) => listWhatsAppDirectConversations({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWhatsAppDirectConversations>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListWhatsAppDirectConversationsQueryResult = NonNullable<Awaited<ReturnType<typeof listWhatsAppDirectConversations>>>
+export type ListWhatsAppDirectConversationsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary The workspace's one-to-one WhatsApp conversations
+ */
+
+export function useListWhatsAppDirectConversations<TData = Awaited<ReturnType<typeof listWhatsAppDirectConversations>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWhatsAppDirectConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListWhatsAppDirectConversationsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListWhatsAppDirectMessagesUrl = (params: ListWhatsAppDirectMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/whatsapp/direct-messages?${stringifiedParams}` : `/api/social/whatsapp/direct-messages`
+}
+
+/**
+ * At most 100 per page. `nextCursor` is `null` once the conversation is exhausted. Duplicates of the same provider message are collapsed, and messages whose encrypted content can no longer be read are skipped rather than failing the page.
+ * @summary One conversation's messages, newest first
+ */
+export const listWhatsAppDirectMessages = async (params: ListWhatsAppDirectMessagesParams, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppDirectMessageListResponse> => {
+
+  return customFetch<WhatsAppDirectMessageListResponse>(getListWhatsAppDirectMessagesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWhatsAppDirectMessagesQueryKey = (params?: ListWhatsAppDirectMessagesParams,) => {
+    return [
+    `/api/social/whatsapp/direct-messages`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListWhatsAppDirectMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listWhatsAppDirectMessages>>, TError = ErrorType<ApiError>>(params: ListWhatsAppDirectMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWhatsAppDirectMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWhatsAppDirectMessagesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWhatsAppDirectMessages>>> = ({ signal }) => listWhatsAppDirectMessages(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWhatsAppDirectMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListWhatsAppDirectMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listWhatsAppDirectMessages>>>
+export type ListWhatsAppDirectMessagesQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary One conversation's messages, newest first
+ */
+
+export function useListWhatsAppDirectMessages<TData = Awaited<ReturnType<typeof listWhatsAppDirectMessages>>, TError = ErrorType<ApiError>>(
+ params: ListWhatsAppDirectMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWhatsAppDirectMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListWhatsAppDirectMessagesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSendWhatsAppDirectReplyUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/direct-messages/reply`
+}
+
+/**
+ * Idempotent on `clientRequestId`: replaying the same request returns the message it created the first time, with `duplicate: true`, instead of sending a second reply. A request id reused with different text is refused rather than silently sending the new text.
+ * @summary Reply to a customer in a one-to-one WhatsApp conversation
+ */
+export const sendWhatsAppDirectReply = async (whatsAppDirectReplyInput: WhatsAppDirectReplyInput, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppDirectReplyResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WhatsAppDirectReplyResponse>(getSendWhatsAppDirectReplyUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(whatsAppDirectReplyInput)
+  }
+);}
+
+
+
+
+
+export const getSendWhatsAppDirectReplyMutationKey = () => ['sendWhatsAppDirectReply'] as const;
+
+export const getSendWhatsAppDirectReplyMutationOptions = <TError = ErrorType<ApiError | WhatsAppDirectReplyUncertain>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendWhatsAppDirectReply>>, TError,SendWhatsAppDirectReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendWhatsAppDirectReply>>, TError,SendWhatsAppDirectReplyMutationVariables, TContext> => {
+
+const mutationKey = getSendWhatsAppDirectReplyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendWhatsAppDirectReply>>, SendWhatsAppDirectReplyMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  sendWhatsAppDirectReply(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendWhatsAppDirectReplyMutationResult = NonNullable<Awaited<ReturnType<typeof sendWhatsAppDirectReply>>>
+    export type SendWhatsAppDirectReplyMutationBody = BodyType<WhatsAppDirectReplyInput>
+    export type SendWhatsAppDirectReplyMutationError = ErrorType<ApiError | WhatsAppDirectReplyUncertain>
+    export type SendWhatsAppDirectReplyMutationVariables = {data: BodyType<WhatsAppDirectReplyInput>}
+
+    /**
+ * @summary Reply to a customer in a one-to-one WhatsApp conversation
+ */
+export const useSendWhatsAppDirectReply = <TError = ErrorType<ApiError | WhatsAppDirectReplyUncertain>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendWhatsAppDirectReply>>, TError,SendWhatsAppDirectReplyMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof sendWhatsAppDirectReply>>,
+        TError,
+        SendWhatsAppDirectReplyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSendWhatsAppDirectReplyMutationOptions(options));
+    }
+
+export const getConfirmWhatsAppDirectReplyNotSentUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/whatsapp/direct-messages/${id}/confirm-not-sent`
+}
+
+/**
+ * Closes out a message the provider never confirmed. Only an outbound message still in `unknown` can be confirmed, and only once — this is what stops a retry from sending the same reply twice.
+ * @summary Record that a reply with an unknown outcome never arrived
+ */
+export const confirmWhatsAppDirectReplyNotSent = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppDirectMessageEnvelope> => {
+
+  return customFetch<WhatsAppDirectMessageEnvelope>(getConfirmWhatsAppDirectReplyNotSentUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getConfirmWhatsAppDirectReplyNotSentMutationKey = () => ['confirmWhatsAppDirectReplyNotSent'] as const;
+
+export const getConfirmWhatsAppDirectReplyNotSentMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmWhatsAppDirectReplyNotSent>>, TError,ConfirmWhatsAppDirectReplyNotSentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof confirmWhatsAppDirectReplyNotSent>>, TError,ConfirmWhatsAppDirectReplyNotSentMutationVariables, TContext> => {
+
+const mutationKey = getConfirmWhatsAppDirectReplyNotSentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof confirmWhatsAppDirectReplyNotSent>>, ConfirmWhatsAppDirectReplyNotSentMutationVariables> = (props) => {
+          const {id} = props ?? {};
+
+          return  confirmWhatsAppDirectReplyNotSent(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ConfirmWhatsAppDirectReplyNotSentMutationResult = NonNullable<Awaited<ReturnType<typeof confirmWhatsAppDirectReplyNotSent>>>
+
+    export type ConfirmWhatsAppDirectReplyNotSentMutationError = ErrorType<ApiError>
+    export type ConfirmWhatsAppDirectReplyNotSentMutationVariables = {id: string}
+
+    /**
+ * @summary Record that a reply with an unknown outcome never arrived
+ */
+export const useConfirmWhatsAppDirectReplyNotSent = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof confirmWhatsAppDirectReplyNotSent>>, TError,ConfirmWhatsAppDirectReplyNotSentMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof confirmWhatsAppDirectReplyNotSent>>,
+        TError,
+        ConfirmWhatsAppDirectReplyNotSentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getConfirmWhatsAppDirectReplyNotSentMutationOptions(options));
+    }
+
+export const getDecideWhatsAppContentAssociationUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/content-associations`
+}
+
+/**
+ * When a customer sends a photo and its caption as two messages, the extractor cannot know they belong together. The merchant decides here. Accepting links them into one content bundle; both messages are then re-queued so the product is extracted from the pair.
+ * @summary Record whether two messages are one piece of content
+ */
+export const decideWhatsAppContentAssociation = async (whatsAppContentAssociationInput: WhatsAppContentAssociationInput, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppContentAssociationDecision> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WhatsAppContentAssociationDecision>(getDecideWhatsAppContentAssociationUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(whatsAppContentAssociationInput)
+  }
+);}
+
+
+
+
+
+export const getDecideWhatsAppContentAssociationMutationKey = () => ['decideWhatsAppContentAssociation'] as const;
+
+export const getDecideWhatsAppContentAssociationMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decideWhatsAppContentAssociation>>, TError,DecideWhatsAppContentAssociationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof decideWhatsAppContentAssociation>>, TError,DecideWhatsAppContentAssociationMutationVariables, TContext> => {
+
+const mutationKey = getDecideWhatsAppContentAssociationMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof decideWhatsAppContentAssociation>>, DecideWhatsAppContentAssociationMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  decideWhatsAppContentAssociation(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DecideWhatsAppContentAssociationMutationResult = NonNullable<Awaited<ReturnType<typeof decideWhatsAppContentAssociation>>>
+    export type DecideWhatsAppContentAssociationMutationBody = BodyType<WhatsAppContentAssociationInput>
+    export type DecideWhatsAppContentAssociationMutationError = ErrorType<ApiError>
+    export type DecideWhatsAppContentAssociationMutationVariables = {data: BodyType<WhatsAppContentAssociationInput>}
+
+    /**
+ * @summary Record whether two messages are one piece of content
+ */
+export const useDecideWhatsAppContentAssociation = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof decideWhatsAppContentAssociation>>, TError,DecideWhatsAppContentAssociationMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof decideWhatsAppContentAssociation>>,
+        TError,
+        DecideWhatsAppContentAssociationMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDecideWhatsAppContentAssociationMutationOptions(options));
+    }
 

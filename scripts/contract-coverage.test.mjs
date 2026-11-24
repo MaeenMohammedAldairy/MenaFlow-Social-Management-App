@@ -36,8 +36,8 @@ const root = new URL("..", import.meta.url).pathname;
 const routesDir = join(root, "artifacts", "api-server", "src", "routes");
 const specPath = join(root, "lib", "api-spec", "openapi.yaml");
 
-/** Highest coverage reached so far: 73 of 99. Raise it, never lower it. */
-const MINIMUM_COVERED = 73;
+/** Highest coverage reached so far: 88 of 99. Raise it, never lower it. */
+const MINIMUM_COVERED = 88;
 
 /**
  * Paths excluded from the count. The owner console is an internal read-only SPA
@@ -51,14 +51,6 @@ const OUT_OF_CONTRACT = [/^\/owner(?:\/|$)/, /\/webhook$/];
 const UNDOCUMENTED = [
   ["account-details", "GET /social/account-details/:platform"],
   ["health", "GET /readyz"],
-  ["meta-auto-replies", "GET /social/meta-auto-replies/historical-comments"],
-  ["meta-auto-replies", "POST /social/meta-auto-replies/historical-comments"],
-  ["meta-auto-replies", "POST /social/meta-auto-replies/test"],
-  ["meta-auto-replies", "PUT /social/meta-auto-replies"],
-  ["meta-inbox-replies", "POST /social/meta-inbox/items/:id/auto-reply"],
-  ["meta-inbox-replies", "POST /social/meta-inbox/items/:id/reply"],
-  ["meta-inbox-replies", "POST /social/meta-inbox/items/:id/retry-confirmation"],
-  ["meta-inbox", "GET /social/meta-inbox"],
   ["owner", "GET /auto-replies"],
   ["owner", "GET /overview"],
   ["owner", "GET /session"],
@@ -72,13 +64,6 @@ const UNDOCUMENTED = [
   ["posts-workflow", "GET /posts/auto-publish-settings"],
   ["posts-workflow", "POST /posts/process-whatsapp-backlog"],
   ["posts-workflow", "PUT /posts/auto-publish-settings"],
-  ["whatsapp-content-associations", "POST /social/whatsapp/content-associations"],
-  ["whatsapp-direct-inbox", "GET /social/whatsapp/direct-conversations"],
-  ["whatsapp-direct-inbox", "GET /social/whatsapp/direct-messages"],
-  ["whatsapp-direct-inbox", "POST /social/whatsapp/direct-messages/:id/confirm-not-sent"],
-  ["whatsapp-direct-inbox", "POST /social/whatsapp/direct-messages/reply"],
-  ["whatsapp-messages", "GET /social/whatsapp/media/:mediaId"],
-  ["whatsapp-messages", "GET /social/whatsapp/public-media/:mediaId"],
   ["workspaces", "GET /workspaces/current"],
 ];
 
@@ -177,7 +162,7 @@ test("the gate can see both sides", () => {
   const operations = serverOperations();
   assert.ok(operations.length > 90, `parsed ${operations.length} server operations`);
   assert.ok(contractOperations().size > 40, `parsed ${contractOperations().size} contract operations`);
-  assert.ok(UNDOCUMENTED.length > 25, `backlog holds ${UNDOCUMENTED.length} entries`);
+  assert.ok(UNDOCUMENTED.length > 10, `backlog holds ${UNDOCUMENTED.length} entries`);
 
   // The two lists must account for every merchant-facing operation between them,
   // with nothing in both. If the sum is short, an operation is in neither list and

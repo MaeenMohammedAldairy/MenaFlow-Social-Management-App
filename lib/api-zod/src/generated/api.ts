@@ -843,6 +843,10 @@ export const ReconfigureWhatsAppWebhookResponse = zod.object({
 /**
  * @summary Get Meta automatic-reply settings, readiness and inbound facts
  */
+export const getMetaAutoReplySettingsResponseSettingsInstructionsMax = 2000;
+
+
+
 export const GetMetaAutoReplySettingsResponse = zod.object({
   "settings": zod.object({
   "enabled": zod.boolean(),
@@ -850,9 +854,9 @@ export const GetMetaAutoReplySettingsResponse = zod.object({
   "facebookCommentsEnabled": zod.boolean(),
   "instagramMessagesEnabled": zod.boolean(),
   "instagramCommentsEnabled": zod.boolean(),
-  "language": zod.string(),
-  "tone": zod.string(),
-  "instructions": zod.string()
+  "language": zod.enum(['ar', 'match_customer']),
+  "tone": zod.enum(['friendly_professional', 'concise', 'formal']),
+  "instructions": zod.string().max(getMetaAutoReplySettingsResponseSettingsInstructionsMax)
 }),
   "readiness": zod.object({
   "facebook": zod.object({
@@ -882,7 +886,7 @@ export const GetMetaAutoReplySettingsResponse = zod.object({
 }),
   "inbound": zod.object({
   "deliveryConfirmed": zod.boolean(),
-  "lastInboxItemAt": zod.coerce.date().nullish(),
+  "lastInboxItemAt": zod.coerce.date().nullable(),
   "inboxItemCount": zod.number().int(),
   "inboxCountByPlatform": zod.record(zod.string(), zod.number().int()),
   "autoReplyJobs": zod.object({
@@ -917,6 +921,41 @@ export const GetMetaAutoReplySettingsResponse = zod.object({
   "severity": zod.enum(['warning', 'critical'])
 }).describe('One actionable problem, worded for the merchant'))
 }).describe('Whether Facebook and Instagram events reach the server, with the recorded subscriptions and their last error.')
+})
+
+
+/**
+ * A full replace, not a patch: every field is required, so a client that omits one resets it rather than leaving it alone. Settings can be saved before Meta is connected, but not before a connection exists at all.
+ * @summary Replace the Meta automatic-reply settings
+ */
+export const saveMetaAutoReplySettingsBodyInstructionsMax = 2000;
+
+
+
+export const SaveMetaAutoReplySettingsBody = zod.object({
+  "enabled": zod.boolean(),
+  "facebookMessagesEnabled": zod.boolean(),
+  "facebookCommentsEnabled": zod.boolean(),
+  "instagramMessagesEnabled": zod.boolean(),
+  "instagramCommentsEnabled": zod.boolean(),
+  "language": zod.enum(['ar', 'match_customer']),
+  "tone": zod.enum(['friendly_professional', 'concise', 'formal']),
+  "instructions": zod.string().max(saveMetaAutoReplySettingsBodyInstructionsMax)
+})
+
+export const saveMetaAutoReplySettingsResponseInstructionsMax = 2000;
+
+
+
+export const SaveMetaAutoReplySettingsResponse = zod.object({
+  "enabled": zod.boolean(),
+  "facebookMessagesEnabled": zod.boolean(),
+  "facebookCommentsEnabled": zod.boolean(),
+  "instagramMessagesEnabled": zod.boolean(),
+  "instagramCommentsEnabled": zod.boolean(),
+  "language": zod.enum(['ar', 'match_customer']),
+  "tone": zod.enum(['friendly_professional', 'concise', 'formal']),
+  "instructions": zod.string().max(saveMetaAutoReplySettingsResponseInstructionsMax)
 })
 
 
@@ -2336,6 +2375,215 @@ export const ListWhatsAppGroupMessagesResponse = zod.object({
 
 
 /**
+ * Messages and comments from both platforms in one feed, newest first, at most 100 per page. The response opens with the webhook's own state, so a screen can say "Meta has not called us since Tuesday" instead of showing an empty inbox with no explanation.
+ * @summary The Facebook and Instagram inbox
+ */
+export const listMetaInboxQueryLimitDefault = 50;
+export const listMetaInboxQueryLimitMax = 100;
+
+
+
+export const ListMetaInboxQueryParams = zod.object({
+  "platform": zod.enum(['facebook', 'instagram']).optional(),
+  "kind": zod.enum(['message', 'comment']).optional(),
+  "personId": zod.coerce.string().optional().describe('One conversation. Matches the actor id where there is one, and falls back to the conversation id for messages or the external id for comments, so a thread with no actor still opens.'),
+  "cursor": zod.coerce.string().optional(),
+  "limit": zod.coerce.number().int().min(1).max(listMetaInboxQueryLimitMax).default(listMetaInboxQueryLimitDefault)
+})
+
+export const ListMetaInboxResponse = zod.object({
+  "webhook": zod.object({
+  "verificationConfigured": zod.boolean(),
+  "callbackUrl": zod.string().nullable(),
+  "lastEventAt": zod.coerce.date().nullable().describe('When Meta last called, across every platform.'),
+  "accounts": zod.object({
+  "facebook": zod.string().nullable(),
+  "instagram": zod.string().nullable()
+}),
+  "subscriptions": zod.record(zod.string(), zod.object({
+  "accountId": zod.string(),
+  "subscribedAt": zod.coerce.date().nullable(),
+  "fields": zod.array(zod.string()),
+  "errorCode": zod.string().nullable()
+}))
+}),
+  "hasMore": zod.boolean(),
+  "nextCursor": zod.string().nullable(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "platform": zod.enum(['facebook', 'instagram']),
+  "kind": zod.enum(['message', 'comment']),
+  "externalId": zod.string(),
+  "conversationId": zod.string(),
+  "parentId": zod.string().nullable().describe('The comment this one replies to, for threads.'),
+  "actorId": zod.string().nullable().describe('Null when the platform did not identify the author; the conversation id or external id is used to group the thread instead.'),
+  "actorName": zod.string().nullable(),
+  "text": zod.string(),
+  "media": zod.array(zod.object({
+  "type": zod.string(),
+  "url": zod.string().nullable(),
+  "thumbnailUrl": zod.string().nullable()
+})),
+  "occurredAt": zod.coerce.date(),
+  "replyText": zod.string().nullable(),
+  "repliedAt": zod.coerce.date().nullable(),
+  "replyStatus": zod.enum(['sending', 'unknown', 'null']).nullable(),
+  "autoReplyStatus": zod.enum(['queued', 'processing', 'sending', 'sent', 'failed', 'skipped', 'unknown', 'null']).nullable(),
+  "autoReplyErrorCode": zod.string().nullable()
+}).describe('One message or comment from Facebook or Instagram. `autoReplyStatus` and `autoReplyErrorCode` come from the job that acted on the item, so a screen can explain why no reply went out instead of showing a generic failure.'))
+})
+
+
+/**
+ * Sends through the Graph API and records the reply on the item. A failure the server cannot classify comes back as `META_SEND_RESULT_UNKNOWN` rather than a plain error: the reply may or may not have landed, so the app must not retry it blindly.
+ * @summary Reply to a message or comment as the page
+ */
+
+
+
+export const SendMetaInboxReplyParams = zod.object({
+  "id": zod.coerce.string().min(1).describe('Identifier of an inbox item — a message or a comment')
+})
+
+export const sendMetaInboxReplyBodyTextMax = 2000;
+
+
+
+export const SendMetaInboxReplyBody = zod.object({
+  "text": zod.string().min(1).max(sendMetaInboxReplyBodyTextMax)
+})
+
+export const SendMetaInboxReplyResponse = zod.object({
+  "sent": zod.boolean(),
+  "itemId": zod.string(),
+  "replyText": zod.string(),
+  "replyExternalId": zod.string(),
+  "repliedAt": zod.coerce.date()
+})
+
+
+/**
+ * For an item whose automatic reply failed or was skipped. Does nothing once a reply exists — manual and automatic replies share one slot, so re-queuing would send a second answer to the same customer.
+ * @summary Re-queue the automatic reply for one item
+ */
+
+
+
+export const RetryMetaInboxAutoReplyParams = zod.object({
+  "id": zod.coerce.string().min(1).describe('Identifier of an inbox item — a message or a comment')
+})
+
+export const RetryMetaInboxAutoReplyResponse = zod.object({
+  "queued": zod.boolean(),
+  "autoReplyStatus": zod.enum(['queued', 'processing', 'sending', 'sent', 'failed', 'skipped', 'unknown'])
+})
+
+
+/**
+ * Clears an unresolved send attempt so the merchant can try again. Only an item whose reply status is still unknown can be cleared, and only once.
+ * @summary Record that a reply with an unknown outcome never arrived
+ */
+
+
+
+export const ConfirmMetaInboxReplyNotSentParams = zod.object({
+  "id": zod.coerce.string().min(1).describe('Identifier of an inbox item — a message or a comment')
+})
+
+export const ConfirmMetaInboxReplyNotSentResponse = zod.object({
+  "cleared": zod.boolean()
+})
+
+
+/**
+ * Per platform, whether the feature is ready and why not if it is not, plus the posts with comments old enough to answer. `posts` is empty when `ready` is false, so the picker can show the reason instead of a dead list.
+ * @summary Published posts that could receive automatic comment replies
+ */
+export const GetMetaAutoReplyHistoricalPostsResponse = zod.object({
+  "platforms": zod.object({
+  "facebook": zod.object({
+  "ready": zod.boolean(),
+  "reason": zod.string().nullable().describe('Why not, when `ready` is false. Null when ready.'),
+  "posts": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "imageUrl": zod.string().nullable(),
+  "products": zod.array(zod.string()).describe('Catalog products this post is linked to, by name.'),
+  "eligibleCommentCount": zod.number().int().describe('Comments old enough that answering them will not look like a duplicate.')
+})).describe('Empty when `ready` is false.')
+}),
+  "instagram": zod.object({
+  "ready": zod.boolean(),
+  "reason": zod.string().nullable().describe('Why not, when `ready` is false. Null when ready.'),
+  "posts": zod.array(zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date(),
+  "imageUrl": zod.string().nullable(),
+  "products": zod.array(zod.string()).describe('Catalog products this post is linked to, by name.'),
+  "eligibleCommentCount": zod.number().int().describe('Comments old enough that answering them will not look like a duplicate.')
+})).describe('Empty when `ready` is false.')
+})
+})
+})
+
+
+/**
+ * Either `allEligible` or an explicit `postIds` list, never both. Replies are queued in batches, so the response reports how many were queued and how many batches that became.
+ * @summary Queue every eligible comment on the selected posts for an automatic reply
+ */
+
+export const queueMetaAutoReplyHistoricalCommentsBodyPostIdsMax = 100;
+
+
+
+export const QueueMetaAutoReplyHistoricalCommentsBody = zod.object({
+  "platform": zod.enum(['facebook', 'instagram']),
+  "allEligible": zod.boolean().optional(),
+  "postIds": zod.array(zod.string().min(1)).min(1).max(queueMetaAutoReplyHistoricalCommentsBodyPostIdsMax).optional()
+}).describe('Exactly one of `allEligible` or `postIds`. Sending both, or neither, is rejected rather than guessed at.')
+
+export const QueueMetaAutoReplyHistoricalCommentsResponse = zod.object({
+  "queuedCount": zod.number().int(),
+  "batchCount": zod.number().int().describe('How many worker batches the queue became.')
+})
+
+
+/**
+ * Runs the same composition the worker uses, against settings the merchant has not saved yet, so the settings screen can show what a reply would look like. Nothing is sent and nothing is stored.
+ * @summary Draft a reply to a sample message, without sending it
+ */
+export const testMetaAutoReplyBodySettingsInstructionsMax = 2000;
+
+export const testMetaAutoReplyBodyPlatformDefault = `instagram`;
+export const testMetaAutoReplyBodyKindDefault = `message`;
+
+export const TestMetaAutoReplyBody = zod.object({
+  "message": zod.string(),
+  "settings": zod.object({
+  "enabled": zod.boolean(),
+  "facebookMessagesEnabled": zod.boolean(),
+  "facebookCommentsEnabled": zod.boolean(),
+  "instagramMessagesEnabled": zod.boolean(),
+  "instagramCommentsEnabled": zod.boolean(),
+  "language": zod.enum(['ar', 'match_customer']),
+  "tone": zod.enum(['friendly_professional', 'concise', 'formal']),
+  "instructions": zod.string().max(testMetaAutoReplyBodySettingsInstructionsMax)
+}),
+  "platform": zod.enum(['facebook', 'instagram']).default(testMetaAutoReplyBodyPlatformDefault),
+  "kind": zod.enum(['message', 'comment']).default(testMetaAutoReplyBodyKindDefault)
+})
+
+export const TestMetaAutoReplyResponse = zod.object({
+  "reply": zod.string(),
+  "matchedProduct": zod.string().nullable().describe('The catalog product the reply quoted a price for, by name.')
+})
+
+
+/**
  * Signed URLs expire; this re-issues one without re-downloading. The file itself is served by the public signed endpoint.
  * @summary Mint a fresh signed URL for a stored WhatsApp media file
  */
@@ -2352,6 +2600,167 @@ export const GetWhatsAppMediaUrlQueryParams = zod.object({
 
 export const GetWhatsAppMediaUrlResponse = zod.object({
   "url": zod.string()
+})
+
+
+/**
+ * The authenticated counterpart of the public signed link, for callers that already hold a session — the app uses it where it has a token and no signature to hand. Returns the original file; thumbnails come from the public endpoint with `variant=thumbnail`.
+ * @summary Serve a stored WhatsApp attachment to a signed-in member
+ */
+
+
+
+export const GetWhatsAppMediaParams = zod.object({
+  "mediaId": zod.coerce.string().min(1)
+})
+
+export const GetWhatsAppMediaResponse = zod.unknown()
+
+
+/**
+ * No bearer token: message media previews point here and are rendered directly by an image tag, so access is granted by the signature instead. The signature covers the media id, the expiry and the variant, which is why a thumbnail link cannot be swapped for the original.
+ * @summary Serve a WhatsApp attachment over a signed link
+ */
+
+
+
+export const GetWhatsAppPublicMediaParams = zod.object({
+  "mediaId": zod.coerce.string().min(1)
+})
+
+export const getWhatsAppPublicMediaQueryVariantDefault = `original`;
+
+export const GetWhatsAppPublicMediaQueryParams = zod.object({
+  "expires": zod.coerce.string(),
+  "signature": zod.coerce.string(),
+  "variant": zod.enum(['original', 'thumbnail', 'instagram-jpeg']).default(getWhatsAppPublicMediaQueryVariantDefault).describe('`instagram-jpeg` is a re-encode for Meta and is only valid for images; anything else is served as the original.')
+})
+
+export const GetWhatsAppPublicMediaResponse = zod.unknown()
+
+
+/**
+ * One row per customer number, newest message first, at most 100. Only conversations with a message still inside the retention window appear, and every row carries the preview and the last delivery status so the list can be rendered without a second request per conversation.
+ * @summary The workspace's one-to-one WhatsApp conversations
+ */
+export const ListWhatsAppDirectConversationsResponse = zod.object({
+  "conversations": zod.array(zod.object({
+  "remoteJid": zod.string(),
+  "customerNumber": zod.string().describe('The phone number where the provider supplies one; otherwise a label carrying the opaque id, so the row is never blank.'),
+  "preview": zod.string(),
+  "lastDirection": zod.enum(['inbound', 'outbound']),
+  "lastStatus": zod.enum(['received', 'sending', 'sent', 'failed', 'unknown']),
+  "lastMessageAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * At most 100 per page. `nextCursor` is `null` once the conversation is exhausted. Duplicates of the same provider message are collapsed, and messages whose encrypted content can no longer be read are skipped rather than failing the page.
+ * @summary One conversation's messages, newest first
+ */
+
+export const listWhatsAppDirectMessagesQueryBeforeIdMax = 200;
+
+
+
+export const ListWhatsAppDirectMessagesQueryParams = zod.object({
+  "remoteJid": zod.coerce.string().min(1).describe('The conversation to read'),
+  "beforeTimestamp": zod.date().optional().describe('Where the previous page ended. Send together with `beforeId`.'),
+  "beforeId": zod.coerce.string().max(listWhatsAppDirectMessagesQueryBeforeIdMax).optional().describe('Where the previous page ended. Send together with `beforeTimestamp`.')
+})
+
+export const ListWhatsAppDirectMessagesResponse = zod.object({
+  "messages": zod.array(zod.object({
+  "id": zod.string(),
+  "remoteJid": zod.string(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "status": zod.enum(['received', 'sending', 'sent', 'failed', 'unknown']).describe('`unknown` means the provider took the request but never said what happened. It is a real state, not a failure: the app offers to confirm the message was not sent rather than retrying into a possible duplicate.'),
+  "autoReplyStatus": zod.string().nullable().describe('Only set on inbound messages that the auto-replier acted on.'),
+  "autoReplyErrorCode": zod.string().nullable().describe('Why the automatic reply stopped, so the app can explain it.'),
+  "text": zod.string().describe('Empty when nothing readable was stored.'),
+  "messageType": zod.enum(['text', 'unknown']).describe('Whether the message held text. The server derives this from the stored body rather than reading a type field, so it cannot name an attachment type.'),
+  "occurredAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date(),
+  "errorCode": zod.string().nullable()
+}).describe('One message of a one-to-one WhatsApp conversation. The inbox stores only encrypted text, so a message either has text or it does not — there is no attachment type to report.')),
+  "nextCursor": zod.union([zod.object({
+  "beforeTimestamp": zod.coerce.date(),
+  "beforeId": zod.string()
+}),zod.null()]).describe('Null once the conversation is exhausted.')
+})
+
+
+/**
+ * Idempotent on `clientRequestId`: replaying the same request returns the message it created the first time, with `duplicate: true`, instead of sending a second reply. A request id reused with different text is refused rather than silently sending the new text.
+ * @summary Reply to a customer in a one-to-one WhatsApp conversation
+ */
+export const SendWhatsAppDirectReplyBody = zod.object({
+  "remoteJid": zod.string(),
+  "text": zod.string(),
+  "clientRequestId": zod.string().describe('Chosen by the client. Replaying a request with the same id returns the original message instead of sending again, so a retried tap on a slow connection cannot double-send.')
+})
+
+export const SendWhatsAppDirectReplyResponse = zod.object({
+  "message": zod.union([zod.object({
+  "id": zod.string(),
+  "remoteJid": zod.string(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "status": zod.enum(['received', 'sending', 'sent', 'failed', 'unknown']).describe('`unknown` means the provider took the request but never said what happened. It is a real state, not a failure: the app offers to confirm the message was not sent rather than retrying into a possible duplicate.'),
+  "autoReplyStatus": zod.string().nullable().describe('Only set on inbound messages that the auto-replier acted on.'),
+  "autoReplyErrorCode": zod.string().nullable().describe('Why the automatic reply stopped, so the app can explain it.'),
+  "text": zod.string().describe('Empty when nothing readable was stored.'),
+  "messageType": zod.enum(['text', 'unknown']).describe('Whether the message held text. The server derives this from the stored body rather than reading a type field, so it cannot name an attachment type.'),
+  "occurredAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date(),
+  "errorCode": zod.string().nullable()
+}).describe('One message of a one-to-one WhatsApp conversation. The inbox stores only encrypted text, so a message either has text or it does not — there is no attachment type to report.'),zod.null()]).describe('Null only if the stored row could not be read back.'),
+  "duplicate": zod.boolean().optional().describe('True when the request id had already been used and nothing new was sent.')
+})
+
+
+/**
+ * Closes out a message the provider never confirmed. Only an outbound message still in `unknown` can be confirmed, and only once — this is what stops a retry from sending the same reply twice.
+ * @summary Record that a reply with an unknown outcome never arrived
+ */
+export const confirmWhatsAppDirectReplyNotSentPathIdMax = 200;
+
+
+
+export const ConfirmWhatsAppDirectReplyNotSentParams = zod.object({
+  "id": zod.coerce.string().min(1).max(confirmWhatsAppDirectReplyNotSentPathIdMax)
+})
+
+export const ConfirmWhatsAppDirectReplyNotSentResponse = zod.object({
+  "message": zod.object({
+  "id": zod.string(),
+  "remoteJid": zod.string(),
+  "direction": zod.enum(['inbound', 'outbound']),
+  "status": zod.enum(['received', 'sending', 'sent', 'failed', 'unknown']).describe('`unknown` means the provider took the request but never said what happened. It is a real state, not a failure: the app offers to confirm the message was not sent rather than retrying into a possible duplicate.'),
+  "autoReplyStatus": zod.string().nullable().describe('Only set on inbound messages that the auto-replier acted on.'),
+  "autoReplyErrorCode": zod.string().nullable().describe('Why the automatic reply stopped, so the app can explain it.'),
+  "text": zod.string().describe('Empty when nothing readable was stored.'),
+  "messageType": zod.enum(['text', 'unknown']).describe('Whether the message held text. The server derives this from the stored body rather than reading a type field, so it cannot name an attachment type.'),
+  "occurredAt": zod.coerce.date(),
+  "createdAt": zod.coerce.date(),
+  "errorCode": zod.string().nullable()
+}).describe('One message of a one-to-one WhatsApp conversation. The inbox stores only encrypted text, so a message either has text or it does not — there is no attachment type to report.')
+})
+
+
+/**
+ * When a customer sends a photo and its caption as two messages, the extractor cannot know they belong together. The merchant decides here. Accepting links them into one content bundle; both messages are then re-queued so the product is extracted from the pair.
+ * @summary Record whether two messages are one piece of content
+ */
+export const DecideWhatsAppContentAssociationBody = zod.object({
+  "firstMessageId": zod.string(),
+  "secondMessageId": zod.string(),
+  "decision": zod.enum(['accepted', 'rejected'])
+})
+
+export const DecideWhatsAppContentAssociationResponse = zod.object({
+  "decision": zod.enum(['accepted', 'rejected']),
+  "contentBundleId": zod.string().nullable().describe('The bundle the pair was linked into. Null when rejected.')
 })
 
 

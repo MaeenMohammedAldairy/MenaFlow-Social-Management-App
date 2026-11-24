@@ -1250,6 +1250,169 @@ export interface PushTokenRemovedResponse {
   removed: boolean;
 }
 
+export type WhatsAppDirectMessageDirection = typeof WhatsAppDirectMessageDirection[keyof typeof WhatsAppDirectMessageDirection];
+
+
+export const WhatsAppDirectMessageDirection = {
+  inbound: 'inbound',
+  outbound: 'outbound',
+} as const;
+
+/**
+ * `unknown` means the provider took the request but never said what happened. It is a real state, not a failure: the app offers to confirm the message was not sent rather than retrying into a possible duplicate.
+ */
+export type WhatsAppDirectMessageStatus = typeof WhatsAppDirectMessageStatus[keyof typeof WhatsAppDirectMessageStatus];
+
+
+export const WhatsAppDirectMessageStatus = {
+  received: 'received',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * Whether the message held text. The server derives this from the stored body rather than reading a type field, so it cannot name an attachment type.
+ */
+export type WhatsAppDirectMessageMessageType = typeof WhatsAppDirectMessageMessageType[keyof typeof WhatsAppDirectMessageMessageType];
+
+
+export const WhatsAppDirectMessageMessageType = {
+  text: 'text',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * One message of a one-to-one WhatsApp conversation. The inbox stores only encrypted text, so a message either has text or it does not — there is no attachment type to report.
+ */
+export interface WhatsAppDirectMessage {
+  id: string;
+  remoteJid: string;
+  direction: WhatsAppDirectMessageDirection;
+  /** `unknown` means the provider took the request but never said what happened. It is a real state, not a failure: the app offers to confirm the message was not sent rather than retrying into a possible duplicate. */
+  status: WhatsAppDirectMessageStatus;
+  /**
+     * Only set on inbound messages that the auto-replier acted on.
+     * @nullable
+     */
+  autoReplyStatus: string | null;
+  /**
+     * Why the automatic reply stopped, so the app can explain it.
+     * @nullable
+     */
+  autoReplyErrorCode: string | null;
+  /** Empty when nothing readable was stored. */
+  text: string;
+  /** Whether the message held text. The server derives this from the stored body rather than reading a type field, so it cannot name an attachment type. */
+  messageType: WhatsAppDirectMessageMessageType;
+  occurredAt: string;
+  createdAt: string;
+  /** @nullable */
+  errorCode: string | null;
+}
+
+/**
+ * Null once the conversation is exhausted.
+ */
+export type WhatsAppDirectMessageListResponseNextCursor = {
+  beforeTimestamp: string;
+  beforeId: string;
+} | null;
+
+export interface WhatsAppDirectMessageListResponse {
+  messages: WhatsAppDirectMessage[];
+  /** Null once the conversation is exhausted. */
+  nextCursor: WhatsAppDirectMessageListResponseNextCursor;
+}
+
+export type WhatsAppDirectConversationLastDirection = typeof WhatsAppDirectConversationLastDirection[keyof typeof WhatsAppDirectConversationLastDirection];
+
+
+export const WhatsAppDirectConversationLastDirection = {
+  inbound: 'inbound',
+  outbound: 'outbound',
+} as const;
+
+export type WhatsAppDirectConversationLastStatus = typeof WhatsAppDirectConversationLastStatus[keyof typeof WhatsAppDirectConversationLastStatus];
+
+
+export const WhatsAppDirectConversationLastStatus = {
+  received: 'received',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+  unknown: 'unknown',
+} as const;
+
+export interface WhatsAppDirectConversation {
+  remoteJid: string;
+  /** The phone number where the provider supplies one; otherwise a label carrying the opaque id, so the row is never blank. */
+  customerNumber: string;
+  preview: string;
+  lastDirection: WhatsAppDirectConversationLastDirection;
+  lastStatus: WhatsAppDirectConversationLastStatus;
+  lastMessageAt: string;
+}
+
+export interface WhatsAppDirectConversationListResponse {
+  conversations: WhatsAppDirectConversation[];
+}
+
+export interface WhatsAppDirectReplyInput {
+  remoteJid: string;
+  text: string;
+  /** Chosen by the client. Replaying a request with the same id returns the original message instead of sending again, so a retried tap on a slow connection cannot double-send. */
+  clientRequestId: string;
+}
+
+export interface WhatsAppDirectReplyResponse {
+  /** Null only if the stored row could not be read back. */
+  message: WhatsAppDirectMessage | null;
+  /** True when the request id had already been used and nothing new was sent. */
+  duplicate?: boolean;
+}
+
+export interface WhatsAppDirectMessageEnvelope {
+  message: WhatsAppDirectMessage;
+}
+
+export type WhatsAppDirectReplyUncertain = ApiError & ({
+  /** The message as stored, with status `unknown`. */
+  message?: WhatsAppDirectMessage | null;
+});
+
+export type WhatsAppContentAssociationInputDecision = typeof WhatsAppContentAssociationInputDecision[keyof typeof WhatsAppContentAssociationInputDecision];
+
+
+export const WhatsAppContentAssociationInputDecision = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export interface WhatsAppContentAssociationInput {
+  firstMessageId: string;
+  secondMessageId: string;
+  decision: WhatsAppContentAssociationInputDecision;
+}
+
+export type WhatsAppContentAssociationDecisionDecision = typeof WhatsAppContentAssociationDecisionDecision[keyof typeof WhatsAppContentAssociationDecisionDecision];
+
+
+export const WhatsAppContentAssociationDecisionDecision = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export interface WhatsAppContentAssociationDecision {
+  decision: WhatsAppContentAssociationDecisionDecision;
+  /**
+     * The bundle the pair was linked into. Null when rejected.
+     * @nullable
+     */
+  contentBundleId: string | null;
+}
+
 export type ProductMediaUploadResponseMedia = {
   id: string;
   mediaType: string;
@@ -2126,7 +2289,7 @@ export type MetaInboundDiagnosticsSubscriptionsItem = {
 export interface MetaInboundDiagnostics {
   deliveryConfirmed: boolean;
   /** @nullable */
-  lastInboxItemAt?: string | null;
+  lastInboxItemAt: string | null;
   inboxItemCount: number;
   inboxCountByPlatform: MetaInboundDiagnosticsInboxCountByPlatform;
   autoReplyJobs: MetaInboundDiagnosticsAutoReplyJobs;
@@ -2137,15 +2300,290 @@ export interface MetaInboundDiagnostics {
   issues: DiagnosticIssue[];
 }
 
+export interface MetaInboxMedia {
+  type: string;
+  /** @nullable */
+  url: string | null;
+  /** @nullable */
+  thumbnailUrl: string | null;
+}
+
+export type MetaInboxItemPlatform = typeof MetaInboxItemPlatform[keyof typeof MetaInboxItemPlatform];
+
+
+export const MetaInboxItemPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type MetaInboxItemKind = typeof MetaInboxItemKind[keyof typeof MetaInboxItemKind];
+
+
+export const MetaInboxItemKind = {
+  message: 'message',
+  comment: 'comment',
+} as const;
+
+/**
+ * @nullable
+ */
+export type MetaInboxItemReplyStatus = typeof MetaInboxItemReplyStatus[keyof typeof MetaInboxItemReplyStatus] | null;
+
+
+export const MetaInboxItemReplyStatus = {
+  sending: 'sending',
+  unknown: 'unknown',
+  null: 'null',
+} as const;
+
+/**
+ * @nullable
+ */
+export type MetaInboxItemAutoReplyStatus = typeof MetaInboxItemAutoReplyStatus[keyof typeof MetaInboxItemAutoReplyStatus] | null;
+
+
+export const MetaInboxItemAutoReplyStatus = {
+  queued: 'queued',
+  processing: 'processing',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+  skipped: 'skipped',
+  unknown: 'unknown',
+  null: 'null',
+} as const;
+
+/**
+ * One message or comment from Facebook or Instagram. `autoReplyStatus` and `autoReplyErrorCode` come from the job that acted on the item, so a screen can explain why no reply went out instead of showing a generic failure.
+ */
+export interface MetaInboxItem {
+  id: string;
+  platform: MetaInboxItemPlatform;
+  kind: MetaInboxItemKind;
+  externalId: string;
+  conversationId: string;
+  /**
+     * The comment this one replies to, for threads.
+     * @nullable
+     */
+  parentId: string | null;
+  /**
+     * Null when the platform did not identify the author; the conversation id or external id is used to group the thread instead.
+     * @nullable
+     */
+  actorId: string | null;
+  /** @nullable */
+  actorName: string | null;
+  text: string;
+  media: MetaInboxMedia[];
+  occurredAt: string;
+  /** @nullable */
+  replyText: string | null;
+  /** @nullable */
+  repliedAt: string | null;
+  /** @nullable */
+  replyStatus: MetaInboxItemReplyStatus;
+  /** @nullable */
+  autoReplyStatus: MetaInboxItemAutoReplyStatus;
+  /** @nullable */
+  autoReplyErrorCode: string | null;
+}
+
+export type MetaInboxWebhookStateAccounts = {
+  /** @nullable */
+  facebook: string | null;
+  /** @nullable */
+  instagram: string | null;
+};
+
+export type MetaInboxWebhookStateSubscriptions = {[key: string]: {
+  accountId: string;
+  /** @nullable */
+  subscribedAt: string | null;
+  fields: string[];
+  /** @nullable */
+  errorCode: string | null;
+}};
+
+export interface MetaInboxWebhookState {
+  verificationConfigured: boolean;
+  /** @nullable */
+  callbackUrl: string | null;
+  /**
+     * When Meta last called, across every platform.
+     * @nullable
+     */
+  lastEventAt: string | null;
+  accounts: MetaInboxWebhookStateAccounts;
+  subscriptions: MetaInboxWebhookStateSubscriptions;
+}
+
+export interface MetaInboxResponse {
+  webhook: MetaInboxWebhookState;
+  hasMore: boolean;
+  /** @nullable */
+  nextCursor: string | null;
+  items: MetaInboxItem[];
+}
+
+export interface MetaInboxReplyInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  text: string;
+}
+
+export interface MetaInboxReplyResponse {
+  sent: boolean;
+  itemId: string;
+  replyText: string;
+  replyExternalId: string;
+  repliedAt: string;
+}
+
+export type MetaInboxAutoReplyResponseAutoReplyStatus = typeof MetaInboxAutoReplyResponseAutoReplyStatus[keyof typeof MetaInboxAutoReplyResponseAutoReplyStatus];
+
+
+export const MetaInboxAutoReplyResponseAutoReplyStatus = {
+  queued: 'queued',
+  processing: 'processing',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+  skipped: 'skipped',
+  unknown: 'unknown',
+} as const;
+
+export interface MetaInboxAutoReplyResponse {
+  queued: boolean;
+  autoReplyStatus: MetaInboxAutoReplyResponseAutoReplyStatus;
+}
+
+export interface MetaInboxRetryConfirmationResponse {
+  cleared: boolean;
+}
+
+export interface MetaAutoReplyHistoricalPost {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  /** @nullable */
+  imageUrl: string | null;
+  /** Catalog products this post is linked to, by name. */
+  products: string[];
+  /** Comments old enough that answering them will not look like a duplicate. */
+  eligibleCommentCount: number;
+}
+
+export interface MetaAutoReplyHistoricalPlatform {
+  ready: boolean;
+  /**
+     * Why not, when `ready` is false. Null when ready.
+     * @nullable
+     */
+  reason: string | null;
+  /** Empty when `ready` is false. */
+  posts: MetaAutoReplyHistoricalPost[];
+}
+
+export type MetaAutoReplyHistoricalPostsResponsePlatforms = {
+  facebook: MetaAutoReplyHistoricalPlatform;
+  instagram: MetaAutoReplyHistoricalPlatform;
+};
+
+export interface MetaAutoReplyHistoricalPostsResponse {
+  platforms: MetaAutoReplyHistoricalPostsResponsePlatforms;
+}
+
+export type MetaAutoReplyHistoricalQueueInputPlatform = typeof MetaAutoReplyHistoricalQueueInputPlatform[keyof typeof MetaAutoReplyHistoricalQueueInputPlatform];
+
+
+export const MetaAutoReplyHistoricalQueueInputPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+/**
+ * Exactly one of `allEligible` or `postIds`. Sending both, or neither, is rejected rather than guessed at.
+ */
+export interface MetaAutoReplyHistoricalQueueInput {
+  platform: MetaAutoReplyHistoricalQueueInputPlatform;
+  allEligible?: boolean;
+  /**
+     * @minItems 1
+     * @maxItems 100
+     * @items.minLength 1
+     */
+  postIds?: string[];
+}
+
+export interface MetaAutoReplyHistoricalQueueResponse {
+  queuedCount: number;
+  /** How many worker batches the queue became. */
+  batchCount: number;
+}
+
+export type MetaAutoReplyTestInputPlatform = typeof MetaAutoReplyTestInputPlatform[keyof typeof MetaAutoReplyTestInputPlatform];
+
+
+export const MetaAutoReplyTestInputPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type MetaAutoReplyTestInputKind = typeof MetaAutoReplyTestInputKind[keyof typeof MetaAutoReplyTestInputKind];
+
+
+export const MetaAutoReplyTestInputKind = {
+  message: 'message',
+  comment: 'comment',
+} as const;
+
+export type MetaAutoReplySettingsLanguage = typeof MetaAutoReplySettingsLanguage[keyof typeof MetaAutoReplySettingsLanguage];
+
+
+export const MetaAutoReplySettingsLanguage = {
+  ar: 'ar',
+  match_customer: 'match_customer',
+} as const;
+
+export type MetaAutoReplySettingsTone = typeof MetaAutoReplySettingsTone[keyof typeof MetaAutoReplySettingsTone];
+
+
+export const MetaAutoReplySettingsTone = {
+  friendly_professional: 'friendly_professional',
+  concise: 'concise',
+  formal: 'formal',
+} as const;
+
 export interface MetaAutoReplySettings {
   enabled: boolean;
   facebookMessagesEnabled: boolean;
   facebookCommentsEnabled: boolean;
   instagramMessagesEnabled: boolean;
   instagramCommentsEnabled: boolean;
-  language: string;
-  tone: string;
+  language: MetaAutoReplySettingsLanguage;
+  tone: MetaAutoReplySettingsTone;
+  /** @maxLength 2000 */
   instructions: string;
+}
+
+export interface MetaAutoReplyTestInput {
+  message: string;
+  settings: MetaAutoReplySettings;
+  platform?: MetaAutoReplyTestInputPlatform;
+  kind?: MetaAutoReplyTestInputKind;
+}
+
+export interface MetaAutoReplyTestResponse {
+  reply: string;
+  /**
+     * The catalog product the reply quoted a price for, by name.
+     * @nullable
+     */
+  matchedProduct: string | null;
 }
 
 export interface MetaAutoReplyReadiness {
@@ -2430,6 +2868,37 @@ export const ListWhatsAppGroupMessagesSort = {
   desc: 'desc',
 } as const;
 
+export type ListMetaInboxParams = {
+platform?: ListMetaInboxPlatform;
+kind?: ListMetaInboxKind;
+/**
+ * One conversation. Matches the actor id where there is one, and falls back to the conversation id for messages or the external id for comments, so a thread with no actor still opens.
+ */
+personId?: string;
+cursor?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type ListMetaInboxPlatform = typeof ListMetaInboxPlatform[keyof typeof ListMetaInboxPlatform];
+
+
+export const ListMetaInboxPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type ListMetaInboxKind = typeof ListMetaInboxKind[keyof typeof ListMetaInboxKind];
+
+
+export const ListMetaInboxKind = {
+  message: 'message',
+  comment: 'comment',
+} as const;
+
 export type GetWhatsAppMediaUrlParams = {
 variant?: GetWhatsAppMediaUrlVariant;
 };
@@ -2441,4 +2910,39 @@ export const GetWhatsAppMediaUrlVariant = {
   original: 'original',
   thumbnail: 'thumbnail',
 } as const;
+
+export type GetWhatsAppPublicMediaParams = {
+expires: string;
+signature: string;
+/**
+ * `instagram-jpeg` is a re-encode for Meta and is only valid for images; anything else is served as the original.
+ */
+variant?: GetWhatsAppPublicMediaVariant;
+};
+
+export type GetWhatsAppPublicMediaVariant = typeof GetWhatsAppPublicMediaVariant[keyof typeof GetWhatsAppPublicMediaVariant];
+
+
+export const GetWhatsAppPublicMediaVariant = {
+  original: 'original',
+  thumbnail: 'thumbnail',
+  'instagram-jpeg': 'instagram-jpeg',
+} as const;
+
+export type ListWhatsAppDirectMessagesParams = {
+/**
+ * The conversation to read
+ * @minLength 1
+ */
+remoteJid: string;
+/**
+ * Where the previous page ended. Send together with `beforeId`.
+ */
+beforeTimestamp?: string;
+/**
+ * Where the previous page ended. Send together with `beforeTimestamp`.
+ * @maxLength 200
+ */
+beforeId?: string;
+};
 

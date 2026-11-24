@@ -11,7 +11,6 @@ export type { WhatsAppSyncStatusEntry } from "./whatsapp-groups";
 export * from "./social-connections";
 export * from "./social-account-details";
 export * from "./content-management";
-export * from "./whatsapp-content-associations";
 export * from "./onboarding";
 
 export {

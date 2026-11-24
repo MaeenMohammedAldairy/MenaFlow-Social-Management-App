@@ -1206,6 +1206,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+    put:
+      operationId: saveMetaAutoReplySettings
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Replace the Meta automatic-reply settings
+      description: >-
+        A full replace, not a patch: every field is required, so a client that
+        omits one resets it rather than leaving it alone. Settings can be saved
+        before Meta is connected, but not before a connection exists at all.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetaAutoReplySettings"
+      responses:
+        "200":
+          description: The settings as saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaAutoReplySettings"
+        "400":
+          description: A field is missing or out of range — a language or tone the server does not know, or instructions over 2000 characters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Meta is not connected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: The settings could not be saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /social/meta-inbox/webhook-subscriptions:
     post:
       operationId: activateMetaWebhookSubscriptions
@@ -2740,6 +2787,333 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /social/meta-inbox:
+    get:
+      operationId: listMetaInbox
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: The Facebook and Instagram inbox
+      description: >-
+        Messages and comments from both platforms in one feed, newest first, at
+        most 100 per page. The response opens with the webhook's own state, so a
+        screen can say "Meta has not called us since Tuesday" instead of showing
+        an empty inbox with no explanation.
+      parameters:
+        - name: platform
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [facebook, instagram]
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [message, comment]
+        - name: personId
+          in: query
+          required: false
+          description: >-
+            One conversation. Matches the actor id where there is one, and falls
+            back to the conversation id for messages or the external id for
+            comments, so a thread with no actor still opens.
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: A page of the inbox, with the webhook state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaInboxResponse"
+        "400":
+          description: An unknown filter, or a page size outside 1-100
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta-inbox/items/{id}/reply:
+    post:
+      operationId: sendMetaInboxReply
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Reply to a message or comment as the page
+      description: >-
+        Sends through the Graph API and records the reply on the item. A failure
+        the server cannot classify comes back as `META_SEND_RESULT_UNKNOWN` rather
+        than a plain error: the reply may or may not have landed, so the app must
+        not retry it blindly.
+      parameters:
+        - $ref: "#/components/parameters/MetaInboxItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetaInboxReplyInput"
+      responses:
+        "200":
+          description: Reply sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaInboxReplyResponse"
+        "400":
+          description: Invalid item id, or a reply outside 1-2000 characters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such item in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            Meta is not connected, the item is not a kind that can be replied to,
+            or it has already been replied to.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "422":
+          description: Meta refused the reply, with a reason the merchant can act on
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: >-
+            The send was attempted but its outcome is unknown (code
+            `META_SEND_RESULT_UNKNOWN`). Confirm with the thread before retrying.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta-inbox/items/{id}/auto-reply:
+    post:
+      operationId: retryMetaInboxAutoReply
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Re-queue the automatic reply for one item
+      description: >-
+        For an item whose automatic reply failed or was skipped. Does nothing once
+        a reply exists — manual and automatic replies share one slot, so
+        re-queuing would send a second answer to the same customer.
+      parameters:
+        - $ref: "#/components/parameters/MetaInboxItemId"
+      responses:
+        "200":
+          description: Re-queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaInboxAutoReplyResponse"
+        "400":
+          description: Invalid item identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such item in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Already replied to, or automatic replies are off for this platform
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta-inbox/items/{id}/retry-confirmation:
+    post:
+      operationId: confirmMetaInboxReplyNotSent
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Record that a reply with an unknown outcome never arrived
+      description: >-
+        Clears an unresolved send attempt so the merchant can try again. Only an
+        item whose reply status is still unknown can be cleared, and only once.
+      parameters:
+        - $ref: "#/components/parameters/MetaInboxItemId"
+      responses:
+        "200":
+          description: Cleared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaInboxRetryConfirmationResponse"
+        "400":
+          description: Invalid item identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Nothing unresolved to clear, or the item was already replied to
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta-auto-replies/historical-comments:
+    get:
+      operationId: getMetaAutoReplyHistoricalPosts
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Published posts that could receive automatic comment replies
+      description: >-
+        Per platform, whether the feature is ready and why not if it is not, plus
+        the posts with comments old enough to answer. `posts` is empty when
+        `ready` is false, so the picker can show the reason instead of a dead list.
+      responses:
+        "200":
+          description: Candidate posts per platform
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaAutoReplyHistoricalPostsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    post:
+      operationId: queueMetaAutoReplyHistoricalComments
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Queue every eligible comment on the selected posts for an automatic reply
+      description: >-
+        Either `allEligible` or an explicit `postIds` list, never both. Replies are
+        queued in batches, so the response reports how many were queued and how
+        many batches that became.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetaAutoReplyHistoricalQueueInput"
+      responses:
+        "202":
+          description: Comments queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaAutoReplyHistoricalQueueResponse"
+        "400":
+          description: Invalid platform, an empty or oversized post list, or duplicate post ids
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: Comment replies are off for that platform, or Meta is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta-auto-replies/test:
+    post:
+      operationId: testMetaAutoReply
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Draft a reply to a sample message, without sending it
+      description: >-
+        Runs the same composition the worker uses, against settings the merchant
+        has not saved yet, so the settings screen can show what a reply would look
+        like. Nothing is sent and nothing is stored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetaAutoReplyTestInput"
+      responses:
+        "200":
+          description: The drafted reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaAutoReplyTestResponse"
+        "400":
+          description: The supplied settings are not valid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: The AI provider failed to draft a reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: No AI key is configured on the server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /social/whatsapp/media/{mediaId}/url:
     get:
       operationId: getWhatsAppMediaUrl
@@ -2782,6 +3156,371 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/media/{mediaId}:
+    get:
+      operationId: getWhatsAppMedia
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Serve a stored WhatsApp attachment to a signed-in member
+      description: >-
+        The authenticated counterpart of the public signed link, for callers that
+        already hold a session — the app uses it where it has a token and no
+        signature to hand. Returns the original file; thumbnails come from the
+        public endpoint with `variant=thumbnail`.
+      parameters:
+        - name: mediaId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: The stored bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No such attachment in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: The stored file could not be read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/public-media/{mediaId}:
+    get:
+      operationId: getWhatsAppPublicMedia
+      tags: [social]
+      summary: Serve a WhatsApp attachment over a signed link
+      description: >-
+        No bearer token: message media previews point here and are rendered
+        directly by an image tag, so access is granted by the signature instead.
+        The signature covers the media id, the expiry and the variant, which is
+        why a thumbnail link cannot be swapped for the original.
+      parameters:
+        - name: mediaId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - name: expires
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: signature
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: variant
+          in: query
+          required: false
+          description: >-
+            `instagram-jpeg` is a re-encode for Meta and is only valid for
+            images; anything else is served as the original.
+          schema:
+            type: string
+            enum: [original, thumbnail, instagram-jpeg]
+            default: original
+      responses:
+        "200":
+          description: The media bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          description: The Instagram JPEG variant was asked of a video
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "403":
+          description: Bad signature, or the link has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: Unknown media id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: The stored file could not be read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/direct-conversations:
+    get:
+      operationId: listWhatsAppDirectConversations
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: The workspace's one-to-one WhatsApp conversations
+      description: >-
+        One row per customer number, newest message first, at most 100. Only
+        conversations with a message still inside the retention window appear,
+        and every row carries the preview and the last delivery status so the list
+        can be rendered without a second request per conversation.
+      responses:
+        "200":
+          description: Conversations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppDirectConversationListResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The workspace has no WhatsApp connection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/direct-messages:
+    get:
+      operationId: listWhatsAppDirectMessages
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: One conversation's messages, newest first
+      description: >-
+        At most 100 per page. `nextCursor` is `null` once the conversation is
+        exhausted. Duplicates of the same provider message are collapsed, and
+        messages whose encrypted content can no longer be read are skipped rather
+        than failing the page.
+      parameters:
+        - name: remoteJid
+          in: query
+          required: true
+          description: The conversation to read
+          schema:
+            type: string
+            minLength: 1
+        - name: beforeTimestamp
+          in: query
+          required: false
+          description: Where the previous page ended. Send together with `beforeId`.
+          schema:
+            type: string
+            format: date-time
+        - name: beforeId
+          in: query
+          required: false
+          description: Where the previous page ended. Send together with `beforeTimestamp`.
+          schema:
+            type: string
+            maxLength: 200
+      responses:
+        "200":
+          description: A page of messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppDirectMessageListResponse"
+        "400":
+          description: Invalid conversation id, or a cursor missing half of its pair
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The workspace has no WhatsApp connection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/direct-messages/reply:
+    post:
+      operationId: sendWhatsAppDirectReply
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Reply to a customer in a one-to-one WhatsApp conversation
+      description: >-
+        Idempotent on `clientRequestId`: replaying the same request returns the
+        message it created the first time, with `duplicate: true`, instead of
+        sending a second reply. A request id reused with different text is
+        refused rather than silently sending the new text.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsAppDirectReplyInput"
+      responses:
+        "201":
+          description: Reply queued and handed to the provider
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppDirectReplyResponse"
+        "400":
+          description: Missing or malformed conversation id, text or request id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No WhatsApp connection, or no inbound conversation with that number
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            The conversation id has no phone-number form to reply to, or the
+            request id was already used for different content.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: >-
+            The provider accepted the request but its outcome is unknown. The
+            message is stored as `unknown` and returned in the body, so the app
+            can offer to confirm it was not sent instead of retrying blindly.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppDirectReplyUncertain"
+  /social/whatsapp/direct-messages/{id}/confirm-not-sent:
+    post:
+      operationId: confirmWhatsAppDirectReplyNotSent
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Record that a reply with an unknown outcome never arrived
+      description: >-
+        Closes out a message the provider never confirmed. Only an outbound
+        message still in `unknown` can be confirmed, and only once — this is what
+        stops a retry from sending the same reply twice.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+      responses:
+        "200":
+          description: The message as now recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppDirectMessageEnvelope"
+        "400":
+          description: Invalid message identifier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: The message is not awaiting confirmation, or was already resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/whatsapp/content-associations:
+    post:
+      operationId: decideWhatsAppContentAssociation
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Record whether two messages are one piece of content
+      description: >-
+        When a customer sends a photo and its caption as two messages, the
+        extractor cannot know they belong together. The merchant decides here.
+        Accepting links them into one content bundle; both messages are then
+        re-queued so the product is extracted from the pair.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WhatsAppContentAssociationInput"
+      responses:
+        "200":
+          description: Decision recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppContentAssociationDecision"
+        "400":
+          description: Missing ids, the same id twice, or an unknown decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: The two messages are not in the same group and workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            A different decision was already saved for this pair, one of the
+            messages is gone, or the group is not selected for syncing.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "500":
+          description: The decision could not be saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 components:
   securitySchemes:
     bearerAuth:
@@ -2798,6 +3537,14 @@ components:
         type: string
         minLength: 1
         maxLength: 200
+    MetaInboxItemId:
+      name: id
+      in: path
+      required: true
+      description: Identifier of an inbox item — a message or a comment
+      schema:
+        type: string
+        minLength: 1
     ProductId:
       name: id
       in: path
@@ -4326,6 +5073,185 @@ components:
         `availability`, `media` and `name` block publication; `description` is
         advisory.
       enum: [name, description, price, currency, availability, media]
+    WhatsAppDirectMessage:
+      type: object
+      description: >-
+        One message of a one-to-one WhatsApp conversation. The inbox stores only
+        encrypted text, so a message either has text or it does not — there is no
+        attachment type to report.
+      required:
+        - id
+        - remoteJid
+        - direction
+        - status
+        - autoReplyStatus
+        - autoReplyErrorCode
+        - text
+        - messageType
+        - occurredAt
+        - createdAt
+        - errorCode
+      properties:
+        id:
+          type: string
+        remoteJid:
+          type: string
+        direction:
+          type: string
+          enum: [inbound, outbound]
+        status:
+          type: string
+          enum: [received, sending, sent, failed, unknown]
+          description: >-
+            `unknown` means the provider took the request but never said what
+            happened. It is a real state, not a failure: the app offers to
+            confirm the message was not sent rather than retrying into a
+            possible duplicate.
+        autoReplyStatus:
+          type: [string, "null"]
+          description: Only set on inbound messages that the auto-replier acted on.
+        autoReplyErrorCode:
+          type: [string, "null"]
+          description: Why the automatic reply stopped, so the app can explain it.
+        text:
+          type: string
+          description: Empty when nothing readable was stored.
+        messageType:
+          type: string
+          enum: [text, unknown]
+          description: >-
+            Whether the message held text. The server derives this from the
+            stored body rather than reading a type field, so it cannot name an
+            attachment type.
+        occurredAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        errorCode:
+          type: [string, "null"]
+    WhatsAppDirectMessageListResponse:
+      type: object
+      required: [messages, nextCursor]
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppDirectMessage"
+        nextCursor:
+          description: Null once the conversation is exhausted.
+          oneOf:
+            - type: object
+              required: [beforeTimestamp, beforeId]
+              properties:
+                beforeTimestamp:
+                  type: string
+                  format: date-time
+                beforeId:
+                  type: string
+            - type: "null"
+    WhatsAppDirectConversation:
+      type: object
+      required:
+        - remoteJid
+        - customerNumber
+        - preview
+        - lastDirection
+        - lastStatus
+        - lastMessageAt
+      properties:
+        remoteJid:
+          type: string
+        customerNumber:
+          type: string
+          description: >-
+            The phone number where the provider supplies one; otherwise a label
+            carrying the opaque id, so the row is never blank.
+        preview:
+          type: string
+        lastDirection:
+          type: string
+          enum: [inbound, outbound]
+        lastStatus:
+          type: string
+          enum: [received, sending, sent, failed, unknown]
+        lastMessageAt:
+          type: string
+          format: date-time
+    WhatsAppDirectConversationListResponse:
+      type: object
+      required: [conversations]
+      properties:
+        conversations:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppDirectConversation"
+    WhatsAppDirectReplyInput:
+      type: object
+      required: [remoteJid, text, clientRequestId]
+      properties:
+        remoteJid:
+          type: string
+        text:
+          type: string
+        clientRequestId:
+          type: string
+          description: >-
+            Chosen by the client. Replaying a request with the same id returns the
+            original message instead of sending again, so a retried tap on a slow
+            connection cannot double-send.
+      additionalProperties: false
+    WhatsAppDirectReplyResponse:
+      type: object
+      required: [message]
+      properties:
+        message:
+          description: Null only if the stored row could not be read back.
+          oneOf:
+            - $ref: "#/components/schemas/WhatsAppDirectMessage"
+            - type: "null"
+        duplicate:
+          type: boolean
+          description: True when the request id had already been used and nothing new was sent.
+    WhatsAppDirectMessageEnvelope:
+      type: object
+      required: [message]
+      properties:
+        message:
+          $ref: "#/components/schemas/WhatsAppDirectMessage"
+    WhatsAppDirectReplyUncertain:
+      allOf:
+        - $ref: "#/components/schemas/ApiError"
+        - type: object
+          properties:
+            message:
+              description: The message as stored, with status `unknown`.
+              oneOf:
+                - $ref: "#/components/schemas/WhatsAppDirectMessage"
+                - type: "null"
+    WhatsAppContentAssociationInput:
+      type: object
+      required: [firstMessageId, secondMessageId, decision]
+      properties:
+        firstMessageId:
+          type: string
+        secondMessageId:
+          type: string
+        decision:
+          type: string
+          enum: [accepted, rejected]
+      additionalProperties: false
+    WhatsAppContentAssociationDecision:
+      type: object
+      required: [decision, contentBundleId]
+      properties:
+        decision:
+          type: string
+          enum: [accepted, rejected]
+        contentBundleId:
+          type: [string, "null"]
+          description: The bundle the pair was linked into. Null when rejected.
     ProductMediaPreview:
       type: object
       required: [id, url, mediaType]
@@ -5581,6 +6507,7 @@ components:
             $ref: "#/components/schemas/DiagnosticIssue"
       required:
         - deliveryConfirmed
+        - lastInboxItemAt
         - inboxItemCount
         - inboxCountByPlatform
         - autoReplyJobs
@@ -5589,6 +6516,290 @@ components:
         - appSecretConfigured
         - webhookAttempts
         - issues
+    MetaInboxMedia:
+      type: object
+      required: [type, url, thumbnailUrl]
+      properties:
+        type:
+          type: string
+        url:
+          type: [string, "null"]
+        thumbnailUrl:
+          type: [string, "null"]
+    MetaInboxItem:
+      type: object
+      description: >-
+        One message or comment from Facebook or Instagram. `autoReplyStatus` and
+        `autoReplyErrorCode` come from the job that acted on the item, so a screen
+        can explain why no reply went out instead of showing a generic failure.
+      required:
+        - id
+        - platform
+        - kind
+        - externalId
+        - conversationId
+        - parentId
+        - actorId
+        - actorName
+        - text
+        - media
+        - occurredAt
+        - replyText
+        - repliedAt
+        - replyStatus
+        - autoReplyStatus
+        - autoReplyErrorCode
+      properties:
+        id:
+          type: string
+        platform:
+          type: string
+          enum: [facebook, instagram]
+        kind:
+          type: string
+          enum: [message, comment]
+        externalId:
+          type: string
+        conversationId:
+          type: string
+        parentId:
+          type: [string, "null"]
+          description: The comment this one replies to, for threads.
+        actorId:
+          type: [string, "null"]
+          description: >-
+            Null when the platform did not identify the author; the conversation
+            id or external id is used to group the thread instead.
+        actorName:
+          type: [string, "null"]
+        text:
+          type: string
+        media:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetaInboxMedia"
+        occurredAt:
+          type: string
+          format: date-time
+        replyText:
+          type: [string, "null"]
+        repliedAt:
+          type: [string, "null"]
+          format: date-time
+        replyStatus:
+          type: [string, "null"]
+          enum: [sending, unknown, "null"]
+        autoReplyStatus:
+          type: [string, "null"]
+          enum: [queued, processing, sending, sent, failed, skipped, unknown, "null"]
+        autoReplyErrorCode:
+          type: [string, "null"]
+    MetaInboxWebhookState:
+      type: object
+      required:
+        - verificationConfigured
+        - callbackUrl
+        - lastEventAt
+        - accounts
+        - subscriptions
+      properties:
+        verificationConfigured:
+          type: boolean
+        callbackUrl:
+          type: [string, "null"]
+        lastEventAt:
+          type: [string, "null"]
+          format: date-time
+          description: When Meta last called, across every platform.
+        accounts:
+          type: object
+          required: [facebook, instagram]
+          properties:
+            facebook:
+              type: [string, "null"]
+            instagram:
+              type: [string, "null"]
+        subscriptions:
+          type: object
+          additionalProperties:
+            type: object
+            required: [accountId, subscribedAt, fields, errorCode]
+            properties:
+              accountId:
+                type: string
+              subscribedAt:
+                type: [string, "null"]
+                format: date-time
+              fields:
+                type: array
+                items:
+                  type: string
+              errorCode:
+                type: [string, "null"]
+    MetaInboxResponse:
+      type: object
+      required: [webhook, hasMore, nextCursor, items]
+      properties:
+        webhook:
+          $ref: "#/components/schemas/MetaInboxWebhookState"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: [string, "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetaInboxItem"
+    MetaInboxReplyInput:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      additionalProperties: false
+    MetaInboxReplyResponse:
+      type: object
+      required: [sent, itemId, replyText, replyExternalId, repliedAt]
+      properties:
+        sent:
+          type: boolean
+        itemId:
+          type: string
+        replyText:
+          type: string
+        replyExternalId:
+          type: string
+        repliedAt:
+          type: string
+          format: date-time
+    MetaInboxAutoReplyResponse:
+      type: object
+      required: [queued, autoReplyStatus]
+      properties:
+        queued:
+          type: boolean
+        autoReplyStatus:
+          type: string
+          enum: [queued, processing, sending, sent, failed, skipped, unknown]
+    MetaInboxRetryConfirmationResponse:
+      type: object
+      required: [cleared]
+      properties:
+        cleared:
+          type: boolean
+    MetaAutoReplyHistoricalPost:
+      type: object
+      required:
+        - id
+        - title
+        - body
+        - createdAt
+        - imageUrl
+        - products
+        - eligibleCommentCount
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        imageUrl:
+          type: [string, "null"]
+        products:
+          type: array
+          description: Catalog products this post is linked to, by name.
+          items:
+            type: string
+        eligibleCommentCount:
+          type: integer
+          description: Comments old enough that answering them will not look like a duplicate.
+    MetaAutoReplyHistoricalPlatform:
+      type: object
+      required: [ready, reason, posts]
+      properties:
+        ready:
+          type: boolean
+        reason:
+          type: [string, "null"]
+          description: Why not, when `ready` is false. Null when ready.
+        posts:
+          type: array
+          description: Empty when `ready` is false.
+          items:
+            $ref: "#/components/schemas/MetaAutoReplyHistoricalPost"
+    MetaAutoReplyHistoricalPostsResponse:
+      type: object
+      required: [platforms]
+      properties:
+        platforms:
+          type: object
+          required: [facebook, instagram]
+          properties:
+            facebook:
+              $ref: "#/components/schemas/MetaAutoReplyHistoricalPlatform"
+            instagram:
+              $ref: "#/components/schemas/MetaAutoReplyHistoricalPlatform"
+    MetaAutoReplyHistoricalQueueInput:
+      type: object
+      description: >-
+        Exactly one of `allEligible` or `postIds`. Sending both, or neither, is
+        rejected rather than guessed at.
+      required: [platform]
+      properties:
+        platform:
+          type: string
+          enum: [facebook, instagram]
+        allEligible:
+          type: boolean
+        postIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+            minLength: 1
+      additionalProperties: false
+    MetaAutoReplyHistoricalQueueResponse:
+      type: object
+      required: [queuedCount, batchCount]
+      properties:
+        queuedCount:
+          type: integer
+        batchCount:
+          type: integer
+          description: How many worker batches the queue became.
+    MetaAutoReplyTestInput:
+      type: object
+      required: [message, settings]
+      properties:
+        message:
+          type: string
+        settings:
+          $ref: "#/components/schemas/MetaAutoReplySettings"
+        platform:
+          type: string
+          enum: [facebook, instagram]
+          default: instagram
+        kind:
+          type: string
+          enum: [message, comment]
+          default: message
+      additionalProperties: false
+    MetaAutoReplyTestResponse:
+      type: object
+      required: [reply, matchedProduct]
+      properties:
+        reply:
+          type: string
+        matchedProduct:
+          type: [string, "null"]
+          description: The catalog product the reply quoted a price for, by name.
     MetaAutoReplySettings:
       type: object
       properties:
@@ -5604,10 +6815,13 @@ components:
           type: boolean
         language:
           type: string
+          enum: [ar, match_customer]
         tone:
           type: string
+          enum: [friendly_professional, concise, formal]
         instructions:
           type: string
+          maxLength: 2000
       required:
         - enabled
         - facebookMessagesEnabled
