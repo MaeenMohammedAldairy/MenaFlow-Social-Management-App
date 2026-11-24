@@ -12,6 +12,7 @@ import { useStudio } from '@/context/StudioContext';
 import { isLocalAuthDisabled } from '@/constants/auth';
 import { getOrderSummary } from '@/lib/orders-api';
 import { arabicCountPhrase } from '@/lib/formatting';
+import { useWorkspace } from '@/context/WorkspaceContext';
 import { POLL_AGGREGATE_MS } from '@/lib/poll-intervals';
 import { router, type Href } from 'expo-router';
 
@@ -176,12 +177,16 @@ function BrandHeaderContent({
 } & BrandHeaderProps) {
   const colors = useColors();
   const { posts } = useStudio();
+  const { scopeReady } = useWorkspace();
   const pendingReview = posts.filter((post) => post.status === 'review').length;
   const failedPosts = posts.filter((post) => post.status === 'failed').length;
   const orderSummaryQuery = useQuery({
     queryKey: ['order-summary', userId ?? 'local'],
     queryFn: getOrderSummary,
-    enabled: showBell && (isLocalAuthDisabled || Boolean(userId)),
+    // The order summary is workspace-scoped, so it waits for the active workspace
+    // like the dashboard's own queries do (`lib/workspace-queries.ts`); without the
+    // gate the bell fetched once before the header existed and again after.
+    enabled: showBell && scopeReady,
     staleTime: 30_000,
     refetchInterval: POLL_AGGREGATE_MS,
     refetchOnWindowFocus: true,

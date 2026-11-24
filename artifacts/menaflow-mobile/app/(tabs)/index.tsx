@@ -15,13 +15,23 @@ import {
   type LucideIconName,
 } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
-import { useStudio, type Post } from "@/context/StudioContext";
+import {
+  useStudio,
+  type Post,
+  type PostStatus,
+} from "@/context/StudioContext";
 import { useWorkspace } from "@/context/WorkspaceContext";
 import {
   canEditBusinessInfo as canEditBusinessInfoFor,
   setupChecklistProgress,
   type SetupStepKey,
 } from "@/lib/setup-flow";
+import {
+  channelSignals,
+  homeChannels,
+  pickPendingPost,
+} from "@/lib/home-channels";
+import { homeHero } from "@/lib/home-hero";
 import {
   consumeSetupCompleted,
   dismissSetupChecklist,
@@ -104,11 +114,18 @@ function ActivityMediaThumbnail({ uri }: { uri: string }) {
   );
 }
 
+/** The post queues the hero can point at; anything else opens the drafts. */
+function postQueueStatus(value: string | undefined): PostStatus {
+  return value === "failed" || value === "review" || value === "draft"
+    ? value
+    : "draft";
+}
+
 function HomeScreenContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const { posts, refreshPosts, syncing, ready, storageError, autoPublishSettings } =
     useStudio();
-  const { workspaces, activeWorkspaceId } = useWorkspace();
+  const { workspaces, activeWorkspaceId, scopeReady } = useWorkspace();
   const activeWorkspace =
     workspaces.find((workspace) => workspace.id === activeWorkspaceId) ??
     workspaces[0] ??
@@ -135,19 +152,27 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
   const { width } = useWindowDimensions();
   const isWideScreen = width >= 1024;
 
+  // All four queries below are workspace-scoped: the server answers from the
+  // workspace named in the `x-workspace-id` header. Gating them on the resolved
+  // workspace removes a duplicate round trip on every cold start (they used to
+  // fetch before the header existed and were then invalidated when it arrived), and
+  // it is what keeps them from being answered with a `409
+  // WORKSPACE_SELECTION_REQUIRED` once a merchant belongs to more than one
+  // workspace. See `lib/workspace-queries.ts`.
   const connectionsQuery = useQuery({
     queryKey: [
       ...getGetSocialConnectionsQueryKey(),
       userId ?? "local",
     ] as const,
     queryFn: getSocialConnections,
+    enabled: scopeReady,
   });
   const connections = connectionsQuery.data;
 
   const inboxQuery = useQuery({
     queryKey: ["meta-inbox", userId ?? "local"],
     queryFn: () => getMetaInbox(),
-    enabled: isLocalAuthDisabled || Boolean(userId),
+    enabled: scopeReady,
     retry: false,
     refetchInterval: POLL_LIST_MS,
     refetchOnWindowFocus: true,
@@ -155,7 +180,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
   const catalogQuery = useQuery({
     queryKey: ["product-catalog", userId ?? "local"],
     queryFn: () => getProductCatalog(false),
-    enabled: isLocalAuthDisabled || Boolean(userId),
+    enabled: scopeReady,
     retry: false,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
@@ -163,7 +188,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
   const orderSummaryQuery = useQuery({
     queryKey: ["order-summary", userId ?? "local"],
     queryFn: getOrderSummary,
-    enabled: isLocalAuthDisabled || Boolean(userId),
+    enabled: scopeReady,
     staleTime: 30_000,
     refetchInterval: POLL_AGGREGATE_MS,
     refetchOnWindowFocus: true,
@@ -214,73 +239,25 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
     }
   };
 
-  const channelsData = [
-    {
-      platform: "instagram" as const,
-      name: "إنستغرام",
-      accountName: connections?.instagram?.accountName
-        ? `@${connections.instagram.accountName}`
-        : null,
-      connected: connections?.instagram?.authorizationStatus === "ready",
-      needsReauthorization:
-        connections?.instagram?.authorizationStatus === "needs_reauthorization",
-      needsReconnection: false,
-      isConnecting: false,
-      isUnavailable: false,
-    },
-    {
-      platform: "facebook" as const,
-      name: "فيسبوك",
-      accountName: connections?.facebook?.accountName || null,
-      connected: connections?.facebook?.authorizationStatus === "ready",
-      needsReauthorization:
-        connections?.facebook?.authorizationStatus === "needs_reauthorization",
-      needsReconnection: false,
-      isConnecting: false,
-      isUnavailable: false,
-    },
-    {
-      platform: "whatsapp" as const,
-      name: "واتساب",
-      accountName: connections?.whatsapp?.accountName || null,
-      connected: connections?.whatsapp?.connectionState === "connected",
-      needsReauthorization: false,
-      needsReconnection: Boolean(
-        connections?.whatsapp &&
-        connections.whatsapp.connectionState !== "connected" &&
-        connections.whatsapp.connectionState !== "connecting" &&
-        connections.whatsapp.connectionState !== "unavailable",
-      ),
-      isConnecting: connections?.whatsapp?.connectionState === "connecting",
-      isUnavailable: connections?.whatsapp?.connectionState === "unavailable",
-    },
-  ];
+  // The cards, and the signals the hero and the tiles read from them, come from
+  // `lib/home-channels.ts`: eleven facts derived from one connections payload, each
+  // of which decides what the merchant is told, now asserted branch by branch.
+  const channelsData = homeChannels(connections);
   const connectionsUnavailable =
     connectionsQuery.isError ||
     (connectionsQuery.isFetched &&
       connectionsQuery.isFetching &&
       !connectionsQuery.data);
-  const hasAnyConnection =
-    !connectionsUnavailable &&
-    channelsData.some((channel) => channel.connected);
   const connectionsLoading =
     connectionsQuery.isPending && !connectionsQuery.isFetched;
-  const whatsappUnavailable = channelsData.some(
-    (channel) => channel.isUnavailable,
-  );
-  const accountNeedingReauthorization = channelsData.find(
-    (channel) => channel.needsReauthorization,
-  );
-  const whatsappConnecting = channelsData.some(
-    (channel) => channel.platform === "whatsapp" && channel.isConnecting,
-  );
-  const whatsappNeedsReconnection = channelsData.some(
-    (channel) => channel.platform === "whatsapp" && channel.needsReconnection,
-  );
-  const pendingPost =
-    posts.find((post) => post.status === "failed") ??
-    posts.find((post) => post.status === "review") ??
-    posts.find((post) => post.status === "draft");
+  const {
+    hasAnyConnection,
+    whatsappUnavailable,
+    whatsappConnecting,
+    whatsappNeedsReconnection,
+    accountNeedingReauthorization,
+  } = channelSignals(channelsData, connectionsUnavailable);
+  const pendingPost = pickPendingPost(posts);
   const recentActivities = [
     ...posts.map((post) => ({
       type: "post" as const,
@@ -394,135 +371,60 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
   const showSetupChecklist =
     ready && !setupChecklistDismissed && !checklist.isComplete;
 
-  let heroEyebrow = "خطوتك التالية";
-  let heroTitle = "تابع محتواك";
-  let heroBody = "حساباتك متصلة. أنشئ محتوى جديدًا وابدأ النشر.";
-  let heroPrimary: {
-    label: string;
-    icon: LucideIconName;
-    onPress: () => void;
-    disabled: boolean;
-  } = {
-    label: "إنشاء محتوى",
-    icon: "plus" as const,
-    onPress: createContent,
-    disabled: false,
+  // The nine-branch decision about what the merchant is told to do next lives in
+  // `lib/home-hero.ts`, where the *order* of the branches — the product decision —
+  // is tested. It returns words and an action descriptor; the handlers stay here.
+  const hero = homeHero({
+    connectionsLoading,
+    connectionsUnavailable,
+    retryingConnections: retryingHeroConnections,
+    connectionsFetching: connectionsQuery.isFetching,
+    accountNeedingReauthorization,
+    whatsappConnecting,
+    whatsappUnavailable,
+    whatsappNeedsReconnection,
+    hasAnyConnection,
+    postsReady: ready,
+    postCount: posts.length,
+    pendingPostStatus: pendingPost?.status ?? null,
+  });
+  const heroPrimary = {
+    ...hero.primary,
+    onPress: () => {
+      switch (hero.primary.action) {
+        case "retry-connections":
+          setRetryingHeroConnections(true);
+          void connectionsQuery.refetch().finally(() => {
+            setRetryingHeroConnections(false);
+          });
+          return;
+        case "reauthorize-meta":
+          openReconnect(hero.primary.platform ?? "instagram", true);
+          return;
+        case "manage-whatsapp":
+        case "link-account":
+          openPublishing();
+          return;
+        case "reconnect-whatsapp":
+          openReconnect("whatsapp", true);
+          return;
+        case "open-post-queue":
+          // Narrowed rather than cast: the hero only ever asks for one of the three
+          // queues it has wording for, and a future status it does not know lands on
+          // drafts instead of navigating with a value the screen cannot render.
+          router.push({
+            pathname: "/(tabs)/content",
+            params: { status: postQueueStatus(hero.primary.postStatus) },
+          });
+          return;
+        default:
+          createContent();
+      }
+    },
   };
-  if (connectionsLoading) {
-    heroEyebrow = "جارٍ التحقق";
-    heroTitle = "نجهز مساحة عملك";
-    heroBody = "نتحقق من حالة حساباتك.";
-  } else if (connectionsUnavailable) {
-    heroEyebrow = "حالة الحسابات";
-    heroTitle = "تعذر التحقق";
-    heroBody = "تحقق من الإنترنت ثم أعد المحاولة.";
-    heroPrimary = {
-      label: retryingHeroConnections ? "جارٍ التحقق…" : "إعادة المحاولة",
-      icon: "refresh-cw",
-      onPress: () => {
-        setRetryingHeroConnections(true);
-        void connectionsQuery.refetch().finally(() => {
-          setRetryingHeroConnections(false);
-        });
-      },
-      disabled: retryingHeroConnections || connectionsQuery.isFetching,
-    };
-  } else if (accountNeedingReauthorization) {
-    heroEyebrow = "إجراء مطلوب";
-    heroTitle = `أعد تفويض حساب ${accountNeedingReauthorization.name}`;
-    heroBody = "أعد التفويض لاستعادة النشر والتحقق من صلاحيات الحساب.";
-    heroPrimary = {
-      label: "إعادة التفويض",
-      icon: "refresh-cw",
-      onPress: () =>
-        openReconnect(accountNeedingReauthorization.platform, true),
-      disabled: false,
-    };
-  } else if (whatsappConnecting) {
-    heroEyebrow = "جارٍ الاتصال";
-    heroTitle = "واتساب قيد الاتصال";
-    heroBody = "جارٍ استعادة الاتصال بواتساب.";
-    heroPrimary = {
-      label: "متابعة إعداد واتساب",
-      icon: "link-2",
-      onPress: openPublishing,
-      disabled: false,
-    };
-  } else if (whatsappUnavailable || whatsappNeedsReconnection) {
-    heroEyebrow = whatsappUnavailable ? "واتساب غير متاح" : "إجراء مطلوب";
-    heroTitle = whatsappUnavailable
-      ? "تعذر الوصول إلى خدمة واتساب"
-      : "أعد اتصال واتساب";
-    heroBody = whatsappUnavailable
-      ? "تحقق من إعدادات واتساب."
-      : "أعد اتصال واتساب لمتابعة النشر.";
-    heroPrimary = {
-      label: whatsappUnavailable ? "إدارة واتساب" : "إعادة الاتصال",
-      icon: whatsappUnavailable ? "settings" : "refresh-cw",
-      onPress: whatsappUnavailable
-        ? openPublishing
-        : () => openReconnect("whatsapp", true),
-      disabled: false,
-    };
-  } else if (!hasAnyConnection) {
-    heroEyebrow = "ابدأ من هنا";
-    heroTitle = "اربط حسابًا للنشر";
-    heroBody = "اربط حسابًا لتبدأ النشر من لوحة التحكم.";
-    heroPrimary = {
-      label: "ربط حساب",
-      icon: "link-2",
-      onPress: openPublishing,
-      disabled: false,
-    };
-  } else if (!ready) {
-    heroEyebrow = "حساباتك متصلة";
-    heroTitle = "جارٍ تحميل محتواك";
-    heroBody = "نحمّل بيانات مساحة العمل.";
-  } else if (posts.length === 0) {
-    heroEyebrow = "حساباتك جاهزة";
-    heroTitle = "أنشئ أول منشور";
-    heroBody = "ابدأ بكتابة محتواك الأول.";
-    heroPrimary = {
-      label: "إنشاء أول منشور",
-      icon: "plus",
-      onPress: createContent,
-      disabled: false,
-    };
-  } else if (pendingPost) {
-    const pendingPostLabel =
-      pendingPost.status === "failed"
-        ? "منشور تعذّر نشره"
-        : pendingPost.status === "review"
-          ? "منشور بانتظار المراجعة"
-          : "لديك مسودة للمتابعة";
-    heroEyebrow = "متابعة المحتوى";
-    heroTitle = pendingPostLabel;
-    heroBody =
-      pendingPost.status === "failed"
-        ? "راجع تفاصيل المنشور لمعرفة سبب تعذر النشر."
-        : pendingPost.status === "review"
-          ? "أكمل مراجعة المنشور قبل نشره."
-          : "تابع تحرير المسودة.";
-    heroPrimary = {
-      label:
-        pendingPost.status === "failed"
-          ? "مراجعة المنشور"
-          : pendingPost.status === "review"
-            ? "مراجعة المنشورات"
-            : "متابعة المسودات",
-      icon: "file-text",
-      onPress: () =>
-        router.push({
-          pathname: "/(tabs)/content",
-          params: { status: pendingPost.status },
-        }),
-      disabled: false,
-    };
-  } else {
-    heroEyebrow = "مساحة عملك";
-    heroTitle = "حساباتك جاهزة للنشر";
-    heroBody = "حساباتك متصلة وجاهزة للنشر.";
-  }
+  const heroEyebrow = hero.eyebrow;
+  const heroTitle = hero.title;
+  const heroBody = hero.body;
 
   return (
     <Page

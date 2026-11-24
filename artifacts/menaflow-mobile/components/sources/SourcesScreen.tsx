@@ -24,6 +24,16 @@ import {
   updateWhatsAppSyncSettings,
 } from "@workspace/api-client-react";
 import { hasEligibleSocialConnection } from "@workspace/api-zod";
+import { useWorkspace } from "@/context/WorkspaceContext";
+import {
+  attentionSourceCount as countAttentionSources,
+  connectedSourceCount as countConnectedSources,
+  isSourceConnected,
+  metaReauthorizationReason as reauthorizationReasonFor,
+  sourceDetail as sourceDetailFor,
+  sourceStatus as sourceStatusFor,
+} from "@/lib/sources-status";
+import { deviceCountry, parseWhatsAppPhoneNumber } from "@/lib/whatsapp-phone";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -31,7 +41,6 @@ import { useAuth } from "@clerk/expo";
 import {
   getCountries,
   getCountryCallingCode,
-  parsePhoneNumberFromString,
   type CountryCode,
 } from "libphonenumber-js";
 import {
@@ -61,7 +70,6 @@ import { useColors } from "@/hooks/useColors";
 import { markSetupCompleted } from "@/lib/setup-reminders";
 import { useStudio } from "@/context/StudioContext";
 import {
-  Redirect,
   router,
   useLocalSearchParams,
   type Href,
@@ -96,41 +104,6 @@ import {
 } from "@/hooks/use-whatsapp-pairing-poll";
 
 WebBrowser.maybeCompleteAuthSession();
-
-const deviceCountry = (() => {
-  const locale = Intl.DateTimeFormat().resolvedOptions().locale;
-  const region = locale
-    .split("-")
-    .slice(1)
-    .find((part) => /^[a-z]{2}$/i.test(part));
-  return getCountries().find((country) => country === region?.toUpperCase());
-})();
-
-function parseWhatsAppPhoneNumber(
-  value: string,
-  defaultCountry: CountryCode = deviceCountry ?? "SA",
-) {
-  const normalizedDigits = value
-    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
-    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)));
-  const normalizedNumber = normalizedDigits.trim().replace(/^00/, "+");
-
-  const parsedNumber = parsePhoneNumberFromString(
-    normalizedNumber,
-    defaultCountry,
-  );
-  if (parsedNumber?.isValid() || normalizedNumber.startsWith("+")) {
-    return parsedNumber;
-  }
-
-  const digitsOnly = normalizedNumber.replace(/\D/g, "");
-  const parsedInternationalNumber = parsePhoneNumberFromString(
-    `+${digitsOnly}`,
-  );
-  return parsedInternationalNumber?.isValid()
-    ? parsedInternationalNumber
-    : parsedNumber;
-}
 
 // OAuth return URL — web uses current origin, mobile uses custom scheme
 const metaReturnUrl =
@@ -242,6 +215,7 @@ function SourcesContent({
     userId ?? "local",
   ] as const;
   const { refreshPosts } = useStudio();
+  const { scopeReady } = useWorkspace();
   const {
     connect: requestedConnect,
     reconnect: requestedReconnect,
@@ -377,9 +351,15 @@ function SourcesContent({
     );
   }, [countrySearch, phoneCountries]);
 
+  // Every query on this screen is workspace-scoped: the WhatsApp side is keyed to a
+  // provider instance named after the workspace, and Meta's to the workspace's
+  // connection rows. Gating them on the resolved workspace stops the duplicate
+  // round trip on a cold start and the `409 WORKSPACE_SELECTION_REQUIRED` a
+  // merchant with two workspaces would otherwise get. See `lib/workspace-queries.ts`.
   const connectionsQuery = useQuery({
     queryKey: connectionsQueryKey,
     queryFn: getSocialConnections,
+    enabled: scopeReady,
     staleTime: 30_000,
     refetchInterval: (query) =>
       query.state.data?.whatsapp?.connectionState === "connecting"
@@ -458,7 +438,7 @@ function SourcesContent({
   const groupSelectionsQuery = useQuery({
     queryKey: whatsappGroupSelectionsQueryKey,
     queryFn: getWhatsAppGroupSelections,
-    enabled: whatsappSetupOpen && Boolean(connections?.whatsapp),
+    enabled: whatsappSetupOpen && scopeReady && Boolean(connections?.whatsapp),
     retry: false,
   });
   const groupsQuery = useQuery({
@@ -474,6 +454,7 @@ function SourcesContent({
     enabled:
       groupPickerOpen &&
       groupsFetchEnabled &&
+      scopeReady &&
       connections?.whatsapp?.connectionState === "connected" &&
       Boolean(connections.whatsapp.instanceName),
     retry: false,
@@ -954,7 +935,7 @@ function SourcesContent({
   const syncStatusQuery = useQuery({
     queryKey: whatsappSyncStatusQueryKey,
     queryFn: getWhatsAppSyncStatus,
-    enabled: Boolean(connections?.whatsapp),
+    enabled: scopeReady && Boolean(connections?.whatsapp),
     retry: false,
     staleTime: 30_000,
     refetchOnWindowFocus: false,
@@ -1407,91 +1388,30 @@ function SourcesContent({
   };
 
   // ─── Status helpers ──────────────────────────────────────────────────────────
-  const isConnected = (key: SourceKey): boolean => {
-    if (key === "facebook")
-      return connections?.facebook?.authorizationStatus === "ready";
-    if (key === "instagram")
-      return connections?.instagram?.authorizationStatus === "ready";
-    if (key === "whatsapp")
-      return connections?.whatsapp?.connectionState === "connected";
-    return false;
-  };
+  // The rules themselves — what "connected" means for each platform, and the words
+  // for every state the server can report — live in `lib/sources-status.ts`, where
+  // they are tested. These are the same closures bound to this screen's query.
+  const isConnected = (key: SourceKey): boolean =>
+    isSourceConnected(connections, key);
 
-  const connectedSourceCount = isConnected("whatsapp") ? 1 : 0;
-  const attentionSourceCount =
-    Boolean(connections?.whatsapp) && !isConnected("whatsapp") ? 1 : 0;
+  const connectedSourceCount = countConnectedSources(connections);
+  const attentionSourceCount = countAttentionSources(connections);
 
   const metaReauthorizationReason = (
     platform: "facebook" | "instagram",
-  ): string => {
-    const reason = connections?.[platform]?.authorizationReason;
-    if (reason === "token_invalid") return "رمز Meta غير صالح أو مرفوض.";
-    if (reason === "token_expired") return "انتهت صلاحية رمز Meta.";
-    return "صلاحيات Meta تحتاج إلى تحقق.";
-  };
+  ): string => reauthorizationReasonFor(connections, platform);
 
-  const sourceStatus = (key: SourceKey): string => {
-    if (connectionsQuery.isLoading) return "جارٍ التحقق…";
-    if (key === "facebook" || key === "instagram") {
-      const connection = connections?.[key];
-      if (!connection) return "غير مربوط";
-      return connection.authorizationStatus === "needs_reauthorization"
-        ? "يحتاج إعادة تفويض"
-        : "متصل";
-    }
-    if (key === "whatsapp") {
-      if (!connections?.whatsapp) return "غير مربوط";
-      if (isConnected("whatsapp")) return "متصل";
-      if (connections.whatsapp.connectionState === "connecting") {
-        return "جارٍ الاتصال…";
-      }
-      if (connections.whatsapp.connectionState === "unavailable") {
-        return "غير متاح";
-      }
-      if (connections.whatsapp.connectionState === "failed") {
-        return "فشل الاتصال";
-      }
-      return connections.whatsapp.connectionState === "missing"
-        ? "غير متاح"
-        : "يحتاج إعادة ربط";
-    }
-    return "غير مربوط";
-  };
+  const sourceStatus = (key: SourceKey): string =>
+    sourceStatusFor(connections, key, {
+      isLoading: connectionsQuery.isLoading,
+    });
 
   // Secondary line shown under the source name: account identity or the
   // reason a connection needs attention. Keeps the status pill short.
-  const sourceDetail = (key: SourceKey): string | null => {
-    if (connectionsQuery.isLoading) return null;
-    if (key === "facebook" || key === "instagram") {
-      const connection = connections?.[key];
-      if (!connection) return null;
-      if (connection.authorizationStatus === "needs_reauthorization") {
-        return metaReauthorizationReason(key);
-      }
-      return key === "facebook"
-        ? `صفحة: ${connection.accountName}`
-        : `@${connection.accountName}`;
-    }
-    if (key === "whatsapp") {
-      if (!connections?.whatsapp) return null;
-      if (isConnected("whatsapp")) {
-        return `الحساب: ${connections.whatsapp.accountName}`;
-      }
-      if (connections.whatsapp.connectionState === "connecting") {
-        return "يتم التحقق من الاتصال تلقائيًا.";
-      }
-      if (connections.whatsapp.connectionState === "unavailable") {
-        return "الحساب محفوظ · تعذّر التحقق من الاتصال الآن.";
-      }
-      if (connections.whatsapp.connectionState === "failed") {
-        return "تعذر إعداد الاتصال · أعد محاولة الربط.";
-      }
-      return connections.whatsapp.connectionState === "missing"
-        ? "الحساب محفوظ · نسخة الخادم غير موجودة."
-        : "الحساب محفوظ · يحتاج إلى إعادة الاتصال.";
-    }
-    return null;
-  };
+  const sourceDetail = (key: SourceKey): string | null =>
+    sourceDetailFor(connections, key, {
+      isLoading: connectionsQuery.isLoading,
+    });
 
   const handlePress = (key: SourceKey) => {
     if (key === "instagram") {
@@ -2363,34 +2283,6 @@ function SourcesContent({
         }}
       />
     </Page>
-  );
-}
-
-export default function SourcesRoute() {
-  const { connect, reconnect, view } = useLocalSearchParams<{
-    connect?: string;
-    reconnect?: string;
-    view?: string;
-  }>();
-
-  const isPublishingTarget =
-    view === "publishing" ||
-    connect === "facebook" ||
-    connect === "instagram";
-
-  return (
-    <Redirect
-      href={{
-        pathname: isPublishingTarget
-          ? "/(tabs)/more/accounts"
-          : "/(tabs)/more/sources",
-        params: {
-          ...(connect ? { connect } : {}),
-          ...(reconnect ? { reconnect } : {}),
-          ...(view ? { view } : {}),
-        },
-      }}
-    />
   );
 }
 

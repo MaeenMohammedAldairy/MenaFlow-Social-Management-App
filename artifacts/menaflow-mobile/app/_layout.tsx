@@ -75,6 +75,7 @@ import {
 } from "@/lib/alert-invalidation";
 import { requestPostsSync } from "@/lib/posts-sync-signal";
 import { workspaceStorageNamespace } from "@/lib/studio-storage-key";
+import { workspaceQueryEnabled } from "@/lib/workspace-queries";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { useColors } from "@/hooks/useColors";
 import { WebFocusRing } from "@/components/WebFocusRing";
@@ -392,6 +393,16 @@ function AuthenticatedAppNavigator() {
     }
   }, [userId, workspaceSelection, workspaceListQuery.data]);
 
+  // The single answer to "may a workspace-scoped request go out yet", shared by
+  // every screen through the context rather than re-derived per query.
+  const workspaceScopeReady = workspaceQueryEnabled({
+    isLocalAuthDisabled,
+    activeWorkspaceId,
+    selectionApplied: Boolean(userId) && workspaceSelection?.userId === userId,
+    workspaceListSettled: workspaceListQuery.isFetched,
+    workspaceListFailed: workspaceListQuery.isError,
+  });
+
   const previousWorkspaceIdRef = React.useRef<string | null>(null);
   useEffect(() => {
     const previousWorkspaceId = previousWorkspaceIdRef.current;
@@ -538,6 +549,7 @@ function AuthenticatedAppNavigator() {
         activeWorkspaceId,
         isLoading: workspaceListQuery.isLoading,
         isError: workspaceListQuery.isError,
+        scopeReady: workspaceScopeReady,
         selectWorkspace,
       }}
     >

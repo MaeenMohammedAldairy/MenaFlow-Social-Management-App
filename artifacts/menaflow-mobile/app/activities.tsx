@@ -10,6 +10,7 @@ import { router } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
 import { isLocalAuthDisabled } from "@/constants/auth";
+import { useWorkspace } from "@/context/WorkspaceContext";
 import { POLL_LIST_MS } from "@/lib/poll-intervals";
 import { CairoText as Text } from "@/components/CairoTypography";
 import {
@@ -103,6 +104,7 @@ function AuthenticatedActivitiesScreen() {
 function ActivitiesContent({ userId }: { userId: string | null }) {
   const colors = useColors();
   const { posts, refreshPosts, ready, storageError } = useStudio();
+  const { scopeReady } = useWorkspace();
   const [refreshing, setRefreshing] = useState(false);
   const [typeFilter, setTypeFilter] = useState<ActivityTypeFilter>("all");
   const [platformFilter, setPlatformFilter] =
@@ -112,7 +114,7 @@ function ActivitiesContent({ userId }: { userId: string | null }) {
   const inboxQuery = useQuery({
     queryKey: ["meta-inbox", userId ?? "local"],
     queryFn: () => getMetaInbox(),
-    enabled: isLocalAuthDisabled || Boolean(userId),
+    enabled: scopeReady,
     retry: false,
     refetchInterval: POLL_LIST_MS,
     refetchOnWindowFocus: true,
@@ -120,7 +122,7 @@ function ActivitiesContent({ userId }: { userId: string | null }) {
   const catalogQuery = useQuery({
     queryKey: ["product-catalog", userId ?? "local"],
     queryFn: () => getProductCatalog(false),
-    enabled: isLocalAuthDisabled || Boolean(userId),
+    enabled: scopeReady,
     retry: false,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
