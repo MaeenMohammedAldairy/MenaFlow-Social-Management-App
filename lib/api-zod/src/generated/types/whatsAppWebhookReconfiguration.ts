@@ -5,10 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { WhatsAppOrphanCleanup } from './whatsAppOrphanCleanup';
 
 export interface WhatsAppWebhookReconfiguration {
   ok: boolean;
   instanceName: string;
   webhookUrl: string;
   reconfiguredAt: Date;
+  orphanCleanup?: WhatsAppOrphanCleanup;
 }

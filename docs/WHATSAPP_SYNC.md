@@ -80,3 +80,13 @@ Evolution called at all, whether every call was refused and why, and whether the
 calls that were accepted simply carried group traffic instead of direct
 messages. See `docs/INBOUND_DELIVERY_DIAGNOSTICS.md` for the outcome vocabulary,
 the retention variables, and the production queries.
+
+One refusal deserves its own note because it empties an inbox while sync keeps
+working: `WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE`. Instance names are
+`menaflow-` + `sha256(workspaceId)[0:12]`, so a name no connection row holds is
+the session of a workspace that no longer exists — and a leftover session can
+still be the one bound to the merchant's phone, receiving every incoming message
+that this server then refuses. Re-registering the webhook and pairing both sweep
+those sessions now, within narrow rules (ours by name prefix, unclaimed by any
+workspace, same phone number, at most five per run) and report what they decided.
+See "Orphaned WhatsApp sessions" in `docs/INBOUND_DELIVERY_DIAGNOSTICS.md`.

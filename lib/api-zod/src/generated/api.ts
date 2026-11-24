@@ -761,14 +761,27 @@ export const PublishCatalogProductsResponse = zod.object({
 
 
 /**
- * Pairing already configures the webhook; this covers the cases that break it afterwards (a rotated secret, a moved API domain) without re-pairing. The response carries the exact URL that was registered.
+ * Pairing already configures the webhook; this covers the cases that break it afterwards (a rotated secret, a moved API domain) without re-pairing. The response carries the exact URL that was registered. It also sweeps orphaned Evolution instances bound to the same phone number — sessions left behind by workspaces that were deleted or migrated away, which keep receiving the inbound events this workspace needs — and reports each instance it considered. The sweep is best effort: it never fails the re-registration.
  * @summary Re-register the Evolution webhook for this workspace instance
  */
 export const ReconfigureWhatsAppWebhookResponse = zod.object({
   "ok": zod.boolean(),
   "instanceName": zod.string(),
   "webhookUrl": zod.string().url(),
-  "reconfiguredAt": zod.coerce.date()
+  "reconfiguredAt": zod.coerce.date(),
+  "orphanCleanup": zod.object({
+  "attempted": zod.boolean(),
+  "deleted": zod.number().int(),
+  "failed": zod.number().int(),
+  "skipped": zod.number().int(),
+  "instances": zod.array(zod.object({
+  "instanceName": zod.string(),
+  "phoneNumber": zod.string().nullish(),
+  "connectionStatus": zod.string().nullish(),
+  "action": zod.enum(['deleted', 'delete_failed', 'skipped', 'not_attempted']),
+  "reason": zod.string()
+}).describe('One Evolution instance considered by the orphan sweep that runs when a webhook is re-registered. Instance names are `menaflow-` + sha256(workspaceId)[0:12], so an unclaimed instance is the session of a workspace that no longer exists; while it lives it can hold the phone\'s live events and every inbound message is refused as WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE. `action` says what the server did and `reason` why — including why it deliberately did nothing: another workspace still claims the instance, it is bound to a different phone number, or it is not a name this app created.'))
+}).optional().describe('Result of the orphan-instance sweep. `attempted` is false when Evolution could not be listed, in which case nothing was deleted and the counts are all zero — the webhook re-registration itself still succeeded.')
 })
 
 

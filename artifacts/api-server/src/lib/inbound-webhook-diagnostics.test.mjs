@@ -72,6 +72,17 @@ test("every WhatsApp outcome is named, levelled and explained in Arabic", () => 
   }
   assert.equal(describeWhatsAppInboundOutcome("REJECTED_SECRET").level, "warn");
   assert.equal(describeWhatsAppInboundOutcome("AMBIGUOUS_INSTANCE").level, "error");
+  // An unknown instance is dropped traffic, not a curiosity: production showed
+  // every inbound event refused this way while sync kept working, because a
+  // deleted workspace's session still held the phone. Same severity as
+  // AMBIGUOUS_INSTANCE, and the hint must name the action that repairs it —
+  // re-registering the webhook now also sweeps those leftover sessions.
+  assert.equal(describeWhatsAppInboundOutcome("UNKNOWN_INSTANCE").level, "error");
+  assert.match(
+    describeWhatsAppInboundOutcome("UNKNOWN_INSTANCE").hint,
+    /إعادة تسجيل الويب هوك/,
+  );
+  assert.equal(isInboundWebhookRejection("WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE"), true);
   assert.equal(describeWhatsAppInboundOutcome("IGNORED_EVENT").level, "debug");
   assert.equal(describeWhatsAppInboundOutcome("PROCESSED").level, "info");
   assert.match(

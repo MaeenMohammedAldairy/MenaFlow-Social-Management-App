@@ -43,3 +43,20 @@ CREATE INDEX mena_inbound_webhook_event_account_idx
 -- Retention purge.
 CREATE INDEX mena_inbound_webhook_event_created_idx
   ON public.mena_inbound_webhook_events (created_at);
+
+-- Lock the table down like every other application table
+-- (docs/SUPABASE_DATABASE_SETUP.md §5.2). The API reaches it through a
+-- server-only connection as `postgres`; no Supabase client policy is intended.
+-- Without this pair the table defaults to RLS off with full CRUD granted to
+-- `anon`, and the anon key is public because it ships inside every mobile and
+-- web build.
+--
+-- What that would expose here is not message text — none is stored — but the
+-- delivery history of every webhook call: Evolution instance names, Meta page
+-- and Instagram account ids, which outcome each call hit, and whether our own
+-- webhook secret or app secret was the reason it was refused. That is a map of
+-- the deployment's provider configuration. Write access would be worse: anyone
+-- could plant rows that the merchant's diagnostics screen then reports as fact,
+-- telling a merchant their webhook is broken or working when it is not.
+ALTER TABLE public.mena_inbound_webhook_events ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.mena_inbound_webhook_events FROM anon, authenticated;

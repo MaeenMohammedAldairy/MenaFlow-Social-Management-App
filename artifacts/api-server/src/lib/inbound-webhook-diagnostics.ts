@@ -75,9 +75,16 @@ const whatsAppOutcomes: Record<WhatsAppInboundReason, Omit<InboundWebhookOutcome
     hint: "الحمولة لا تحمل instance أو remoteJid. تحقق من إعداد الويب هوك في Evolution (webhookByEvents والأحداث المفعّلة).",
   },
   UNKNOWN_INSTANCE: {
-    level: "warn",
+    // Not a typo in a config file: instance names are
+    // `menaflow-` + sha256(workspaceId)[0:12], so a name no connection row
+    // matches is a session left behind by a workspace that was deleted or
+    // migrated away — and it can still be the session holding the phone's live
+    // events, which is how an inbox stays empty while sync keeps working. The
+    // re-register button now deletes those leftovers, so it is the first action
+    // to offer rather than a full re-pair.
+    level: "error",
     deliveryConfirmed: true,
-    hint: "لا يوجد اتصال واتساب بهذا الاسم. أعد ربط الرقم أو أعد تسجيل الويب هوك بعد تغيير اسم المثيل.",
+    hint: "لا يوجد اتصال واتساب بهذا الاسم: الغالب جلسة واتساب تركتها مساحة عمل محذوفة وما زالت تستلم الرسائل فترفضها. اضغط «إعادة تسجيل الويب هوك» في شاشة واتساب ليزيلها الخادم ويعيد تسجيل رابطك، فإن بقيت فارغة أعد ربط الرقم.",
   },
   AMBIGUOUS_INSTANCE: {
     level: "error",

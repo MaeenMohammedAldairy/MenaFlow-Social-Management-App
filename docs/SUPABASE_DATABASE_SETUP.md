@@ -34,6 +34,28 @@ before deploying an API version that serves the onboarding endpoints.
 
 The second script enables Row Level Security and removes table privileges from Supabase's `anon` and `authenticated` API roles. This app authenticates with Clerk and accesses its tables only through the server, so no Supabase client policies are intended. The API must use a server-only database connection with the required table permissions.
 
+**Every migration that creates a table must carry that lockdown**, either in the same file
+or in a later one — `ALTER TABLE public.<table> ENABLE ROW LEVEL SECURITY;` and
+`REVOKE ALL ON TABLE public.<table> FROM anon, authenticated;`. A table created without
+them is reachable through Supabase's Data API by anyone holding the anon key, and the anon
+key is public: it ships inside every mobile and web build. Drizzle cannot express this
+(`isRLSEnabled` is `false` for every table in the schema snapshot, including the locked
+ones), so no generated artifact and neither CI drift gate will flag its absence.
+
+`scripts/migration-lockdown-guard.test.mjs` enforces it instead, as part of `pnpm test`.
+It parses every file in `supabase/migrations/` in filename order, follows each table
+through create/drop/re-create, and fails on any table that survives without both
+statements. It understands the shapes this repository actually uses — quoted and
+unqualified names, `REVOKE ALL ON` without the `TABLE` keyword, one `REVOKE` naming a
+comma-separated list of tables, and a lockdown applied by a later migration — ignores
+statements that appear only inside a comment or a function body, and skips the 13 WhatsApp
+Cloud tables that `20261112001000_remove_whatsapp_cloud.sql` dropped. The detector itself
+is tested against planted violations, so a regex that rots fails rather than reporting
+"all clear" over an empty list. It also asserts that the migrations leave exactly **43**
+tables standing, measured against the live project on 2026-11-24: that number is a
+tripwire, not a drift gate, so a migration that adds or removes a table has to update it
+deliberately, with the guard's verdict in front of you.
+
 For a new project, link the repository root and review the pending migration list before applying:
 
 ```powershell
@@ -147,7 +169,52 @@ inside every mobile and web build. That exposed device push tokens, which is eno
 send a merchant arbitrary alerts, plus outbox titles and bodies carrying customer names
 and message previews. Note that Drizzle does not model this: `isRLSEnabled` is `false`
 for all 41 tables in the snapshot, so RLS lives only in `supabase/migrations/` and no
-generated artifact will flag its absence.
+generated artifact will flag its absence. It is now flagged by
+`scripts/migration-lockdown-guard.test.mjs` instead (§2).
+
+### Record: applying `20261124010000_inbound_webhook_events` to the live project (2026-11-24)
+
+The inbound delivery log ("The delivery log" in `docs/INBOUND_DELIVERY_DIAGNOSTICS.md`) was
+the first migration since that exercise to add a table, and it was applied to the live
+project `qznbujvanjvkfxpehcbq`:
+
+- **The lockdown pair was added to the file first.** `20261124010000_inbound_webhook_events.sql`
+  had shipped with its `CREATE TABLE` and four indexes but no
+  `ENABLE ROW LEVEL SECURITY` + `REVOKE … FROM anon, authenticated` — the same defect
+  class the push-notifications migration had. This time it was caught before it reached
+  the database rather than after. What an unlocked copy would have exposed is not message
+  text (none is stored) but a map of the deployment's provider configuration: Evolution
+  instance names, Meta page and Instagram account ids, which outcome each call hit, and
+  whether our own webhook or app secret was the reason it was refused. Write access would
+  have been worse — anyone could plant rows that a merchant's diagnostics screen then
+  reports as fact. This second occurrence is why the lockdown is now a CI check rather
+  than a review habit: `scripts/migration-lockdown-guard.test.mjs` (§2) fails on any
+  surviving table without the pair, and was written against both defects as canaries.
+- **Applied through the Management API** rather than `supabase db push`: the statements
+  were executed directly, then the same version/name pair
+  (`20261124010000` / `inbound_webhook_events`) was inserted into
+  `supabase_migrations.schema_migrations`, which is what keeps `supabase db push --linked`
+  reporting nothing pending. History now holds **41** entries, newest
+  `20261124010000`.
+- **Measured afterwards from the catalogues:** `public` holds **43** tables and **0** of
+  them have RLS off; `anon` and `authenticated` retain **0** privileges on any table in
+  the schema; the new table has 9 columns, 5 indexes (the four declared plus its primary
+  key), `FOREIGN KEY (workspace_id) REFERENCES mena_workspaces(id) ON DELETE CASCADE`,
+  the three-value `platform` check, and no policies — it is server-only by design.
+- **Behaviour, executed rather than read:** an insert with a null `workspace_id`
+  succeeded; an insert naming `platform = 'telegram'` was rejected (`23514`); a row
+  attributed to a real workspace was returned by exactly the query
+  `fetchInboundWebhookAttempts()` issues, whose plan reads through the
+  `workspace_id`/`platform` indexes rather than scanning the table; and the retention
+  purge's oldest-first `SELECT id … WHERE created_at < cutoff … LIMIT 1000` shape ran,
+  returning nothing to delete. All test rows were removed afterwards and the table holds
+  0 rows.
+
+On a deployment that has not run the migration yet, `fetchInboundWebhookAttempts()` catches
+the missing table, warns `INBOUND_WEBHOOK_EVENT_QUERY_FAILED`, and returns an empty list —
+the settings screen reports the rest of the diagnostics, and inbound delivery itself is
+unaffected because every write to this table is best-effort. Nothing in the API requires
+the table to exist before it will serve traffic.
 
 Creating the Supabase database does not deploy the API or make it publicly reachable. Deploy the API separately on a host with persistent media storage and configure its HTTPS URL, CORS, Clerk, Meta callback, and webhook settings before building the Android app.
 
