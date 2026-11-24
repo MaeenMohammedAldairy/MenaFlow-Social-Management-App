@@ -514,11 +514,51 @@ export interface WhatsAppAutoReplySettings {
   instructions: string;
 }
 
+export type DiagnosticIssueSeverity = typeof DiagnosticIssueSeverity[keyof typeof DiagnosticIssueSeverity];
+
+
+export const DiagnosticIssueSeverity = {
+  warning: 'warning',
+  critical: 'critical',
+} as const;
+
+/**
+ * One actionable problem, worded for the merchant
+ */
+export interface DiagnosticIssue {
+  code: string;
+  message: string;
+  severity: DiagnosticIssueSeverity;
+}
+
+export type WhatsAppInboundDiagnosticsAutoReplyEvents = {
+  queued: number;
+  sent: number;
+  failed: number;
+  other: number;
+};
+
+/**
+ * Whether customer messages reach the server at all, which is the fact that separates "automatic replies are off" from "nothing is arriving".
+ */
+export interface WhatsAppInboundDiagnostics {
+  deliveryConfirmed: boolean;
+  /** @nullable */
+  lastDirectMessageAt?: string | null;
+  directMessageCount: number;
+  autoReplyEvents: WhatsAppInboundDiagnosticsAutoReplyEvents;
+  webhookSecretConfigured: boolean;
+  /** @nullable */
+  webhookUrl?: string | null;
+  issues: DiagnosticIssue[];
+}
+
 export interface WhatsAppAutoReplySettingsResponse {
   connected: boolean;
   /** @nullable */
   phoneNumber: string | null;
   settings: WhatsAppAutoReplySettings;
+  inbound: WhatsAppInboundDiagnostics;
 }
 
 export type WhatsAppAutoReplyTestInputLanguage = typeof WhatsAppAutoReplyTestInputLanguage[keyof typeof WhatsAppAutoReplyTestInputLanguage];
@@ -1028,6 +1068,106 @@ export type ProductPublicationConflict = ApiError & {
   /** Present with code PRODUCT_FIELDS_INCOMPLETE: the products that stopped the request and the fields each one is missing. */
   incompleteProducts?: IncompletePublicationProduct[];
 };
+
+export interface WhatsAppWebhookReconfiguration {
+  ok: boolean;
+  instanceName: string;
+  webhookUrl: string;
+  reconfiguredAt: string;
+}
+
+export type MetaInboundDiagnosticsInboxCountByPlatform = {[key: string]: number};
+
+export type MetaInboundDiagnosticsAutoReplyJobs = {
+  queued: number;
+  completed: number;
+  failed: number;
+  skipped: number;
+};
+
+export type MetaInboundDiagnosticsSubscriptionsItemPlatform = typeof MetaInboundDiagnosticsSubscriptionsItemPlatform[keyof typeof MetaInboundDiagnosticsSubscriptionsItemPlatform];
+
+
+export const MetaInboundDiagnosticsSubscriptionsItemPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type MetaInboundDiagnosticsSubscriptionsItem = {
+  platform: MetaInboundDiagnosticsSubscriptionsItemPlatform;
+  accountId: string;
+  subscribedFields: string[];
+  /** @nullable */
+  subscribedAt?: string | null;
+  /** @nullable */
+  lastErrorCode: string | null;
+};
+
+/**
+ * Whether Facebook and Instagram events reach the server, with the recorded subscriptions and their last error.
+ */
+export interface MetaInboundDiagnostics {
+  deliveryConfirmed: boolean;
+  /** @nullable */
+  lastInboxItemAt?: string | null;
+  inboxItemCount: number;
+  inboxCountByPlatform: MetaInboundDiagnosticsInboxCountByPlatform;
+  autoReplyJobs: MetaInboundDiagnosticsAutoReplyJobs;
+  subscriptions: MetaInboundDiagnosticsSubscriptionsItem[];
+  verifyTokenConfigured: boolean;
+  appSecretConfigured: boolean;
+  issues: DiagnosticIssue[];
+}
+
+export interface MetaAutoReplySettings {
+  enabled: boolean;
+  facebookMessagesEnabled: boolean;
+  facebookCommentsEnabled: boolean;
+  instagramMessagesEnabled: boolean;
+  instagramCommentsEnabled: boolean;
+  language: string;
+  tone: string;
+  instructions: string;
+}
+
+export interface MetaAutoReplyReadiness {
+  connected: boolean;
+  tokenReady: boolean;
+  webhookConfigured: boolean;
+  subscriptionReady: boolean;
+  messagesSubscriptionReady: boolean;
+  commentsSubscriptionReady: boolean;
+  aiConfigured: boolean;
+  messagesReady: boolean;
+  commentsReady: boolean;
+  missingPermissions: string[];
+}
+
+export type MetaAutoReplySettingsResponseReadiness = {
+  facebook: MetaAutoReplyReadiness;
+  instagram: MetaAutoReplyReadiness;
+};
+
+export interface MetaAutoReplySettingsResponse {
+  settings: MetaAutoReplySettings;
+  readiness: MetaAutoReplySettingsResponseReadiness;
+  inbound: MetaInboundDiagnostics;
+}
+
+export interface MetaWebhookSubscriptionResult {
+  subscribed: boolean;
+  fields: string[];
+  errorCode?: string;
+}
+
+export type MetaWebhookSubscriptionsResponseSubscriptions = {
+  facebook?: MetaWebhookSubscriptionResult;
+  instagram?: MetaWebhookSubscriptionResult;
+};
+
+export interface MetaWebhookSubscriptionsResponse {
+  subscriptions: MetaWebhookSubscriptionsResponseSubscriptions;
+}
 
 export type DeleteMetaConnectionParams = {
 /**

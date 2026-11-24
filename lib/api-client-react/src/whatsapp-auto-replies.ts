@@ -17,6 +17,27 @@ export interface WhatsAppAutoReplySettingsResponse {
   connected: boolean;
   phoneNumber: string | null;
   settings: WhatsAppAutoReplySettings;
+  /** Whether customer messages reach the server, and what blocks them. */
+  inbound?: WhatsAppInboundDiagnostics;
+}
+
+export interface WhatsAppInboundDiagnostics {
+  deliveryConfirmed: boolean;
+  lastDirectMessageAt?: string | null;
+  directMessageCount: number;
+  autoReplyEvents: {
+    queued: number;
+    sent: number;
+    failed: number;
+    other: number;
+  };
+  webhookSecretConfigured: boolean;
+  webhookUrl?: string | null;
+  issues: Array<{
+    code: string;
+    message: string;
+    severity: "warning" | "critical";
+  }>;
 }
 
 export async function getWhatsAppAutoReplySettings(

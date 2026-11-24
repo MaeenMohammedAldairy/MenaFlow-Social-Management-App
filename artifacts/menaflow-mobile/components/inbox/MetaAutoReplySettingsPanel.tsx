@@ -19,10 +19,15 @@ import {
 } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, Panel } from "@/components/Ui";
+import {
+  InboundDeliveryCard,
+  type InboundDeliveryFact,
+} from "@/components/inbox/InboundDeliveryCard";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 import { useColors } from "@/hooks/useColors";
 import {
+  activateMetaWebhookSubscriptions,
   getMetaAutoReplySettings,
   getMetaAutoReplyHistoricalPosts,
   queueMetaAutoReplyHistoricalComments,
@@ -149,6 +154,7 @@ export function MetaAutoReplySettingsPanel({
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState("");
   const [historicalQueueMessage, setHistoricalQueueMessage] = useState("");
+  const [subscriptionNote, setSubscriptionNote] = useState("");
   const historicalQueryKey = [
     "meta-auto-reply-historical-comments",
     userId ?? "local",
@@ -221,6 +227,79 @@ export function MetaAutoReplySettingsPanel({
       );
     },
   });
+
+  /**
+   * Meta subscriptions expire with the token or when the app leaves Development
+   * mode, and nothing else in the UI shows that. Renewing them is the one action
+   * a merchant can take without touching the Meta dashboard.
+   */
+  const renewSubscriptions = useMutation({
+    mutationFn: activateMetaWebhookSubscriptions,
+    onSuccess: async () => {
+      setError("");
+      setSubscriptionNote(
+        "تم تجديد اشتراك استقبال التفاعلات. أرسل رسالة تجريبية إلى الصفحة للتحقق من وصولها.",
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey }),
+        queryClient.invalidateQueries({
+          queryKey: ["meta-inbox", userId ?? "local"],
+        }),
+      ]);
+    },
+    onError: (cause) => {
+      setSubscriptionNote("");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "تعذر تجديد اشتراك استقبال التفاعلات.",
+      );
+    },
+  });
+
+  const inbound = query.data?.inbound;
+  const inboundSubscription = inbound?.subscriptions.find(
+    (subscription) => subscription.platform === platform,
+  );
+  const platformInboxCount = inbound?.inboxCountByPlatform[platform] ?? 0;
+  const inboundFacts: InboundDeliveryFact[] = inbound
+    ? [
+        {
+          label: "آخر تفاعل وصل",
+          value:
+            formatArabicDateTime(inbound.lastInboxItemAt ?? null) ?? "لا شيء",
+        },
+        {
+          label:
+            platform === "facebook"
+              ? "تفاعلات فيسبوك المستلمة"
+              : "تفاعلات إنستغرام المستلمة",
+          value: formatArabicNumber(platformInboxCount),
+        },
+        {
+          label: "ردود أُنجزت",
+          value: formatArabicNumber(inbound.autoReplyJobs.completed),
+        },
+        {
+          label: "ردود في الانتظار",
+          value: formatArabicNumber(inbound.autoReplyJobs.queued),
+        },
+        {
+          label: "ردود فشلت",
+          value: formatArabicNumber(inbound.autoReplyJobs.failed),
+        },
+        {
+          label: "اشتراك هذا الحساب",
+          value: inboundSubscription?.subscribedAt
+            ? `مفعّل (${inboundSubscription.subscribedFields.join("، ") || "بدون حقول"})`
+            : "غير مفعّل",
+        },
+        {
+          label: "رمز التحقق من الويب هوك",
+          value: inbound.verifyTokenConfigured ? "مهيأ" : "غير مهيأ",
+        },
+      ]
+    : [];
 
   const update = (changes: Partial<MetaAutoReplySettings>) => {
     setSettings((current) => {
@@ -392,6 +471,30 @@ export function MetaAutoReplySettingsPanel({
                     </View>
                   );
                 })}
+
+              {inbound ? (
+                <InboundDeliveryCard
+                  title={
+                    platform === "facebook"
+                      ? "استقبال تفاعلات فيسبوك"
+                      : "استقبال تفاعلات إنستغرام"
+                  }
+                  delivered={inbound.deliveryConfirmed}
+                  facts={inboundFacts}
+                  issues={inbound.issues}
+                  action={{
+                    label: "تجديد اشتراك استقبال التفاعلات",
+                    icon: "refresh-cw",
+                    busy: renewSubscriptions.isPending,
+                    onPress: () => renewSubscriptions.mutate(),
+                    result: subscriptionNote,
+                    error:
+                      inboundSubscription?.lastErrorCode && !subscriptionNote
+                        ? `آخر خطأ من ميتا: ${inboundSubscription.lastErrorCode}`
+                        : null,
+                  }}
+                />
+              ) : null}
 
               <View style={styles.field}>
                 <Text style={[styles.label, { color: colors.foreground }]}>

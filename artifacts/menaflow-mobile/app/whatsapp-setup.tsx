@@ -1,5 +1,6 @@
 import {
   getWhatsAppAutoReplySettings,
+  reconfigureWhatsAppWebhook,
   saveWhatsAppAutoReplySettings,
   testWhatsAppAutoReply,
   type WhatsAppAutoReplySettings,
@@ -25,8 +26,13 @@ import {
   Panel,
   StatusPill,
 } from "@/components/Ui";
+import {
+  InboundDeliveryCard,
+  type InboundDeliveryFact,
+} from "@/components/inbox/InboundDeliveryCard";
 import { useColors } from "@/hooks/useColors";
 import { isLocalAuthDisabled } from "@/constants/auth";
+import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
 
 const defaultSettings: WhatsAppAutoReplySettings = {
   enabled: false,
@@ -102,6 +108,9 @@ function WhatsAppReplyContent({
   const [settingsNotice, setSettingsNotice] = useState("");
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [webhookBusy, setWebhookBusy] = useState(false);
+  const [webhookResult, setWebhookResult] = useState<string | null>(null);
+  const [webhookError, setWebhookError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!settingsQuery.data || settingsInitialized.current) return;
@@ -176,6 +185,64 @@ function WhatsAppReplyContent({
     }
   };
 
+  /**
+   * Pairing registers the webhook once; a rotated secret or a moved API domain
+   * silently stops delivery afterwards. Re-registering is safe to repeat and the
+   * server answers with the exact URL it configured.
+   */
+  const reregisterWebhook = async () => {
+    if (webhookBusy) return;
+    setWebhookBusy(true);
+    setWebhookError(null);
+    setWebhookResult(null);
+    try {
+      const result = await reconfigureWhatsAppWebhook();
+      setWebhookResult(
+        `تم تسجيل الويب هوك على ${result.webhookUrl}. أرسل رسالة تجريبية من هاتف العميل للتحقق من وصولها.`,
+      );
+      await queryClient.invalidateQueries({ queryKey });
+    } catch (error) {
+      setWebhookError(
+        errorMessage(
+          error,
+          "تعذّر تسجيل الويب هوك. تحقق من إعدادات الخادم ثم أعد المحاولة.",
+        ),
+      );
+    } finally {
+      setWebhookBusy(false);
+    }
+  };
+
+  const inbound = settingsQuery.data?.inbound;
+  const inboundFacts: InboundDeliveryFact[] = inbound
+    ? [
+        {
+          label: "آخر رسالة من عميل",
+          value: formatArabicDateTime(inbound.lastDirectMessageAt ?? null) ?? "لا شيء",
+        },
+        {
+          label: "الرسائل المستلمة",
+          value: formatArabicNumber(inbound.directMessageCount),
+        },
+        {
+          label: "ردود أُرسلت",
+          value: formatArabicNumber(inbound.autoReplyEvents.sent),
+        },
+        {
+          label: "ردود في الانتظار",
+          value: formatArabicNumber(inbound.autoReplyEvents.queued),
+        },
+        {
+          label: "ردود فشلت",
+          value: formatArabicNumber(inbound.autoReplyEvents.failed),
+        },
+        {
+          label: "سر الويب هوك",
+          value: inbound.webhookSecretConfigured ? "مهيأ" : "غير مهيأ",
+        },
+      ]
+    : [];
+
   const retrySettings = () => void settingsQuery.refetch();
   const returnHref: Href =
     returnTo === "connect-accounts"
@@ -229,6 +296,25 @@ function WhatsAppReplyContent({
         </Panel>
       ) : (
         <>
+          {inbound ? (
+            <Panel>
+              <InboundDeliveryCard
+                title="استقبال رسائل العملاء"
+                delivered={inbound.deliveryConfirmed}
+                facts={inboundFacts}
+                issues={inbound.issues}
+                action={{
+                  label: "إعادة تسجيل الويب هوك",
+                  icon: "refresh-cw",
+                  busy: webhookBusy,
+                  onPress: () => void reregisterWebhook(),
+                  result: webhookResult,
+                  error: webhookError,
+                }}
+              />
+            </Panel>
+          ) : null}
+
           <Panel>
             <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
               يُرسل نص الرسالة الفردية إلى مزود الذكاء الاصطناعي المهيأ على الخادم

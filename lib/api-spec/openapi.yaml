@@ -1062,6 +1062,108 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProductPublicationConflict"
+  /social/whatsapp/reconfigure-webhook:
+    post:
+      operationId: reconfigureWhatsAppWebhook
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Re-register the Evolution webhook for this workspace instance
+      description: >-
+        Pairing already configures the webhook; this covers the cases that break
+        it afterwards (a rotated secret, a moved API domain) without re-pairing.
+        The response carries the exact URL that was registered.
+      responses:
+        "200":
+          description: Webhook re-registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsAppWebhookReconfiguration"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          description: No WhatsApp connection in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Evolution API rejected the configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "503":
+          description: >-
+            The webhook secret or the public API URL is not configured on the
+            server (code names the missing variable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta-auto-replies:
+    get:
+      operationId: getMetaAutoReplySettings
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Get Meta automatic-reply settings, readiness and inbound facts
+      responses:
+        "200":
+          description: Settings, per-platform readiness and inbound diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaAutoReplySettingsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+  /social/meta-inbox/webhook-subscriptions:
+    post:
+      operationId: activateMetaWebhookSubscriptions
+      tags: [social]
+      security:
+        - bearerAuth: []
+      summary: Renew the Meta webhook subscriptions for the connected accounts
+      responses:
+        "200":
+          description: Subscriptions renewed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaWebhookSubscriptionsResponse"
+        "401":
+          description: Authentication required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: No Meta connection, or the token needs re-authorization
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "502":
+          description: Meta rejected one of the subscription requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MetaWebhookSubscriptionsResponse"
+        "503":
+          description: MENA_META_WEBHOOK_VERIFY_TOKEN is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
   /posts:
     get:
       operationId: getPosts
@@ -1951,7 +2053,9 @@ components:
           type: [string, "null"]
         settings:
           $ref: "#/components/schemas/WhatsAppAutoReplySettings"
-      required: [connected, phoneNumber, settings]
+        inbound:
+          $ref: "#/components/schemas/WhatsAppInboundDiagnostics"
+      required: [connected, phoneNumber, settings, inbound]
     WhatsAppAutoReplyTestInput:
       type: object
       properties:
@@ -2570,3 +2674,239 @@ components:
                 stopped the request and the fields each one is missing.
               items:
                 $ref: "#/components/schemas/IncompletePublicationProduct"
+    DiagnosticIssue:
+      type: object
+      description: One actionable problem, worded for the merchant
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        severity:
+          type: string
+          enum: [warning, critical]
+      required: [code, message, severity]
+    WhatsAppInboundDiagnostics:
+      type: object
+      description: >-
+        Whether customer messages reach the server at all, which is the fact that
+        separates "automatic replies are off" from "nothing is arriving".
+      properties:
+        deliveryConfirmed:
+          type: boolean
+        lastDirectMessageAt:
+          type: [string, "null"]
+          format: date-time
+        directMessageCount:
+          type: integer
+        autoReplyEvents:
+          type: object
+          properties:
+            queued:
+              type: integer
+            sent:
+              type: integer
+            failed:
+              type: integer
+            other:
+              type: integer
+          required: [queued, sent, failed, other]
+        webhookSecretConfigured:
+          type: boolean
+        webhookUrl:
+          type: [string, "null"]
+          format: uri
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiagnosticIssue"
+      required:
+        - deliveryConfirmed
+        - directMessageCount
+        - autoReplyEvents
+        - webhookSecretConfigured
+        - issues
+    WhatsAppWebhookReconfiguration:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        instanceName:
+          type: string
+        webhookUrl:
+          type: string
+          format: uri
+        reconfiguredAt:
+          type: string
+          format: date-time
+      required: [ok, instanceName, webhookUrl, reconfiguredAt]
+    MetaInboundDiagnostics:
+      type: object
+      description: >-
+        Whether Facebook and Instagram events reach the server, with the recorded
+        subscriptions and their last error.
+      properties:
+        deliveryConfirmed:
+          type: boolean
+        lastInboxItemAt:
+          type: [string, "null"]
+          format: date-time
+        inboxItemCount:
+          type: integer
+        inboxCountByPlatform:
+          type: object
+          additionalProperties:
+            type: integer
+        autoReplyJobs:
+          type: object
+          properties:
+            queued:
+              type: integer
+            completed:
+              type: integer
+            failed:
+              type: integer
+            skipped:
+              type: integer
+          required: [queued, completed, failed, skipped]
+        subscriptions:
+          type: array
+          items:
+            type: object
+            properties:
+              platform:
+                type: string
+                enum: [facebook, instagram]
+              accountId:
+                type: string
+              subscribedFields:
+                type: array
+                items:
+                  type: string
+              subscribedAt:
+                type: [string, "null"]
+                format: date-time
+              lastErrorCode:
+                type: [string, "null"]
+            required: [platform, accountId, subscribedFields, lastErrorCode]
+        verifyTokenConfigured:
+          type: boolean
+        appSecretConfigured:
+          type: boolean
+        issues:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiagnosticIssue"
+      required:
+        - deliveryConfirmed
+        - inboxItemCount
+        - inboxCountByPlatform
+        - autoReplyJobs
+        - subscriptions
+        - verifyTokenConfigured
+        - appSecretConfigured
+        - issues
+    MetaAutoReplySettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        facebookMessagesEnabled:
+          type: boolean
+        facebookCommentsEnabled:
+          type: boolean
+        instagramMessagesEnabled:
+          type: boolean
+        instagramCommentsEnabled:
+          type: boolean
+        language:
+          type: string
+        tone:
+          type: string
+        instructions:
+          type: string
+      required:
+        - enabled
+        - facebookMessagesEnabled
+        - facebookCommentsEnabled
+        - instagramMessagesEnabled
+        - instagramCommentsEnabled
+        - language
+        - tone
+        - instructions
+    MetaAutoReplyReadiness:
+      type: object
+      properties:
+        connected:
+          type: boolean
+        tokenReady:
+          type: boolean
+        webhookConfigured:
+          type: boolean
+        subscriptionReady:
+          type: boolean
+        messagesSubscriptionReady:
+          type: boolean
+        commentsSubscriptionReady:
+          type: boolean
+        aiConfigured:
+          type: boolean
+        messagesReady:
+          type: boolean
+        commentsReady:
+          type: boolean
+        missingPermissions:
+          type: array
+          items:
+            type: string
+      required:
+        - connected
+        - tokenReady
+        - webhookConfigured
+        - subscriptionReady
+        - messagesSubscriptionReady
+        - commentsSubscriptionReady
+        - aiConfigured
+        - messagesReady
+        - commentsReady
+        - missingPermissions
+    MetaAutoReplySettingsResponse:
+      type: object
+      properties:
+        settings:
+          $ref: "#/components/schemas/MetaAutoReplySettings"
+        readiness:
+          type: object
+          properties:
+            facebook:
+              $ref: "#/components/schemas/MetaAutoReplyReadiness"
+            instagram:
+              $ref: "#/components/schemas/MetaAutoReplyReadiness"
+          required: [facebook, instagram]
+        inbound:
+          $ref: "#/components/schemas/MetaInboundDiagnostics"
+      required: [settings, readiness, inbound]
+    MetaWebhookSubscriptionResult:
+      type: object
+      properties:
+        subscribed:
+          type: boolean
+        fields:
+          type: array
+          items:
+            type: string
+        errorCode:
+          type: string
+      required: [subscribed, fields]
+    MetaWebhookSubscriptionsResponse:
+      type: object
+      properties:
+        subscriptions:
+          type: object
+          properties:
+            facebook:
+              $ref: "#/components/schemas/MetaWebhookSubscriptionResult"
+            instagram:
+              $ref: "#/components/schemas/MetaWebhookSubscriptionResult"
+          additionalProperties: false
+      required: [subscriptions]

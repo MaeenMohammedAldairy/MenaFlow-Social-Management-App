@@ -96,9 +96,41 @@ export type MetaInboxResponse = {
   items: MetaInboxItem[];
 };
 
+/** One named problem with the inbound path, already worded for the merchant. */
+export type InboundDiagnosticIssue = {
+  code: string;
+  message: string;
+  severity: "warning" | "critical";
+};
+
+/** Whether Facebook/Instagram events reach the server at all. */
+export type MetaInboundDiagnostics = {
+  deliveryConfirmed: boolean;
+  lastInboxItemAt: string | null;
+  inboxItemCount: number;
+  inboxCountByPlatform: Record<string, number>;
+  autoReplyJobs: {
+    queued: number;
+    completed: number;
+    failed: number;
+    skipped: number;
+  };
+  subscriptions: Array<{
+    platform: MetaInboxPlatform;
+    accountId: string;
+    subscribedFields: string[];
+    subscribedAt: string | null;
+    lastErrorCode: string | null;
+  }>;
+  verifyTokenConfigured: boolean;
+  appSecretConfigured: boolean;
+  issues: InboundDiagnosticIssue[];
+};
+
 export type MetaAutoReplySettingsResponse = {
   settings: MetaAutoReplySettings;
   readiness: Record<MetaInboxPlatform, MetaAutoReplyReadiness>;
+  inbound?: MetaInboundDiagnostics;
 };
 
 export type MetaAutoReplyHistoricalPostsResponse = {

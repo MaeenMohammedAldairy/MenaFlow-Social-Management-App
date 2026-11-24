@@ -358,7 +358,25 @@ export const GetWhatsAppAutoReplySettingsResponse = zod.object({
   "language": zod.enum(['ar', 'match_customer']),
   "tone": zod.enum(['friendly_professional', 'concise', 'formal']),
   "instructions": zod.string().max(getWhatsAppAutoReplySettingsResponseSettingsInstructionsMax)
-})
+}),
+  "inbound": zod.object({
+  "deliveryConfirmed": zod.boolean(),
+  "lastDirectMessageAt": zod.coerce.date().nullish(),
+  "directMessageCount": zod.number().int(),
+  "autoReplyEvents": zod.object({
+  "queued": zod.number().int(),
+  "sent": zod.number().int(),
+  "failed": zod.number().int(),
+  "other": zod.number().int()
+}),
+  "webhookSecretConfigured": zod.boolean(),
+  "webhookUrl": zod.string().url().nullish(),
+  "issues": zod.array(zod.object({
+  "code": zod.string(),
+  "message": zod.string(),
+  "severity": zod.enum(['warning', 'critical'])
+}).describe('One actionable problem, worded for the merchant'))
+}).describe('Whether customer messages reach the server at all, which is the fact that separates "automatic replies are off" from "nothing is arriving".')
 })
 
 
@@ -716,6 +734,106 @@ export const PublishCatalogProductsResponse = zod.object({
   "failed": zod.number().int(),
   "inProgress": zod.number().int(),
   "needsAction": zod.number().int()
+})
+})
+
+
+/**
+ * Pairing already configures the webhook; this covers the cases that break it afterwards (a rotated secret, a moved API domain) without re-pairing. The response carries the exact URL that was registered.
+ * @summary Re-register the Evolution webhook for this workspace instance
+ */
+export const ReconfigureWhatsAppWebhookResponse = zod.object({
+  "ok": zod.boolean(),
+  "instanceName": zod.string(),
+  "webhookUrl": zod.string().url(),
+  "reconfiguredAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get Meta automatic-reply settings, readiness and inbound facts
+ */
+export const GetMetaAutoReplySettingsResponse = zod.object({
+  "settings": zod.object({
+  "enabled": zod.boolean(),
+  "facebookMessagesEnabled": zod.boolean(),
+  "facebookCommentsEnabled": zod.boolean(),
+  "instagramMessagesEnabled": zod.boolean(),
+  "instagramCommentsEnabled": zod.boolean(),
+  "language": zod.string(),
+  "tone": zod.string(),
+  "instructions": zod.string()
+}),
+  "readiness": zod.object({
+  "facebook": zod.object({
+  "connected": zod.boolean(),
+  "tokenReady": zod.boolean(),
+  "webhookConfigured": zod.boolean(),
+  "subscriptionReady": zod.boolean(),
+  "messagesSubscriptionReady": zod.boolean(),
+  "commentsSubscriptionReady": zod.boolean(),
+  "aiConfigured": zod.boolean(),
+  "messagesReady": zod.boolean(),
+  "commentsReady": zod.boolean(),
+  "missingPermissions": zod.array(zod.string())
+}),
+  "instagram": zod.object({
+  "connected": zod.boolean(),
+  "tokenReady": zod.boolean(),
+  "webhookConfigured": zod.boolean(),
+  "subscriptionReady": zod.boolean(),
+  "messagesSubscriptionReady": zod.boolean(),
+  "commentsSubscriptionReady": zod.boolean(),
+  "aiConfigured": zod.boolean(),
+  "messagesReady": zod.boolean(),
+  "commentsReady": zod.boolean(),
+  "missingPermissions": zod.array(zod.string())
+})
+}),
+  "inbound": zod.object({
+  "deliveryConfirmed": zod.boolean(),
+  "lastInboxItemAt": zod.coerce.date().nullish(),
+  "inboxItemCount": zod.number().int(),
+  "inboxCountByPlatform": zod.record(zod.string(), zod.number().int()),
+  "autoReplyJobs": zod.object({
+  "queued": zod.number().int(),
+  "completed": zod.number().int(),
+  "failed": zod.number().int(),
+  "skipped": zod.number().int()
+}),
+  "subscriptions": zod.array(zod.object({
+  "platform": zod.enum(['facebook', 'instagram']),
+  "accountId": zod.string(),
+  "subscribedFields": zod.array(zod.string()),
+  "subscribedAt": zod.coerce.date().nullish(),
+  "lastErrorCode": zod.string().nullable()
+})),
+  "verifyTokenConfigured": zod.boolean(),
+  "appSecretConfigured": zod.boolean(),
+  "issues": zod.array(zod.object({
+  "code": zod.string(),
+  "message": zod.string(),
+  "severity": zod.enum(['warning', 'critical'])
+}).describe('One actionable problem, worded for the merchant'))
+}).describe('Whether Facebook and Instagram events reach the server, with the recorded subscriptions and their last error.')
+})
+
+
+/**
+ * @summary Renew the Meta webhook subscriptions for the connected accounts
+ */
+export const ActivateMetaWebhookSubscriptionsResponse = zod.object({
+  "subscriptions": zod.object({
+  "facebook": zod.object({
+  "subscribed": zod.boolean(),
+  "fields": zod.array(zod.string()),
+  "errorCode": zod.string().optional()
+}).optional(),
+  "instagram": zod.object({
+  "subscribed": zod.boolean(),
+  "fields": zod.array(zod.string()),
+  "errorCode": zod.string().optional()
+}).optional()
 })
 })
 

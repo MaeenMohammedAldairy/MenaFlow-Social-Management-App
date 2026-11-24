@@ -37,9 +37,11 @@ import type {
   GetWhatsAppConnectionStatusParams,
   HealthStatus,
   KnownPostIdsInput,
+  MetaAutoReplySettingsResponse,
   MetaConnectInput,
   MetaConnectResponse,
   MetaDisconnectResponse,
+  MetaWebhookSubscriptionsResponse,
   OnboardingProgressInput,
   OnboardingStatus,
   PostDeleteResult,
@@ -72,6 +74,7 @@ import type {
   WhatsAppGroupsResponse,
   WhatsAppPairingCodeInput,
   WhatsAppPairingCodeResponse,
+  WhatsAppWebhookReconfiguration,
   WorkspaceDeletionRequestCreatedResponse,
   WorkspaceDeletionRequestResponse,
   WorkspaceExport,
@@ -2639,6 +2642,232 @@ export const usePublishCatalogProducts = <TError = ErrorType<ApiError | ProductP
         TContext
       > => {
       return useMutation(getPublishCatalogProductsMutationOptions(options));
+    }
+
+export const getReconfigureWhatsAppWebhookUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/reconfigure-webhook`
+}
+
+/**
+ * Pairing already configures the webhook; this covers the cases that break it afterwards (a rotated secret, a moved API domain) without re-pairing. The response carries the exact URL that was registered.
+ * @summary Re-register the Evolution webhook for this workspace instance
+ */
+export const reconfigureWhatsAppWebhook = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppWebhookReconfiguration> => {
+
+  return customFetch<WhatsAppWebhookReconfiguration>(getReconfigureWhatsAppWebhookUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReconfigureWhatsAppWebhookMutationKey = () => ['reconfigureWhatsAppWebhook'] as const;
+
+export const getReconfigureWhatsAppWebhookMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>, TError,void, TContext> => {
+
+const mutationKey = getReconfigureWhatsAppWebhookMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>, void> = () => {
+
+
+          return  reconfigureWhatsAppWebhook(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReconfigureWhatsAppWebhookMutationResult = NonNullable<Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>>
+
+    export type ReconfigureWhatsAppWebhookMutationError = ErrorType<ApiError>
+
+
+    /**
+ * @summary Re-register the Evolution webhook for this workspace instance
+ */
+export const useReconfigureWhatsAppWebhook = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reconfigureWhatsAppWebhook>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getReconfigureWhatsAppWebhookMutationOptions(options));
+    }
+
+export const getGetMetaAutoReplySettingsUrl = () => {
+
+
+
+
+  return `/api/social/meta-auto-replies`
+}
+
+/**
+ * @summary Get Meta automatic-reply settings, readiness and inbound facts
+ */
+export const getMetaAutoReplySettings = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetaAutoReplySettingsResponse> => {
+
+  return customFetch<MetaAutoReplySettingsResponse>(getGetMetaAutoReplySettingsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetMetaAutoReplySettingsQueryKey = () => {
+    return [
+    `/api/social/meta-auto-replies`
+    ] as const;
+    }
+
+
+export const getGetMetaAutoReplySettingsQueryOptions = <TData = Awaited<ReturnType<typeof getMetaAutoReplySettings>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMetaAutoReplySettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetMetaAutoReplySettingsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getMetaAutoReplySettings>>> = ({ signal }) => getMetaAutoReplySettings({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getMetaAutoReplySettings>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetMetaAutoReplySettingsQueryResult = NonNullable<Awaited<ReturnType<typeof getMetaAutoReplySettings>>>
+export type GetMetaAutoReplySettingsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Get Meta automatic-reply settings, readiness and inbound facts
+ */
+
+export function useGetMetaAutoReplySettings<TData = Awaited<ReturnType<typeof getMetaAutoReplySettings>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getMetaAutoReplySettings>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetMetaAutoReplySettingsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getActivateMetaWebhookSubscriptionsUrl = () => {
+
+
+
+
+  return `/api/social/meta-inbox/webhook-subscriptions`
+}
+
+/**
+ * @summary Renew the Meta webhook subscriptions for the connected accounts
+ */
+export const activateMetaWebhookSubscriptions = async ( options?: Parameters<typeof customFetch>[1]): Promise<MetaWebhookSubscriptionsResponse> => {
+
+  return customFetch<MetaWebhookSubscriptionsResponse>(getActivateMetaWebhookSubscriptionsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getActivateMetaWebhookSubscriptionsMutationKey = () => ['activateMetaWebhookSubscriptions'] as const;
+
+export const getActivateMetaWebhookSubscriptionsMutationOptions = <TError = ErrorType<ApiError | MetaWebhookSubscriptionsResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>, TError,void, TContext> => {
+
+const mutationKey = getActivateMetaWebhookSubscriptionsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>, void> = () => {
+
+
+          return  activateMetaWebhookSubscriptions(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ActivateMetaWebhookSubscriptionsMutationResult = NonNullable<Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>>
+
+    export type ActivateMetaWebhookSubscriptionsMutationError = ErrorType<ApiError | MetaWebhookSubscriptionsResponse>
+
+
+    /**
+ * @summary Renew the Meta webhook subscriptions for the connected accounts
+ */
+export const useActivateMetaWebhookSubscriptions = <TError = ErrorType<ApiError | MetaWebhookSubscriptionsResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof activateMetaWebhookSubscriptions>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getActivateMetaWebhookSubscriptionsMutationOptions(options));
     }
 
 export const getGetPostsUrl = () => {
