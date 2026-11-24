@@ -1239,6 +1239,7 @@ export const GetKnownPostIdsResponse = zod.object({
 
 
 /**
+ * Owner-only. Only the properties present are changed. Content edits (title, body, channels, mediaUrls, metadata) are refused with 409 while the post is being published. Moving a post to "approved" runs the readiness check, and "scheduled" (or a non-null scheduledAt) requires a future instant.
  * @summary Update a post
  */
 export const UpdatePostParams = zod.object({
@@ -1250,8 +1251,12 @@ export const UpdatePostBody = zod.object({
   "body": zod.string().optional(),
   "channels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])).optional(),
   "status": zod.enum(['draft', 'review', 'approved', 'scheduled', 'published']).optional(),
-  "scheduledAt": zod.coerce.date().nullish().describe('Future instant required to move a post into "scheduled"; null clears it.')
-})
+  "scheduledAt": zod.coerce.date().nullish().describe('Future instant required to move a post into "scheduled"; null clears it.'),
+  "mediaUrls": zod.array(zod.string()).optional().describe('Replaces the post\'s media. An entry is an absolute http(s) URL or a media id owned by the workspace (product media or imported WhatsApp media; product-media and WhatsApp public-media URLs are reduced to their id). An id from another workspace is refused with 422.'),
+  "metadata": zod.record(zod.string(), zod.unknown()).optional().describe('Shallow-merged into the post\'s existing metadata.'),
+  "autoPublish": zod.boolean().optional(),
+  "autoPublishChannels": zod.array(zod.enum(['instagram', 'facebook', 'whatsapp'])).optional()
+}).describe('Every property is optional; only the ones present are changed.')
 
 export const UpdatePostResponse = zod.object({
   "id": zod.string(),

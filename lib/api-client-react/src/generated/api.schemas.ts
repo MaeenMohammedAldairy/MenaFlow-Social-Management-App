@@ -1302,6 +1302,23 @@ export const UpdatePostInputStatus = {
   published: 'published',
 } as const;
 
+/**
+ * Shallow-merged into the post's existing metadata.
+ */
+export type UpdatePostInputMetadata = { [key: string]: unknown };
+
+export type UpdatePostInputAutoPublishChannelsItem = typeof UpdatePostInputAutoPublishChannelsItem[keyof typeof UpdatePostInputAutoPublishChannelsItem];
+
+
+export const UpdatePostInputAutoPublishChannelsItem = {
+  instagram: 'instagram',
+  facebook: 'facebook',
+  whatsapp: 'whatsapp',
+} as const;
+
+/**
+ * Every property is optional; only the ones present are changed.
+ */
 export interface UpdatePostInput {
   title?: string;
   body?: string;
@@ -1309,6 +1326,12 @@ export interface UpdatePostInput {
   status?: UpdatePostInputStatus;
   /** Future instant required to move a post into "scheduled"; null clears it. */
   scheduledAt?: string | null;
+  /** Replaces the post's media. An entry is an absolute http(s) URL or a media id owned by the workspace (product media or imported WhatsApp media; product-media and WhatsApp public-media URLs are reduced to their id). An id from another workspace is refused with 422. */
+  mediaUrls?: string[];
+  /** Shallow-merged into the post's existing metadata. */
+  metadata?: UpdatePostInputMetadata;
+  autoPublish?: boolean;
+  autoPublishChannels?: UpdatePostInputAutoPublishChannelsItem[];
 }
 
 export interface PostDeleteResult {

@@ -3635,6 +3635,7 @@ export const getUpdatePostUrl = (id: string,) => {
 }
 
 /**
+ * Owner-only. Only the properties present are changed. Content edits (title, body, channels, mediaUrls, metadata) are refused with 409 while the post is being published. Moving a post to "approved" runs the readiness check, and "scheduled" (or a non-null scheduledAt) requires a future instant.
  * @summary Update a post
  */
 export const updatePost = async (id: string,
