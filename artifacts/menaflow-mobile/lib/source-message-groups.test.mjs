@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canConvertWhatsAppMessageGroup,
+  whatsAppGroupConversionBlocker,
   groupWhatsAppMessages,
 } from "./source-message-groups.ts";
 
@@ -371,6 +372,21 @@ test("allows conversion only when the group has text and usable media", () => {
     }),
     false,
   );
+});
+
+test("the conversion blocker explains why the action is unavailable", () => {
+  const base = {
+    text: "نص المنتج",
+    media: [{ item: { downloadStatus: "stored" } }],
+    expectedCount: 1,
+    expiredMediaCount: 0,
+    mediaPending: false,
+    mediaFailed: false,
+  };
+  assert.equal(whatsAppGroupConversionBlocker(base), null);
+  assert.ok(whatsAppGroupConversionBlocker({ ...base, text: " " })?.includes("لا يوجد نص"));
+  assert.ok(whatsAppGroupConversionBlocker({ ...base, mediaPending: true })?.includes("التنزيل"));
+  assert.ok(whatsAppGroupConversionBlocker({ ...base, media: [], expiredMediaCount: 1 })?.includes("صلاحية"));
 });
 
 test("an expired WhatsApp media item does not block conversion of its group", () => {

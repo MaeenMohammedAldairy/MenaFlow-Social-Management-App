@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Modal,
@@ -11,7 +11,10 @@ import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { useColors } from "@/hooks/useColors";
 import { WhatsAppMessageGroupCard } from "./WhatsAppMessageGroupCard";
-import type { DisplayedWhatsAppMessageGroup } from "@/lib/source-message-groups";
+import {
+  canConvertWhatsAppMessageGroup,
+  type DisplayedWhatsAppMessageGroup,
+} from "@/lib/source-message-groups";
 import type { WhatsAppGroupMessagesResponse } from "@workspace/api-client-react";
 
 interface WhatsAppGroupMessagesModalProps {
@@ -57,6 +60,32 @@ export function WhatsAppGroupMessagesModal({
 }: WhatsAppGroupMessagesModalProps) {
   const colors = useColors();
   const hasCurrentGroupData = messagesData?.groupJid === activeGroupJid;
+  const [quickFilter, setQuickFilter] = useState<
+    "all" | "ready" | "media" | "converted"
+  >("all");
+  const filteredGroups = useMemo(
+    () =>
+      displayedMessageGroups.filter((group) => {
+        if (quickFilter === "ready") {
+          return (
+            canConvertWhatsAppMessageGroup(group) &&
+            !group.postId &&
+            group.senderRole !== "customer"
+          );
+        }
+        if (quickFilter === "media") {
+          return (
+            group.mediaExpired ||
+            group.mediaFailed ||
+            group.mediaPending ||
+            canConvertWhatsAppMessageGroup(group)
+          );
+        }
+        if (quickFilter === "converted") return Boolean(group.postId);
+        return true;
+      }),
+    [displayedMessageGroups, quickFilter],
+  );
 
   if (!visible) return null;
 
@@ -185,11 +214,60 @@ export function WhatsAppGroupMessagesModal({
                   {error}
                 </Text>
               ) : null}
+              <View style={styles.quickFilters}>
+                {([
+                  { id: "all", label: "كل الرسائل" },
+                  { id: "ready", label: "جاهزة للمراجعة" },
+                  { id: "media", label: "ذات وسائط" },
+                  { id: "converted", label: "حوّلت إلى محتوى" },
+                ] as const).map((option) => (
+                  <Pressable
+                    key={option.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: quickFilter === option.id }}
+                    onPress={() => setQuickFilter(option.id)}
+                    style={({ pressed }) => [
+                      styles.quickFilterChip,
+                      {
+                        backgroundColor:
+                          quickFilter === option.id
+                            ? colors.primary
+                            : colors.secondary,
+                        opacity: pressed ? 0.75 : 1,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.quickFilterLabel,
+                        {
+                          color:
+                            quickFilter === option.id
+                              ? colors.primaryForeground
+                              : colors.mutedForeground,
+                        },
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
               <ScrollView
                 style={{ maxHeight: 430 }}
                 contentContainerStyle={{ gap: 10 }}
               >
-                {displayedMessageGroups.map((messageGroup) => (
+                {filteredGroups.length === 0 ? (
+                  <Text
+                    style={[
+                      styles.emptyMessage,
+                      { color: colors.mutedForeground },
+                    ]}
+                  >
+                    لا توجد رسائل تطابق هذا التصنيف في هذه الصفحة. جرّب تصنيفًا آخر أو انتقل للصفحة التالية.
+                  </Text>
+                ) : null}
+                {filteredGroups.map((messageGroup) => (
                   <WhatsAppMessageGroupCard
                     key={messageGroup.key}
                     group={messageGroup}
@@ -310,6 +388,15 @@ export function WhatsAppGroupMessagesModal({
 }
 
 const styles = StyleSheet.create({
+  quickFilters: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
+  quickFilterChip: {
+    minHeight: 38,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickFilterLabel: { fontSize: 12.5, fontWeight: "700" },
   modalOverlay: {
     flex: 1,
     justifyContent: "center",

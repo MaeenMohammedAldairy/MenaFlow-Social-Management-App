@@ -12,6 +12,7 @@ import { mediaUrlForApp } from "@/lib/content-utils";
 import { describeMediaDownloadFailure } from "@/lib/whatsapp-media-failure-copy";
 import {
   canConvertWhatsAppMessageGroup,
+  whatsAppGroupConversionBlocker,
   type DisplayedWhatsAppMessageGroup,
 } from "@/lib/source-message-groups";
 
@@ -43,7 +44,11 @@ export function WhatsAppMessageGroupCard({
   const converting = Boolean(sourceMessage && convertingMessageIds[sourceMessage.id]);
   const canConvert = canConvertWhatsAppMessageGroup(group);
   return (
-    <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.background }]}>
+    <View style={[styles.card, {
+      borderColor: group.mediaExpired || group.mediaFailed ? colors.destructive : colors.border,
+      borderWidth: group.mediaExpired || group.mediaFailed ? 2 : 1,
+      backgroundColor: colors.background,
+    }]}>
       <View style={styles.header}>
         <View style={styles.groupStatus}>
           {group.mediaFailed ? (
@@ -80,6 +85,20 @@ export function WhatsAppMessageGroupCard({
           </Text>
         </View>
       </View>
+      {group.mediaExpired || group.mediaFailed ? (
+        <View style={[styles.mediaWarning, { backgroundColor: colors.secondary }]}>
+          <Icon
+            name="wifi-off"
+            size={17}
+            color={colors.destructive}
+          />
+          <Text style={[styles.mediaWarningText, { color: colors.destructive }]}>
+            {group.mediaExpired
+              ? `وسائط منتهية: ${formatArabicNumber(group.expiredMediaCount)}. استخدم النص والوسائط المتاحة فقط.`
+              : "فشل تحميل وسيط؛ أعد المحاولة قبل تحويل الرسالة."}
+          </Text>
+        </View>
+      ) : null}
       {group.text ? (
         <Text style={[styles.body, { color: colors.foreground }]}>{group.text}</Text>
       ) : (
@@ -275,7 +294,15 @@ export function WhatsAppMessageGroupCard({
             إضافة إلى مراجعة المنتجات
           </Text>
         </Pressable>
-      ) : null}
+      ) : canConvertWhatsAppMessageGroup(group) ? null : (
+        <Text
+          accessibilityRole="note"
+          style={[styles.convertBlocker, { color: colors.mutedForeground }]}
+        >
+          {whatsAppGroupConversionBlocker(group) ??
+            "هذه الرسالة غير مؤهلة للمراجعة الآن."}
+        </Text>
+      )}
       <Text style={[styles.meta, { color: colors.mutedForeground }]}>
         {formatArabicDateTime(group.messageTimestamp) ?? "غير محدد"}
       </Text>
@@ -303,6 +330,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   meta: { fontSize: 12.5, textAlign: "right" },
+  mediaWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 10,
+    padding: 9,
+  },
+  mediaWarningText: { flex: 1, fontSize: 12.5, lineHeight: 19, textAlign: "right" },
+  convertBlocker: { fontSize: 12.5, lineHeight: 19, textAlign: "right" },
   mediaList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   mediaThumbnail: { width: 76, height: 76, borderRadius: 8 },
   mediaPlaceholder: { width: 76, height: 76, borderRadius: 8, alignItems: "center", justifyContent: "center" },

@@ -67,6 +67,41 @@ export function canConvertWhatsAppMessageGroup(
   );
 }
 
+/** Tells the merchant why «إضافة إلى مراجعة المنتجات» is unavailable. */
+export function whatsAppGroupConversionBlocker(
+  group: Pick<
+    DisplayedWhatsAppMessageGroup,
+    | "text"
+    | "media"
+    | "expectedCount"
+    | "expiredMediaCount"
+    | "mediaPending"
+    | "mediaFailed"
+  >,
+): string | null {
+  if (!group.text.trim()) {
+    return "لا يوجد نص أو وصف في هذه الرسالة؛ أضف وصف المنتج قبل إرساله للمراجعة.";
+  }
+  if (group.mediaFailed) {
+    return "تعذّر تنزيل بعض الوسائط؛ أعد محاولة التنزيل قبل الإرسال للمراجعة.";
+  }
+  if (group.mediaPending) {
+    return "بعض الوسائط لا تزال قيد التنزيل؛ انتظر اكتمالها ثم أرسل الرسالة للمراجعة.";
+  }
+  const storedCount = group.media.filter(
+    ({ item }) => item.downloadStatus === "stored",
+  ).length;
+  if (!storedCount) {
+    return group.expiredMediaCount
+      ? "انتهت صلاحية جميع وسائط هذه الرسالة لدى واتساب؛ أعد إرسالها قبل المراجعة."
+      : "لا توجد وسائط محفوظة لهذه الرسالة؛ لا يمكن استخراج منتج منها.";
+  }
+  if (group.expectedCount - group.expiredMediaCount > storedCount) {
+    return "بعض وسائط الرسالة غير محفوظة؛ أكمل تنزيلها قبل الإرسال للمراجعة.";
+  }
+  return null;
+}
+
 export function groupWhatsAppMessages(
   messages: WhatsAppMessage[],
 ): DisplayedWhatsAppMessageGroup[] {

@@ -5,6 +5,7 @@ import {
   classifySenderRole,
   evolutionWebhookEventKey,
   computeExtractionConfidence,
+  extractionConfidenceReasons,
   matchProductCandidate,
   requiresOverrideReason,
 } from "./product-intake-policy.ts";
@@ -92,6 +93,19 @@ test("no match returns new_product with zero score", () => {
   const result = matchProductCandidate({ name: "شيء آخر تماماً", products: [] });
   assert.equal(result.strategy, "new_product");
   assert.equal(result.score, 0);
+});
+
+test("confidence reasons explain the score in merchant language", () => {
+  const reasons = extractionConfidenceReasons({
+    data,
+    evidence,
+    senderRole: "customer",
+    vision: true,
+  });
+  assert.ok(reasons.some((reason) => reason.includes("عميل")));
+  assert.ok(!reasons.some((reason) => reason.includes("رسالة من التاجر")));
+  assert.ok(reasons.some((reason) => reason.includes("صورة")));
+  assert.ok(reasons.some((reason) => reason.includes("دليل نصي")));
 });
 
 test("webhook event keys ignore volatile fields but keep message identity", () => {

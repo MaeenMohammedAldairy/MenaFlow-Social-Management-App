@@ -59,6 +59,7 @@ import {
 import { isCurrencyDerivedFromCountry } from "./product-currency-resolution.ts";
 import {
   computeExtractionConfidence,
+  extractionConfidenceReasons,
   matchProductCandidate,
   type SenderRole,
 } from "./product-intake-policy.ts";
@@ -928,6 +929,14 @@ async function processProductExtractionJob(
           ...candidate.data,
           self_confidence: candidate.confidence,
           computed_confidence: computedConfidence,
+          confidence_reasons: extractionConfidenceReasons({
+            data: candidate.data,
+            evidence: candidate.evidence,
+            senderRole,
+            currencyDerivedFromCountry,
+            vision: visionExtraction !== null,
+            generatedSku: !candidate.data.sku,
+          }),
           generated_sku: !candidate.data.sku,
           sender_role: senderRole,
           evidence_spans: candidate.evidenceSpans ?? {},

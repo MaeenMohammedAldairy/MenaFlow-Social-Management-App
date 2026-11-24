@@ -96,6 +96,47 @@ function hasEvidence(evidence: Record<string, string | null>, field: string): bo
   return typeof evidence[field] === "string" && Boolean(evidence[field]!.trim());
 }
 
+/** Human-readable reasons shown next to the computed confidence in review cards. */
+export function extractionConfidenceReasons(input: ConfidenceInput): string[] {
+  const reasons: string[] = [];
+  const fields: Array<[keyof ExtractedDataLike, string]> = [
+    ["name", "اسم المنتج"],
+    ["price", "السعر"],
+    ["currency", "العملة"],
+    ["availability", "التوفر"],
+    ["description", "الوصف"],
+  ];
+  const missing = fields
+    .filter(([field]) => {
+      const value = input.data[field];
+      return Array.isArray(value) ? value.length === 0 : !value;
+    })
+    .map(([, label]) => label);
+  reasons.push(
+    missing.length
+      ? `ينقص: ${missing.join("، ")}`
+      : "كل الحقول الأساسية مستخرجة",
+  );
+  reasons.push(
+    hasEvidence(input.evidence, "name") && hasEvidence(input.evidence, "price")
+      ? "دليل نصي على الاسم والسعر"
+      : "بعض الحقول بلا دليل نصي حرفي",
+  );
+  const senderRole = input.senderRole ?? "unknown";
+  reasons.push(
+    senderRole === "merchant"
+      ? "رسالة من التاجر"
+      : senderRole === "customer"
+        ? "إشارة من عميل — تحتاج تأكيداً"
+        : "مصدر الرسالة غير معروف",
+  );
+  if (input.multiplePriceMentions) reasons.push("أكثر من سعر في الرسالة");
+  if (input.currencyDerivedFromCountry) reasons.push("العملة مستنتجة من بلد المساحة");
+  if (input.generatedSku) reasons.push("رقم المنتج مُولّد آلياً — راجعه قبل الحفظ");
+  if (input.vision) reasons.push("استخراج من صورة — مراجعة إلزامية");
+  return reasons;
+}
+
 /** Converts model-declared confidence into a server-owned, auditable number. */
 export function computeExtractionConfidence(input: ConfidenceInput): number {
   const weights: Array<[keyof ExtractedDataLike, number]> = [

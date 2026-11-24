@@ -66,7 +66,15 @@ test("the status values the app sends are the ones the server accepts", () => {
       "client status union",
     ),
   );
-  assert.deepEqual(server, ["review", "draft_created", "possible_duplicate"]);
+  assert.deepEqual(server, [
+    "review",
+    "draft_created",
+    "possible_duplicate",
+    "update_proposed",
+    "accepted_update",
+    "rejected_update",
+    "superseded",
+  ]);
   assert.deepEqual([...client].sort(), [...server].sort());
 });
 
@@ -102,7 +110,7 @@ test("each slice asks the server for exactly its own rows", () => {
     .split(/\n  \},\n/)
     .map((chunk) => chunk.trim())
     .filter((chunk) => chunk.includes("id: "));
-  assert.equal(slices.length, 3, "the review queue has three slices");
+  assert.equal(slices.length, 4, "the review queue has four slices");
 
   const pending = slices.find((slice) => slice.includes('"pending"'));
   assert.ok(pending, "a pending slice");
@@ -112,8 +120,15 @@ test("each slice asks the server for exactly its own rows", () => {
   const processed = slices.find((slice) => slice.includes('"processed"'));
   assert.ok(processed, "a processed slice");
   assert.ok(
-    processed.includes('statuses: ["draft_created", "possible_duplicate"]'),
+    processed.includes('"update_proposed"') &&
+      processed.includes('"accepted_update"') &&
+      processed.includes('"rejected_update"') &&
+      processed.includes('"superseded"'),
+    "processed rows include every update outcome",
   );
+  const updates = slices.find((slice) => slice.includes('"updates"'));
+  assert.ok(updates, "an update-proposals slice");
+  assert.ok(updates.includes('"update_proposed"'));
   assert.ok(
     !processed.includes("classification"),
     "processed suggestions are counted of either classification",
