@@ -438,7 +438,10 @@ function SourcesContent({
   const groupSelectionsQuery = useQuery({
     queryKey: whatsappGroupSelectionsQueryKey,
     queryFn: getWhatsAppGroupSelections,
-    enabled: whatsappSetupOpen && scopeReady && Boolean(connections?.whatsapp),
+    // Selections gate the sync panel ("sync now" stays disabled without
+    // them), so keep them fresh whenever a WhatsApp connection exists —
+    // not only while the setup sheet happens to be open.
+    enabled: scopeReady && Boolean(connections?.whatsapp),
     retry: false,
   });
   const groupsQuery = useQuery({
