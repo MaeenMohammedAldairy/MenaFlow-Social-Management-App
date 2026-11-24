@@ -115,6 +115,11 @@ export type MetaInboundDiagnostics = {
     completed: number;
     failed: number;
     skipped: number;
+    /**
+     * Waiting on a limit that lifts by itself — an exhausted AI quota, an
+     * unconfigured provider — rather than on the worker.
+     */
+    postponedByLimit: number;
   };
   subscriptions: Array<{
     platform: MetaInboxPlatform;

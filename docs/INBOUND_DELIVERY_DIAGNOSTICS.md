@@ -130,6 +130,7 @@ WhatsApp (`GET /api/social/whatsapp/auto-reply-settings` → `inbound`):
 | `WHATSAPP_NO_WEBHOOK_ATTEMPTS` | critical | No direct messages **and** no recorded attempt: the provider is not calling. |
 | `WHATSAPP_WEBHOOK_ATTEMPTS_REJECTED` | critical | Attempts arrive but every one was refused; the message names the last recorded outcome and its hint. |
 | `WHATSAPP_NO_INBOUND_EVENTS` | warning | Attempts are accepted but no direct message was stored — group events, not customer DMs. |
+| `WHATSAPP_AUTO_REPLIES_POSTPONED_FOR_LIMIT` | warning | Replies are waiting on a limit that lifts by itself (AI quota, provider configuration) rather than on the worker. |
 
 Meta (`GET /api/social/meta-auto-replies` → `inbound`):
 
@@ -142,6 +143,7 @@ Meta (`GET /api/social/meta-auto-replies` → `inbound`):
 | `META_NO_WEBHOOK_ATTEMPTS` | critical | No inbox items **and** no recorded attempt. |
 | `META_WEBHOOK_ATTEMPTS_REJECTED` | critical | Attempts arrive but every one was refused. |
 | `META_NO_INBOUND_EVENTS` | warning | Attempts are accepted but nothing was stored — usually an account-id mismatch. |
+| `META_AUTO_REPLIES_POSTPONED_FOR_LIMIT` | warning | Same, for Facebook and Instagram reply jobs. |
 
 The response also carries `webhookAttempts`, a summary of the window
 (`count`, `lastAt`, `lastEvent`, `lastHint`, `acceptedCount`, `rejectedCount`,
@@ -150,6 +152,12 @@ delivery card: one sentence from `webhookAttemptHeadline()` plus fact rows from
 `webhookAttemptFacts()` (`artifacts/menaflow-mobile/lib/inbound-webhook-copy.ts`).
 Zero attempts produces no sentence, because the issue above already names that
 case with its fix and a neutral sentence would soften a critical finding.
+
+`autoReplyEvents.postponedByLimit` (and `autoReplyJobs.postponedByLimit` on the
+Meta side) counts the waiting replies whose recorded code is one of the limits
+that lift by themselves. Without it, "4 replies waiting" cannot be told apart
+from "4 replies the worker has not reached yet", and the merchant has no reason
+to look at their plan.
 
 ## Diagnosing in production
 

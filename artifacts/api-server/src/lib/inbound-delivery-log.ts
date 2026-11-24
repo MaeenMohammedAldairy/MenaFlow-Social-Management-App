@@ -13,7 +13,7 @@
  * encrypted at rest for WhatsApp and a diagnostics row would outlive it.
  */
 
-import { and, desc, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import { db, menaInboundWebhookEvents } from "@workspace/db";
 import {
   clampInboundWebhookEventQueryLimit,
@@ -86,20 +86,63 @@ export async function recordInboundWebhookAttempt(
  * so the caller can log it, or -1 when the purge failed — a failed purge must
  * not be reported as "nothing to do".
  */
+/** Rows deleted per statement, and how many statements one run may issue. */
+export const inboundWebhookEventPurgeBatchSize = 1000;
+export const inboundWebhookEventPurgeMaxBatches = 10;
+
+/**
+ * Deletes attempts older than the retention window, in bounded batches.
+ *
+ * One unbounded `DELETE` is the wrong shape for a table that grows with every
+ * webhook call: a burst of refused calls (or a first run against a table that
+ * was never purged) would hold locks for as long as the delete took, on a table
+ * the inbound handlers are writing to. Batching caps the work per run at
+ * `inboundWebhookEventPurgeBatchSize * inboundWebhookEventPurgeMaxBatches` rows
+ * and lets the next hourly run continue, which is the same trade the
+ * direct-message retention worker already makes.
+ *
+ * Returns the number of rows deleted, or -1 when the purge failed — a failure
+ * must not be reported as "nothing to do".
+ */
 export async function purgeOldInboundWebhookEvents(
   now: Date = new Date(),
 ): Promise<number> {
-  const cutoff = new Date(
-    now.getTime() - resolveInboundWebhookEventRetentionMs(),
-  ).toISOString();
+  const cutoff = new Date(now.getTime() - resolveInboundWebhookEventRetentionMs());
+  let deleted = 0;
   try {
-    const rows = await db
-      .delete(menaInboundWebhookEvents)
-      .where(lt(menaInboundWebhookEvents.createdAt, new Date(cutoff)))
-      .returning({ id: menaInboundWebhookEvents.id });
-    return rows.length;
+    for (let batch = 0; batch < inboundWebhookEventPurgeMaxBatches; batch += 1) {
+      const expired = await db
+        .select({ id: menaInboundWebhookEvents.id })
+        .from(menaInboundWebhookEvents)
+        .where(lt(menaInboundWebhookEvents.createdAt, cutoff))
+        .orderBy(asc(menaInboundWebhookEvents.createdAt))
+        .limit(inboundWebhookEventPurgeBatchSize);
+      if (expired.length === 0) break;
+      await db
+        .delete(menaInboundWebhookEvents)
+        .where(
+          inArray(
+            menaInboundWebhookEvents.id,
+            expired.map((row) => row.id),
+          ),
+        );
+      deleted += expired.length;
+      if (expired.length < inboundWebhookEventPurgeBatchSize) break;
+      if (batch === inboundWebhookEventPurgeMaxBatches - 1) {
+        // Rows are still outside the window; the next run picks them up. Said
+        // out loud so a table that never drains is visible rather than silent.
+        logger.info(
+          { deleted, cutoff: cutoff.toISOString() },
+          "INBOUND_WEBHOOK_EVENT_PURGE_BATCH_LIMIT",
+        );
+      }
+    }
+    return deleted;
   } catch (error) {
-    logger.warn({ error, cutoff }, "INBOUND_WEBHOOK_EVENT_PURGE_FAILED");
+    logger.warn(
+      { error, cutoff: cutoff.toISOString(), deleted },
+      "INBOUND_WEBHOOK_EVENT_PURGE_FAILED",
+    );
     return -1;
   }
 }

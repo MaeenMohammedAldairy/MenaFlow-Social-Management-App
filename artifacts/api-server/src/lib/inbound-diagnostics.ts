@@ -11,10 +11,58 @@
  * the wording and the thresholds are testable.
  */
 
+import { isAutoReplyGenerationPausedCode } from "./error-codes.ts";
 import {
   inboundWebhookOutcomeForEvent,
   isInboundWebhookRejection,
 } from "./inbound-webhook-diagnostics.ts";
+
+/**
+ * How many of the waiting replies are blocked by a limit that lifts by itself.
+ *
+ * The queue keeps such a reply `queued` rather than failing it, which is right
+ * for the customer and invisible to the merchant: the settings screen would
+ * otherwise show "3 replies waiting" with no way to tell a busy worker from a
+ * quota that ran out. Counting them here is what makes the difference legible.
+ */
+function arabicDigits(value: number): string {
+  return String(value).replace(/[0-9]/g, (digit) => "٠١٢٣٤٥٦٧٨٩"[Number(digit)]);
+}
+
+/**
+ * A count of postponed replies as a full Arabic noun phrase.
+ *
+ * Numeral agreement is not optional here: one, two, three to ten and eleven
+ * above each take a different noun and adjective form, and a fragment like
+ * "٣ مؤجَّل" is exactly what makes a diagnostics screen read as machine
+ * translated.
+ */
+function postponedRepliesPhrase(count: number): string {
+  const safe = Math.max(0, Math.trunc(Number.isFinite(count) ? count : 0));
+  if (safe === 1) return "ردّ واحد مؤجَّل";
+  if (safe === 2) return "ردّان مؤجَّلان";
+  if (safe <= 10) return `${arabicDigits(safe)} ردود مؤجَّلة`;
+  return `${arabicDigits(safe)} ردًّا مؤجَّلًا`;
+}
+
+/**
+ * The sentence shown when replies are waiting on a limit rather than on the
+ * worker. It names both limits that can cause it, promises the automatic
+ * resume, and always leaves the merchant an action they can take now.
+ *
+ * The reply window is deliberately not quoted as a number: WhatsApp's is
+ * configurable, and a sentence that states "12 hours" on a deployment set to 60
+ * minutes would be worse than one that says "within the reply window".
+ */
+export function postponedRepliesSentence(count: number): string {
+  return `${postponedRepliesPhrase(count)} لأن حدًا يرتفع وحده يعيق توليد الرد: حصة الذكاء الاصطناعي لهذا الشهر، أو إعداد مزوّد الذكاء الاصطناعي على الخادم. يُستأنف الإرسال تلقائيًا عند ارتفاع الحد ما دامت الرسالة داخل مهلة الرد الآلي، ويمكنك الرد يدويًا الآن.`;
+}
+
+function countPostponedByLimit(
+  errorCodes: ReadonlyArray<string | null | undefined>,
+): number {
+  return errorCodes.filter((code) => isAutoReplyGenerationPausedCode(code)).length;
+}
 
 export type DiagnosticIssue = {
   /** Stable code a client can branch on. */
@@ -101,6 +149,8 @@ export type WhatsAppInboundDiagnosticsInput = {
    * which case the summary stays null and no attempt-based conclusion is drawn.
    */
   webhookAttempts?: ReadonlyArray<InboundWebhookAttemptRow>;
+  /** Error codes of the replies still waiting, used to spot the postponed ones. */
+  queuedReplyErrorCodes?: ReadonlyArray<string | null>;
 };
 
 export type WhatsAppInboundDiagnostics = {
@@ -112,6 +162,8 @@ export type WhatsAppInboundDiagnostics = {
     sent: number;
     failed: number;
     other: number;
+    /** Waiting on a limit that lifts by itself, not on the worker. */
+    postponedByLimit: number;
   };
   webhookSecretConfigured: boolean;
   webhookUrl: string | null;
@@ -151,6 +203,7 @@ export function whatsAppInboundDiagnostics(
   const attempts = input.webhookAttempts
     ? summarizeInboundWebhookAttempts(input.webhookAttempts)
     : null;
+  const postponed = countPostponedByLimit(input.queuedReplyErrorCodes ?? []);
   if (input.directMessageCount === 0) {
     if (!attempts || attempts.count === 0) {
       issues.push({
@@ -174,6 +227,13 @@ export function whatsAppInboundDiagnostics(
       });
     }
   }
+  if (postponed > 0) {
+    issues.push({
+      code: "WHATSAPP_AUTO_REPLIES_POSTPONED_FOR_LIMIT",
+      message: postponedRepliesSentence(postponed),
+      severity: "warning",
+    });
+  }
   return {
     deliveryConfirmed: input.directMessageCount > 0,
     lastDirectMessageAt: input.lastDirectMessageAt?.toISOString() ?? null,
@@ -187,6 +247,7 @@ export function whatsAppInboundDiagnostics(
       sent: countByStatus(input.autoReplyEventCounts, ["sent", "completed"]),
       failed: countByStatus(input.autoReplyEventCounts, ["failed"]),
       other: countByStatus(input.autoReplyEventCounts, ["unknown", "skipped"]),
+      postponedByLimit: postponed,
     },
     webhookSecretConfigured: input.webhookSecretConfigured,
     webhookUrl: input.webhookUrl,
@@ -211,6 +272,8 @@ export type MetaInboundDiagnosticsInput = {
   appSecretConfigured: boolean;
   /** Recorded webhook attempts; omitted when the log was not read. */
   webhookAttempts?: ReadonlyArray<InboundWebhookAttemptRow>;
+  /** Error codes of the reply jobs still waiting. */
+  queuedJobErrorCodes?: ReadonlyArray<string | null>;
 };
 
 export type MetaInboundDiagnostics = {
@@ -223,6 +286,8 @@ export type MetaInboundDiagnostics = {
     completed: number;
     failed: number;
     skipped: number;
+    /** Waiting on a limit that lifts by itself, not on the worker. */
+    postponedByLimit: number;
   };
   subscriptions: Array<{
     platform: string;
@@ -280,6 +345,7 @@ export function metaInboundDiagnostics(
   const metaAttempts = input.webhookAttempts
     ? summarizeInboundWebhookAttempts(input.webhookAttempts)
     : null;
+  const metaPostponed = countPostponedByLimit(input.queuedJobErrorCodes ?? []);
   if (input.inboxItemCount === 0) {
     if (!metaAttempts || metaAttempts.count === 0) {
       issues.push({
@@ -303,6 +369,13 @@ export function metaInboundDiagnostics(
       });
     }
   }
+  if (metaPostponed > 0) {
+    issues.push({
+      code: "META_AUTO_REPLIES_POSTPONED_FOR_LIMIT",
+      message: postponedRepliesSentence(metaPostponed),
+      severity: "warning",
+    });
+  }
   return {
     deliveryConfirmed: input.inboxItemCount > 0,
     lastInboxItemAt: input.lastInboxItemAt?.toISOString() ?? null,
@@ -323,6 +396,7 @@ export function metaInboundDiagnostics(
         "action_required",
       ]),
       skipped: countByStatus(input.autoReplyJobCounts, ["skipped", "unknown"]),
+      postponedByLimit: metaPostponed,
     },
     subscriptions: input.subscriptions.map((subscription) => ({
       platform: subscription.platform,
