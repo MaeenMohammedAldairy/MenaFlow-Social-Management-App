@@ -17,9 +17,23 @@ import { and, asc, desc, eq, gte, inArray, isNull, lt, or } from "drizzle-orm";
 import { db, menaInboundWebhookEvents } from "@workspace/db";
 import {
   clampInboundWebhookEventQueryLimit,
+  inboundWebhookThrottleKey,
   resolveInboundWebhookEventRetentionMs,
+  resolveInboundWebhookRecordIntervalMs,
+  shouldRecordInboundWebhookAttempt,
 } from "./inbound-delivery-log-policy.ts";
+import { isInboundWebhookRejection } from "./inbound-webhook-diagnostics.ts";
 import { logger } from "./logger.ts";
+
+/**
+ * When each kind of accepted outcome was last written, per process.
+ *
+ * Deliberately not shared between replicas: the log is diagnostics, not
+ * accounting, so one row per outcome per interval per process is enough to
+ * answer "did the provider call, and did we refuse it", and sharing state would
+ * mean either a database read on the hot path or a cache this app does not have.
+ */
+const lastRecordedAttempts = new Map<string, number>();
 
 function newEventId(): string {
   return `iwe_${crypto.randomUUID().replace(/-/g, "")}`;
@@ -49,35 +63,65 @@ export type InboundDeliveryAttempt = {
 };
 
 /**
- * Records one attempt. Never throws: a broken log must not break inbound
- * delivery.
+ * Records one attempt, unless an identical accepted outcome was just recorded.
+ *
+ * Returns whether a row was written, so a caller can tell a throttled outcome
+ * from a stored one. Never throws: a broken log must not break inbound
+ * delivery, and the provider retries on a 4xx/5xx — losing a diagnostics row is
+ * always cheaper than losing a customer message.
  */
 export async function recordInboundWebhookAttempt(
   attempt: InboundDeliveryAttempt,
-): Promise<void> {
+  now: number = Date.now(),
+): Promise<boolean> {
+  const event = toText(attempt.event, 120);
+  // Nothing to key the row on: recording an unnamed outcome would add a row no
+  // reader can interpret.
+  if (!event) return false;
+  const workspaceId = toText(attempt.workspaceId, 64);
+  const instanceName = toText(attempt.instanceName, 200);
+  const accountId = toText(attempt.accountId, 200);
+
+  // Refusals are always written; accepted outcomes are written once per
+  // interval, because the inbound path is the hottest code in the server and the
+  // hundredth identical "event ignored" row carries no information the first did
+  // not. Counts read back from the log are therefore a floor, not a total.
+  const willRecord = shouldRecordInboundWebhookAttempt({
+    rejection: isInboundWebhookRejection(event),
+    key: inboundWebhookThrottleKey({
+      platform: attempt.platform,
+      event,
+      workspaceId,
+      instanceName,
+      accountId,
+    }),
+    now,
+    intervalMs: resolveInboundWebhookRecordIntervalMs(),
+    lastRecorded: lastRecordedAttempts,
+  });
+  if (!willRecord) return false;
+
   try {
-    const event = toText(attempt.event, 120);
-    // Nothing to key the row on: recording an unnamed outcome would add a row
-    // no reader can interpret.
-    if (!event) return;
     await db
       .insert(menaInboundWebhookEvents)
       .values({
         id: newEventId(),
-        workspaceId: toText(attempt.workspaceId, 64),
+        workspaceId,
         platform: attempt.platform ?? null,
         event,
         deliveryConfirmed: attempt.deliveryConfirmed ?? true,
-        instanceName: toText(attempt.instanceName, 200),
-        accountId: toText(attempt.accountId, 200),
+        instanceName,
+        accountId,
         context: attempt.context ?? {},
       })
       .onConflictDoNothing();
+    return true;
   } catch (error) {
     logger.warn(
-      { error, event: attempt.event, platform: attempt.platform },
+      { error, event, platform: attempt.platform },
       "INBOUND_WEBHOOK_EVENT_NOT_RECORDED",
     );
+    return false;
   }
 }
 

@@ -84,3 +84,91 @@ export function clampInboundWebhookEventQueryLimit(
   );
 }
 
+/**
+ * One row per outcome per key per interval, for outcomes that are not refusals.
+ *
+ * The log is written from the inbound webhook path, which is the hottest code in
+ * the server: Evolution posts presence and connection updates continuously, and
+ * a busy page produces a `PROCESSED` outcome per message. Recording every one of
+ * those turns a diagnostics table into the largest writer in the system while
+ * adding nothing a reader can act on — the hundredth identical "event ignored"
+ * row says exactly what the first one did.
+ *
+ * Refusals are never throttled: they are the rare, load-bearing rows, and a
+ * burst of refused calls is precisely the moment an operator needs every one.
+ */
+export const DEFAULT_INBOUND_WEBHOOK_RECORD_INTERVAL_MS = 60_000;
+/** Below one second the throttle stops throttling and the volume returns. */
+export const MIN_INBOUND_WEBHOOK_RECORD_INTERVAL_MS = 1_000;
+
+/**
+ * Keys held before the map is cleared. One key is a short string, so this caps
+ * the throttle's memory at a few hundred kilobytes however many instances and
+ * accounts a deployment serves.
+ */
+export const INBOUND_WEBHOOK_THROTTLE_MAX_KEYS = 5_000;
+
+export function resolveInboundWebhookRecordIntervalMs(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  return positiveInteger(
+    env.INBOUND_WEBHOOK_RECORD_INTERVAL_MS,
+    DEFAULT_INBOUND_WEBHOOK_RECORD_INTERVAL_MS,
+    MIN_INBOUND_WEBHOOK_RECORD_INTERVAL_MS,
+  );
+}
+
+/**
+ * Identity of "the same outcome happening again": one platform, one outcome, and
+ * whichever identifier the attempt carried. Two instances ignoring presence
+ * updates are two facts, not one, so the key keeps them apart.
+ */
+export function inboundWebhookThrottleKey(input: {
+  platform: string | null;
+  event: string;
+  workspaceId?: string | null;
+  instanceName?: string | null;
+  accountId?: string | null;
+}): string {
+  return [
+    input.platform ?? "-",
+    input.event,
+    input.workspaceId ?? "-",
+    input.instanceName ?? "-",
+    input.accountId ?? "-",
+  ].join("|");
+}
+
+/**
+ * True when this attempt should be written.
+ *
+ * `lastRecorded` is mutated on a decision to record, so the caller passes the
+ * map it owns and the function stays free of module state — which is what makes
+ * the interval testable without waiting for it.
+ */
+export function shouldRecordInboundWebhookAttempt(input: {
+  /** True when the outcome is a refusal; refusals are always recorded. */
+  rejection: boolean;
+  key: string;
+  now: number;
+  intervalMs?: number;
+  lastRecorded: Map<string, number>;
+}): boolean {
+  if (input.rejection) {
+    input.lastRecorded.set(input.key, input.now);
+    return true;
+  }
+  const interval = input.intervalMs ?? resolveInboundWebhookRecordIntervalMs();
+  const previous = input.lastRecorded.get(input.key);
+  if (previous !== undefined && input.now - previous < interval) {
+    return false;
+  }
+  // Clearing rather than evicting keeps this O(1) on the hot path. Losing the
+  // remembered timestamps only means the next attempt of each kind is recorded,
+  // which is the behaviour a fresh process already has.
+  if (input.lastRecorded.size >= INBOUND_WEBHOOK_THROTTLE_MAX_KEYS) {
+    input.lastRecorded.clear();
+  }
+  input.lastRecorded.set(input.key, input.now);
+  return true;
+}

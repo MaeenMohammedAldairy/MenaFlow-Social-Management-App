@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   clampInboundWebhookEventQueryLimit,
+  DEFAULT_INBOUND_WEBHOOK_RECORD_INTERVAL_MS,
+  INBOUND_WEBHOOK_THROTTLE_MAX_KEYS,
+  inboundWebhookThrottleKey,
+  MIN_INBOUND_WEBHOOK_RECORD_INTERVAL_MS,
+  resolveInboundWebhookRecordIntervalMs,
+  shouldRecordInboundWebhookAttempt,
   DEFAULT_INBOUND_WEBHOOK_EVENT_QUERY_LIMIT,
   DEFAULT_INBOUND_WEBHOOK_EVENT_RETENTION_MS,
   MAX_INBOUND_WEBHOOK_EVENT_QUERY_LIMIT,
@@ -113,4 +119,144 @@ test("a caller-supplied limit is bounded the same way as the environment", () =>
     DEFAULT_INBOUND_WEBHOOK_EVENT_QUERY_LIMIT,
   );
   assert.equal(clampInboundWebhookEventQueryLimit(Number.NaN), 200);
+});
+
+test("the record interval defaults to a minute and is floored at a second", () => {
+  assert.equal(DEFAULT_INBOUND_WEBHOOK_RECORD_INTERVAL_MS, 60_000);
+  assert.equal(MIN_INBOUND_WEBHOOK_RECORD_INTERVAL_MS, 1_000);
+  assert.equal(resolveInboundWebhookRecordIntervalMs({}), 60_000);
+  assert.equal(
+    resolveInboundWebhookRecordIntervalMs({ INBOUND_WEBHOOK_RECORD_INTERVAL_MS: "0" }),
+    60_000,
+  );
+  assert.equal(
+    resolveInboundWebhookRecordIntervalMs({ INBOUND_WEBHOOK_RECORD_INTERVAL_MS: "abc" }),
+    60_000,
+  );
+  // A value below the floor is clamped, not defaulted: an operator who asks for
+  // a tighter throttle gets the tightest one that still throttles.
+  assert.equal(
+    resolveInboundWebhookRecordIntervalMs({ INBOUND_WEBHOOK_RECORD_INTERVAL_MS: "10" }),
+    1_000,
+  );
+  assert.equal(
+    resolveInboundWebhookRecordIntervalMs({ INBOUND_WEBHOOK_RECORD_INTERVAL_MS: "5000" }),
+    5_000,
+  );
+});
+
+test("the throttle key separates instances, accounts and outcomes", () => {
+  const base = {
+    platform: "whatsapp",
+    event: "WHATSAPP_WEBHOOK_IGNORED_EVENT",
+    workspaceId: null,
+    instanceName: "menaflow-3c247db8a54d",
+    accountId: null,
+  };
+  assert.equal(
+    inboundWebhookThrottleKey(base),
+    "whatsapp|WHATSAPP_WEBHOOK_IGNORED_EVENT|-|menaflow-3c247db8a54d|-",
+  );
+  // Two instances ignoring the same event are two facts, not one.
+  assert.notEqual(
+    inboundWebhookThrottleKey({ ...base, instanceName: "other" }),
+    inboundWebhookThrottleKey(base),
+  );
+  assert.notEqual(
+    inboundWebhookThrottleKey({ ...base, event: "WHATSAPP_WEBHOOK_PROCESSED" }),
+    inboundWebhookThrottleKey(base),
+  );
+  assert.notEqual(
+    inboundWebhookThrottleKey({ ...base, platform: null, accountId: "100105546131276" }),
+    inboundWebhookThrottleKey(base),
+  );
+});
+
+test("an accepted outcome is written once per interval, not once per event", () => {
+  const lastRecorded = new Map();
+  const attempt = {
+    rejection: false,
+    key: "whatsapp|WHATSAPP_WEBHOOK_IGNORED_EVENT|-|inst|-",
+    intervalMs: 60_000,
+    lastRecorded,
+  };
+  assert.equal(shouldRecordInboundWebhookAttempt({ ...attempt, now: 1_000 }), true);
+  assert.equal(shouldRecordInboundWebhookAttempt({ ...attempt, now: 2_000 }), false);
+  assert.equal(shouldRecordInboundWebhookAttempt({ ...attempt, now: 60_999 }), false);
+  assert.equal(shouldRecordInboundWebhookAttempt({ ...attempt, now: 61_000 }), true);
+  assert.equal(lastRecorded.size, 1);
+});
+
+test("a refusal is always written, even inside the interval", () => {
+  // A burst of refused calls is exactly when an operator needs every one: the
+  // count of refusals is the evidence, and throttling it would understate a
+  // misconfiguration that is rejecting hundreds of deliveries a minute.
+  const lastRecorded = new Map();
+  for (let index = 0; index < 50; index += 1) {
+    assert.equal(
+      shouldRecordInboundWebhookAttempt({
+        rejection: true,
+        key: "whatsapp|WHATSAPP_WEBHOOK_REJECTED_SECRET|-|inst|-",
+        now: 1_000 + index,
+        intervalMs: 60_000,
+        lastRecorded,
+      }),
+      true,
+      index,
+    );
+  }
+});
+
+test("different outcomes and instances do not share a throttle slot", () => {
+  const lastRecorded = new Map();
+  const first = shouldRecordInboundWebhookAttempt({
+    rejection: false,
+    key: inboundWebhookThrottleKey({
+      platform: "whatsapp",
+      event: "WHATSAPP_WEBHOOK_PROCESSED",
+      instanceName: "a",
+    }),
+    now: 1_000,
+    intervalMs: 60_000,
+    lastRecorded,
+  });
+  const second = shouldRecordInboundWebhookAttempt({
+    rejection: false,
+    key: inboundWebhookThrottleKey({
+      platform: "whatsapp",
+      event: "WHATSAPP_WEBHOOK_PROCESSED",
+      instanceName: "b",
+    }),
+    now: 1_001,
+    intervalMs: 60_000,
+    lastRecorded,
+  });
+  assert.equal(first, true);
+  assert.equal(second, true);
+  assert.equal(lastRecorded.size, 2);
+});
+
+test("the key map is bounded so a long-lived process cannot grow it forever", () => {
+  const lastRecorded = new Map();
+  for (let index = 0; index < INBOUND_WEBHOOK_THROTTLE_MAX_KEYS; index += 1) {
+    shouldRecordInboundWebhookAttempt({
+      rejection: false,
+      key: `whatsapp|EVENT|ws-${index}|-|-`,
+      now: index,
+      intervalMs: 60_000,
+      lastRecorded,
+    });
+  }
+  assert.equal(lastRecorded.size, INBOUND_WEBHOOK_THROTTLE_MAX_KEYS);
+  // One more key clears the map rather than growing it; the cost is that the
+  // next attempt of each kind is recorded again, which is what a fresh process
+  // does anyway.
+  shouldRecordInboundWebhookAttempt({
+    rejection: false,
+    key: "whatsapp|EVENT|one-more|-|-",
+    now: INBOUND_WEBHOOK_THROTTLE_MAX_KEYS + 1,
+    intervalMs: 60_000,
+    lastRecorded,
+  });
+  assert.equal(lastRecorded.size, 1);
 });
