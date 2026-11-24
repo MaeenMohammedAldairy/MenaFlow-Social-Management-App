@@ -16,6 +16,7 @@ import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 import { verifyWhatsAppWebhookSecret } from "../lib/whatsapp-evolution";
 import { resolveWhatsAppGroupSyncTargets } from "../lib/whatsapp-group-identity";
+import { buildWhatsAppSyncStatusGroups } from "../lib/whatsapp-sync-status";
 import { hasEnabledWhatsAppSyncType } from "../lib/whatsapp-sync-options";
 
 import {
@@ -357,6 +358,7 @@ router.get(
         db
           .select({
             groupId: menaWhatsAppGroupSelections.groupId,
+            groupJid: menaWhatsAppGroupSelections.groupJid,
           })
           .from(menaWhatsAppGroupSelections)
           .where(
@@ -411,18 +413,50 @@ router.get(
         }),
         allGroups,
       );
-      const selectedGroupIds = new Set(selectedGroups.map(({ id }) => id));
-      const groupNames = new Map(
-        selectedGroups.map(({ id, name }) => [id, name]),
-      );
-      const selectedSyncStates = states.filter(
-        (state) => state.groupId && selectedGroupIds.has(state.groupId),
-      );
-      const selectedGroupJids = selectedSyncStates.map(
-        (state) => state.groupJid,
-      );
+      // Selections carry the primary JID; targets without a selection row
+      // (community expansion) fall back to the group directory.
+      const groupJidByGroupId = new Map<string, string>();
+      for (const selection of selections) {
+        if (selection.groupId && !groupJidByGroupId.has(selection.groupId)) {
+          groupJidByGroupId.set(selection.groupId, selection.groupJid);
+        }
+      }
+      const missingJidGroupIds = selectedGroups
+        .map(({ id }) => id)
+        .filter((groupId) => !groupJidByGroupId.has(groupId));
+      if (missingJidGroupIds.length > 0) {
+        const directoryJids = await db
+          .select({
+            groupId: menaWhatsAppGroupJids.groupId,
+            groupJid: menaWhatsAppGroupJids.groupJid,
+          })
+          .from(menaWhatsAppGroupJids)
+          .where(
+            and(
+              eq(menaWhatsAppGroupJids.workspaceId, workspaceId),
+              eq(
+                menaWhatsAppGroupJids.instanceName,
+                connection.instanceName,
+              ),
+              inArray(menaWhatsAppGroupJids.groupId, missingJidGroupIds),
+            ),
+          );
+        for (const row of directoryJids) {
+          if (row.groupId && !groupJidByGroupId.has(row.groupId)) {
+            groupJidByGroupId.set(row.groupId, row.groupJid);
+          }
+        }
+      }
+      // Count stored messages for every selected JID — not only JIDs that
+      // already have a sync state — so webhook-only traffic still surfaces.
+      const countedGroupJids = [
+        ...new Set([
+          ...groupJidByGroupId.values(),
+          ...states.map((state) => state.groupJid),
+        ]),
+      ];
       const savedMessageCounts =
-        selectedGroupJids.length > 0
+        countedGroupJids.length > 0
           ? await db
               .select({
                 groupJid: menaWhatsAppMessages.groupJid,
@@ -436,7 +470,7 @@ router.get(
                     menaWhatsAppMessages.instanceName,
                     connection.instanceName,
                   ),
-                  inArray(menaWhatsAppMessages.groupJid, selectedGroupJids),
+                  inArray(menaWhatsAppMessages.groupJid, countedGroupJids),
                 ),
               )
               .groupBy(menaWhatsAppMessages.groupJid)
@@ -450,22 +484,15 @@ router.get(
         syncMessagesEnabled: connection.syncMessagesEnabled,
         syncImagesEnabled: connection.syncImagesEnabled,
         syncVideosEnabled: connection.syncVideosEnabled,
-        groups: selectedSyncStates.map((state) => ({
-          groupJid: state.groupJid,
-          groupName: state.groupId
-            ? (groupNames.get(state.groupId) ?? state.groupJid)
-            : state.groupJid,
-          status: state.status,
-          savedMessageCount:
-            savedMessageCountByGroupJid.get(state.groupJid) ?? 0,
-          importedCount: state.importedCount,
-          skippedCount: state.skippedCount,
-          failedCount: state.failedCount,
-          lastSyncedAt: state.lastSyncedAt?.toISOString() ?? null,
-          lastError: state.lastError,
-          startedAt: state.startedAt?.toISOString() ?? null,
-          completedAt: state.completedAt?.toISOString() ?? null,
-        })),
+        // Selected groups are listed even before their first sync run
+        // (status "idle"); otherwise the client disables "sync now" forever
+        // on a fresh workspace because sync states only exist post-sync.
+        groups: buildWhatsAppSyncStatusGroups({
+          targets: selectedGroups,
+          states,
+          groupJidByGroupId,
+          savedMessageCountByGroupJid,
+        }),
       });
     } catch (error) {
       logger.error({ error }, "Error fetching WhatsApp sync status");
