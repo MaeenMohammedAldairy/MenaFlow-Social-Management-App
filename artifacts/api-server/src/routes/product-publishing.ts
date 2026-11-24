@@ -9,6 +9,10 @@ import {
 } from "@workspace/db";
 import { missingMetaIntegrationPermissions } from "../lib/meta-oauth";
 import { buildProductPublicationMatrix, type ProductPublicationTarget } from "../lib/product-publishing-logic";
+import {
+  missingProductFieldMessages,
+  productPublicationBlockers,
+} from "../lib/product-draft-policy";
 import { requireWorkspace, requestWorkspaceId, requestWorkspaceUserId } from "../lib/workspace-context";
 import { requestOwnerId } from "../lib/owner-access";
 import { processProductPublicationQueue } from "../lib/product-publishing";
@@ -149,6 +153,12 @@ router.post("/social/products/publish", requireWorkspace, async (req, res) => {
   const productRows = await db
     .select({
       id: products.id,
+      name: products.name,
+      description: products.description,
+      price: products.price,
+      currency: products.currency,
+      availability: products.availability,
+      mediaUrls: products.mediaUrls,
       status: products.status,
       verifiedAt: products.verifiedAt,
     })
@@ -168,6 +178,37 @@ router.post("/social/products/publish", requireWorkspace, async (req, res) => {
     res.status(409).json({
       error: "لا يمكن نشر المسودات أو المنتجات غير المعتمدة. راجع بيانات المنتجات واعتمدها أولًا.",
       code: "PRODUCTS_NOT_APPROVED",
+    });
+    return;
+  }
+
+  // An approved product can still be missing the price: the extraction drafts
+  // keep whatever the message stated, and publishing a listing without a price
+  // costs the merchant comments and orders he cannot fulfil.
+  const incompleteProducts = publishableProducts.flatMap((product) => {
+    const blockers = productPublicationBlockers({
+      name: product.name,
+      description: product.description,
+      price: product.price,
+      currency: product.currency,
+      availability: product.availability,
+      mediaUrls: product.mediaUrls,
+    });
+    return blockers.length
+      ? [{
+          id: product.id,
+          name: product.name,
+          missingFields: blockers,
+          missingFieldMessages: missingProductFieldMessages(blockers),
+        }]
+      : [];
+  });
+  if (incompleteProducts.length > 0) {
+    const first = incompleteProducts[0]!;
+    res.status(409).json({
+      error: `أكمل بيانات المنتج قبل النشر: ${first.name} ينقصه ${first.missingFieldMessages.join(" و")}.`,
+      code: "PRODUCT_FIELDS_INCOMPLETE",
+      incompleteProducts,
     });
     return;
   }

@@ -9,6 +9,12 @@ import {
 } from "../lib/meta-publishing";
 
 import { productMediaInfo } from "../lib/product-utils.ts";
+import {
+  missingProductFieldMessages,
+  missingProductFields,
+  productAdvisoryFields,
+  productPublicationBlockers,
+} from "../lib/product-draft-policy.ts";
 
 export function mediaUrls(value: unknown): string[] {
   return Array.isArray(value)
@@ -122,6 +128,16 @@ export async function catalogProductResponse(
     0,
     20,
   );
+  const fields = {
+    name: product.name,
+    description: product.description,
+    price: product.price,
+    currency: product.currency,
+    availability: product.availability,
+    mediaUrls: productMediaUrls,
+  };
+  const missingFields = missingProductFields(fields);
+  const publicationBlockers = productPublicationBlockers(fields);
   return {
     ...product,
     mediaUrls: productMediaUrls,
@@ -131,5 +147,15 @@ export async function catalogProductResponse(
       requestOrigin,
     ),
     postIds,
+    /** Every empty field, so the catalog can badge an incomplete product. */
+    missingFields,
+    /** Arabic labels for the empty fields, ready to show. */
+    missingFieldMessages: missingProductFieldMessages(missingFields),
+    /** Missing fields that stop publication. */
+    publicationBlockers,
+    publicationBlockerMessages: missingProductFieldMessages(publicationBlockers),
+    publicationBlocked: publicationBlockers.length > 0,
+    /** Worth completing, but not enforced. */
+    advisoryFields: productAdvisoryFields(fields),
   };
 }
