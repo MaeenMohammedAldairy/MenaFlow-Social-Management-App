@@ -1,181 +1,94 @@
+/**
+ * Orders API.
+ *
+ * A thin adapter over the generated client, not a second implementation. The
+ * types and the transport come from `@workspace/api-spec` via codegen, so the
+ * contract is the only place an order's shape is written down. What stays here
+ * is ergonomics only: positional arguments instead of a params object, and
+ * unwrapping the `{ order }` envelope the endpoints return.
+ *
+ * Before this was a hand-written module with its own copies of `CustomerOrder`,
+ * `OrderStatus`, `OrderSummary` and friends, kept in sync by hand — the exact
+ * drift the contract exists to prevent.
+ */
 import {
-  fetchApiResponse,
-  readJsonResponse,
+  createOrder as createOrderRequest,
+  getOrderSummary,
+  listOrders,
+  updateOrderDelivery as updateOrderDeliveryRequest,
+  updateOrderStatus as updateOrderStatusRequest,
+  type CollectionStatus,
+  type CreateOrderRequest,
+  type DeliveryStatus,
+  type ListOrdersParams,
+  type MetaConfirmationStatus,
+  type Order,
+  type OrderEvent,
+  type OrderItem,
+  type OrderStatus,
+  type OrderSummary,
+  type WhatsAppConfirmationStatus,
 } from "@workspace/api-client-react";
 
-export type OrderStatus =
-  "draft" | "confirmed" | "preparing" | "shipped" | "completed" | "cancelled";
-
-export type DeliveryStatus =
-  | "pending"
-  | "ready"
-  | "picked_up"
-  | "in_transit"
-  | "delivered"
-  | "failed"
-  | "returned";
-
-export type CollectionStatus = "not_collected" | "collected" | "remitted";
-
-export type MetaConfirmationStatus =
-  | "not_required"
-  | "queued"
-  | "processing"
-  | "sending"
-  | "sent"
-  | "manual_followup"
-  | "failed"
-  | "unknown";
-
-export type WhatsAppConfirmationStatus =
-  | "not_required"
-  | "queued"
-  | "processing"
-  | "sending"
-  | "sent"
-  | "failed"
-  | "unknown"
-  | "manual_followup";
-
-export type OrderSummary = Record<OrderStatus, number> & {
-  total: number;
-  metaDrafts: number;
-  whatsappDrafts: number;
+export type {
+  CollectionStatus,
+  DeliveryStatus,
+  MetaConfirmationStatus,
+  OrderEvent,
+  OrderItem,
+  OrderStatus,
+  OrderSummary,
+  WhatsAppConfirmationStatus,
 };
 
-export type OrderItem = {
-  id: string;
-  productId: string | null;
-  productName: string;
-  productSku: string | null;
-  quantity: number;
-  unitPrice: string;
-  lineTotal: string;
-};
+export { getOrderSummary };
 
-export type OrderEvent = {
-  id: string;
-  fromStatus: OrderStatus | null;
-  toStatus: OrderStatus;
-  createdAt: string;
-};
+/** The wire name is `Order`; the app calls a merchant's order a customer order. */
+export type CustomerOrder = Order;
 
-export type CustomerOrder = {
-  id: string;
-  orderNumber: string;
-  customerName: string;
-  customerPhone: string | null;
-  deliveryAddress: string | null;
-  notes: string;
-  sourceMetaInboxItemId: string | null;
-  sourcePlatform: "facebook" | "instagram" | "whatsapp" | null;
-  sourceConversationId: string | null;
-  sourceWhatsAppInstanceName: string | null;
-  metaConfirmationStatus: MetaConfirmationStatus;
-  metaConfirmationError: string | null;
-  metaConfirmationSentAt: string | null;
-  whatsappConfirmationStatus: WhatsAppConfirmationStatus;
-  whatsappConfirmationError: string | null;
-  whatsappConfirmationSentAt: string | null;
-  status: OrderStatus;
-  deliveryStatus: DeliveryStatus;
-  deliveryProvider: string | null;
-  trackingNumber: string | null;
-  deliveryFee: string;
-  collectionStatus: CollectionStatus;
-  collectedAmount: string;
-  deliveredAt: string | null;
-  currency: string;
-  total: string;
-  createdAt: string;
-  updatedAt: string;
-  items: OrderItem[];
-  events: OrderEvent[];
-  deliveryEvents: Array<{
-    id: string;
-    toStatus: DeliveryStatus;
-    createdAt: string;
-  }>;
-};
-
-export type CreateOrderInput = {
-  clientRequestId: string;
-  customerName: string;
-  customerPhone?: string;
-  deliveryAddress?: string;
-  notes?: string;
-  sourceMetaInboxItemId?: string;
-  items: Array<{ productId: string; quantity: number }>;
-};
-
-export async function getOrderSummary(): Promise<OrderSummary> {
-  const response = await fetchApiResponse("/api/social/orders/summary");
-  return readJsonResponse<OrderSummary>(response);
-}
+export type CreateOrderInput = CreateOrderRequest;
 
 export async function getOrders(
   status: OrderStatus | "all",
   search: string,
   cursor?: string,
 ): Promise<{ orders: CustomerOrder[]; nextCursor: string | null }> {
-  const query = new URLSearchParams();
-  if (status !== "all") query.set("status", status);
-  if (search.trim()) query.set("search", search.trim());
-  if (cursor) query.set("cursor", cursor);
-  const suffix = query.size ? `?${query.toString()}` : "";
-  const response = await fetchApiResponse(`/api/social/orders${suffix}`);
-  return readJsonResponse<{ orders: CustomerOrder[]; nextCursor: string | null }>(
-    response,
-  );
+  const params: ListOrdersParams = {};
+  if (status !== "all") params.status = status;
+  const trimmedSearch = search.trim();
+  if (trimmedSearch) params.search = trimmedSearch;
+  if (cursor) params.cursor = cursor;
+  return listOrders(params);
 }
 
 export async function createOrder(
   input: CreateOrderInput,
 ): Promise<CustomerOrder> {
-  const response = await fetchApiResponse("/api/social/orders", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  const result = await readJsonResponse<{ order: CustomerOrder }>(response);
-  return result.order;
+  const { order } = await createOrderRequest(input);
+  return order;
 }
 
 export async function updateOrderStatus(
   orderId: string,
   status: OrderStatus,
 ): Promise<CustomerOrder> {
-  const response = await fetchApiResponse(
-    `/api/social/orders/${encodeURIComponent(orderId)}/status`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
-    },
-  );
-  const result = await readJsonResponse<{ order: CustomerOrder }>(response);
-  return result.order;
+  const { order } = await updateOrderStatusRequest(orderId, { status });
+  return order;
 }
 
 export async function updateOrderDelivery(
   orderId: string,
-  input: {
-    deliveryStatus?: DeliveryStatus;
-    deliveryProvider?: string | null;
-    trackingNumber?: string | null;
-    deliveryFee?: string;
-    collectionStatus?: CollectionStatus;
-    collectedAmount?: string;
-  },
+  input: OrderDeliveryUpdate,
 ): Promise<CustomerOrder> {
-  const response = await fetchApiResponse(
-    `/api/social/orders/${encodeURIComponent(orderId)}/delivery`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
-  const result = await readJsonResponse<{ order: CustomerOrder }>(response);
-  return result.order;
+  const { order } = await updateOrderDeliveryRequest(orderId, input);
+  return order;
 }
+
+export type OrderDeliveryUpdate = {
+  deliveryStatus?: DeliveryStatus;
+  deliveryProvider?: string | null;
+  trackingNumber?: string | null;
+  deliveryFee?: string;
+  collectionStatus?: CollectionStatus;
+  collectedAmount?: string;
+};

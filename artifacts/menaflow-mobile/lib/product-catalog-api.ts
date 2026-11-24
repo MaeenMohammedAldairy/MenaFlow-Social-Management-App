@@ -1,7 +1,10 @@
 import {
   fetchApiResponse,
   readJsonResponse,
+  listCatalogProducts,
+  type CatalogProduct as GeneratedCatalogProduct,
 } from "@workspace/api-client-react";
+import type { ProductFieldKey, ProductPublicationHistory } from "@workspace/api-client-react";
 
 export type ImportedMetaPost = {
   platform: "facebook" | "instagram";
@@ -13,60 +16,19 @@ export type ImportedMetaPost = {
   mediaType?: string | null;
 };
 
-export type CatalogProduct = {
-  id: string;
-  sku: string | null;
-  name: string;
-  aliases: string[];
-  description: string;
-  price: string | null;
-  currency: string | null;
-  availability: "unknown" | "in_stock" | "out_of_stock" | "preorder";
-  inventoryTracked: boolean;
-  stockOnHand: number;
-  stockReserved: number;
-  lowStockThreshold: number;
-  status: "draft" | "active" | "archived";
-  mediaUrls: string[];
-  mediaPreviews: Array<{
-    id: string;
-    url: string;
-    mediaType: string;
-  }>;
-  verifiedAt: string | null;
-  sourceTrust?: "merchant" | "customer" | "unknown";
-  updatedBy?: string | null;
-  updatedReason?: string | null;
-  createdAt: string;
-  updatedAt: string;
-  postIds: string[];
-  publicationHistory?: ProductPublicationHistory[];
-  /** Field keys the merchant still has to fill. */
-  missingFields?: ProductFieldKey[];
-  /** Arabic labels for `missingFields`, ready to render. */
-  missingFieldMessages?: string[];
-  /** Missing fields that stop publication. */
-  publicationBlockers?: ProductFieldKey[];
-  publicationBlockerMessages?: string[];
-  publicationBlocked?: boolean;
-  advisoryFields?: ProductFieldKey[];
-};
+/**
+ * The wire shape, generated from `lib/api-spec/openapi.yaml`. It used to be a
+ * hand-written copy that had drifted: it marked `sourceTrust`, `updatedBy` and
+ * `updatedReason` optional and omitted `ownerId`, `workspaceId`,
+ * `normalizedName` and `lastExtractionSuggestionId`, all of which the server
+ * always sends.
+ */
+export type CatalogProduct = GeneratedCatalogProduct;
 
-export type ProductFieldKey =
-  | "name"
-  | "description"
-  | "price"
-  | "currency"
-  | "availability"
-  | "media";
-
-export type ProductPublicationHistory = {
-  channel: "facebook" | "instagram";
-  accountId: string;
-  permalink: string | null;
-  createdAt: string;
-  completedAt: string | null;
-};
+export type {
+  ProductFieldKey,
+  ProductPublicationHistory,
+} from "@workspace/api-client-react";
 
 export type InventoryMovement = {
   id: string;
@@ -170,7 +132,24 @@ export type ScannedPostProductExtraction = {
 
 export type ProductInput = Omit<
   CatalogProduct,
+  // Server-assigned identity and bookkeeping. These are on the wire, so they
+  // belong on CatalogProduct, but a merchant never sends them back.
   | "id"
+  | "ownerId"
+  | "workspaceId"
+  | "normalizedName"
+  | "sourceTrust"
+  | "lastExtractionSuggestionId"
+  | "updatedBy"
+  | "updatedReason"
+  // Derived per read, never stored as the merchant wrote them.
+  | "missingFields"
+  | "missingFieldMessages"
+  | "publicationBlockers"
+  | "publicationBlockerMessages"
+  | "publicationBlocked"
+  | "advisoryFields"
+  | "publicationHistory"
   | "createdAt"
   | "updatedAt"
   | "verifiedAt"
@@ -225,11 +204,7 @@ export type ProductPublicationSnapshot = {
 export async function getProductCatalog(
   includeArchived = false,
 ): Promise<CatalogProduct[]> {
-  const response = await fetchApiResponse(
-    `/api/social/products${includeArchived ? "?includeArchived=true" : ""}`,
-  );
-  const result = await readJsonResponse<{ products: CatalogProduct[] }>(response);
-  return result.products;
+  return (await listCatalogProducts({ includeArchived })).products;
 }
 
 export async function getInventoryMovements(

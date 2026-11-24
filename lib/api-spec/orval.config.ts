@@ -51,7 +51,14 @@ export default defineConfig({
       workspace: apiZodSrc,
       client: "zod",
       target: "generated",
-      schemas: { path: "generated/types", type: "typescript" },
+      // No separate `schemas` output on purpose. The TypeScript mirror it
+      // produced was never imported by anything, and it contradicted the
+      // validators beside it: for an operation with both a path and a query
+      // parameter, orval emitted `GetWhatsAppMediaUrlParams` twice — once as the
+      // path validator in api.ts, once as a query-only *type* under
+      // generated/types — so `export *` from both was a TS2308 error and the
+      // two names meant different objects. Every consumer of this package wants
+      // a validator; the client-side types live in @workspace/api-client-react.
       mode: "split",
       clean: true,
       prettier: true,

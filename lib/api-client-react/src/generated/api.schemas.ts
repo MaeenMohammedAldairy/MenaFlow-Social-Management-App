@@ -69,6 +69,525 @@ export interface ApiError {
   requestId?: string;
 }
 
+export type OrderStatus = typeof OrderStatus[keyof typeof OrderStatus];
+
+
+export const OrderStatus = {
+  draft: 'draft',
+  confirmed: 'confirmed',
+  preparing: 'preparing',
+  shipped: 'shipped',
+  completed: 'completed',
+  cancelled: 'cancelled',
+} as const;
+
+export type DeliveryStatus = typeof DeliveryStatus[keyof typeof DeliveryStatus];
+
+
+export const DeliveryStatus = {
+  pending: 'pending',
+  ready: 'ready',
+  picked_up: 'picked_up',
+  in_transit: 'in_transit',
+  delivered: 'delivered',
+  failed: 'failed',
+  returned: 'returned',
+} as const;
+
+export type CollectionStatus = typeof CollectionStatus[keyof typeof CollectionStatus];
+
+
+export const CollectionStatus = {
+  not_collected: 'not_collected',
+  collected: 'collected',
+  remitted: 'remitted',
+} as const;
+
+export type MetaConfirmationStatus = typeof MetaConfirmationStatus[keyof typeof MetaConfirmationStatus];
+
+
+export const MetaConfirmationStatus = {
+  not_required: 'not_required',
+  queued: 'queued',
+  processing: 'processing',
+  sending: 'sending',
+  sent: 'sent',
+  manual_followup: 'manual_followup',
+  failed: 'failed',
+  unknown: 'unknown',
+} as const;
+
+export type WhatsAppConfirmationStatus = typeof WhatsAppConfirmationStatus[keyof typeof WhatsAppConfirmationStatus];
+
+
+export const WhatsAppConfirmationStatus = {
+  not_required: 'not_required',
+  queued: 'queued',
+  processing: 'processing',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+  unknown: 'unknown',
+  manual_followup: 'manual_followup',
+} as const;
+
+/**
+ * Order counts for the workspace, keyed by status
+ */
+export interface OrderSummary {
+  /** @minimum 0 */
+  draft: number;
+  /** @minimum 0 */
+  confirmed: number;
+  /** @minimum 0 */
+  preparing: number;
+  /** @minimum 0 */
+  shipped: number;
+  /** @minimum 0 */
+  completed: number;
+  /** @minimum 0 */
+  cancelled: number;
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  metaDrafts: number;
+  /** @minimum 0 */
+  whatsappDrafts: number;
+}
+
+export interface OrderItem {
+  id: string;
+  productId: string | null;
+  productName: string;
+  productSku: string | null;
+  /** @minimum 1 */
+  quantity: number;
+  /** Decimal as a string, to keep exact money arithmetic on the client */
+  unitPrice: string;
+  lineTotal: string;
+}
+
+export interface OrderEvent {
+  id: string;
+  fromStatus: OrderStatus | null;
+  toStatus: OrderStatus;
+  createdAt: string;
+}
+
+export interface OrderDeliveryEvent {
+  id: string;
+  toStatus: DeliveryStatus;
+  createdAt: string;
+}
+
+export type OrderSourcePlatform = typeof OrderSourcePlatform[keyof typeof OrderSourcePlatform] | null;
+
+
+export const OrderSourcePlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+  whatsapp: 'whatsapp',
+} as const;
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string | null;
+  deliveryAddress: string | null;
+  notes: string;
+  sourceMetaInboxItemId: string | null;
+  sourcePlatform: OrderSourcePlatform;
+  sourceConversationId: string | null;
+  sourceWhatsAppInstanceName: string | null;
+  metaConfirmationStatus: MetaConfirmationStatus;
+  metaConfirmationError: string | null;
+  metaConfirmationSentAt: string | null;
+  whatsappConfirmationStatus: WhatsAppConfirmationStatus;
+  whatsappConfirmationError: string | null;
+  whatsappConfirmationSentAt: string | null;
+  status: OrderStatus;
+  deliveryStatus: DeliveryStatus;
+  deliveryProvider: string | null;
+  trackingNumber: string | null;
+  /** Decimal as a string */
+  deliveryFee: string;
+  collectionStatus: CollectionStatus;
+  /** Decimal as a string */
+  collectedAmount: string;
+  deliveredAt: string | null;
+  currency: string;
+  /** Decimal as a string */
+  total: string;
+  createdAt: string;
+  updatedAt: string;
+  items: OrderItem[];
+  events: OrderEvent[];
+  deliveryEvents: OrderDeliveryEvent[];
+}
+
+export interface OrderListResponse {
+  orders: Order[];
+  nextCursor: string | null;
+}
+
+export interface OrderResponse {
+  order: Order;
+}
+
+export type CreateOrderRequestItemsItem = {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  productId: string;
+  /** @minimum 1 */
+  quantity: number;
+};
+
+export interface CreateOrderRequest {
+  /**
+     * Idempotency key chosen by the client
+     * @minLength 1
+     * @maxLength 200
+     */
+  clientRequestId: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  customerName: string;
+  /** @maxLength 40 */
+  customerPhone?: string;
+  /** @maxLength 1000 */
+  deliveryAddress?: string;
+  /** @maxLength 2000 */
+  notes?: string;
+  /**
+     * Set when the order was captured from an inbox conversation
+     * @maxLength 200
+     */
+  sourceMetaInboxItemId?: string;
+  /** @minItems 1 */
+  items: CreateOrderRequestItemsItem[];
+}
+
+export interface OrderStatusUpdateRequest {
+  status: OrderStatus;
+}
+
+export interface OrderDeliveryUpdateRequest {
+  deliveryStatus?: DeliveryStatus;
+  /** @maxLength 200 */
+  deliveryProvider?: string | null;
+  /** @maxLength 200 */
+  trackingNumber?: string | null;
+  /** Decimal as a string */
+  deliveryFee?: string;
+  collectionStatus?: CollectionStatus;
+  /** Decimal as a string */
+  collectedAmount?: string;
+}
+
+/**
+ * Which WhatsApp content types are synced automatically
+ */
+export interface WhatsAppSyncSettings {
+  autoSyncEnabled?: boolean;
+  syncMessagesEnabled?: boolean;
+  syncImagesEnabled?: boolean;
+  syncVideosEnabled?: boolean;
+}
+
+/**
+ * One selected group's sync state
+ */
+export interface WhatsAppSyncStatusGroup {
+  groupJid: string;
+  groupName: string;
+  /** Provider-backed state, e.g. "idle" for a selected group that has never been synced, "running", "completed" or "failed". Open-ended because the value is persisted, not enumerated by this contract. */
+  status: string;
+  /**
+     * Messages currently stored for this group, counted directly rather than read from the sync state, so webhook-only traffic surfaces.
+     * @minimum 0
+     */
+  savedMessageCount: number;
+  /** @minimum 0 */
+  importedCount: number;
+  /** @minimum 0 */
+  skippedCount: number;
+  /** @minimum 0 */
+  failedCount: number;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface WhatsAppSyncStatusResponse {
+  autoSyncEnabled: boolean;
+  syncMessagesEnabled: boolean;
+  syncImagesEnabled: boolean;
+  syncVideosEnabled: boolean;
+  groups: WhatsAppSyncStatusGroup[];
+}
+
+/**
+ * "started" means queued (202). Every other value is a 200 that explains why nothing was queued.
+ */
+export type WhatsAppSyncTriggerStatus = typeof WhatsAppSyncTriggerStatus[keyof typeof WhatsAppSyncTriggerStatus];
+
+
+export const WhatsAppSyncTriggerStatus = {
+  started: 'started',
+  already_running: 'already_running',
+  no_selected_groups: 'no_selected_groups',
+  no_linked_announcement_groups: 'no_linked_announcement_groups',
+  no_sync_options: 'no_sync_options',
+} as const;
+
+export type WhatsAppSyncTriggerResponseGroupsItem = {
+  groupJid: string;
+  groupName: string;
+};
+
+export interface WhatsAppSyncTriggerResponse {
+  status: WhatsAppSyncTriggerStatus;
+  /** Only present when a sync was queued */
+  includeHistory?: boolean;
+  /**
+     * Only present when a sync was queued with history
+     * @minimum 1
+     */
+  historyLimit?: number;
+  /** Empty unless a sync was queued or is already running */
+  groups: WhatsAppSyncTriggerResponseGroupsItem[];
+}
+
+export interface WhatsAppMessageMedia {
+  id: string;
+  /** @minimum 0 */
+  mediaIndex?: number;
+  mediaType: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  /** @minimum 0 */
+  sizeBytes?: number | null;
+  downloadStatus?: string | null;
+  failureReason?: string | null;
+  accessError?: string | null;
+  url?: string | null;
+  thumbnailUrl?: string | null;
+  storageKey?: string | null;
+  createdAt?: string | null;
+}
+
+export type WhatsAppAssociationSuggestionDecision = typeof WhatsAppAssociationSuggestionDecision[keyof typeof WhatsAppAssociationSuggestionDecision] | null;
+
+
+export const WhatsAppAssociationSuggestionDecision = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+/**
+ * A proposed link between an inbound message and a content bundle
+ */
+export interface WhatsAppAssociationSuggestion {
+  sourceMessageId: string;
+  candidateMessageId: string;
+  candidateGroupKey: string;
+  candidateMediaGroupId: string | null;
+  candidateText: string | null;
+  /** @minimum 0 */
+  candidateMediaCount: number;
+  reason: string;
+  decision: WhatsAppAssociationSuggestionDecision;
+}
+
+export type WhatsAppMessageMediaGroupSource = typeof WhatsAppMessageMediaGroupSource[keyof typeof WhatsAppMessageMediaGroupSource] | null;
+
+
+export const WhatsAppMessageMediaGroupSource = {
+  protocol_association: 'protocol_association',
+  provider_album_container: 'provider_album_container',
+} as const;
+
+export interface WhatsAppMessage {
+  id: string;
+  remoteMessageId: string;
+  senderId?: string | null;
+  senderName?: string | null;
+  messageType: string;
+  textBody?: string | null;
+  caption?: string | null;
+  mediaAvailable: boolean;
+  mediaGroupId?: string | null;
+  mediaGroupSource?: WhatsAppMessageMediaGroupSource;
+  contentBundleId?: string | null;
+  contentBundleMedia?: WhatsAppMessageMedia[];
+  /** @minimum 0 */
+  mediaGroupIndex?: number | null;
+  /** @minimum 0 */
+  mediaGroupExpectedCount?: number | null;
+  mediaDownloadStatus?: string | null;
+  mediaDownloadError?: string | null;
+  messageStatus?: string | null;
+  source?: string | null;
+  messageTimestamp?: string | null;
+  createdAt?: string | null;
+  replyToRemoteId?: string | null;
+  linkedPostId?: string | null;
+  linkedPostStatus?: string | null;
+  media: WhatsAppMessageMedia[];
+  associationSuggestions?: WhatsAppAssociationSuggestion[];
+}
+
+export interface WhatsAppGroupMessagesResponse {
+  groupJid: string;
+  groupName: string;
+  /** @minimum 1 */
+  page: number;
+  /** @minimum 1 */
+  limit: number;
+  /** @minimum 0 */
+  totalCount: number;
+  hasNextPage: boolean;
+  messages: WhatsAppMessage[];
+}
+
+export interface WhatsAppMediaUrlResponse {
+  url: string;
+}
+
+export type ProductPublicationHistoryChannel = typeof ProductPublicationHistoryChannel[keyof typeof ProductPublicationHistoryChannel];
+
+
+export const ProductPublicationHistoryChannel = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+/**
+ * One channel+account the product was actually published to
+ */
+export interface ProductPublicationHistory {
+  channel: ProductPublicationHistoryChannel;
+  accountId: string;
+  permalink: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+/**
+ * Who supplied the data, so the UI can flag customer-sourced prices
+ */
+export type CatalogProductSourceTrust = typeof CatalogProductSourceTrust[keyof typeof CatalogProductSourceTrust];
+
+
+export const CatalogProductSourceTrust = {
+  merchant: 'merchant',
+  customer: 'customer',
+  unknown: 'unknown',
+} as const;
+
+export type CatalogProductAvailability = typeof CatalogProductAvailability[keyof typeof CatalogProductAvailability];
+
+
+export const CatalogProductAvailability = {
+  unknown: 'unknown',
+  in_stock: 'in_stock',
+  out_of_stock: 'out_of_stock',
+  preorder: 'preorder',
+} as const;
+
+export type CatalogProductStatus = typeof CatalogProductStatus[keyof typeof CatalogProductStatus];
+
+
+export const CatalogProductStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export interface ProductMediaPreview {
+  id: string;
+  url: string;
+  mediaType: string;
+}
+
+/**
+ * A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.
+ */
+export type ProductFieldKey = typeof ProductFieldKey[keyof typeof ProductFieldKey];
+
+
+export const ProductFieldKey = {
+  name: 'name',
+  description: 'description',
+  price: 'price',
+  currency: 'currency',
+  availability: 'availability',
+  media: 'media',
+} as const;
+
+/**
+ * A product plus everything derived from it: media previews, the fields it is missing, and whether those omissions block publication.
+ */
+export interface CatalogProduct {
+  id: string;
+  /** The user who created the product; the workspace is the tenant */
+  ownerId: string;
+  workspaceId: string;
+  sku: string | null;
+  name: string;
+  /** Match key used to spot duplicates */
+  normalizedName: string | null;
+  /** Who supplied the data, so the UI can flag customer-sourced prices */
+  sourceTrust: CatalogProductSourceTrust;
+  lastExtractionSuggestionId: string | null;
+  updatedBy: string | null;
+  updatedReason: string | null;
+  aliases: string[];
+  description: string;
+  /** Decimal as a string, to keep exact money arithmetic on the client */
+  price: string | null;
+  currency: string | null;
+  availability: CatalogProductAvailability;
+  inventoryTracked: boolean;
+  stockOnHand: number;
+  stockReserved: number;
+  lowStockThreshold: number;
+  status: CatalogProductStatus;
+  /**
+     * Deduplicated and capped, not the raw column
+     * @maxItems 20
+     */
+  mediaUrls: string[];
+  verifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  mediaPreviews: ProductMediaPreview[];
+  /** Posts this product is linked to */
+  postIds: string[];
+  /** Every empty field, so the catalog can badge an incomplete product */
+  missingFields: ProductFieldKey[];
+  /** Arabic labels for the empty fields, ready to show */
+  missingFieldMessages: string[];
+  /** Missing fields that stop publication */
+  publicationBlockers: ProductFieldKey[];
+  publicationBlockerMessages: string[];
+  publicationBlocked: boolean;
+  /** Worth completing, but not enforced */
+  advisoryFields: ProductFieldKey[];
+  /** Newest completed publication per channel+account, only for jobs that actually reached "published". Returned by the catalog list; omitted by single-product reads. */
+  publicationHistory?: ProductPublicationHistory[];
+}
+
+export interface CatalogProductListResponse {
+  products: CatalogProduct[];
+}
+
 export interface OnboardingStatus {
   started: boolean;
   /**
@@ -731,87 +1250,6 @@ export interface PushTokenRemovedResponse {
   removed: boolean;
 }
 
-/**
- * A product field the merchant still has to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.
- */
-export type ProductFieldKey = typeof ProductFieldKey[keyof typeof ProductFieldKey];
-
-
-export const ProductFieldKey = {
-  name: 'name',
-  description: 'description',
-  price: 'price',
-  currency: 'currency',
-  availability: 'availability',
-  media: 'media',
-} as const;
-
-export type ProductMediaPreviewMediaType = typeof ProductMediaPreviewMediaType[keyof typeof ProductMediaPreviewMediaType];
-
-
-export const ProductMediaPreviewMediaType = {
-  image: 'image',
-  video: 'video',
-} as const;
-
-export interface ProductMediaPreview {
-  id: string;
-  url: string;
-  mediaType: ProductMediaPreviewMediaType;
-}
-
-export type CatalogProductAvailability = typeof CatalogProductAvailability[keyof typeof CatalogProductAvailability];
-
-
-export const CatalogProductAvailability = {
-  unknown: 'unknown',
-  in_stock: 'in_stock',
-  out_of_stock: 'out_of_stock',
-  preorder: 'preorder',
-} as const;
-
-export type CatalogProductStatus = typeof CatalogProductStatus[keyof typeof CatalogProductStatus];
-
-
-export const CatalogProductStatus = {
-  draft: 'draft',
-  active: 'active',
-  archived: 'archived',
-} as const;
-
-export interface CatalogProduct {
-  id: string;
-  /** @nullable */
-  sku?: string | null;
-  name: string;
-  aliases: string[];
-  description: string;
-  /** @nullable */
-  price?: string | null;
-  /** @nullable */
-  currency?: string | null;
-  availability: CatalogProductAvailability;
-  inventoryTracked?: boolean;
-  stockOnHand?: number;
-  stockReserved?: number;
-  lowStockThreshold?: number;
-  status: CatalogProductStatus;
-  mediaUrls: string[];
-  mediaPreviews: ProductMediaPreview[];
-  /** @nullable */
-  verifiedAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  postIds: string[];
-  missingFields: ProductFieldKey[];
-  /** Arabic labels for missingFields, ready to render */
-  missingFieldMessages?: string[];
-  publicationBlockers: ProductFieldKey[];
-  publicationBlockerMessages?: string[];
-  publicationBlocked: boolean;
-  advisoryFields?: ProductFieldKey[];
-}
-
 export interface ProductExtractionSourceMessage {
   id: string;
   text: string;
@@ -1388,4 +1826,81 @@ export type UnregisterPushTokenParams = {
  */
 token: string;
 };
+
+export type ListOrdersParams = {
+/**
+ * Filter by order status. "all", or omitting the parameter, returns every status.
+ */
+status?: ListOrdersStatus;
+/**
+ * Match the order number, customer name or phone
+ */
+search?: string;
+/**
+ * Opaque cursor returned by a previous page
+ */
+cursor?: string;
+};
+
+export type ListOrdersStatus = typeof ListOrdersStatus[keyof typeof ListOrdersStatus];
+
+
+export const ListOrdersStatus = {
+  draft: 'draft',
+  confirmed: 'confirmed',
+  preparing: 'preparing',
+  shipped: 'shipped',
+  completed: 'completed',
+  cancelled: 'cancelled',
+  all: 'all',
+} as const;
+
+export type ListCatalogProductsParams = {
+/**
+ * Defaults to false, which excludes archived products
+ */
+includeArchived?: boolean;
+};
+
+export type TriggerWhatsAppSyncBody = {
+  /** Defaults to true */
+  includeHistory?: boolean;
+  /**
+     * Only read when includeHistory is true
+     * @minimum 1
+     */
+  historyLimit?: number;
+};
+
+export type ListWhatsAppGroupMessagesParams = {
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ */
+limit?: number;
+sort?: ListWhatsAppGroupMessagesSort;
+};
+
+export type ListWhatsAppGroupMessagesSort = typeof ListWhatsAppGroupMessagesSort[keyof typeof ListWhatsAppGroupMessagesSort];
+
+
+export const ListWhatsAppGroupMessagesSort = {
+  asc: 'asc',
+  desc: 'desc',
+} as const;
+
+export type GetWhatsAppMediaUrlParams = {
+variant?: GetWhatsAppMediaUrlVariant;
+};
+
+export type GetWhatsAppMediaUrlVariant = typeof GetWhatsAppMediaUrlVariant[keyof typeof GetWhatsAppMediaUrlVariant];
+
+
+export const GetWhatsAppMediaUrlVariant = {
+  original: 'original',
+  thumbnail: 'thumbnail',
+} as const;
 

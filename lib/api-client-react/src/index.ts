@@ -1,23 +1,13 @@
 export * from "./generated/api";
 export * from "./generated/api.schemas";
+// Only the names the generated client does not already export. Re-listing a
+// generated name here is a TS2308 duplicate-export error.
 export {
   getWhatsAppGroupMessages,
-  getWhatsAppSyncStatus,
   triggerWhatsAppSyncNow,
-  updateWhatsAppSyncSettings,
 } from "./whatsapp-groups";
-export type {
-  WhatsAppAutoReplyLanguage,
-  WhatsAppAutoReplyTone,
-} from "./whatsapp-auto-replies";
-export type {
-  WhatsAppGroupMessagesResponse,
-  WhatsAppMessage,
-  WhatsAppMessageMedia,
-  WhatsAppSyncStatusEntry,
-  WhatsAppSyncStatusResponse,
-  WhatsAppSyncTriggerResponse,
-} from "./whatsapp-groups";
+export type { WhatsAppAutoReplyLanguage, WhatsAppAutoReplyTone } from "./whatsapp-auto-replies";
+export type { WhatsAppSyncStatusEntry } from "./whatsapp-groups";
 export * from "./social-connections";
 export * from "./social-account-details";
 export * from "./content-management";

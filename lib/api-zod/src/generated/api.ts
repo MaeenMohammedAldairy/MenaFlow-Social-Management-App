@@ -529,6 +529,10 @@ export const GetWhatsAppProductExtractionsQueryParams = zod.object({
   "offset": zod.coerce.number().int().min(getWhatsAppProductExtractionsQueryOffsetMin).max(getWhatsAppProductExtractionsQueryOffsetMax).default(getWhatsAppProductExtractionsQueryOffsetDefault).describe('Rows to skip, clamped to 0-10000.')
 })
 
+export const getWhatsAppProductExtractionsResponseSuggestionsItemPossibleDuplicateProductsItemMediaUrlsMax = 20;
+
+
+
 export const GetWhatsAppProductExtractionsResponse = zod.object({
   "suggestions": zod.array(zod.object({
   "id": zod.string().uuid(),
@@ -546,42 +550,56 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
   "evidence": zod.record(zod.string(), zod.string().nullable()),
   "confidence": zod.record(zod.string(), zod.number()),
   "fieldReview": zod.record(zod.string(), zod.boolean()),
-  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant still has to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).optional(),
+  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).optional(),
   "missingFieldMessages": zod.array(zod.string()).optional(),
   "aiModel": zod.string().describe('Model that produced the suggestion. A `+vision` suffix means the values were read from the message images rather than from its text, and the suggestion always needs a human review.'),
   "status": zod.enum(['review', 'draft_created', 'possible_duplicate', 'dismissed']),
   "productId": zod.string().uuid().nullish(),
   "possibleDuplicateProducts": zod.array(zod.object({
-  "id": zod.string().uuid(),
-  "sku": zod.string().nullish(),
+  "id": zod.string(),
+  "ownerId": zod.string().describe('The user who created the product; the workspace is the tenant'),
+  "workspaceId": zod.string(),
+  "sku": zod.string().nullable(),
   "name": zod.string(),
+  "normalizedName": zod.string().nullable().describe('Match key used to spot duplicates'),
+  "sourceTrust": zod.enum(['merchant', 'customer', 'unknown']).describe('Who supplied the data, so the UI can flag customer-sourced prices'),
+  "lastExtractionSuggestionId": zod.string().nullable(),
+  "updatedBy": zod.string().nullable(),
+  "updatedReason": zod.string().nullable(),
   "aliases": zod.array(zod.string()),
   "description": zod.string(),
-  "price": zod.string().nullish(),
-  "currency": zod.string().nullish(),
+  "price": zod.string().nullable().describe('Decimal as a string, to keep exact money arithmetic on the client'),
+  "currency": zod.string().nullable(),
   "availability": zod.enum(['unknown', 'in_stock', 'out_of_stock', 'preorder']),
-  "inventoryTracked": zod.boolean().optional(),
-  "stockOnHand": zod.number().optional(),
-  "stockReserved": zod.number().optional(),
-  "lowStockThreshold": zod.number().optional(),
+  "inventoryTracked": zod.boolean(),
+  "stockOnHand": zod.number().int(),
+  "stockReserved": zod.number().int(),
+  "lowStockThreshold": zod.number().int(),
   "status": zod.enum(['draft', 'active', 'archived']),
-  "mediaUrls": zod.array(zod.string()),
+  "mediaUrls": zod.array(zod.string()).max(getWhatsAppProductExtractionsResponseSuggestionsItemPossibleDuplicateProductsItemMediaUrlsMax).describe('Deduplicated and capped, not the raw column'),
+  "verifiedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
   "mediaPreviews": zod.array(zod.object({
   "id": zod.string(),
-  "url": zod.string().url(),
-  "mediaType": zod.enum(['image', 'video'])
+  "url": zod.string(),
+  "mediaType": zod.string()
 })),
-  "verifiedAt": zod.coerce.date().nullish(),
-  "createdAt": zod.coerce.date().optional(),
-  "updatedAt": zod.coerce.date().optional(),
-  "postIds": zod.array(zod.string().uuid()),
-  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant still has to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')),
-  "missingFieldMessages": zod.array(zod.string()).optional().describe('Arabic labels for missingFields, ready to render'),
-  "publicationBlockers": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant still has to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')),
-  "publicationBlockerMessages": zod.array(zod.string()).optional(),
+  "postIds": zod.array(zod.string()).describe('Posts this product is linked to'),
+  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Every empty field, so the catalog can badge an incomplete product'),
+  "missingFieldMessages": zod.array(zod.string()).describe('Arabic labels for the empty fields, ready to show'),
+  "publicationBlockers": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Missing fields that stop publication'),
+  "publicationBlockerMessages": zod.array(zod.string()),
   "publicationBlocked": zod.boolean(),
-  "advisoryFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant still has to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).optional()
-})).optional(),
+  "advisoryFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Worth completing, but not enforced'),
+  "publicationHistory": zod.array(zod.object({
+  "channel": zod.enum(['facebook', 'instagram']),
+  "accountId": zod.string(),
+  "permalink": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable()
+}).describe('One channel+account the product was actually published to')).optional().describe('Newest completed publication per channel+account, only for jobs that actually reached "published". Returned by the catalog list; omitted by single-product reads.')
+}).describe('A product plus everything derived from it: media previews, the fields it is missing, and whether those omissions block publication.')).optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date().optional(),
   "sources": zod.array(zod.object({
@@ -592,8 +610,8 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
   "groupName": zod.string().nullish(),
   "mediaPreviews": zod.array(zod.object({
   "id": zod.string(),
-  "url": zod.string().url(),
-  "mediaType": zod.enum(['image', 'video'])
+  "url": zod.string(),
+  "mediaType": zod.string()
 }))
 }))
 })),
@@ -675,38 +693,56 @@ export const CreateProductExtractionDraftBody = zod.object({
 }).optional()
 })
 
+export const createProductExtractionDraftResponseProductMediaUrlsMax = 20;
+
+
+
 export const CreateProductExtractionDraftResponse = zod.object({
   "product": zod.object({
-  "id": zod.string().uuid(),
-  "sku": zod.string().nullish(),
+  "id": zod.string(),
+  "ownerId": zod.string().describe('The user who created the product; the workspace is the tenant'),
+  "workspaceId": zod.string(),
+  "sku": zod.string().nullable(),
   "name": zod.string(),
+  "normalizedName": zod.string().nullable().describe('Match key used to spot duplicates'),
+  "sourceTrust": zod.enum(['merchant', 'customer', 'unknown']).describe('Who supplied the data, so the UI can flag customer-sourced prices'),
+  "lastExtractionSuggestionId": zod.string().nullable(),
+  "updatedBy": zod.string().nullable(),
+  "updatedReason": zod.string().nullable(),
   "aliases": zod.array(zod.string()),
   "description": zod.string(),
-  "price": zod.string().nullish(),
-  "currency": zod.string().nullish(),
+  "price": zod.string().nullable().describe('Decimal as a string, to keep exact money arithmetic on the client'),
+  "currency": zod.string().nullable(),
   "availability": zod.enum(['unknown', 'in_stock', 'out_of_stock', 'preorder']),
-  "inventoryTracked": zod.boolean().optional(),
-  "stockOnHand": zod.number().optional(),
-  "stockReserved": zod.number().optional(),
-  "lowStockThreshold": zod.number().optional(),
+  "inventoryTracked": zod.boolean(),
+  "stockOnHand": zod.number().int(),
+  "stockReserved": zod.number().int(),
+  "lowStockThreshold": zod.number().int(),
   "status": zod.enum(['draft', 'active', 'archived']),
-  "mediaUrls": zod.array(zod.string()),
+  "mediaUrls": zod.array(zod.string()).max(createProductExtractionDraftResponseProductMediaUrlsMax).describe('Deduplicated and capped, not the raw column'),
+  "verifiedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
   "mediaPreviews": zod.array(zod.object({
   "id": zod.string(),
-  "url": zod.string().url(),
-  "mediaType": zod.enum(['image', 'video'])
+  "url": zod.string(),
+  "mediaType": zod.string()
 })),
-  "verifiedAt": zod.coerce.date().nullish(),
-  "createdAt": zod.coerce.date().optional(),
-  "updatedAt": zod.coerce.date().optional(),
-  "postIds": zod.array(zod.string().uuid()),
-  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant still has to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')),
-  "missingFieldMessages": zod.array(zod.string()).optional().describe('Arabic labels for missingFields, ready to render'),
-  "publicationBlockers": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant still has to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')),
-  "publicationBlockerMessages": zod.array(zod.string()).optional(),
+  "postIds": zod.array(zod.string()).describe('Posts this product is linked to'),
+  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Every empty field, so the catalog can badge an incomplete product'),
+  "missingFieldMessages": zod.array(zod.string()).describe('Arabic labels for the empty fields, ready to show'),
+  "publicationBlockers": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Missing fields that stop publication'),
+  "publicationBlockerMessages": zod.array(zod.string()),
   "publicationBlocked": zod.boolean(),
-  "advisoryFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant still has to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).optional()
-})
+  "advisoryFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Worth completing, but not enforced'),
+  "publicationHistory": zod.array(zod.object({
+  "channel": zod.enum(['facebook', 'instagram']),
+  "accountId": zod.string(),
+  "permalink": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable()
+}).describe('One channel+account the product was actually published to')).optional().describe('Newest completed publication per channel+account, only for jobs that actually reached "published". Returned by the catalog list; omitted by single-product reads.')
+}).describe('A product plus everything derived from it: media previews, the fields it is missing, and whether those omissions block publication.')
 })
 
 
@@ -1130,6 +1166,630 @@ export const ListPushTokensResponse = zod.object({
   "enabled": zod.boolean().describe('False once Expo reports DeviceNotRegistered, meaning the app was uninstalled or notifications were turned off for it.'),
   "lastSeenAt": zod.coerce.date()
 }))
+})
+
+
+/**
+ * @summary Counts of orders per status for the current workspace
+ */
+export const getOrderSummaryResponseDraftMin = 0;
+
+export const getOrderSummaryResponseConfirmedMin = 0;
+
+export const getOrderSummaryResponsePreparingMin = 0;
+
+export const getOrderSummaryResponseShippedMin = 0;
+
+export const getOrderSummaryResponseCompletedMin = 0;
+
+export const getOrderSummaryResponseCancelledMin = 0;
+
+export const getOrderSummaryResponseTotalMin = 0;
+
+export const getOrderSummaryResponseMetaDraftsMin = 0;
+
+export const getOrderSummaryResponseWhatsappDraftsMin = 0;
+
+
+
+export const GetOrderSummaryResponse = zod.object({
+  "draft": zod.number().int().min(getOrderSummaryResponseDraftMin),
+  "confirmed": zod.number().int().min(getOrderSummaryResponseConfirmedMin),
+  "preparing": zod.number().int().min(getOrderSummaryResponsePreparingMin),
+  "shipped": zod.number().int().min(getOrderSummaryResponseShippedMin),
+  "completed": zod.number().int().min(getOrderSummaryResponseCompletedMin),
+  "cancelled": zod.number().int().min(getOrderSummaryResponseCancelledMin),
+  "total": zod.number().int().min(getOrderSummaryResponseTotalMin),
+  "metaDrafts": zod.number().int().min(getOrderSummaryResponseMetaDraftsMin),
+  "whatsappDrafts": zod.number().int().min(getOrderSummaryResponseWhatsappDraftsMin)
+}).describe('Order counts for the workspace, keyed by status')
+
+
+/**
+ * @summary List the workspace orders, newest first
+ */
+export const ListOrdersQueryParams = zod.object({
+  "status": zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled', 'all']).optional().describe('Filter by order status. "all", or omitting the parameter, returns every status.'),
+  "search": zod.coerce.string().optional().describe('Match the order number, customer name or phone'),
+  "cursor": zod.coerce.string().optional().describe('Opaque cursor returned by a previous page')
+})
+
+
+
+
+export const ListOrdersResponse = zod.object({
+  "orders": zod.array(zod.object({
+  "id": zod.string(),
+  "orderNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerPhone": zod.string().nullable(),
+  "deliveryAddress": zod.string().nullable(),
+  "notes": zod.string(),
+  "sourceMetaInboxItemId": zod.string().nullable(),
+  "sourcePlatform": zod.enum(['facebook', 'instagram', 'whatsapp']).nullable(),
+  "sourceConversationId": zod.string().nullable(),
+  "sourceWhatsAppInstanceName": zod.string().nullable(),
+  "metaConfirmationStatus": zod.enum(['not_required', 'queued', 'processing', 'sending', 'sent', 'manual_followup', 'failed', 'unknown']),
+  "metaConfirmationError": zod.string().nullable(),
+  "metaConfirmationSentAt": zod.coerce.date().nullable(),
+  "whatsappConfirmationStatus": zod.enum(['not_required', 'queued', 'processing', 'sending', 'sent', 'failed', 'unknown', 'manual_followup']),
+  "whatsappConfirmationError": zod.string().nullable(),
+  "whatsappConfirmationSentAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),
+  "deliveryStatus": zod.enum(['pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned']),
+  "deliveryProvider": zod.string().nullable(),
+  "trackingNumber": zod.string().nullable(),
+  "deliveryFee": zod.string().describe('Decimal as a string'),
+  "collectionStatus": zod.enum(['not_collected', 'collected', 'remitted']),
+  "collectedAmount": zod.string().describe('Decimal as a string'),
+  "deliveredAt": zod.coerce.date().nullable(),
+  "currency": zod.string(),
+  "total": zod.string().describe('Decimal as a string'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "productId": zod.string().nullable(),
+  "productName": zod.string(),
+  "productSku": zod.string().nullable(),
+  "quantity": zod.number().int().min(1),
+  "unitPrice": zod.string().describe('Decimal as a string, to keep exact money arithmetic on the client'),
+  "lineTotal": zod.string()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "fromStatus": zod.union([zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),zod.null()]),
+  "toStatus": zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),
+  "createdAt": zod.coerce.date()
+})),
+  "deliveryEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "toStatus": zod.enum(['pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned']),
+  "createdAt": zod.coerce.date()
+}))
+})),
+  "nextCursor": zod.string().nullable()
+})
+
+
+/**
+ * @summary Create a draft order for the workspace
+ */
+export const createOrderBodyClientRequestIdMax = 200;
+
+export const createOrderBodyCustomerNameMax = 200;
+
+export const createOrderBodyCustomerPhoneMax = 40;
+
+export const createOrderBodyDeliveryAddressMax = 1000;
+
+export const createOrderBodyNotesMax = 2000;
+
+export const createOrderBodySourceMetaInboxItemIdMax = 200;
+
+export const createOrderBodyItemsItemProductIdMax = 200;
+
+
+
+
+
+export const CreateOrderBody = zod.object({
+  "clientRequestId": zod.string().min(1).max(createOrderBodyClientRequestIdMax).describe('Idempotency key chosen by the client'),
+  "customerName": zod.string().min(1).max(createOrderBodyCustomerNameMax),
+  "customerPhone": zod.string().max(createOrderBodyCustomerPhoneMax).optional(),
+  "deliveryAddress": zod.string().max(createOrderBodyDeliveryAddressMax).optional(),
+  "notes": zod.string().max(createOrderBodyNotesMax).optional(),
+  "sourceMetaInboxItemId": zod.string().max(createOrderBodySourceMetaInboxItemIdMax).optional().describe('Set when the order was captured from an inbox conversation'),
+  "items": zod.array(zod.object({
+  "productId": zod.string().min(1).max(createOrderBodyItemsItemProductIdMax),
+  "quantity": zod.number().int().min(1)
+})).min(1)
+})
+
+
+
+
+export const CreateOrderResponse = zod.object({
+  "order": zod.object({
+  "id": zod.string(),
+  "orderNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerPhone": zod.string().nullable(),
+  "deliveryAddress": zod.string().nullable(),
+  "notes": zod.string(),
+  "sourceMetaInboxItemId": zod.string().nullable(),
+  "sourcePlatform": zod.enum(['facebook', 'instagram', 'whatsapp']).nullable(),
+  "sourceConversationId": zod.string().nullable(),
+  "sourceWhatsAppInstanceName": zod.string().nullable(),
+  "metaConfirmationStatus": zod.enum(['not_required', 'queued', 'processing', 'sending', 'sent', 'manual_followup', 'failed', 'unknown']),
+  "metaConfirmationError": zod.string().nullable(),
+  "metaConfirmationSentAt": zod.coerce.date().nullable(),
+  "whatsappConfirmationStatus": zod.enum(['not_required', 'queued', 'processing', 'sending', 'sent', 'failed', 'unknown', 'manual_followup']),
+  "whatsappConfirmationError": zod.string().nullable(),
+  "whatsappConfirmationSentAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),
+  "deliveryStatus": zod.enum(['pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned']),
+  "deliveryProvider": zod.string().nullable(),
+  "trackingNumber": zod.string().nullable(),
+  "deliveryFee": zod.string().describe('Decimal as a string'),
+  "collectionStatus": zod.enum(['not_collected', 'collected', 'remitted']),
+  "collectedAmount": zod.string().describe('Decimal as a string'),
+  "deliveredAt": zod.coerce.date().nullable(),
+  "currency": zod.string(),
+  "total": zod.string().describe('Decimal as a string'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "productId": zod.string().nullable(),
+  "productName": zod.string(),
+  "productSku": zod.string().nullable(),
+  "quantity": zod.number().int().min(1),
+  "unitPrice": zod.string().describe('Decimal as a string, to keep exact money arithmetic on the client'),
+  "lineTotal": zod.string()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "fromStatus": zod.union([zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),zod.null()]),
+  "toStatus": zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),
+  "createdAt": zod.coerce.date()
+})),
+  "deliveryEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "toStatus": zod.enum(['pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned']),
+  "createdAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * @summary Move an order to a new status
+ */
+export const updateOrderStatusPathIdMax = 200;
+
+
+
+export const UpdateOrderStatusParams = zod.object({
+  "id": zod.coerce.string().min(1).max(updateOrderStatusPathIdMax).describe('Identifier of the order')
+})
+
+export const UpdateOrderStatusBody = zod.object({
+  "status": zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled'])
+})
+
+
+
+
+export const UpdateOrderStatusResponse = zod.object({
+  "order": zod.object({
+  "id": zod.string(),
+  "orderNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerPhone": zod.string().nullable(),
+  "deliveryAddress": zod.string().nullable(),
+  "notes": zod.string(),
+  "sourceMetaInboxItemId": zod.string().nullable(),
+  "sourcePlatform": zod.enum(['facebook', 'instagram', 'whatsapp']).nullable(),
+  "sourceConversationId": zod.string().nullable(),
+  "sourceWhatsAppInstanceName": zod.string().nullable(),
+  "metaConfirmationStatus": zod.enum(['not_required', 'queued', 'processing', 'sending', 'sent', 'manual_followup', 'failed', 'unknown']),
+  "metaConfirmationError": zod.string().nullable(),
+  "metaConfirmationSentAt": zod.coerce.date().nullable(),
+  "whatsappConfirmationStatus": zod.enum(['not_required', 'queued', 'processing', 'sending', 'sent', 'failed', 'unknown', 'manual_followup']),
+  "whatsappConfirmationError": zod.string().nullable(),
+  "whatsappConfirmationSentAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),
+  "deliveryStatus": zod.enum(['pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned']),
+  "deliveryProvider": zod.string().nullable(),
+  "trackingNumber": zod.string().nullable(),
+  "deliveryFee": zod.string().describe('Decimal as a string'),
+  "collectionStatus": zod.enum(['not_collected', 'collected', 'remitted']),
+  "collectedAmount": zod.string().describe('Decimal as a string'),
+  "deliveredAt": zod.coerce.date().nullable(),
+  "currency": zod.string(),
+  "total": zod.string().describe('Decimal as a string'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "productId": zod.string().nullable(),
+  "productName": zod.string(),
+  "productSku": zod.string().nullable(),
+  "quantity": zod.number().int().min(1),
+  "unitPrice": zod.string().describe('Decimal as a string, to keep exact money arithmetic on the client'),
+  "lineTotal": zod.string()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "fromStatus": zod.union([zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),zod.null()]),
+  "toStatus": zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),
+  "createdAt": zod.coerce.date()
+})),
+  "deliveryEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "toStatus": zod.enum(['pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned']),
+  "createdAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * @summary Update delivery, tracking and collection details
+ */
+export const updateOrderDeliveryPathIdMax = 200;
+
+
+
+export const UpdateOrderDeliveryParams = zod.object({
+  "id": zod.coerce.string().min(1).max(updateOrderDeliveryPathIdMax).describe('Identifier of the order')
+})
+
+export const updateOrderDeliveryBodyDeliveryProviderMax = 200;
+
+export const updateOrderDeliveryBodyTrackingNumberMax = 200;
+
+
+
+export const UpdateOrderDeliveryBody = zod.object({
+  "deliveryStatus": zod.enum(['pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned']).optional(),
+  "deliveryProvider": zod.string().max(updateOrderDeliveryBodyDeliveryProviderMax).nullish(),
+  "trackingNumber": zod.string().max(updateOrderDeliveryBodyTrackingNumberMax).nullish(),
+  "deliveryFee": zod.string().optional().describe('Decimal as a string'),
+  "collectionStatus": zod.enum(['not_collected', 'collected', 'remitted']).optional(),
+  "collectedAmount": zod.string().optional().describe('Decimal as a string')
+})
+
+
+
+
+export const UpdateOrderDeliveryResponse = zod.object({
+  "order": zod.object({
+  "id": zod.string(),
+  "orderNumber": zod.string(),
+  "customerName": zod.string(),
+  "customerPhone": zod.string().nullable(),
+  "deliveryAddress": zod.string().nullable(),
+  "notes": zod.string(),
+  "sourceMetaInboxItemId": zod.string().nullable(),
+  "sourcePlatform": zod.enum(['facebook', 'instagram', 'whatsapp']).nullable(),
+  "sourceConversationId": zod.string().nullable(),
+  "sourceWhatsAppInstanceName": zod.string().nullable(),
+  "metaConfirmationStatus": zod.enum(['not_required', 'queued', 'processing', 'sending', 'sent', 'manual_followup', 'failed', 'unknown']),
+  "metaConfirmationError": zod.string().nullable(),
+  "metaConfirmationSentAt": zod.coerce.date().nullable(),
+  "whatsappConfirmationStatus": zod.enum(['not_required', 'queued', 'processing', 'sending', 'sent', 'failed', 'unknown', 'manual_followup']),
+  "whatsappConfirmationError": zod.string().nullable(),
+  "whatsappConfirmationSentAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),
+  "deliveryStatus": zod.enum(['pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned']),
+  "deliveryProvider": zod.string().nullable(),
+  "trackingNumber": zod.string().nullable(),
+  "deliveryFee": zod.string().describe('Decimal as a string'),
+  "collectionStatus": zod.enum(['not_collected', 'collected', 'remitted']),
+  "collectedAmount": zod.string().describe('Decimal as a string'),
+  "deliveredAt": zod.coerce.date().nullable(),
+  "currency": zod.string(),
+  "total": zod.string().describe('Decimal as a string'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "items": zod.array(zod.object({
+  "id": zod.string(),
+  "productId": zod.string().nullable(),
+  "productName": zod.string(),
+  "productSku": zod.string().nullable(),
+  "quantity": zod.number().int().min(1),
+  "unitPrice": zod.string().describe('Decimal as a string, to keep exact money arithmetic on the client'),
+  "lineTotal": zod.string()
+})),
+  "events": zod.array(zod.object({
+  "id": zod.string(),
+  "fromStatus": zod.union([zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),zod.null()]),
+  "toStatus": zod.enum(['draft', 'confirmed', 'preparing', 'shipped', 'completed', 'cancelled']),
+  "createdAt": zod.coerce.date()
+})),
+  "deliveryEvents": zod.array(zod.object({
+  "id": zod.string(),
+  "toStatus": zod.enum(['pending', 'ready', 'picked_up', 'in_transit', 'delivered', 'failed', 'returned']),
+  "createdAt": zod.coerce.date()
+}))
+})
+})
+
+
+/**
+ * Returns every matching product, newest-updated first, each with the fields it is still missing and the publication history that actually went live. The list is not paginated: it is the merchant's whole catalog, which the product editor needs in memory to match against.
+ * @summary List the workspace's product catalog
+ */
+export const ListCatalogProductsQueryParams = zod.object({
+  "includeArchived": zod.coerce.boolean().optional().describe('Defaults to false, which excludes archived products')
+})
+
+export const listCatalogProductsResponseProductsItemMediaUrlsMax = 20;
+
+
+
+export const ListCatalogProductsResponse = zod.object({
+  "products": zod.array(zod.object({
+  "id": zod.string(),
+  "ownerId": zod.string().describe('The user who created the product; the workspace is the tenant'),
+  "workspaceId": zod.string(),
+  "sku": zod.string().nullable(),
+  "name": zod.string(),
+  "normalizedName": zod.string().nullable().describe('Match key used to spot duplicates'),
+  "sourceTrust": zod.enum(['merchant', 'customer', 'unknown']).describe('Who supplied the data, so the UI can flag customer-sourced prices'),
+  "lastExtractionSuggestionId": zod.string().nullable(),
+  "updatedBy": zod.string().nullable(),
+  "updatedReason": zod.string().nullable(),
+  "aliases": zod.array(zod.string()),
+  "description": zod.string(),
+  "price": zod.string().nullable().describe('Decimal as a string, to keep exact money arithmetic on the client'),
+  "currency": zod.string().nullable(),
+  "availability": zod.enum(['unknown', 'in_stock', 'out_of_stock', 'preorder']),
+  "inventoryTracked": zod.boolean(),
+  "stockOnHand": zod.number().int(),
+  "stockReserved": zod.number().int(),
+  "lowStockThreshold": zod.number().int(),
+  "status": zod.enum(['draft', 'active', 'archived']),
+  "mediaUrls": zod.array(zod.string()).max(listCatalogProductsResponseProductsItemMediaUrlsMax).describe('Deduplicated and capped, not the raw column'),
+  "verifiedAt": zod.coerce.date().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "mediaPreviews": zod.array(zod.object({
+  "id": zod.string(),
+  "url": zod.string(),
+  "mediaType": zod.string()
+})),
+  "postIds": zod.array(zod.string()).describe('Posts this product is linked to'),
+  "missingFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Every empty field, so the catalog can badge an incomplete product'),
+  "missingFieldMessages": zod.array(zod.string()).describe('Arabic labels for the empty fields, ready to show'),
+  "publicationBlockers": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Missing fields that stop publication'),
+  "publicationBlockerMessages": zod.array(zod.string()),
+  "publicationBlocked": zod.boolean(),
+  "advisoryFields": zod.array(zod.enum(['name', 'description', 'price', 'currency', 'availability', 'media']).describe('A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.')).describe('Worth completing, but not enforced'),
+  "publicationHistory": zod.array(zod.object({
+  "channel": zod.enum(['facebook', 'instagram']),
+  "accountId": zod.string(),
+  "permalink": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().nullable()
+}).describe('One channel+account the product was actually published to')).optional().describe('Newest completed publication per channel+account, only for jobs that actually reached "published". Returned by the catalog list; omitted by single-product reads.')
+}).describe('A product plus everything derived from it: media previews, the fields it is missing, and whether those omissions block publication.'))
+})
+
+
+/**
+ * Selected groups are listed even before their first sync run, with status "idle" and zero counters, so the client can offer "sync now" on a fresh workspace instead of disabling it forever.
+ * @summary Per-group sync state and the workspace's sync switches
+ */
+export const getWhatsAppSyncStatusResponseGroupsItemSavedMessageCountMin = 0;
+
+export const getWhatsAppSyncStatusResponseGroupsItemImportedCountMin = 0;
+
+export const getWhatsAppSyncStatusResponseGroupsItemSkippedCountMin = 0;
+
+export const getWhatsAppSyncStatusResponseGroupsItemFailedCountMin = 0;
+
+
+
+export const GetWhatsAppSyncStatusResponse = zod.object({
+  "autoSyncEnabled": zod.boolean(),
+  "syncMessagesEnabled": zod.boolean(),
+  "syncImagesEnabled": zod.boolean(),
+  "syncVideosEnabled": zod.boolean(),
+  "groups": zod.array(zod.object({
+  "groupJid": zod.string(),
+  "groupName": zod.string(),
+  "status": zod.string().describe('Provider-backed state, e.g. "idle" for a selected group that has never been synced, "running", "completed" or "failed". Open-ended because the value is persisted, not enumerated by this contract.'),
+  "savedMessageCount": zod.number().int().min(getWhatsAppSyncStatusResponseGroupsItemSavedMessageCountMin).describe('Messages currently stored for this group, counted directly rather than read from the sync state, so webhook-only traffic surfaces.'),
+  "importedCount": zod.number().int().min(getWhatsAppSyncStatusResponseGroupsItemImportedCountMin),
+  "skippedCount": zod.number().int().min(getWhatsAppSyncStatusResponseGroupsItemSkippedCountMin),
+  "failedCount": zod.number().int().min(getWhatsAppSyncStatusResponseGroupsItemFailedCountMin),
+  "lastSyncedAt": zod.coerce.date().nullable(),
+  "lastError": zod.string().nullable(),
+  "startedAt": zod.coerce.date().nullable(),
+  "completedAt": zod.coerce.date().nullable()
+}).describe('One selected group\'s sync state'))
+})
+
+
+/**
+ * Partial update: only the keys present are changed. Any unknown key is rejected rather than ignored.
+ * @summary Update which WhatsApp content types are synced automatically
+ */
+export const UpdateWhatsAppSyncSettingsBody = zod.object({
+  "autoSyncEnabled": zod.boolean().optional(),
+  "syncMessagesEnabled": zod.boolean().optional(),
+  "syncImagesEnabled": zod.boolean().optional(),
+  "syncVideosEnabled": zod.boolean().optional()
+}).describe('Which WhatsApp content types are synced automatically')
+
+export const UpdateWhatsAppSyncSettingsResponse = zod.object({
+  "autoSyncEnabled": zod.boolean().optional(),
+  "syncMessagesEnabled": zod.boolean().optional(),
+  "syncImagesEnabled": zod.boolean().optional(),
+  "syncVideosEnabled": zod.boolean().optional()
+}).describe('Which WhatsApp content types are synced automatically')
+
+
+/**
+ * 202 means the work is queued; poll sync-status for progress. A 200 with a status other than "started" explains why nothing was queued.
+ * @summary Start a sync of the selected WhatsApp groups
+ */
+
+
+
+export const TriggerWhatsAppSyncBody = zod.object({
+  "includeHistory": zod.boolean().optional().describe('Defaults to true'),
+  "historyLimit": zod.number().int().min(1).optional().describe('Only read when includeHistory is true')
+})
+
+
+
+
+export const TriggerWhatsAppSyncResponse = zod.object({
+  "status": zod.enum(['started', 'already_running', 'no_selected_groups', 'no_linked_announcement_groups', 'no_sync_options']).describe('"started" means queued (202). Every other value is a 200 that explains why nothing was queued.'),
+  "includeHistory": zod.boolean().optional().describe('Only present when a sync was queued'),
+  "historyLimit": zod.number().int().min(1).optional().describe('Only present when a sync was queued with history'),
+  "groups": zod.array(zod.object({
+  "groupJid": zod.string(),
+  "groupName": zod.string()
+})).describe('Empty unless a sync was queued or is already running')
+})
+
+
+/**
+ * @summary Page through a WhatsApp group's stored messages
+ */
+
+
+
+export const ListWhatsAppGroupMessagesParams = zod.object({
+  "groupJid": zod.coerce.string().min(1).describe('The group\'s provider JID')
+})
+
+
+
+
+
+export const ListWhatsAppGroupMessagesQueryParams = zod.object({
+  "page": zod.coerce.number().int().min(1).optional(),
+  "limit": zod.coerce.number().int().min(1).optional(),
+  "sort": zod.enum(['asc', 'desc']).optional()
+})
+
+
+
+export const listWhatsAppGroupMessagesResponseTotalCountMin = 0;
+
+export const listWhatsAppGroupMessagesResponseMessagesItemContentBundleMediaItemMediaIndexMin = 0;
+
+export const listWhatsAppGroupMessagesResponseMessagesItemContentBundleMediaItemSizeBytesMin = 0;
+
+export const listWhatsAppGroupMessagesResponseMessagesItemMediaGroupIndexMin = 0;
+
+export const listWhatsAppGroupMessagesResponseMessagesItemMediaGroupExpectedCountMin = 0;
+
+export const listWhatsAppGroupMessagesResponseMessagesItemMediaItemMediaIndexMin = 0;
+
+export const listWhatsAppGroupMessagesResponseMessagesItemMediaItemSizeBytesMin = 0;
+
+export const listWhatsAppGroupMessagesResponseMessagesItemAssociationSuggestionsItemCandidateMediaCountMin = 0;
+
+
+
+export const ListWhatsAppGroupMessagesResponse = zod.object({
+  "groupJid": zod.string(),
+  "groupName": zod.string(),
+  "page": zod.number().int().min(1),
+  "limit": zod.number().int().min(1),
+  "totalCount": zod.number().int().min(listWhatsAppGroupMessagesResponseTotalCountMin),
+  "hasNextPage": zod.boolean(),
+  "messages": zod.array(zod.object({
+  "id": zod.string(),
+  "remoteMessageId": zod.string(),
+  "senderId": zod.string().nullish(),
+  "senderName": zod.string().nullish(),
+  "messageType": zod.string(),
+  "textBody": zod.string().nullish(),
+  "caption": zod.string().nullish(),
+  "mediaAvailable": zod.boolean(),
+  "mediaGroupId": zod.string().nullish(),
+  "mediaGroupSource": zod.enum(['protocol_association', 'provider_album_container']).nullish(),
+  "contentBundleId": zod.string().nullish(),
+  "contentBundleMedia": zod.array(zod.object({
+  "id": zod.string(),
+  "mediaIndex": zod.number().int().min(listWhatsAppGroupMessagesResponseMessagesItemContentBundleMediaItemMediaIndexMin).optional(),
+  "mediaType": zod.string(),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "sizeBytes": zod.number().int().min(listWhatsAppGroupMessagesResponseMessagesItemContentBundleMediaItemSizeBytesMin).nullish(),
+  "downloadStatus": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "accessError": zod.string().nullish(),
+  "url": zod.string().nullish(),
+  "thumbnailUrl": zod.string().nullish(),
+  "storageKey": zod.string().nullish(),
+  "createdAt": zod.coerce.date().nullish()
+})).optional(),
+  "mediaGroupIndex": zod.number().int().min(listWhatsAppGroupMessagesResponseMessagesItemMediaGroupIndexMin).nullish(),
+  "mediaGroupExpectedCount": zod.number().int().min(listWhatsAppGroupMessagesResponseMessagesItemMediaGroupExpectedCountMin).nullish(),
+  "mediaDownloadStatus": zod.string().nullish(),
+  "mediaDownloadError": zod.string().nullish(),
+  "messageStatus": zod.string().nullish(),
+  "source": zod.string().nullish(),
+  "messageTimestamp": zod.coerce.date().nullish(),
+  "createdAt": zod.coerce.date().nullish(),
+  "replyToRemoteId": zod.string().nullish(),
+  "linkedPostId": zod.string().nullish(),
+  "linkedPostStatus": zod.string().nullish(),
+  "media": zod.array(zod.object({
+  "id": zod.string(),
+  "mediaIndex": zod.number().int().min(listWhatsAppGroupMessagesResponseMessagesItemMediaItemMediaIndexMin).optional(),
+  "mediaType": zod.string(),
+  "fileName": zod.string().nullish(),
+  "mimeType": zod.string().nullish(),
+  "sizeBytes": zod.number().int().min(listWhatsAppGroupMessagesResponseMessagesItemMediaItemSizeBytesMin).nullish(),
+  "downloadStatus": zod.string().nullish(),
+  "failureReason": zod.string().nullish(),
+  "accessError": zod.string().nullish(),
+  "url": zod.string().nullish(),
+  "thumbnailUrl": zod.string().nullish(),
+  "storageKey": zod.string().nullish(),
+  "createdAt": zod.coerce.date().nullish()
+})),
+  "associationSuggestions": zod.array(zod.object({
+  "sourceMessageId": zod.string(),
+  "candidateMessageId": zod.string(),
+  "candidateGroupKey": zod.string(),
+  "candidateMediaGroupId": zod.string().nullable(),
+  "candidateText": zod.string().nullable(),
+  "candidateMediaCount": zod.number().int().min(listWhatsAppGroupMessagesResponseMessagesItemAssociationSuggestionsItemCandidateMediaCountMin),
+  "reason": zod.string(),
+  "decision": zod.enum(['accepted', 'rejected']).nullable()
+}).describe('A proposed link between an inbound message and a content bundle')).optional()
+}))
+})
+
+
+/**
+ * Signed URLs expire; this re-issues one without re-downloading. The file itself is served by the public signed endpoint.
+ * @summary Mint a fresh signed URL for a stored WhatsApp media file
+ */
+
+
+
+export const GetWhatsAppMediaUrlParams = zod.object({
+  "mediaId": zod.coerce.string().min(1)
+})
+
+export const GetWhatsAppMediaUrlQueryParams = zod.object({
+  "variant": zod.enum(['original', 'thumbnail']).optional()
+})
+
+export const GetWhatsAppMediaUrlResponse = zod.object({
+  "url": zod.string()
 })
 
 

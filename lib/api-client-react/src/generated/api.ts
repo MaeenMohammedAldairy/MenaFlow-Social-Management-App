@@ -24,6 +24,8 @@ import type {
   AiContentResponse,
   ApiError,
   AuthAccessResponse,
+  CatalogProductListResponse,
+  CreateOrderRequest,
   CreatePostInput,
   CreateProductDraftInput,
   DeleteMetaConnectionParams,
@@ -35,9 +37,13 @@ import type {
   GetPostsPage200,
   GetPostsPageParams,
   GetWhatsAppConnectionStatusParams,
+  GetWhatsAppMediaUrlParams,
   GetWhatsAppProductExtractionsParams,
   HealthStatus,
   KnownPostIdsInput,
+  ListCatalogProductsParams,
+  ListOrdersParams,
+  ListWhatsAppGroupMessagesParams,
   MetaAutoReplySettingsResponse,
   MetaConnectInput,
   MetaConnectResponse,
@@ -45,6 +51,11 @@ import type {
   MetaWebhookSubscriptionsResponse,
   OnboardingProgressInput,
   OnboardingStatus,
+  OrderDeliveryUpdateRequest,
+  OrderListResponse,
+  OrderResponse,
+  OrderStatusUpdateRequest,
+  OrderSummary,
   PostDeleteResult,
   PostItem,
   PostReportSummary,
@@ -63,6 +74,7 @@ import type {
   SocialConnectionsResponse,
   SubscriptionOverview,
   TestWhatsAppAutoReply200,
+  TriggerWhatsAppSyncBody,
   UnregisterPushTokenParams,
   UpdatePostInput,
   WhatsAppAutoReplySettings,
@@ -70,11 +82,16 @@ import type {
   WhatsAppAutoReplyTestInput,
   WhatsAppConnectionStatus,
   WhatsAppDisconnectResult,
+  WhatsAppGroupMessagesResponse,
   WhatsAppGroupSelectionsInput,
   WhatsAppGroupSelectionsResponse,
   WhatsAppGroupsResponse,
+  WhatsAppMediaUrlResponse,
   WhatsAppPairingCodeInput,
   WhatsAppPairingCodeResponse,
+  WhatsAppSyncSettings,
+  WhatsAppSyncStatusResponse,
+  WhatsAppSyncTriggerResponse,
   WhatsAppWebhookReconfiguration,
   WorkspaceDeletionRequestCreatedResponse,
   WorkspaceDeletionRequestResponse,
@@ -3706,6 +3723,953 @@ export function useListPushTokens<TData = Awaited<ReturnType<typeof listPushToke
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getListPushTokensQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetOrderSummaryUrl = () => {
+
+
+
+
+  return `/api/social/orders/summary`
+}
+
+/**
+ * @summary Counts of orders per status for the current workspace
+ */
+export const getOrderSummary = async ( options?: Parameters<typeof customFetch>[1]): Promise<OrderSummary> => {
+
+  return customFetch<OrderSummary>(getGetOrderSummaryUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOrderSummaryQueryKey = () => {
+    return [
+    `/api/social/orders/summary`
+    ] as const;
+    }
+
+
+export const getGetOrderSummaryQueryOptions = <TData = Awaited<ReturnType<typeof getOrderSummary>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOrderSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOrderSummaryQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOrderSummary>>> = ({ signal }) => getOrderSummary({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOrderSummary>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOrderSummaryQueryResult = NonNullable<Awaited<ReturnType<typeof getOrderSummary>>>
+export type GetOrderSummaryQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Counts of orders per status for the current workspace
+ */
+
+export function useGetOrderSummary<TData = Awaited<ReturnType<typeof getOrderSummary>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOrderSummary>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOrderSummaryQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListOrdersUrl = (params?: ListOrdersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/orders?${stringifiedParams}` : `/api/social/orders`
+}
+
+/**
+ * @summary List the workspace orders, newest first
+ */
+export const listOrders = async (params?: ListOrdersParams, options?: Parameters<typeof customFetch>[1]): Promise<OrderListResponse> => {
+
+  return customFetch<OrderListResponse>(getListOrdersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOrdersQueryKey = (params?: ListOrdersParams,) => {
+    return [
+    `/api/social/orders`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListOrdersQueryOptions = <TData = Awaited<ReturnType<typeof listOrders>>, TError = ErrorType<ApiError>>(params?: ListOrdersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOrdersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOrders>>> = ({ signal }) => listOrders(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listOrders>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListOrdersQueryResult = NonNullable<Awaited<ReturnType<typeof listOrders>>>
+export type ListOrdersQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary List the workspace orders, newest first
+ */
+
+export function useListOrders<TData = Awaited<ReturnType<typeof listOrders>>, TError = ErrorType<ApiError>>(
+ params?: ListOrdersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOrders>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListOrdersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateOrderUrl = () => {
+
+
+
+
+  return `/api/social/orders`
+}
+
+/**
+ * @summary Create a draft order for the workspace
+ */
+export const createOrder = async (createOrderRequest: CreateOrderRequest, options?: Parameters<typeof customFetch>[1]): Promise<OrderResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<OrderResponse>(getCreateOrderUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createOrderRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateOrderMutationKey = () => ['createOrder'] as const;
+
+export const getCreateOrderMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOrder>>, TError,CreateOrderMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createOrder>>, TError,CreateOrderMutationVariables, TContext> => {
+
+const mutationKey = getCreateOrderMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createOrder>>, CreateOrderMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createOrder(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateOrderMutationResult = NonNullable<Awaited<ReturnType<typeof createOrder>>>
+    export type CreateOrderMutationBody = BodyType<CreateOrderRequest>
+    export type CreateOrderMutationError = ErrorType<ApiError>
+    export type CreateOrderMutationVariables = {data: BodyType<CreateOrderRequest>}
+
+    /**
+ * @summary Create a draft order for the workspace
+ */
+export const useCreateOrder = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOrder>>, TError,CreateOrderMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createOrder>>,
+        TError,
+        CreateOrderMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateOrderMutationOptions(options));
+    }
+
+export const getUpdateOrderStatusUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/orders/${id}/status`
+}
+
+/**
+ * @summary Move an order to a new status
+ */
+export const updateOrderStatus = async (id: string,
+    orderStatusUpdateRequest: OrderStatusUpdateRequest, options?: Parameters<typeof customFetch>[1]): Promise<OrderResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<OrderResponse>(getUpdateOrderStatusUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(orderStatusUpdateRequest)
+  }
+);}
+
+
+
+
+
+export const getUpdateOrderStatusMutationKey = () => ['updateOrderStatus'] as const;
+
+export const getUpdateOrderStatusMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrderStatus>>, TError,UpdateOrderStatusMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOrderStatus>>, TError,UpdateOrderStatusMutationVariables, TContext> => {
+
+const mutationKey = getUpdateOrderStatusMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOrderStatus>>, UpdateOrderStatusMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateOrderStatus(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOrderStatusMutationResult = NonNullable<Awaited<ReturnType<typeof updateOrderStatus>>>
+    export type UpdateOrderStatusMutationBody = BodyType<OrderStatusUpdateRequest>
+    export type UpdateOrderStatusMutationError = ErrorType<ApiError>
+    export type UpdateOrderStatusMutationVariables = {id: string;data: BodyType<OrderStatusUpdateRequest>}
+
+    /**
+ * @summary Move an order to a new status
+ */
+export const useUpdateOrderStatus = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrderStatus>>, TError,UpdateOrderStatusMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOrderStatus>>,
+        TError,
+        UpdateOrderStatusMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateOrderStatusMutationOptions(options));
+    }
+
+export const getUpdateOrderDeliveryUrl = (id: string,) => {
+
+
+
+
+  return `/api/social/orders/${id}/delivery`
+}
+
+/**
+ * @summary Update delivery, tracking and collection details
+ */
+export const updateOrderDelivery = async (id: string,
+    orderDeliveryUpdateRequest: OrderDeliveryUpdateRequest, options?: Parameters<typeof customFetch>[1]): Promise<OrderResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<OrderResponse>(getUpdateOrderDeliveryUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(orderDeliveryUpdateRequest)
+  }
+);}
+
+
+
+
+
+export const getUpdateOrderDeliveryMutationKey = () => ['updateOrderDelivery'] as const;
+
+export const getUpdateOrderDeliveryMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrderDelivery>>, TError,UpdateOrderDeliveryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateOrderDelivery>>, TError,UpdateOrderDeliveryMutationVariables, TContext> => {
+
+const mutationKey = getUpdateOrderDeliveryMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateOrderDelivery>>, UpdateOrderDeliveryMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateOrderDelivery(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateOrderDeliveryMutationResult = NonNullable<Awaited<ReturnType<typeof updateOrderDelivery>>>
+    export type UpdateOrderDeliveryMutationBody = BodyType<OrderDeliveryUpdateRequest>
+    export type UpdateOrderDeliveryMutationError = ErrorType<ApiError>
+    export type UpdateOrderDeliveryMutationVariables = {id: string;data: BodyType<OrderDeliveryUpdateRequest>}
+
+    /**
+ * @summary Update delivery, tracking and collection details
+ */
+export const useUpdateOrderDelivery = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateOrderDelivery>>, TError,UpdateOrderDeliveryMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateOrderDelivery>>,
+        TError,
+        UpdateOrderDeliveryMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateOrderDeliveryMutationOptions(options));
+    }
+
+export const getListCatalogProductsUrl = (params?: ListCatalogProductsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/products?${stringifiedParams}` : `/api/social/products`
+}
+
+/**
+ * Returns every matching product, newest-updated first, each with the fields it is still missing and the publication history that actually went live. The list is not paginated: it is the merchant's whole catalog, which the product editor needs in memory to match against.
+ * @summary List the workspace's product catalog
+ */
+export const listCatalogProducts = async (params?: ListCatalogProductsParams, options?: Parameters<typeof customFetch>[1]): Promise<CatalogProductListResponse> => {
+
+  return customFetch<CatalogProductListResponse>(getListCatalogProductsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListCatalogProductsQueryKey = (params?: ListCatalogProductsParams,) => {
+    return [
+    `/api/social/products`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListCatalogProductsQueryOptions = <TData = Awaited<ReturnType<typeof listCatalogProducts>>, TError = ErrorType<ApiError>>(params?: ListCatalogProductsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCatalogProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListCatalogProductsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listCatalogProducts>>> = ({ signal }) => listCatalogProducts(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listCatalogProducts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListCatalogProductsQueryResult = NonNullable<Awaited<ReturnType<typeof listCatalogProducts>>>
+export type ListCatalogProductsQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary List the workspace's product catalog
+ */
+
+export function useListCatalogProducts<TData = Awaited<ReturnType<typeof listCatalogProducts>>, TError = ErrorType<ApiError>>(
+ params?: ListCatalogProductsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listCatalogProducts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListCatalogProductsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWhatsAppSyncStatusUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/sync-status`
+}
+
+/**
+ * Selected groups are listed even before their first sync run, with status "idle" and zero counters, so the client can offer "sync now" on a fresh workspace instead of disabling it forever.
+ * @summary Per-group sync state and the workspace's sync switches
+ */
+export const getWhatsAppSyncStatus = async ( options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppSyncStatusResponse> => {
+
+  return customFetch<WhatsAppSyncStatusResponse>(getGetWhatsAppSyncStatusUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsAppSyncStatusQueryKey = () => {
+    return [
+    `/api/social/whatsapp/sync-status`
+    ] as const;
+    }
+
+
+export const getGetWhatsAppSyncStatusQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppSyncStatus>>, TError = ErrorType<ApiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppSyncStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppSyncStatusQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppSyncStatus>>> = ({ signal }) => getWhatsAppSyncStatus({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppSyncStatus>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsAppSyncStatusQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsAppSyncStatus>>>
+export type GetWhatsAppSyncStatusQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Per-group sync state and the workspace's sync switches
+ */
+
+export function useGetWhatsAppSyncStatus<TData = Awaited<ReturnType<typeof getWhatsAppSyncStatus>>, TError = ErrorType<ApiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppSyncStatus>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsAppSyncStatusQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateWhatsAppSyncSettingsUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/sync-settings`
+}
+
+/**
+ * Partial update: only the keys present are changed. Any unknown key is rejected rather than ignored.
+ * @summary Update which WhatsApp content types are synced automatically
+ */
+export const updateWhatsAppSyncSettings = async (whatsAppSyncSettings: WhatsAppSyncSettings, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppSyncSettings> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WhatsAppSyncSettings>(getUpdateWhatsAppSyncSettingsUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(whatsAppSyncSettings)
+  }
+);}
+
+
+
+
+
+export const getUpdateWhatsAppSyncSettingsMutationKey = () => ['updateWhatsAppSyncSettings'] as const;
+
+export const getUpdateWhatsAppSyncSettingsMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWhatsAppSyncSettings>>, TError,UpdateWhatsAppSyncSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateWhatsAppSyncSettings>>, TError,UpdateWhatsAppSyncSettingsMutationVariables, TContext> => {
+
+const mutationKey = getUpdateWhatsAppSyncSettingsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateWhatsAppSyncSettings>>, UpdateWhatsAppSyncSettingsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateWhatsAppSyncSettings(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateWhatsAppSyncSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateWhatsAppSyncSettings>>>
+    export type UpdateWhatsAppSyncSettingsMutationBody = BodyType<WhatsAppSyncSettings>
+    export type UpdateWhatsAppSyncSettingsMutationError = ErrorType<ApiError>
+    export type UpdateWhatsAppSyncSettingsMutationVariables = {data: BodyType<WhatsAppSyncSettings>}
+
+    /**
+ * @summary Update which WhatsApp content types are synced automatically
+ */
+export const useUpdateWhatsAppSyncSettings = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateWhatsAppSyncSettings>>, TError,UpdateWhatsAppSyncSettingsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateWhatsAppSyncSettings>>,
+        TError,
+        UpdateWhatsAppSyncSettingsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateWhatsAppSyncSettingsMutationOptions(options));
+    }
+
+export const getTriggerWhatsAppSyncUrl = () => {
+
+
+
+
+  return `/api/social/whatsapp/sync-now`
+}
+
+/**
+ * 202 means the work is queued; poll sync-status for progress. A 200 with a status other than "started" explains why nothing was queued.
+ * @summary Start a sync of the selected WhatsApp groups
+ */
+export const triggerWhatsAppSync = async (triggerWhatsAppSyncBody?: TriggerWhatsAppSyncBody, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppSyncTriggerResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<WhatsAppSyncTriggerResponse>(getTriggerWhatsAppSyncUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(triggerWhatsAppSyncBody)
+  }
+);}
+
+
+
+
+
+export const getTriggerWhatsAppSyncMutationKey = () => ['triggerWhatsAppSync'] as const;
+
+export const getTriggerWhatsAppSyncMutationOptions = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof triggerWhatsAppSync>>, TError,TriggerWhatsAppSyncMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof triggerWhatsAppSync>>, TError,TriggerWhatsAppSyncMutationVariables, TContext> => {
+
+const mutationKey = getTriggerWhatsAppSyncMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof triggerWhatsAppSync>>, TriggerWhatsAppSyncMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  triggerWhatsAppSync(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TriggerWhatsAppSyncMutationResult = NonNullable<Awaited<ReturnType<typeof triggerWhatsAppSync>>>
+    export type TriggerWhatsAppSyncMutationBody = BodyType<TriggerWhatsAppSyncBody> | undefined
+    export type TriggerWhatsAppSyncMutationError = ErrorType<ApiError>
+    export type TriggerWhatsAppSyncMutationVariables = {data?: BodyType<TriggerWhatsAppSyncBody>}
+
+    /**
+ * @summary Start a sync of the selected WhatsApp groups
+ */
+export const useTriggerWhatsAppSync = <TError = ErrorType<ApiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof triggerWhatsAppSync>>, TError,TriggerWhatsAppSyncMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof triggerWhatsAppSync>>,
+        TError,
+        TriggerWhatsAppSyncMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTriggerWhatsAppSyncMutationOptions(options));
+    }
+
+export const getListWhatsAppGroupMessagesUrl = (groupJid: string,
+    params?: ListWhatsAppGroupMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/whatsapp/groups/${groupJid}/messages?${stringifiedParams}` : `/api/social/whatsapp/groups/${groupJid}/messages`
+}
+
+/**
+ * @summary Page through a WhatsApp group's stored messages
+ */
+export const listWhatsAppGroupMessages = async (groupJid: string,
+    params?: ListWhatsAppGroupMessagesParams, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppGroupMessagesResponse> => {
+
+  return customFetch<WhatsAppGroupMessagesResponse>(getListWhatsAppGroupMessagesUrl(groupJid,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListWhatsAppGroupMessagesQueryKey = (groupJid: string,
+    params?: ListWhatsAppGroupMessagesParams,) => {
+    return [
+    `/api/social/whatsapp/groups/${groupJid}/messages`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListWhatsAppGroupMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listWhatsAppGroupMessages>>, TError = ErrorType<ApiError>>(groupJid: string,
+    params?: ListWhatsAppGroupMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWhatsAppGroupMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListWhatsAppGroupMessagesQueryKey(groupJid,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listWhatsAppGroupMessages>>> = ({ signal }) => listWhatsAppGroupMessages(groupJid,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: groupJid !== null && groupJid !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listWhatsAppGroupMessages>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListWhatsAppGroupMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listWhatsAppGroupMessages>>>
+export type ListWhatsAppGroupMessagesQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Page through a WhatsApp group's stored messages
+ */
+
+export function useListWhatsAppGroupMessages<TData = Awaited<ReturnType<typeof listWhatsAppGroupMessages>>, TError = ErrorType<ApiError>>(
+ groupJid: string,
+    params?: ListWhatsAppGroupMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listWhatsAppGroupMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListWhatsAppGroupMessagesQueryOptions(groupJid,params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetWhatsAppMediaUrlUrl = (mediaId: string,
+    params?: GetWhatsAppMediaUrlParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/social/whatsapp/media/${mediaId}/url?${stringifiedParams}` : `/api/social/whatsapp/media/${mediaId}/url`
+}
+
+/**
+ * Signed URLs expire; this re-issues one without re-downloading. The file itself is served by the public signed endpoint.
+ * @summary Mint a fresh signed URL for a stored WhatsApp media file
+ */
+export const getWhatsAppMediaUrl = async (mediaId: string,
+    params?: GetWhatsAppMediaUrlParams, options?: Parameters<typeof customFetch>[1]): Promise<WhatsAppMediaUrlResponse> => {
+
+  return customFetch<WhatsAppMediaUrlResponse>(getGetWhatsAppMediaUrlUrl(mediaId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetWhatsAppMediaUrlQueryKey = (mediaId: string,
+    params?: GetWhatsAppMediaUrlParams,) => {
+    return [
+    `/api/social/whatsapp/media/${mediaId}/url`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetWhatsAppMediaUrlQueryOptions = <TData = Awaited<ReturnType<typeof getWhatsAppMediaUrl>>, TError = ErrorType<ApiError>>(mediaId: string,
+    params?: GetWhatsAppMediaUrlParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppMediaUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetWhatsAppMediaUrlQueryKey(mediaId,params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getWhatsAppMediaUrl>>> = ({ signal }) => getWhatsAppMediaUrl(mediaId,params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: mediaId !== null && mediaId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppMediaUrl>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetWhatsAppMediaUrlQueryResult = NonNullable<Awaited<ReturnType<typeof getWhatsAppMediaUrl>>>
+export type GetWhatsAppMediaUrlQueryError = ErrorType<ApiError>
+
+
+/**
+ * @summary Mint a fresh signed URL for a stored WhatsApp media file
+ */
+
+export function useGetWhatsAppMediaUrl<TData = Awaited<ReturnType<typeof getWhatsAppMediaUrl>>, TError = ErrorType<ApiError>>(
+ mediaId: string,
+    params?: GetWhatsAppMediaUrlParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getWhatsAppMediaUrl>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetWhatsAppMediaUrlQueryOptions(mediaId,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
