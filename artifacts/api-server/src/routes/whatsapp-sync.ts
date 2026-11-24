@@ -14,7 +14,12 @@ import { Router, type IRouter } from "express";
 import { requestOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
-import { verifyWhatsAppWebhookSecret } from "../lib/whatsapp-evolution";
+import {
+  configureWhatsAppWebhook,
+  EvolutionApiError,
+  verifyWhatsAppWebhookSecret,
+  whatsappWebhookUrl,
+} from "../lib/whatsapp-evolution";
 import { resolveWhatsAppGroupSyncTargets } from "../lib/whatsapp-group-identity";
 import { buildWhatsAppSyncStatusGroups } from "../lib/whatsapp-sync-status";
 import { hasEnabledWhatsAppSyncType } from "../lib/whatsapp-sync-options";
@@ -566,6 +571,76 @@ router.put(
     } catch (error) {
       logger.error({ error }, "Error updating WhatsApp sync settings");
       res.status(500).json({ error: "تعذر حفظ إعداد المزامنة التلقائية." });
+    }
+  },
+);
+
+/**
+ * Re-registers the Evolution webhook for this workspace's instance.
+ *
+ * Pairing and reconnect-confirm both configure it, but the two things that break
+ * it later — a rotated `WHATSAPP_EVOLUTION_WEBHOOK_SECRET`, or an API domain that
+ * moved — happen without any pairing, and the only symptom is that inbound events
+ * stop arriving. This gives the merchant (and support) a button instead of a
+ * re-pair, and answers with the exact URL that was registered.
+ */
+router.post(
+  "/social/whatsapp/reconfigure-webhook",
+  requireWorkspace,
+  async (req, res) => {
+    const ownerId = requestOwnerId(req);
+    if (!ownerId) {
+      res.status(401).json({ error: "سجّل الدخول أولاً." });
+      return;
+    }
+    const workspaceId = requestWorkspaceId(req);
+    const [connection] = await db
+      .select({
+        instanceName: menaWhatsAppConnections.instanceName,
+        phoneNumber: menaWhatsAppConnections.phoneNumber,
+      })
+      .from(menaWhatsAppConnections)
+      .where(eq(menaWhatsAppConnections.workspaceId, workspaceId))
+      .limit(1);
+    if (!connection) {
+      res.status(404).json({
+        error: "لا يوجد حساب واتساب مربوط بهذه المساحة.",
+        code: "WHATSAPP_NOT_CONNECTED",
+      });
+      return;
+    }
+    try {
+      await configureWhatsAppWebhook(connection.instanceName);
+      res.json({
+        ok: true,
+        instanceName: connection.instanceName,
+        webhookUrl: whatsappWebhookUrl(),
+        reconfiguredAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      const code =
+        error instanceof EvolutionApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "WHATSAPP_WEBHOOK_RECONFIGURE_FAILED";
+      logger.error(
+        { workspaceId, instanceName: connection.instanceName, code },
+        "WhatsApp webhook reconfiguration failed",
+      );
+      const message =
+        code === "WHATSAPP_WEBHOOK_SECRET_REQUIRED"
+          ? "اضبط WHATSAPP_EVOLUTION_WEBHOOK_SECRET في الخادم ثم أعد المحاولة؛ بدونه ترفض Evolution إرسال الأحداث."
+          : code === "WHATSAPP_WEBHOOK_URL_REQUIRED"
+            ? "اضبط WHATSAPP_EVOLUTION_WEBHOOK_URL أو DOMAIN في الخادم ليعرف Evolution عنوان هذا الخادم العام."
+            : code === "WHATSAPP_WEBHOOK_URL_INVALID"
+              ? "قيمة WHATSAPP_EVOLUTION_WEBHOOK_URL أو DOMAIN غير صالحة كرابط. صححها ثم أعد المحاولة."
+              : "تعذر إعادة تسجيل ويب هوك واتساب لدى Evolution. تحقق من WHATSAPP_EVOLUTION_BASE_URL وWHATSAPP_EVOLUTION_API_KEY ثم أعد المحاولة.";
+      const status =
+        error instanceof EvolutionApiError && error.statusCode >= 400 && error.statusCode < 600
+          ? error.statusCode
+          : 502;
+      res.status(status).json({ error: message, code });
     }
   },
 );
