@@ -1,4 +1,7 @@
-import { fetchApiResponse } from "@workspace/api-client-react";
+import {
+  fetchApiResponse,
+  readJsonResponse,
+} from "@workspace/api-client-react";
 
 export type MetaInboxPlatform = "facebook" | "instagram";
 export type MetaInboxKind = "message" | "comment";
@@ -117,27 +120,6 @@ export type MetaAutoReplyHistoricalPostsResponse = {
   >;
 };
 
-async function responseJson<T>(response: Response): Promise<T> {
-  const body = await response.text();
-  let payload: unknown;
-  try {
-    payload = JSON.parse(body);
-  } catch {
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    throw new Error("تعذر قراءة استجابة الخادم.");
-  }
-  if (!response.ok) {
-    const error =
-      payload && typeof payload === "object" && "error" in payload
-        ? payload.error
-        : undefined;
-    throw new Error(
-      typeof error === "string" ? error : `HTTP ${response.status}`,
-    );
-  }
-  return payload as T;
-}
-
 export type MetaInboxQuery = {
   cursor?: string;
   personId?: string;
@@ -154,12 +136,12 @@ export async function getMetaInbox(
   const searchText = search.toString();
   const suffix = searchText ? `?${searchText}` : "";
   const response = await fetchApiResponse(`/api/social/meta-inbox${suffix}`);
-  return responseJson<MetaInboxResponse>(response);
+  return readJsonResponse<MetaInboxResponse>(response);
 }
 
 export async function getMetaAutoReplySettings(): Promise<MetaAutoReplySettingsResponse> {
   const response = await fetchApiResponse("/api/social/meta-auto-replies");
-  return responseJson<MetaAutoReplySettingsResponse>(response);
+  return readJsonResponse<MetaAutoReplySettingsResponse>(response);
 }
 
 export async function saveMetaAutoReplySettings(
@@ -170,14 +152,14 @@ export async function saveMetaAutoReplySettings(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(settings),
   });
-  return responseJson<MetaAutoReplySettings>(response);
+  return readJsonResponse<MetaAutoReplySettings>(response);
 }
 
 export async function getMetaAutoReplyHistoricalPosts(): Promise<MetaAutoReplyHistoricalPostsResponse> {
   const response = await fetchApiResponse(
     "/api/social/meta-auto-replies/historical-comments",
   );
-  return responseJson<MetaAutoReplyHistoricalPostsResponse>(response);
+  return readJsonResponse<MetaAutoReplyHistoricalPostsResponse>(response);
 }
 
 export async function queueMetaAutoReplyHistoricalComments(input: {
@@ -193,7 +175,7 @@ export async function queueMetaAutoReplyHistoricalComments(input: {
       body: JSON.stringify(input),
     },
   );
-  return responseJson<{ queuedCount: number; batchCount: number }>(response);
+  return readJsonResponse<{ queuedCount: number; batchCount: number }>(response);
 }
 
 export async function activateMetaWebhookSubscriptions(): Promise<{
@@ -206,7 +188,7 @@ export async function activateMetaWebhookSubscriptions(): Promise<{
     "/api/social/meta-inbox/webhook-subscriptions",
     { method: "POST" },
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function sendMetaInboxReply(
@@ -221,7 +203,7 @@ export async function sendMetaInboxReply(
       body: JSON.stringify({ text }),
     },
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function retryMetaAutoReply(itemId: string): Promise<{
@@ -232,7 +214,7 @@ export async function retryMetaAutoReply(itemId: string): Promise<{
     `/api/social/meta-inbox/items/${encodeURIComponent(itemId)}/auto-reply`,
     { method: "POST" },
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function confirmMetaInboxReplyNotSent(
@@ -242,7 +224,7 @@ export async function confirmMetaInboxReplyNotSent(
     `/api/social/meta-inbox/items/${encodeURIComponent(itemId)}/retry-confirmation`,
     { method: "POST" },
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function testMetaAutoReply(input: {
@@ -256,5 +238,5 @@ export async function testMetaAutoReply(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  return responseJson<{ reply: string; matchedProduct?: string | null }>(response);
+  return readJsonResponse<{ reply: string; matchedProduct?: string | null }>(response);
 }

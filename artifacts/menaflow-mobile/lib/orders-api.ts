@@ -1,4 +1,7 @@
-import { fetchApiResponse } from "@workspace/api-client-react";
+import {
+  fetchApiResponse,
+  readJsonResponse,
+} from "@workspace/api-client-react";
 
 export type OrderStatus =
   "draft" | "confirmed" | "preparing" | "shipped" | "completed" | "cancelled";
@@ -105,30 +108,9 @@ export type CreateOrderInput = {
   items: Array<{ productId: string; quantity: number }>;
 };
 
-async function responseJson<T>(response: Response): Promise<T> {
-  const body = await response.text();
-  let payload: unknown;
-  try {
-    payload = JSON.parse(body);
-  } catch {
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    throw new Error("تعذر قراءة استجابة الخادم.");
-  }
-  if (!response.ok) {
-    const error =
-      payload && typeof payload === "object" && "error" in payload
-        ? payload.error
-        : undefined;
-    throw new Error(
-      typeof error === "string" ? error : `HTTP ${response.status}`,
-    );
-  }
-  return payload as T;
-}
-
 export async function getOrderSummary(): Promise<OrderSummary> {
   const response = await fetchApiResponse("/api/social/orders/summary");
-  return responseJson<OrderSummary>(response);
+  return readJsonResponse<OrderSummary>(response);
 }
 
 export async function getOrders(
@@ -142,7 +124,7 @@ export async function getOrders(
   if (cursor) query.set("cursor", cursor);
   const suffix = query.size ? `?${query.toString()}` : "";
   const response = await fetchApiResponse(`/api/social/orders${suffix}`);
-  return responseJson<{ orders: CustomerOrder[]; nextCursor: string | null }>(
+  return readJsonResponse<{ orders: CustomerOrder[]; nextCursor: string | null }>(
     response,
   );
 }
@@ -155,7 +137,7 @@ export async function createOrder(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  const result = await responseJson<{ order: CustomerOrder }>(response);
+  const result = await readJsonResponse<{ order: CustomerOrder }>(response);
   return result.order;
 }
 
@@ -171,7 +153,7 @@ export async function updateOrderStatus(
       body: JSON.stringify({ status }),
     },
   );
-  const result = await responseJson<{ order: CustomerOrder }>(response);
+  const result = await readJsonResponse<{ order: CustomerOrder }>(response);
   return result.order;
 }
 
@@ -194,6 +176,6 @@ export async function updateOrderDelivery(
       body: JSON.stringify(input),
     },
   );
-  const result = await responseJson<{ order: CustomerOrder }>(response);
+  const result = await readJsonResponse<{ order: CustomerOrder }>(response);
   return result.order;
 }

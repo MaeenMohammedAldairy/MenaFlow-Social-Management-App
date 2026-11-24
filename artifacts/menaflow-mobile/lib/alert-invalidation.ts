@@ -9,6 +9,11 @@
  * for the four alertable events comes from the event, and the timer is only the
  * fallback for when push does not arrive at all.
  *
+ * Not everything the app caches is in React Query: the post list lives in
+ * `context/StudioContext.tsx`, so this module also answers "does this alert change
+ * a post?" (`postsSyncForAlertData`) for the root layout to hand to
+ * `lib/posts-sync-signal.ts`.
+ *
  * Invalidation is by key *prefix*, which is enough because every key in this app
  * starts with a stable name followed by the user id and then its parameters:
  * `["meta-inbox", userId]` for the list and
@@ -70,6 +75,29 @@ const PREFIXES_BY_EVENT_TYPE: Record<AlertEventType, readonly QueryKeyPrefix[]> 
     quota_exhausted: [],
   };
 
+/**
+ * Which alerts must also refresh the post list, and therefore the dashboard hero
+ * and the header bell, both of which are computed from it.
+ *
+ * Posts are not in React Query — `context/StudioContext.tsx` holds them in its own
+ * store — so an alert that changes a post cannot be answered by invalidating a
+ * key. The root layout asks `lib/posts-sync-signal.ts` for a sync when this says
+ * so.
+ *
+ * Only `publish_failure` does. A publication failure changes a post's status and
+ * its error, which is exactly what the dashboard's "a post failed to publish" hero
+ * and the bell's failed-post count are built from; leaving them stale meant the
+ * alert announced a failure the screen then contradicted. The other three events
+ * leave posts untouched: a customer message and a draft order change conversations
+ * and orders, and `quota_exhausted` changes nothing cached (see its note above).
+ */
+const POSTS_SYNC_BY_EVENT_TYPE: Record<AlertEventType, boolean> = {
+  customer_message: false,
+  publish_failure: true,
+  new_order: false,
+  quota_exhausted: false,
+};
+
 const KNOWN_EVENT_TYPES: readonly string[] = Object.keys(PREFIXES_BY_EVENT_TYPE);
 
 /** Whether a payload's `eventType` is one this build knows how to react to. */
@@ -95,6 +123,23 @@ export function queryPrefixesForAlertData(
   const eventType = (data as Record<string, unknown>).eventType;
   if (!isKnownAlertEventType(eventType)) return [];
   return PREFIXES_BY_EVENT_TYPE[eventType];
+}
+
+/**
+ * Whether an alert should trigger a post sync in addition to (or instead of)
+ * cache invalidation.
+ *
+ * Same contract as `queryPrefixesForAlertData`: an unknown or absent `eventType`
+ * means the server was upgraded and this build was not, and the honest answer is
+ * to do nothing rather than guess. A sync is cheap but not free — it fetches a
+ * page of posts — and doing it for an event that cannot have changed a post would
+ * put a request on the wire for every alert of every kind.
+ */
+export function postsSyncForAlertData(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const eventType = (data as Record<string, unknown>).eventType;
+  if (!isKnownAlertEventType(eventType)) return false;
+  return POSTS_SYNC_BY_EVENT_TYPE[eventType];
 }
 
 /**

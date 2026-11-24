@@ -1,8 +1,36 @@
 export type CustomFetchOptions = RequestInit & {
   responseType?: "json" | "text" | "blob" | "auto";
-  /** Optional deadline for this request, including reading the response. */
-  timeoutMs?: number;
+  /**
+   * Deadline for this request, including reading the response body.
+   *
+   * Omit it to get the default for the payload shape (`DEFAULT_READ_TIMEOUT_MS`,
+   * or `DEFAULT_UPLOAD_TIMEOUT_MS` for a binary body); pass `null` for a request
+   * meant to stay open, such as an event stream.
+   */
+  timeoutMs?: number | null;
 };
+
+/** The same option for `fetchApiResponse`, whose deadline stops at the headers. */
+export type FetchApiResponseOptions = RequestInit & {
+  timeoutMs?: number | null;
+};
+
+/**
+ * Deadlines applied when a caller does not ask for one.
+ *
+ * Nothing in the app passed `timeoutMs` at all, so a server that accepted the
+ * connection and then stalled left every screen on its loading state forever:
+ * React Query never flips to `isError`, so no retry affordance appears either —
+ * the merchant sees a skeleton with no way out and no explanation. Twenty
+ * seconds is longer than any healthy call to this API and shorter than a
+ * merchant's patience.
+ *
+ * Uploads get more because the payload is a media file read off the device and
+ * sent over a mobile connection. Cutting an upload short after the bytes were
+ * already sent costs the merchant a re-pick and the server a discarded write.
+ */
+export const DEFAULT_READ_TIMEOUT_MS = 20_000;
+export const DEFAULT_UPLOAD_TIMEOUT_MS = 120_000;
 
 export type ErrorType<T = unknown> = ApiError<T>;
 
@@ -61,9 +89,102 @@ export function setWorkspaceIdGetter(
   _workspaceIdGetter = getter;
 }
 
-export async function fetchApiResponse(
+/**
+ * Whether a request body is a payload whose size the client cannot bound, and
+ * which therefore earns the upload deadline rather than the read one.
+ *
+ * A JSON string is bounded by what the merchant typed; a blob read off the
+ * device is not.
+ */
+export function isLongUploadBody(body: unknown): boolean {
+  if (body === null || body === undefined || typeof body === "string") return false;
+  if (typeof Blob !== "undefined" && body instanceof Blob) return true;
+  if (typeof FormData !== "undefined" && body instanceof FormData) return true;
+  if (typeof ArrayBuffer !== "undefined") {
+    if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) return true;
+  }
+  if (typeof ReadableStream !== "undefined" && body instanceof ReadableStream) return true;
+  // An unrecognised object payload (a host-specific file or stream wrapper):
+  // assume it can be large rather than aborting an upload at twenty seconds.
+  return typeof body === "object";
+}
+
+/**
+ * The deadline for one request: the caller's explicit value, `null` for "stay
+ * open", or the default for the payload shape. Pure, so the rule is testable
+ * without a network.
+ */
+export function resolveRequestTimeoutMs(options: {
+  timeoutMs?: number | null;
+  body?: unknown;
+}): number | null {
+  const { timeoutMs, body } = options;
+  if (timeoutMs === null) return null;
+  if (timeoutMs !== undefined) {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+      throw new TypeError(
+        "timeoutMs must be a positive finite number, or null for no deadline",
+      );
+    }
+    return timeoutMs;
+  }
+  return isLongUploadBody(body) ? DEFAULT_UPLOAD_TIMEOUT_MS : DEFAULT_READ_TIMEOUT_MS;
+}
+
+/**
+ * Run `task` under a deadline, keeping a caller's cancellation distinct from a
+ * timeout: aborting yields an `AbortError`, expiring yields a `TimeoutError`.
+ * The task receives the combined signal, so the in-flight fetch is actually
+ * cancelled rather than merely ignored.
+ */
+async function runWithDeadline<T>(
+  task: (signal: AbortSignal | undefined) => Promise<T>,
+  options: { timeoutMs: number | null; signal?: AbortSignal | null },
+): Promise<T> {
+  const { timeoutMs, signal: callerSignal } = options;
+  if (timeoutMs === null) return task(callerSignal ?? undefined);
+
+  const controller = new AbortController();
+  let rejectCancellation: ((error: Error) => void) | undefined;
+  const cancellation = callerSignal
+    ? new Promise<never>((_resolve, reject) => {
+        rejectCancellation = reject;
+      })
+    : null;
+  const abortFromCaller = () => {
+    controller.abort();
+    const error = new Error("Request aborted");
+    error.name = "AbortError";
+    rejectCancellation?.(error);
+  };
+  if (callerSignal) {
+    if (callerSignal.aborted) abortFromCaller();
+    else callerSignal.addEventListener("abort", abortFromCaller, { once: true });
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      const timeout = new Error("Request timed out");
+      timeout.name = "TimeoutError";
+      controller.abort();
+      reject(timeout);
+    }, timeoutMs);
+  });
+
+  try {
+    return await (cancellation
+      ? Promise.race([task(controller.signal), deadline, cancellation])
+      : Promise.race([task(controller.signal), deadline]));
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
+async function sendApiRequest(
   input: RequestInfo | URL,
-  init: RequestInit = {},
+  init: RequestInit,
 ): Promise<Response> {
   input = applyBaseUrl(input);
   const headers = mergeHeaders(isRequest(input) ? input.headers : undefined, init.headers);
@@ -82,6 +203,31 @@ export async function fetchApiResponse(
     throw error;
   }
   return fetch(input, { ...init, headers });
+}
+
+/**
+ * Send a request with the shared auth and workspace headers.
+ *
+ * The deadline covers obtaining the response **headers** — including a stalled
+ * session-token getter — and not the body afterwards: a caller streaming an
+ * event response reads that body for as long as the connection lives, which is
+ * what `timeoutMs: null` expresses.
+ */
+export async function fetchApiResponse(
+  input: RequestInfo | URL,
+  init: FetchApiResponseOptions = {},
+): Promise<Response> {
+  const { timeoutMs, ...requestInit } = init;
+  const method =
+    requestInit.method ?? (isRequest(input) ? input.method : undefined) ?? "GET";
+  const deadline = resolveRequestTimeoutMs({ timeoutMs, body: requestInit.body });
+  return runWithDeadline(
+    (signal) => sendApiRequest(input, { ...requestInit, method, signal }),
+    {
+      timeoutMs: deadline,
+      signal: requestInit.signal ?? (isRequest(input) ? requestInit.signal : undefined),
+    },
+  );
 }
 
 function isRequest(input: RequestInfo | URL): input is Request {
@@ -188,12 +334,24 @@ function truncate(text: string, maxLength = 300): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 }
 
+/**
+ * The merchant-facing message: the server's own words when it sent any, and the
+ * HTTP status line only when it sent none.
+ *
+ * Screens render `error.message` directly — `app/compose.tsx`, the conversation
+ * reply box, the account-details screen — and this API answers every failure
+ * with an Arabic `error` string. Prefixing that with "HTTP 422 Unprocessable
+ * Entity:" put an English status line in front of the only sentence that tells
+ * the merchant what to do, and left `lib/content-utils.ts` guessing whether a
+ * failure reason was human text or a technical code. `status` and `statusText`
+ * stay on the error for code paths and for logs.
+ */
 function buildErrorMessage(response: Response, data: unknown): string {
-  const prefix = `HTTP ${response.status} ${response.statusText}`;
+  const statusLine = `HTTP ${response.status} ${response.statusText}`.trim();
 
   if (typeof data === "string") {
     const text = data.trim();
-    return text ? `${prefix}: ${truncate(text)}` : prefix;
+    return text ? truncate(text) : statusLine;
   }
 
   const title = getStringField(data, "title");
@@ -203,12 +361,8 @@ function buildErrorMessage(response: Response, data: unknown): string {
     getStringField(data, "error_description") ??
     getStringField(data, "error");
 
-  if (title && detail) return `${prefix}: ${title} — ${detail}`;
-  if (detail) return `${prefix}: ${detail}`;
-  if (message) return `${prefix}: ${message}`;
-  if (title) return `${prefix}: ${title}`;
-
-  return prefix;
+  if (title && detail) return `${title} — ${detail}`;
+  return detail ?? message ?? title ?? statusLine;
 }
 
 export class ApiError<T = unknown> extends Error {
@@ -390,49 +544,60 @@ export async function customFetch<T = unknown>(
   }
 
   const requestInfo = { method, url: resolveUrl(input) };
-
-  if (timeoutMs !== undefined && (!Number.isFinite(timeoutMs) || timeoutMs <= 0)) {
-    throw new TypeError("customFetch: timeoutMs must be a positive finite number.");
-  }
-  const controller = timeoutMs === undefined ? null : new AbortController();
+  const deadline = resolveRequestTimeoutMs({ timeoutMs, body: init.body });
   const callerSignal = init.signal ?? (isRequest(input) ? input.signal : undefined);
-  let rejectCancellation: ((error: Error) => void) | undefined;
-  const cancellation = controller && callerSignal ? new Promise<never>((_resolve, reject) => {
-    rejectCancellation = reject;
-  }) : null;
-  const abortFromCaller = () => {
-    controller?.abort();
-    const error = new Error("Request aborted");
-    error.name = "AbortError";
-    rejectCancellation?.(error);
-  };
-  if (controller && callerSignal) {
-    if (callerSignal.aborted) abortFromCaller();
-    else callerSignal.addEventListener("abort", abortFromCaller, { once: true });
-  }
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const deadline = controller ? new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      const timeout = new Error("Request timed out");
-      timeout.name = "TimeoutError";
-      controller.abort();
-      reject(timeout);
-    }, timeoutMs);
-  }) : null;
-  try {
-    const request = (async () => {
-      const response = await fetchApiResponse(input, {
-        ...init, method, headers, ...(controller ? { signal: controller.signal } : {}),
-      });
+
+  // One deadline for the whole round trip: the session-token getter, the
+  // response headers and reading the body. `sendApiRequest` is called directly
+  // rather than `fetchApiResponse` so the same request is not armed twice.
+  return runWithDeadline(
+    async (signal) => {
+      const response = await sendApiRequest(input, { ...init, method, headers, signal });
       if (!response.ok) {
         const errorData = await parseErrorBody(response, method);
         throw new ApiError(response, errorData, requestInfo);
       }
       return (await parseSuccessBody(response, responseType, requestInfo)) as T;
-    })();
-    return await (deadline ? Promise.race(cancellation ? [request, deadline, cancellation] : [request, deadline]) : request);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-    callerSignal?.removeEventListener("abort", abortFromCaller);
+    },
+    { timeoutMs: deadline, signal: callerSignal },
+  );
+}
+
+/**
+ * Read a JSON body, or throw the `ApiError` the generated client throws.
+ *
+ * The hand-written clients in the mobile app each carried their own copy of this
+ * function and threw a bare `Error`, which the app's global error routing cannot
+ * read: `reportApiError` in the root layout keys off `error.name === "ApiError"`
+ * to raise the session banner on 401, the permission notice on 403 and the
+ * server notice with a retry on 5xx, and off `error.status` to decide that a 4xx
+ * must not be retried. A bare `Error` got none of that — and, carrying no status,
+ * was retried three times even when the server had just refused the request.
+ *
+ * `parseFailureMessage` keeps the Arabic copy these clients already showed when a
+ * 2xx body turns out not to be JSON: that case is a broken contract rather than a
+ * refused request, so it stays a plain `Error`.
+ */
+export async function readJsonResponse<T>(
+  response: Response,
+  options: {
+    method?: string;
+    url?: string;
+    parseFailureMessage?: string;
+  } = {},
+): Promise<T> {
+  const method = options.method ?? "GET";
+  const requestInfo = { method, url: options.url ?? response.url };
+
+  if (!response.ok) {
+    const errorData = await parseErrorBody(response, method);
+    throw new ApiError(response, errorData, requestInfo);
+  }
+
+  const normalized = stripBom(await response.text());
+  try {
+    return JSON.parse(normalized) as T;
+  } catch {
+    throw new Error(options.parseFailureMessage ?? "تعذر قراءة استجابة الخادم.");
   }
 }

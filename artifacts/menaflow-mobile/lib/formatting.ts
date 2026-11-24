@@ -56,3 +56,39 @@ export function formatArabicDateTime(
 ): string | null {
   return formatArabicDate(value, { dateStyle: "short", timeStyle: "short" });
 }
+/** The noun forms Arabic grammar requires for a counted thing. */
+export type ArabicCountForms = {
+  /** Used for exactly one, with the count already in the phrase. */
+  one: string;
+  /** Used for exactly two — Arabic has a dual, not "2 + plural". */
+  two: string;
+  /** Used for 3–10: the broken plural, e.g. "منشورات". */
+  few: string;
+  /** Used for 11 and above: the singular accusative, e.g. "منشورًا". */
+  many: string;
+};
+
+/**
+ * "N things" in grammatical Arabic.
+ *
+ * The app's counts are read aloud (the header bell's accessibility label) and read
+ * by merchants, and Arabic does not put a plural noun after every number: one and
+ * two take a noun phrase of their own, three to ten take the plural, and eleven and
+ * above take the singular. Writing `${count} منشورات` throughout produced "1
+ * منشورات تحتاج إلى إجراء" and "12 منشورات", both of which read as a mistake.
+ *
+ * The count is formatted with `formatArabicNumber` so digits match the rest of the
+ * app, and is treated as a whole number of items: these counts arrive as sums of
+ * optional fields from a query response, so a non-integer or a missing value has to
+ * degrade into a grammatical phrase rather than into "undefined منشورات".
+ */
+export function arabicCountPhrase(
+  count: number,
+  forms: ArabicCountForms,
+): string {
+  const whole = Number.isFinite(count) ? Math.floor(count) : 0;
+  if (whole <= 1) return forms.one;
+  if (whole === 2) return forms.two;
+  if (whole <= 10) return `${formatArabicNumber(whole)} ${forms.few}`;
+  return `${formatArabicNumber(whole)} ${forms.many}`;
+}

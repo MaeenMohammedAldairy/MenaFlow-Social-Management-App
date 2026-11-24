@@ -1,4 +1,7 @@
-import { fetchApiResponse } from "@workspace/api-client-react";
+import {
+  fetchApiResponse,
+  readJsonResponse,
+} from "@workspace/api-client-react";
 
 export type ImportedMetaPost = {
   platform: "facebook" | "instagram";
@@ -170,34 +173,13 @@ export type ProductPublicationSnapshot = {
   };
 };
 
-async function responseJson<T>(response: Response): Promise<T> {
-  const body = await response.text();
-  let payload: unknown;
-  try {
-    payload = JSON.parse(body);
-  } catch {
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    throw new Error("تعذر قراءة استجابة الخادم.");
-  }
-  if (!response.ok) {
-    const error =
-      payload && typeof payload === "object" && "error" in payload
-        ? payload.error
-        : undefined;
-    throw new Error(
-      typeof error === "string" ? error : `HTTP ${response.status}`,
-    );
-  }
-  return payload as T;
-}
-
 export async function getProductCatalog(
   includeArchived = false,
 ): Promise<CatalogProduct[]> {
   const response = await fetchApiResponse(
     `/api/social/products${includeArchived ? "?includeArchived=true" : ""}`,
   );
-  const result = await responseJson<{ products: CatalogProduct[] }>(response);
+  const result = await readJsonResponse<{ products: CatalogProduct[] }>(response);
   return result.products;
 }
 
@@ -207,7 +189,7 @@ export async function getInventoryMovements(
   const response = await fetchApiResponse(
     `/api/social/products/${encodeURIComponent(productId)}/inventory-movements`,
   );
-  const result = await responseJson<{ movements: InventoryMovement[] }>(
+  const result = await readJsonResponse<{ movements: InventoryMovement[] }>(
     response,
   );
   return result.movements;
@@ -215,7 +197,7 @@ export async function getInventoryMovements(
 
 export async function getPublishableAccounts(): Promise<PublishableAccount[]> {
   const response = await fetchApiResponse("/api/social/connections");
-  const result = await responseJson<{
+  const result = await readJsonResponse<{
     facebook: Omit<PublishableAccount, "channel"> | null;
     instagram: Omit<PublishableAccount, "channel"> | null;
   }>(response);
@@ -238,7 +220,7 @@ export async function publishCatalogProducts(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function getProductPublicationJobs(
@@ -247,7 +229,7 @@ export async function getProductPublicationJobs(
   const response = await fetchApiResponse(
     `/api/social/products/publish-jobs?requestKey=${encodeURIComponent(requestKey)}`,
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function retryProductPublicationJobs(
@@ -261,14 +243,14 @@ export async function retryProductPublicationJobs(
       body: JSON.stringify({ jobIds }),
     },
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function getProductCandidates(): Promise<ProductCandidate[]> {
   const response = await fetchApiResponse(
     "/api/social/products/post-candidates",
   );
-  const result = await responseJson<{ candidates: ProductCandidate[] }>(
+  const result = await readJsonResponse<{ candidates: ProductCandidate[] }>(
     response,
   );
   return result.candidates;
@@ -280,7 +262,7 @@ export async function getWhatsAppProductExtractions(): Promise<
   const response = await fetchApiResponse(
     "/api/social/products/whatsapp-extractions",
   );
-  const result = await responseJson<{
+  const result = await readJsonResponse<{
     suggestions: ProductExtractionSuggestion[];
   }>(response);
   return result.suggestions;
@@ -301,7 +283,7 @@ export async function analyzeWhatsAppProductMessages(
         }
       : { method: "POST" },
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function createExtractionProductDraft(
@@ -320,7 +302,7 @@ export async function createExtractionProductDraft(
         : {}),
     },
   );
-  const result = await responseJson<{ product: CatalogProduct }>(response);
+  const result = await readJsonResponse<{ product: CatalogProduct }>(response);
   return result.product;
 }
 
@@ -331,7 +313,7 @@ export async function dismissProductExtraction(
     `/api/social/products/whatsapp-extractions/${encodeURIComponent(suggestionId)}/dismiss`,
     { method: "POST" },
   );
-  await responseJson<{ dismissed: boolean }>(response);
+  await readJsonResponse<{ dismissed: boolean }>(response);
 }
 
 export async function reviewProductExtraction(input: {
@@ -347,7 +329,7 @@ export async function reviewProductExtraction(input: {
       body: JSON.stringify({ field: input.field, correct: input.correct }),
     },
   );
-  await responseJson<{ reviewed: boolean }>(response);
+  await readJsonResponse<{ reviewed: boolean }>(response);
 }
 
 export async function createCatalogProduct(
@@ -362,7 +344,7 @@ export async function createCatalogProduct(
       ...(importedMetaPost && { importedMetaPost }),
     }),
   });
-  const result = await responseJson<{ product: CatalogProduct }>(response);
+  const result = await readJsonResponse<{ product: CatalogProduct }>(response);
   return result.product;
 }
 
@@ -378,7 +360,7 @@ export async function updateCatalogProduct(input: {
       body: JSON.stringify(input.product),
     },
   );
-  const result = await responseJson<{ product: CatalogProduct }>(response);
+  const result = await readJsonResponse<{ product: CatalogProduct }>(response);
   return result.product;
 }
 
@@ -389,7 +371,7 @@ export async function importProductCandidate(
     `/api/social/products/import-post/${encodeURIComponent(postId)}`,
     { method: "POST" },
   );
-  const result = await responseJson<{ product: CatalogProduct }>(response);
+  const result = await readJsonResponse<{ product: CatalogProduct }>(response);
   return result.product;
 }
 
@@ -408,7 +390,7 @@ export async function extractScannedPostProduct(
       body: JSON.stringify(input),
     },
   );
-  return responseJson(response);
+  return readJsonResponse(response);
 }
 
 export async function uploadProductMedia(asset: {
@@ -427,7 +409,7 @@ export async function uploadProductMedia(asset: {
     headers: { "Content-Type": asset.mimeType },
     body: file,
   });
-  const result = await responseJson<{
+  const result = await readJsonResponse<{
     media: {
       id: string;
       mediaType: string;
