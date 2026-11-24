@@ -6,6 +6,7 @@ import {
   MEDIA_UPSTREAM_EXPIRY_AGE_MS,
   mediaDownloadAttemptLimit,
   mediaDownloadFailureReason,
+  isExpiredWhatsAppMediaFailure,
   messageAgeMs,
 } from "./whatsapp-media-expiry-policy.ts";
 
@@ -86,4 +87,48 @@ test("an old message's failure is recorded as expiry, not as a transport error",
 
 test("the expiry reason is a stable, namespaced code", () => {
   assert.equal(MEDIA_UPSTREAM_EXPIRED_REASON, "WHATSAPP_MEDIA_EXPIRED_UPSTREAM");
+});
+
+test("an expired item is recognised by its reason even after a re-queue", () => {
+  assert.equal(
+    isExpiredWhatsAppMediaFailure({
+      downloadStatus: "failed",
+      failureReason: MEDIA_UPSTREAM_EXPIRED_REASON,
+      messageTimestamp: new Date("2026-11-20T12:00:00Z"),
+      now,
+    }),
+    true,
+  );
+});
+
+test("rows without the new reason still fall back to the message age", () => {
+  assert.equal(
+    isExpiredWhatsAppMediaFailure({
+      downloadStatus: "failed",
+      messageTimestamp: new Date("2026-10-30T12:00:00Z"),
+      now,
+    }),
+    true,
+  );
+  assert.equal(
+    isExpiredWhatsAppMediaFailure({
+      downloadStatus: "failed",
+      messageTimestamp: new Date("2026-11-20T12:00:00Z"),
+      now,
+    }),
+    false,
+  );
+});
+
+test("stored or pending media is never treated as expired", () => {
+  for (const downloadStatus of ["stored", "pending", "not_required"]) {
+    assert.equal(
+      isExpiredWhatsAppMediaFailure({
+        downloadStatus,
+        failureReason: MEDIA_UPSTREAM_EXPIRED_REASON,
+        now,
+      }),
+      false,
+    );
+  }
 });

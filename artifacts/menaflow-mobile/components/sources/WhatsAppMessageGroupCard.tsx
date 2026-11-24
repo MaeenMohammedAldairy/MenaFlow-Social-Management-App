@@ -4,7 +4,10 @@ import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { StatusPill } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
-import { formatArabicDateTime } from "@/lib/formatting";
+import {
+  formatArabicDateTime,
+  formatArabicNumber,
+} from "@/lib/formatting";
 import { mediaUrlForApp } from "@/lib/content-utils";
 import { describeMediaDownloadFailure } from "@/lib/whatsapp-media-failure-copy";
 import {
@@ -45,6 +48,8 @@ export function WhatsAppMessageGroupCard({
         <View style={styles.groupStatus}>
           {group.mediaFailed ? (
             <StatusPill label="فشل تحميل وسيط" tone="amber" />
+          ) : group.mediaExpired ? (
+            <StatusPill label="وسائط منتهية مستبعدة" tone="amber" />
           ) : group.mediaPending ? (
             <StatusPill label="جارٍ تحميل الوسائط" tone="amber" />
           ) : group.postId ? (
@@ -73,7 +78,7 @@ export function WhatsAppMessageGroupCard({
       {group.associationSuggestions.length > 0 ? (
         <View style={styles.suggestionList}>
           <Text style={[styles.meta, { color: colors.primary }]}>
-            اقتراحات ارتباط للمراجعة فقط؛ لم يتم دمج الرسائل تلقائياً:
+            اقتراحات ارتباط تحتاج مراجعة:
           </Text>
           {group.associationSuggestions.map((suggestion) => (
             <View
@@ -113,6 +118,7 @@ export function WhatsAppMessageGroupCard({
                           {item.downloadStatus !== "stored"
                             ? describeMediaDownloadFailure({
                                 downloadStatus: item.downloadStatus,
+                                failureReason: item.failureReason,
                                 messageTimestamp: message.messageTimestamp,
                               })
                             : item.mediaType === "video"
@@ -194,6 +200,7 @@ export function WhatsAppMessageGroupCard({
                 {item.downloadStatus !== "stored"
                   ? describeMediaDownloadFailure({
                       downloadStatus: item.downloadStatus,
+                      failureReason: item.failureReason,
                       messageTimestamp: message.messageTimestamp,
                     })
                   : item.accessError
@@ -212,6 +219,12 @@ export function WhatsAppMessageGroupCard({
         <Text style={[styles.meta, { color: colors.destructive }]}>
           لم يكتمل تحميل جميع الوسائط؛ لن تُعامل المجموعة كمنشور مكتمل.
         </Text>
+      ) : group.mediaExpired ? (
+        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+          {group.media.length > group.expiredMediaCount
+            ? `استُبعدت ${formatArabicNumber(group.expiredMediaCount)} وسائط انتهت صلاحيتها لدى واتساب؛ سيُبنى المنشور من النص والوسائط المتاحة.`
+            : "كل وسائط هذه الرسالة انتهت صلاحيتها لدى واتساب؛ أعد إرسالها لإنشاء منشور منها."}
+        </Text>
       ) : null}
       {group.postId ? (
         <Text style={[styles.meta, { color: colors.primary }]}>
@@ -222,6 +235,7 @@ export function WhatsAppMessageGroupCard({
         group.media.length > 0 ||
         group.messages.some((message) => message.mediaAvailable) ||
         group.mediaFailed ||
+        group.mediaExpired ||
         group.contentBundleId
       ) &&
       canConvert ? (

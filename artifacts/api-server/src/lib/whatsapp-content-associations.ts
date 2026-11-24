@@ -8,6 +8,11 @@ import {
   menaWhatsAppMessages,
 } from "@workspace/db";
 import {
+  findWhatsAppAssociationSuggestions,
+  selectAutoAcceptableWhatsAppAssociations,
+  type WhatsAppSuggestionMessage,
+} from "./whatsapp-association-suggestions.ts";
+import {
   areWhatsAppMessagesInSameContentScope as messagesShareContentScope,
   connectedWhatsAppMessageIds,
   normalizeWhatsAppAssociationPair,
@@ -149,6 +154,55 @@ export async function getWhatsAppContentBundle(
     .find((row) => row.contentBundleId)?.contentBundleId;
   if (!bundle) throw new Error("WHATSAPP_CONTENT_BUNDLE_MISSING");
   return { id: bundle, messageIds };
+}
+
+/** Persists the unambiguous suggestions so content is linked without a click. */
+export const WHATSAPP_AUTO_ASSOCIATION_DECIDED_BY = "whatsapp-auto-association";
+
+export async function autoAcceptWhatsAppSuggestions(input: {
+  workspaceId: string;
+  instanceName: string;
+  groupId: string;
+  messages: WhatsAppSuggestionMessage[];
+  decidedBy?: string;
+}): Promise<{ acceptedCount: number; messageIds: string[] }> {
+  const scope = {
+    workspaceId: input.workspaceId,
+    instanceName: input.instanceName,
+    groupId: input.groupId,
+  };
+  const suggestions = findWhatsAppAssociationSuggestions(input.messages);
+  const autoAcceptable = selectAutoAcceptableWhatsAppAssociations(suggestions);
+  if (autoAcceptable.length === 0) return { acceptedCount: 0, messageIds: [] };
+  const decisions = await getWhatsAppContentAssociationDecisions(scope);
+  const acceptedMessageIds = new Set<string>();
+  let acceptedCount = 0;
+  for (const suggestion of autoAcceptable) {
+    if (decisions.has(whatsappAssociationPairKey(
+      suggestion.sourceMessageId,
+      suggestion.candidateMessageId,
+    ))) continue;
+    try {
+      await decideWhatsAppContentAssociation({
+        decidedBy: input.decidedBy ?? WHATSAPP_AUTO_ASSOCIATION_DECIDED_BY,
+        workspaceId: input.workspaceId,
+        firstMessageId: suggestion.sourceMessageId,
+        secondMessageId: suggestion.candidateMessageId,
+        decision: "accepted",
+      });
+    } catch (error) {
+      // Another request may have decided the pair between the read and write.
+      if (
+        error instanceof WhatsAppContentAssociationError &&
+        error.code === "ASSOCIATION_DECISION_CONFLICT"
+      ) continue;
+      throw error;
+    }
+    acceptedCount += 1;
+    acceptedMessageIds.add(suggestion.sourceMessageId);
+    acceptedMessageIds.add(suggestion.candidateMessageId);
+  }
+  return { acceptedCount, messageIds: [...acceptedMessageIds] };
 }
 
 export async function decideWhatsAppContentAssociation(input: {

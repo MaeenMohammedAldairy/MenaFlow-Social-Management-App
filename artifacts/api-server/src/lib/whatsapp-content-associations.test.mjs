@@ -12,7 +12,10 @@ import {
   normalizeWhatsAppAssociationPair,
   whatsappAssociationPairKey,
 } from "./whatsapp-content-association-logic.ts";
-import { findWhatsAppAssociationSuggestions } from "./whatsapp-association-suggestions.ts";
+import {
+  findWhatsAppAssociationSuggestions,
+  selectAutoAcceptableWhatsAppAssociations,
+} from "./whatsapp-association-suggestions.ts";
 
 const groupJid = "120363012345678901@g.us";
 const albumScope = {
@@ -140,6 +143,75 @@ test("retains provider candidates without merging close products or repeated tex
   );
   assert.ok([textBefore, firstProduct, secondProduct, textAfterAlbum]
     .every((message) => message.mediaGroupId === null));
+});
+
+test("accepts only a one-to-one text and media pairing automatically", () => {
+  const time = Date.parse("2026-10-27T00:00:00.000Z");
+  const text = suggestionMessage({
+    id: "text",
+    remoteMessageId: "text-remote",
+    textBody: "وصف المنتج",
+  });
+  const media = suggestionMessage({
+    id: "media",
+    remoteMessageId: "media-remote",
+    mediaAvailable: true,
+    mediaCount: 1,
+    messageTimestamp: new Date(time + 500).toISOString(),
+    createdAt: new Date(time + 500).toISOString(),
+  });
+  const suggestions = findWhatsAppAssociationSuggestions([text, media]);
+  const auto = selectAutoAcceptableWhatsAppAssociations(suggestions);
+  assert.equal(auto.length, 1);
+  assert.equal(auto[0].candidateMessageId, "media");
+
+  // Two candidate media items for one text, or one candidate for two texts,
+  // are genuinely ambiguous and stay in the manual review queue.
+  const secondMedia = {
+    ...media,
+    id: "media-two",
+    remoteMessageId: "media-two-remote",
+    messageTimestamp: new Date(time + 900).toISOString(),
+  };
+  assert.equal(
+    selectAutoAcceptableWhatsAppAssociations(
+      findWhatsAppAssociationSuggestions([text, media, secondMedia]),
+    ).length,
+    0,
+  );
+  const secondText = {
+    ...text,
+    id: "text-two",
+    remoteMessageId: "text-two-remote",
+    messageTimestamp: new Date(time + 800).toISOString(),
+  };
+  assert.equal(
+    selectAutoAcceptableWhatsAppAssociations(
+      findWhatsAppAssociationSuggestions([text, secondText, media]),
+    ).length,
+    0,
+  );
+});
+
+test("a greeting beside a captioned product is left for review", () => {
+  const time = Date.parse("2026-10-27T00:00:00.000Z");
+  const greeting = suggestionMessage({
+    id: "greeting",
+    remoteMessageId: "greeting-remote",
+    textBody: "السلام",
+  });
+  const product = suggestionMessage({
+    id: "product",
+    remoteMessageId: "product-remote",
+    mediaAvailable: true,
+    mediaCount: 4,
+    caption: "الاكثر طلباً شمعدان كرستال زجاجي بسعر 2300 ريال",
+    messageTimestamp: new Date(time + 500).toISOString(),
+    createdAt: new Date(time + 500).toISOString(),
+  });
+  const suggestions = findWhatsAppAssociationSuggestions([greeting, product]);
+  assert.equal(suggestions.get("greeting")?.length, 1);
+  assert.equal(selectAutoAcceptableWhatsAppAssociations(suggestions).length, 0);
 });
 
 test("does not suggest across different or missing sender identities", () => {

@@ -22,6 +22,8 @@ export async function saveDraft(
     mediaIndex: number;
     messageOrder: number;
     messageTimestamp: string | null;
+    downloadStatus?: string | null;
+    failureReason?: string | null;
   }>,
   sourceGroupName: string,
   contentBundleId: string | null = null,
@@ -113,6 +115,16 @@ export async function saveDraft(
         (
           (item as Record<string, unknown>).messageTimestamp === null ||
           typeof (item as Record<string, unknown>).messageTimestamp === "string"
+        ) &&
+        (
+          (item as Record<string, unknown>).downloadStatus === undefined ||
+          typeof (item as Record<string, unknown>).downloadStatus === "string" ||
+          (item as Record<string, unknown>).downloadStatus === null
+        ) &&
+        (
+          (item as Record<string, unknown>).failureReason === undefined ||
+          typeof (item as Record<string, unknown>).failureReason === "string" ||
+          (item as Record<string, unknown>).failureReason === null
         ),
       ))
     : [];

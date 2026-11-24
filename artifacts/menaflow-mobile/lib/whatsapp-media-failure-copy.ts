@@ -30,6 +30,30 @@ export const MEDIA_UPSTREAM_EXPIRED_COPY =
 export const MEDIA_DOWNLOAD_FAILED_COPY = "فشل التحميل";
 export const MEDIA_DOWNLOAD_PENDING_COPY = "جارٍ التحميل";
 
+/** The failure code written by the server for an item WhatsApp no longer serves. */
+export const MEDIA_UPSTREAM_EXPIRED_REASON = "WHATSAPP_MEDIA_EXPIRED_UPSTREAM";
+
+/**
+ * Whether a media item can ever be downloaded again.
+ *
+ * The server's reason takes precedence; older rows without it are recognised
+ * by the send date, using the same window as the server's copy.
+ */
+export function isExpiredWhatsAppMediaFailure(input: {
+  failureReason?: string | null;
+  messageTimestamp?: string | null;
+  now?: number;
+}): boolean {
+  if (input.failureReason === MEDIA_UPSTREAM_EXPIRED_REASON) return true;
+  const sentAt = input.messageTimestamp
+    ? new Date(input.messageTimestamp).getTime()
+    : Number.NaN;
+  const now = input.now ?? Date.now();
+  return (
+    Number.isFinite(sentAt) && now - sentAt > MEDIA_UPSTREAM_EXPIRY_AGE_MS
+  );
+}
+
 /**
  * The placeholder label for a media item that is not stored yet.
  *
@@ -42,14 +66,14 @@ export const MEDIA_DOWNLOAD_PENDING_COPY = "جارٍ التحميل";
 export function describeMediaDownloadFailure(input: {
   downloadStatus?: string | null;
   messageTimestamp?: string | null;
+  failureReason?: string | null;
   now?: number;
 }): string {
   if (input.downloadStatus !== "failed") return MEDIA_DOWNLOAD_PENDING_COPY;
-  const now = input.now ?? Date.now();
-  const sentAt = input.messageTimestamp
-    ? new Date(input.messageTimestamp).getTime()
-    : Number.NaN;
-  const expired =
-    Number.isFinite(sentAt) && now - sentAt > MEDIA_UPSTREAM_EXPIRY_AGE_MS;
+  const expired = isExpiredWhatsAppMediaFailure({
+    failureReason: input.failureReason,
+    messageTimestamp: input.messageTimestamp,
+    now: input.now,
+  });
   return expired ? MEDIA_UPSTREAM_EXPIRED_COPY : MEDIA_DOWNLOAD_FAILED_COPY;
 }
