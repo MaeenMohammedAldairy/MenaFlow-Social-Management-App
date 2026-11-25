@@ -77,7 +77,7 @@ export function DisconnectConfirmModal({
                 ? " وسيُفصل حساب إنستغرام المرتبط به أيضًا."
                 : null}
               {dialog.platform === "whatsapp"
-                ? " ستنتهي جلسة WhatsApp لدى Evolution، مع الاحتفاظ بالرسائل والبيانات المحفوظة."
+                ? " وسيُفصل واتساب من مساحة عملك، مع الاحتفاظ بالرسائل والبيانات المحفوظة."
                 : null}
             </Text>
           ) : null}

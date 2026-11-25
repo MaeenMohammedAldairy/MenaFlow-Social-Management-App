@@ -1,6 +1,5 @@
 import {
   getWhatsAppAutoReplySettings,
-  reconfigureWhatsAppWebhook,
   saveWhatsAppAutoReplySettings,
   testWhatsAppAutoReply,
   type WhatsAppAutoReplySettings,
@@ -26,18 +25,9 @@ import {
   Panel,
   StatusPill,
 } from "@/components/Ui";
-import {
-  InboundDeliveryCard,
-  type InboundDeliveryFact,
-} from "@/components/inbox/InboundDeliveryCard";
 import { useColors } from "@/hooks/useColors";
 import { isLocalAuthDisabled } from "@/constants/auth";
-import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
-import { orphanCleanupSentence } from "@/lib/whatsapp-orphan-cleanup-copy";
-import {
-  webhookAttemptFacts,
-  webhookAttemptHeadline,
-} from "@/lib/inbound-webhook-copy";
+import { whatsAppFunctionalStatus } from "@/lib/whatsapp-functional-status";
 
 const defaultSettings: WhatsAppAutoReplySettings = {
   enabled: false,
@@ -113,9 +103,6 @@ function WhatsAppReplyContent({
   const [settingsNotice, setSettingsNotice] = useState("");
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [webhookBusy, setWebhookBusy] = useState(false);
-  const [webhookResult, setWebhookResult] = useState<string | null>(null);
-  const [webhookError, setWebhookError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!settingsQuery.data || settingsInitialized.current) return;
@@ -190,93 +177,10 @@ function WhatsAppReplyContent({
     }
   };
 
-  /**
-   * Pairing registers the webhook once; a rotated secret or a moved API domain
-   * silently stops delivery afterwards. Re-registering is safe to repeat and the
-   * server answers with the exact URL it configured.
-   */
-  const reregisterWebhook = async () => {
-    if (webhookBusy) return;
-    setWebhookBusy(true);
-    setWebhookError(null);
-    setWebhookResult(null);
-    try {
-      const result = await reconfigureWhatsAppWebhook();
-      // The sweep's finding outranks the "send a test message" advice: if a
-      // leftover session was holding this phone number, that is why the inbox was
-      // empty, and the merchant should read it before they test anything.
-      const cleanup = orphanCleanupSentence(result.orphanCleanup, {
-        formatNumber: formatArabicNumber,
-      });
-      setWebhookResult(
-        cleanup
-          ? `تم تسجيل الويب هوك على ${result.webhookUrl}. ${cleanup}`
-          : `تم تسجيل الويب هوك على ${result.webhookUrl}. أرسل رسالة تجريبية من هاتف العميل للتحقق من وصولها.`,
-      );
-      await queryClient.invalidateQueries({ queryKey });
-    } catch (error) {
-      setWebhookError(
-        errorMessage(
-          error,
-          "تعذّر تسجيل الويب هوك. تحقق من إعدادات الخادم ثم أعد المحاولة.",
-        ),
-      );
-    } finally {
-      setWebhookBusy(false);
-    }
-  };
-
-  const attemptFormatters = {
-    formatNumber: formatArabicNumber,
-    formatDateTime: formatArabicDateTime,
-  };
-  const inbound = settingsQuery.data?.inbound;
-  const inboundFacts: InboundDeliveryFact[] = inbound
-    ? [
-        {
-          label: "آخر رسالة من عميل",
-          value: formatArabicDateTime(inbound.lastDirectMessageAt ?? null) ?? "لا شيء",
-        },
-        {
-          label: "الرسائل المستلمة",
-          value: formatArabicNumber(inbound.directMessageCount),
-        },
-        {
-          label: "ردود أُرسلت",
-          value: formatArabicNumber(inbound.autoReplyEvents.sent),
-        },
-        {
-          label: "ردود في الانتظار",
-          value: formatArabicNumber(inbound.autoReplyEvents.queued),
-        },
-        // Only shown when non-zero: "0 replies postponed" is noise, while a
-        // non-zero number explains waiting replies the merchant cannot
-        // otherwise distinguish from a busy worker.
-        ...(inbound.autoReplyEvents.postponedByLimit > 0
-          ? [
-              {
-                label: "منها مؤجَّلة بسبب حدّ",
-                value: formatArabicNumber(
-                  inbound.autoReplyEvents.postponedByLimit,
-                ),
-              },
-            ]
-          : []),
-        {
-          label: "ردود فشلت",
-          value: formatArabicNumber(inbound.autoReplyEvents.failed),
-        },
-        {
-          label: "سر الويب هوك",
-          value: inbound.webhookSecretConfigured ? "مهيأ" : "غير مهيأ",
-        },
-        ...webhookAttemptFacts(inbound.webhookAttempts, attemptFormatters),
-      ]
-    : [];
-  const inboundSummary = webhookAttemptHeadline(
-    inbound?.webhookAttempts,
-    attemptFormatters,
-  );
+  const functionalStatus = whatsAppFunctionalStatus({
+    connected,
+    inbound: settingsQuery.data?.inbound,
+  });
 
   const retrySettings = () => void settingsQuery.refetch();
   const returnHref: Href =
@@ -331,25 +235,17 @@ function WhatsAppReplyContent({
         </Panel>
       ) : (
         <>
-          {inbound ? (
-            <Panel>
-              <InboundDeliveryCard
-                title="استقبال رسائل العملاء"
-                delivered={inbound.deliveryConfirmed}
-                summary={inboundSummary}
-                facts={inboundFacts}
-                issues={inbound.issues}
-                action={{
-                  label: "إعادة تسجيل الويب هوك",
-                  icon: "refresh-cw",
-                  busy: webhookBusy,
-                  onPress: () => void reregisterWebhook(),
-                  result: webhookResult,
-                  error: webhookError,
-                }}
-              />
-            </Panel>
-          ) : null}
+          <Panel>
+            <View style={styles.requirementTitleRow}>
+              <Text style={[styles.fieldTitle, { color: colors.foreground }]}>
+                حالة واتساب
+              </Text>
+              <StatusPill label={functionalStatus.label} tone={functionalStatus.tone} />
+            </View>
+            <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
+              {functionalStatus.message}
+            </Text>
+          </Panel>
 
           <Panel>
             <Text style={[styles.bodySmall, { color: colors.mutedForeground }]}>
@@ -611,6 +507,12 @@ const styles = StyleSheet.create({
   switchCopy: { flex: 1, alignItems: "flex-start", gap: 3 },
   fieldGroup: { gap: 8 },
   fieldTitle: { fontSize: 14, fontWeight: "800", textAlign: "right" },
+  requirementTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   choiceRow: {
     flexDirection: "row",
     flexWrap: "wrap",
