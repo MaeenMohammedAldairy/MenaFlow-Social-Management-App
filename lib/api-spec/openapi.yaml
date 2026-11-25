@@ -579,7 +579,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
         "409":
-          description: WhatsApp is already connected
+          description: >-
+            WhatsApp is already connected, or the phone number is actively owned
+            by another workspace (code WHATSAPP_NUMBER_OWNED_BY_ANOTHER_WORKSPACE)
           content:
             application/json:
               schema:
@@ -636,6 +638,15 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "404":
           description: No matching pending WhatsApp connection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "409":
+          description: >-
+            The phone number became actively owned by another workspace while
+            this connection was pending
+            (WHATSAPP_NUMBER_OWNED_BY_ANOTHER_WORKSPACE)
           content:
             application/json:
               schema:

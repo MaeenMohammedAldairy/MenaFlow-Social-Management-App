@@ -43,10 +43,64 @@ import {
   pairingQrBase64From,
 } from "../lib/whatsapp-pairing";
 import { canConnectChannel } from "../lib/subscriptions";
+import {
+  ACTIVE_WHATSAPP_CONNECTION_STATUSES,
+  decideWhatsAppPhoneOwnership,
+  normalizeWhatsAppPhoneDigits,
+} from "../lib/whatsapp-phone-ownership.ts";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 const MAX_WHATSAPP_GROUP_SELECTIONS = 500;
+
+/**
+ * Reads every active connection row that holds one normalized phone number.
+ * The expression matches the generated `phone_digits` column introduced later,
+ * so this works before and after that migration without a second code path.
+ */
+async function findWhatsAppPhoneOwners(digits: string) {
+  return db
+    .select({
+      workspaceId: menaWhatsAppConnections.workspaceId,
+      status: menaWhatsAppConnections.status,
+      instanceName: menaWhatsAppConnections.instanceName,
+    })
+    .from(menaWhatsAppConnections)
+    .where(
+      and(
+        sql`regexp_replace(regexp_replace(translate(coalesce(${menaWhatsAppConnections.phoneNumber}, ''), '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789'), '[^0-9]', '', 'g'), '^00(?=[1-9])', '', 'g') = ${digits}`,
+        inArray(
+          menaWhatsAppConnections.status,
+          [...ACTIVE_WHATSAPP_CONNECTION_STATUSES],
+        ),
+      ),
+    );
+}
+
+function whatsappPhoneLockKey(digits: string): string {
+  return `menaflow:whatsapp-phone:${digits}`;
+}
+
+/** One session-owned client: advisory locks must be taken and freed on it. */
+async function withWhatsAppPhoneLock<T>(
+  digits: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const client = await pool.connect();
+  const key = whatsappPhoneLockKey(digits);
+  try {
+    await client.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [key]);
+    try {
+      return await run();
+    } finally {
+      await client.query("SELECT pg_advisory_unlock(hashtextextended($1, 0))", [
+        key,
+      ]);
+    }
+  } finally {
+    client.release();
+  }
+}
 
 export { extractRemoteJidFromEnvelope, filterHistoryRecordsForGroup };
 
@@ -200,6 +254,13 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
     return;
   }
   const evolutionPhoneNumber = phoneNumber.replace(/^\+/, "");
+  const phoneDigits = normalizeWhatsAppPhoneDigits(phoneNumber);
+  if (!phoneDigits) {
+    res.status(400).json({
+      error: "أدخل رقم هاتف دولي صحيحاً مع رمز الدولة.",
+    });
+    return;
+  }
 
   const refreshCode = req.body?.refreshCode === true;
   let unlockAndRelease: (() => Promise<void>) | null = null;
@@ -207,29 +268,50 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
   let pairingAttemptPersisted = false;
   try {
     const lockClient = await pool.connect();
-    let lockAcquired = false;
+    let workspaceLockAcquired = false;
+    let phoneLockAcquired = false;
+    // Fixed order everywhere: phone first, workspace second. Release in the
+    // reverse order. No other path takes these two locks in the opposite order.
+    const phoneLockKey = whatsappPhoneLockKey(phoneDigits);
+    const workspaceLockKey = `menaflow:whatsapp-pairing:${workspaceId}`;
     unlockAndRelease = async () => {
       try {
-        if (lockAcquired) {
+        if (workspaceLockAcquired) {
           await lockClient.query(
             "SELECT pg_advisory_unlock(hashtextextended($1, 0))",
-            [`menaflow:whatsapp-pairing:${workspaceId}`],
+            [workspaceLockKey],
           );
         }
       } catch (unlockError) {
         logger.error(
           { unlockError },
-          "Failed to release WhatsApp pairing lock",
+          "Failed to release WhatsApp workspace pairing lock",
+        );
+      }
+      try {
+        if (phoneLockAcquired) {
+          await lockClient.query(
+            "SELECT pg_advisory_unlock(hashtextextended($1, 0))",
+            [phoneLockKey],
+          );
+        }
+      } catch (unlockError) {
+        logger.error(
+          { unlockError },
+          "Failed to release WhatsApp phone ownership lock",
         );
       } finally {
         lockClient.release();
       }
     };
-    const lockKey = `menaflow:whatsapp-pairing:${workspaceId}`;
     await lockClient.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [
-      lockKey,
+      phoneLockKey,
     ]);
-    lockAcquired = true;
+    phoneLockAcquired = true;
+    await lockClient.query("SELECT pg_advisory_lock(hashtextextended($1, 0))", [
+      workspaceLockKey,
+    ]);
+    workspaceLockAcquired = true;
 
     const existingRows = await db
       .select()
@@ -267,6 +349,23 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
           throw err;
         }
       }
+    }
+
+    // Global ownership, read while the phone lock is held: a number already
+    // claimed by an active connection in another workspace must never reach
+    // the INSERT or Evolution below. No row is changed on this path.
+    const phoneOwners = await findWhatsAppPhoneOwners(phoneDigits);
+    const ownership = decideWhatsAppPhoneOwnership({
+      digits: phoneDigits,
+      currentWorkspaceId: workspaceId,
+      rows: phoneOwners,
+    });
+    if (ownership.status === "owned_elsewhere") {
+      res.status(409).json({
+        error: ownership.message,
+        code: ownership.code,
+      });
+      return;
     }
 
     const instanceName =
@@ -502,58 +601,111 @@ router.get(
         return;
       }
 
-      const providerState = await evolutionConnectionState(instanceName);
-      const state = mapEvolutionConnectionState(
-        providerState,
-        connection.status === "failed",
+      const activeConnection = connection;
+      const phoneDigits = normalizeWhatsAppPhoneDigits(
+        activeConnection.phoneNumber,
       );
-      if (state === "connected") {
-        try {
-          await configureWhatsAppWebhook(instanceName);
-        } catch (err) {
-          evolutionErrorResponse(
-            res,
-            err,
-            "Error configuring WhatsApp message webhook",
-          );
-          return;
-        }
-        await db
-          .update(menaWhatsAppConnections)
-          .set({ status: "connected", connectedAt: new Date() })
-          .where(eq(menaWhatsAppConnections.workspaceId, workspaceId));
-        res.json({ state: "connected" });
-        return;
-      }
-
-      if (state === "disconnected") {
-        if (connection.status !== "disconnected") {
+      const verifyAndAdvance = async () => {
+        const providerState = await evolutionConnectionState(instanceName);
+        const state = mapEvolutionConnectionState(
+          providerState,
+          activeConnection.status === "failed",
+        );
+        if (state === "connected") {
+          // Re-prove ownership while the global phone lock is held. Only a
+          // fresh conflict row read here may demote this connection; an old
+          // result from the pairing request is never enough.
+          if (phoneDigits) {
+            const phoneOwners = await findWhatsAppPhoneOwners(phoneDigits);
+            const ownership = decideWhatsAppPhoneOwnership({
+              digits: phoneDigits,
+              currentWorkspaceId: workspaceId,
+              rows: phoneOwners,
+            });
+            if (ownership.status === "owned_elsewhere") {
+              const [released] = await db
+                .update(menaWhatsAppConnections)
+                .set({ status: "failed" })
+                .where(
+                  and(
+                    eq(menaWhatsAppConnections.workspaceId, workspaceId),
+                    eq(menaWhatsAppConnections.instanceName, instanceName),
+                    inArray(
+                      menaWhatsAppConnections.status,
+                      [...ACTIVE_WHATSAPP_CONNECTION_STATUSES],
+                    ),
+                  ),
+                )
+                .returning({ instanceName: menaWhatsAppConnections.instanceName });
+              logger.warn(
+                {
+                  workspaceId,
+                  instanceName,
+                  released: Boolean(released),
+                  reason: ownership.code,
+                },
+                "WHATSAPP_PHONE_OWNERSHIP_CONFLICT_AT_CONNECT",
+              );
+              res.status(409).json({
+                error: ownership.message,
+                code: ownership.code,
+              });
+              return;
+            }
+          }
+          try {
+            await configureWhatsAppWebhook(instanceName);
+          } catch (err) {
+            evolutionErrorResponse(
+              res,
+              err,
+              "Error configuring WhatsApp message webhook",
+            );
+            return;
+          }
           await db
             .update(menaWhatsAppConnections)
-            .set({ status: "disconnected" })
+            .set({ status: "connected", connectedAt: new Date() })
+            .where(eq(menaWhatsAppConnections.workspaceId, workspaceId));
+          res.json({ state: "connected" });
+          return;
+        }
+
+        if (state === "disconnected") {
+          if (activeConnection.status !== "disconnected") {
+            await db
+              .update(menaWhatsAppConnections)
+              .set({ status: "disconnected" })
+              .where(eq(menaWhatsAppConnections.workspaceId, workspaceId));
+          }
+          res.json({ state: "disconnected" });
+          return;
+        }
+
+        if (state === "unavailable") {
+          res.json({ state: "unavailable" });
+          return;
+        }
+
+        if (state === "failed") {
+          res.json({ state: "failed" });
+          return;
+        }
+
+        if (activeConnection.status === "connected") {
+          await db
+            .update(menaWhatsAppConnections)
+            .set({ status: "connecting" })
             .where(eq(menaWhatsAppConnections.workspaceId, workspaceId));
         }
-        res.json({ state: "disconnected" });
+        res.json({ state: "connecting" });
+      };
+
+      if (!phoneDigits) {
+        await verifyAndAdvance();
         return;
       }
-
-      if (state === "unavailable") {
-        res.json({ state: "unavailable" });
-        return;
-      }
-
-      if (state === "failed") {
-        res.json({ state: "failed" });
-        return;
-      }
-
-      if (connection.status === "connected") {
-        await db
-          .update(menaWhatsAppConnections)
-          .set({ status: "connecting" })
-          .where(eq(menaWhatsAppConnections.workspaceId, workspaceId));
-      }
-      res.json({ state: "connecting" });
+      await withWhatsAppPhoneLock(phoneDigits, verifyAndAdvance);
     } catch (err) {
       if (connection?.status === "failed") {
         res.json({ state: "failed" });

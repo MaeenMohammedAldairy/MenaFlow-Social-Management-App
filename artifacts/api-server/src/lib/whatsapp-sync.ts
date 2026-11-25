@@ -77,6 +77,7 @@ import {
   type InboundWebhookOutcome,
 } from "../lib/inbound-webhook-diagnostics";
 import { recordInboundWebhookAttempt } from "../lib/inbound-delivery-log";
+import { isActiveWhatsAppConnectionStatus } from "../lib/whatsapp-phone-ownership.ts";
 import { processWhatsAppOrderIntake } from "../lib/whatsapp-order-intake";
 import {
   resolveWhatsAppAlbumSource,
@@ -2142,6 +2143,16 @@ export async function processWebhookEvent(
     recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("UNKNOWN_INSTANCE"),
       { eventName, instanceName, matches: 0 },
+    );
+    return;
+  }
+  // A stale or released session must not write into the workspace. Routing
+  // stays instance-based; this only refuses connections that no longer hold
+  // an active claim, without ever falling back to the phone number.
+  if (!isActiveWhatsAppConnectionStatus(connection.status)) {
+    recordWhatsAppInboundOutcome(
+      describeWhatsAppInboundOutcome("INACTIVE_CONNECTION"),
+      { eventName, instanceName, status: connection.status },
     );
     return;
   }
