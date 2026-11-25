@@ -35,7 +35,10 @@ const MAX_REPORTED_OUTCOMES = 25;
 /** Names queried against the connection table in one `IN` list. */
 const MAX_CANDIDATE_NAMES = 200;
 
-export type OrphanSweepTrigger = "webhook_reconfigure" | "pairing";
+export type OrphanSweepTrigger =
+  | "webhook_reconfigure"
+  | "pairing"
+  | "scheduled";
 
 export type OrphanSweepResult = {
   outcomes: OrphanInstanceOutcome[];
@@ -55,9 +58,13 @@ const EMPTY_RESULT: OrphanSweepResult = {
 };
 
 export type OrphanSweepInput = {
-  workspaceId: string;
-  /** The instance this request is connecting or re-registering. */
-  keepInstanceName: string;
+  /** Null for a scheduled sweep, which has no merchant request attached. */
+  workspaceId: string | null;
+  /**
+   * The instance this request is connecting or re-registering. Null for a
+   * scheduled sweep: the claim list below still protects every live session.
+   */
+  keepInstanceName: string | null;
   phoneNumber?: string | null;
   trigger: OrphanSweepTrigger;
 };
