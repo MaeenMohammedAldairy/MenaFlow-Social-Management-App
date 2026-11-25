@@ -37,6 +37,7 @@ export type WhatsAppInboundReason =
   | "MISSING_INSTANCE_OR_JID"
   | "UNKNOWN_INSTANCE"
   | "AMBIGUOUS_INSTANCE"
+  | "INACTIVE_CONNECTION"
   | "PROCESSED";
 
 export type MetaInboundReason =
@@ -96,6 +97,11 @@ const whatsAppOutcomes: Record<WhatsAppInboundReason, Omit<InboundWebhookOutcome
     level: "error",
     deliveryConfirmed: true,
     hint: "أكثر من اتصال مسجل بنفس اسم المثيل. افصل الرقم من مساحة العمل غير المستخدمة.",
+  },
+  INACTIVE_CONNECTION: {
+    level: "warn",
+    deliveryConfirmed: true,
+    hint: "وصل حدث من جلسة غير نشطة؛ لم تُعالج الرسالة حمايةً لملكية الرقم.",
   },
   PROCESSED: {
     level: "info",

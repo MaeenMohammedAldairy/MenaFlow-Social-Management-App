@@ -1,0 +1,2 @@
+ALTER TABLE "mena_whatsapp_connections" ADD COLUMN "phone_digits" text GENERATED ALWAYS AS (regexp_replace(regexp_replace(translate(coalesce(phone_number, ''), '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789'), '[^0-9]', '', 'g'), '^00(?=[1-9])', '', 'g')) STORED NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "mena_whatsapp_connections_active_phone_key" ON "mena_whatsapp_connections" USING btree ("phone_digits") WHERE "mena_whatsapp_connections"."phone_digits" <> '' AND "mena_whatsapp_connections"."status" IN ('connecting', 'connected');

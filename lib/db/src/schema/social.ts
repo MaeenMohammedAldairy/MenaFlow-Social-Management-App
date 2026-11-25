@@ -89,6 +89,14 @@ export const menaWhatsAppConnections = pgTable(
       .references(() => workspaces.id, { onDelete: "restrict" }),
     instanceName: text("instance_name").notNull(),
     phoneNumber: text("phone_number"),
+    // Generated, never written by application code. The digits-only form is
+    // what global phone ownership is compared against. It folds Arabic/Persian
+    // digits and a legacy `00` prefix exactly like the app-side normalizer.
+    phoneDigits: text("phone_digits")
+      .generatedAlwaysAs(
+        sql`regexp_replace(regexp_replace(translate(coalesce(phone_number, ''), '٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789'), '[^0-9]', '', 'g'), '^00(?=[1-9])', '', 'g')`,
+      )
+      .notNull(),
     status: text("status").notNull().default("connected"),
     autoSyncEnabled: boolean("auto_sync_enabled").notNull().default(true),
     syncMessagesEnabled: boolean("sync_messages_enabled")
@@ -120,6 +128,13 @@ export const menaWhatsAppConnections = pgTable(
       table.workspaceId,
       table.instanceName,
     ),
+    // One active owner per normalized phone number, across all workspaces.
+    // Disconnected/failed rows are history and deliberately excluded.
+    uniqueIndex("mena_whatsapp_connections_active_phone_key")
+      .on(table.phoneDigits)
+      .where(
+        sql`${table.phoneDigits} <> '' AND ${table.status} IN ('connecting', 'connected')`,
+      ),
   ],
 );
 

@@ -111,6 +111,9 @@ const metaReturnUrl =
     ? `${window.location.origin}/oauth/meta`
     : "menaflow-mobile://oauth/meta";
 
+const WHATSAPP_NUMBER_OWNED_BY_ANOTHER_WORKSPACE =
+  "WHATSAPP_NUMBER_OWNED_BY_ANOTHER_WORKSPACE";
+
 function isSourceKey(value: string): value is SourceKey {
   return value === "facebook" || value === "instagram" || value === "whatsapp";
 }
@@ -707,8 +710,25 @@ function SourcesContent({
         typeof errorData.error === "string"
           ? errorData.error
           : null;
+      const apiCode =
+        errorData &&
+        typeof errorData === "object" &&
+        "code" in errorData &&
+        typeof errorData.code === "string"
+          ? errorData.code
+          : null;
 
-      if (status === 409 && apiMessage) {
+      if (
+        status === 409 &&
+        apiCode === WHATSAPP_NUMBER_OWNED_BY_ANOTHER_WORKSPACE
+      ) {
+        // No QR, no pairing state, no polling restart — the number belongs
+        // elsewhere and the merchant needs only this one simple sentence.
+        setWhatsappInput({ phoneNumber: whatsappInput.phoneNumber });
+        setWhatsappError(
+          "هذا الرقم مرتبط حاليًا بمساحة عمل أخرى ولا يمكن استخدامه هنا.",
+        );
+      } else if (status === 409 && apiMessage) {
         setWhatsappError(apiMessage);
       } else if (status === 400) {
         setWhatsappError(
