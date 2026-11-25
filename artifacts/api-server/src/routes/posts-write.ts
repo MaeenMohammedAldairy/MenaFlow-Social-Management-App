@@ -247,6 +247,10 @@ router.patch("/posts/:id", requireWorkspace, async (req, res) => {
         const readinessIssue = await postReadinessIssueForRow(workspaceId, {
           ...current,
           ...updates,
+          // Readiness reads the post's content, not its due time. Keeping the
+          // row's value here is what the row type asks for: `updates` carries
+          // the wire's string, which is validated further down.
+          scheduledAt: current.scheduledAt,
           mediaUrls: Array.isArray(rawBody.mediaUrls)
             ? normalizePostMediaUrls(rawBody.mediaUrls)
             : current.mediaUrls,
