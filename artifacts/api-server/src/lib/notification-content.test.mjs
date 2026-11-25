@@ -52,6 +52,23 @@ test("every event type produces Arabic wording", () => {
   }
 });
 
+test("a queued automatic reply still announces the message without asking for manual work", () => {
+  const base = {
+    eventType: "customer_message",
+    conversationId: "person-9",
+    platform: "facebook",
+    customerName: "نورة",
+    preview: "هل المنتج متوفر؟",
+    at: new Date("2026-11-22T10:00:00Z"),
+  };
+  const waiting = buildNotificationContent({ ...base, awaitingReply: true });
+  const handled = buildNotificationContent({ ...base, awaitingReply: false });
+  assert.match(waiting.title, /بانتظار/);
+  assert.doesNotMatch(handled.title, /بانتظار/);
+  assert.equal(waiting.dedupeKey, handled.dedupeKey);
+  assert.equal(handled.data.conversationId, "person-9");
+});
+
 test("customer messages are throttled to one alert per conversation per hour", () => {
   const base = {
     eventType: "customer_message",

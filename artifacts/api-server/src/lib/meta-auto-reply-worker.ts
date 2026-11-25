@@ -1,6 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { isUnansweredMetaReply } from "./notification-content";
-import { notifyCustomerMessage } from "./push-notifications";
 import {
   and,
   asc,
@@ -379,41 +377,11 @@ function accountContactInfo(
   return "يمكن التواصل عبر الرسائل الخاصة لحساب Instagram المرتبط.";
 }
 
-/**
- * The inbox item behind an auto-reply job, for the alert body.
- *
- * Returns null when the item is gone (a retention purge deleted it while the
- * job was queued), in which case the alert falls back to generic wording rather
- * than not being sent at all.
- */
-async function findInboxItemForJob(id: string, workspaceId: string) {
-  const [row] = await db
-    .select({
-      conversationId: menaMetaInboxItems.conversationId,
-      platform: menaMetaInboxItems.platform,
-      actorName: menaMetaInboxItems.actorName,
-      text: menaMetaInboxItems.text,
-    })
-    .from(menaMetaAutoReplyJobs)
-    .innerJoin(
-      menaMetaInboxItems,
-      eq(menaMetaAutoReplyJobs.inboxItemId, menaMetaInboxItems.id),
-    )
-    .where(
-      and(
-        eq(menaMetaAutoReplyJobs.id, id),
-        eq(menaMetaAutoReplyJobs.workspaceId, workspaceId),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
-}
-
 async function markJob(
   id: string,
   workspaceId: string,
   status: "sent" | "failed" | "skipped" | "unknown",
-  errorCode: string | null = null,
+  errorCode: string | null,
 ): Promise<void> {
   const now = new Date();
   await db
@@ -432,28 +400,10 @@ async function markJob(
       ),
     );
 
-  // Hooked at the single settlement point so all 22 call sites are covered, and
-  // so a future one cannot forget. Safe here because no caller of `markJob` runs
-  // inside a transaction — the only one in this file is inside `claimNextJob`.
-  //
-  // `isUnansweredMetaReply` is what keeps the alert honest: outcomes that mean
-  // the customer was already answered, that a human is answering, or whose
-  // result is genuinely unknown must not produce a "waiting for your reply"
-  // notification.
-  if (isUnansweredMetaReply(status, errorCode)) {
-    const item = await findInboxItemForJob(id, workspaceId);
-    // Unlike the WhatsApp path this includes the customer's name and a preview:
-    // Meta inbox text and actor names are stored in plaintext here, so the alert
-    // does not expose anything the database is not already holding. WhatsApp
-    // bodies and JIDs are encrypted at rest, which is why that path sends neither.
-    await notifyCustomerMessage({
-      workspaceId,
-      conversationId: item?.conversationId ?? null,
-      platform: item?.platform ?? null,
-      customerName: item?.actorName ?? null,
-      preview: item?.text ?? null,
-    });
-  }
+  // One settlement point for every call site. Customer-message push alerts are
+  // created at ingestion time in the webhook, not here: a stopped or failing
+  // auto-reply worker must not be the reason a merchant hears about a message.
+  // This function only records the automation outcome.
 }
 
 async function claimNextJob() {
@@ -545,8 +495,7 @@ async function claimNextJob() {
  * so `sendStarted` is always false; the `unknown` branch of the plan exists for
  * the caller that cannot know, and is applied rather than asserted away.
  *
- * The Meta-specific inputs are the Graph 429 (rate-limited, so retry) and the
- * code stored, which `isUnansweredMetaReply` matches on.
+ * The Meta-specific input is the Graph 429 (rate-limited, so retry).
  */
 async function retryOrFail(
   job: typeof menaMetaAutoReplyJobs.$inferSelect,
@@ -1198,7 +1147,7 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       );
       return;
     }
-    await markJob(job.id, job.workspaceId, "sent");
+    await markJob(job.id, job.workspaceId, "sent", null);
   } catch (error) {
     if (
       externalSendStarted &&
