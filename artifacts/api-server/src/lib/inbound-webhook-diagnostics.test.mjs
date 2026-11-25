@@ -45,6 +45,7 @@ const skipReasons = [
   "no_message_candidate",
   "message_too_old",
   "customer_opted_out",
+  "consent_command",
   "auto_reply_disabled",
   "no_message_text",
   "no_remote_message_id",

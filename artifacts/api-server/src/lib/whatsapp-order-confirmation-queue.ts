@@ -17,6 +17,14 @@ import {
   type OrderConfirmationQueue,
 } from "./order-confirmation-queue";
 import { WHATSAPP_CONFIRMATION_LEASE_MS } from "./order-confirmation-policy";
+import {
+  isWhatsAppCustomerOptedOut,
+  withWhatsAppAutomationConsent,
+} from "./whatsapp-opt-out";
+import {
+  whatsAppOptOutLock,
+  whatsAppOptOutStore,
+} from "./whatsapp-opt-out-store";
 
 /**
  * The WhatsApp family's share of the confirmation state machine: which columns,
@@ -205,53 +213,89 @@ async function processWhatsAppOrderConfirmation(
     return;
   }
 
-  let sendStarted = false;
-  try {
-    const text = formatMetaOrderConfirmationMessage({
-      orderNumber: order.orderNumber,
-      items,
-      total: order.total,
-      currency: order.currency,
-      deliveryFee: order.deliveryFee,
-      notes: order.notes,
+  const customerId = order.sourceConversationId;
+  const instanceName = order.sourceWhatsAppInstanceName;
+  if (!customerId || !instanceName) {
+    await markConfirmation(order.id, order.workspaceId, {
+      status: "manual_followup",
+      error: "WHATSAPP_CONVERSATION_ID_MISSING",
     });
-    sendStarted = true;
-    const providerMessageId = await sendWhatsAppAutoReply(
-      order.sourceWhatsAppInstanceName,
-      remoteJid,
-      text,
-    );
-    const sentAt = new Date();
-    await db
-      .insert(menaWhatsAppDirectMessages)
-      .values(
-        outboundWhatsAppDirectMessageValues({
-          ownerId: order.ownerId,
+    return;
+  }
+  const consentGate = await withWhatsAppAutomationConsent({
+    store: whatsAppOptOutStore,
+    lock: whatsAppOptOutLock,
+    workspaceId: order.workspaceId,
+    customerId,
+    run: async () => {
+      let sendStarted = false;
+      try {
+        const text = formatMetaOrderConfirmationMessage({
+          orderNumber: order.orderNumber,
+          items,
+          total: order.total,
+          currency: order.currency,
+          deliveryFee: order.deliveryFee,
+          notes: order.notes,
+        });
+      if (
+        await isWhatsAppCustomerOptedOut({
+          store: whatsAppOptOutStore,
           workspaceId: order.workspaceId,
-          instanceName: order.sourceWhatsAppInstanceName,
-          remoteJid,
-          text,
-          status: "sent",
-          messageTimestamp: sentAt,
-          providerMessageId,
-          // The idempotency key: a retried confirmation for the same order
-          // lands on the same row instead of a second message.
-          clientRequestId: `order-confirmation-${order.id}`,
-        }),
-      )
-      .onConflictDoNothing();
+          customerId,
+        })
+      ) {
+        await markConfirmation(order.id, order.workspaceId, {
+          status: "manual_followup",
+          error: "CUSTOMER_OPTED_OUT",
+        });
+        return;
+      }
+      sendStarted = true;
+      const providerMessageId = await sendWhatsAppAutoReply(
+        instanceName,
+        remoteJid,
+        text,
+      );
+      const sentAt = new Date();
+      await db
+        .insert(menaWhatsAppDirectMessages)
+        .values(
+          outboundWhatsAppDirectMessageValues({
+            ownerId: order.ownerId,
+            workspaceId: order.workspaceId,
+            instanceName,
+            remoteJid,
+            text,
+            status: "sent",
+            messageTimestamp: sentAt,
+            providerMessageId,
+            // The idempotency key: a retried confirmation for the same order
+            // lands on the same row instead of a second message.
+            clientRequestId: `order-confirmation-${order.id}`,
+          }),
+        )
+        .onConflictDoNothing();
+      await markConfirmation(order.id, order.workspaceId, {
+        status: "sent",
+        sentAt,
+      });
+      } catch (error) {
+        await markConfirmation(order.id, order.workspaceId, {
+          status: sendStarted ? "unknown" : "manual_followup",
+          error: sendStarted
+            ? "ORDER_CONFIRMATION_RESULT_UNKNOWN"
+            : error instanceof Error
+              ? error.message.slice(0, 80)
+              : "WHATSAPP_ORDER_CONFIRMATION_FAILED",
+        });
+      }
+    },
+  });
+  if (consentGate.status === "opted_out") {
     await markConfirmation(order.id, order.workspaceId, {
-      status: "sent",
-      sentAt,
-    });
-  } catch (error) {
-    await markConfirmation(order.id, order.workspaceId, {
-      status: sendStarted ? "unknown" : "manual_followup",
-      error: sendStarted
-        ? "ORDER_CONFIRMATION_RESULT_UNKNOWN"
-        : error instanceof Error
-          ? error.message.slice(0, 80)
-          : "WHATSAPP_ORDER_CONFIRMATION_FAILED",
+      status: "manual_followup",
+      error: "CUSTOMER_OPTED_OUT",
     });
   }
 }

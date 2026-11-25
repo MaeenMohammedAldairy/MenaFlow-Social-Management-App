@@ -47,7 +47,16 @@ import {
   normalizeWhatsAppWebhookEventName,
   normalizeRemoteJid,
 } from "../lib/whatsapp-message-scope";
-import { isWhatsAppOptOutMessage } from "../lib/whatsapp-opt-out";
+import {
+  isWhatsAppCustomerOptedOut,
+  recordWhatsAppConsent,
+  whatsAppConsentActionForMessage,
+  withWhatsAppAutomationConsent,
+} from "../lib/whatsapp-opt-out";
+import {
+  whatsAppOptOutLock,
+  whatsAppOptOutStore,
+} from "../lib/whatsapp-opt-out-store";
 import {
   createHeartbeat,
   createRunDeadline,
@@ -1414,6 +1423,23 @@ async function processWhatsAppAutoReplyAsync(input: {
   // `sending` (so a crash from here on is read as "may have landed"), send,
   // record the outbound message in the conversation, settle the event as sent.
   const deliverReply = async (text: string): Promise<void> => {
+    // Final gate immediately before the provider call. The webhook persists a
+    // STOP without taking this lock, so a consent change that lands while the
+    // reply was being generated is still seen here and cancels the send.
+    if (
+      await isWhatsAppCustomerOptedOut({
+        store: whatsAppOptOutStore,
+        workspaceId: input.connection.workspaceId,
+        customerId: input.remoteJidHash,
+      })
+    ) {
+      await stopWhatsAppAutoReplyEvent({
+        claimId: input.claimId,
+        workspaceId: input.connection.workspaceId,
+        errorCode: "CUSTOMER_OPTED_OUT",
+      });
+      return;
+    }
     await db
       .update(menaWhatsAppAutoReplyEvents)
       .set({
@@ -1566,121 +1592,136 @@ async function processWhatsAppAutoReplyAsync(input: {
       return;
     }
 
-    const orderIntake = await processWhatsAppOrderIntake({
-      ownerId: input.connection.ownerId,
+    const consentGate = await withWhatsAppAutomationConsent({
+      store: whatsAppOptOutStore,
+      lock: whatsAppOptOutLock,
       workspaceId: input.connection.workspaceId,
-      instanceName: input.instanceName,
-      remoteJid: input.remoteJid,
-      remoteJidHash: input.remoteJidHash,
-      providerMessageId: input.remoteMessageId,
-      text: input.customerMessage,
-    });
-    if (orderIntake.kind !== "ignored") {
-      await deliverReply(orderIntake.text);
-      return;
-    }
+      customerId: input.remoteJidHash,
+      run: async () => {
+        const orderIntake = await processWhatsAppOrderIntake({
+          ownerId: input.connection.ownerId,
+          workspaceId: input.connection.workspaceId,
+          instanceName: input.instanceName,
+          remoteJid: input.remoteJid,
+          remoteJidHash: input.remoteJidHash,
+          providerMessageId: input.remoteMessageId,
+          text: input.customerMessage,
+        });
+        if (orderIntake.kind !== "ignored") {
+          await deliverReply(orderIntake.text);
+          return;
+        }
 
-    let contextTurns: Array<{ role: "customer" | "business"; text: string }> = [];
-    try {
-      const conversationKeys = whatsappDirectConversationKeys(
-        input.connection.workspaceId,
-        input.instanceName,
-        input.remoteJid,
-      );
-      const recentMessages = await db
-        .select({
-          direction: menaWhatsAppDirectMessages.direction,
-          encryptedTextBody: menaWhatsAppDirectMessages.encryptedTextBody,
-        })
-        .from(menaWhatsAppDirectMessages)
-        .where(
-          and(
-            eq(menaWhatsAppDirectMessages.workspaceId, input.connection.workspaceId),
-            eq(menaWhatsAppDirectMessages.instanceName, input.instanceName),
-            inArray(menaWhatsAppDirectMessages.remoteJidHash, conversationKeys),
-            gt(menaWhatsAppDirectMessages.expiresAt, new Date()),
-          ),
-        )
-        .orderBy(
-          desc(menaWhatsAppDirectMessages.messageTimestamp),
-          desc(menaWhatsAppDirectMessages.createdAt),
-        )
-        .limit(10);
+        let contextTurns: Array<{ role: "customer" | "business"; text: string }> = [];
+        try {
+          const conversationKeys = whatsappDirectConversationKeys(
+            input.connection.workspaceId,
+            input.instanceName,
+            input.remoteJid,
+          );
+          const recentMessages = await db
+            .select({
+              direction: menaWhatsAppDirectMessages.direction,
+              encryptedTextBody: menaWhatsAppDirectMessages.encryptedTextBody,
+            })
+            .from(menaWhatsAppDirectMessages)
+            .where(
+              and(
+                eq(menaWhatsAppDirectMessages.workspaceId, input.connection.workspaceId),
+                eq(menaWhatsAppDirectMessages.instanceName, input.instanceName),
+                inArray(menaWhatsAppDirectMessages.remoteJidHash, conversationKeys),
+                gt(menaWhatsAppDirectMessages.expiresAt, new Date()),
+              ),
+            )
+            .orderBy(
+              desc(menaWhatsAppDirectMessages.messageTimestamp),
+              desc(menaWhatsAppDirectMessages.createdAt),
+            )
+            .limit(10);
 
-      contextTurns = buildWhatsAppDirectMessageContext(
-        recentMessages.reverse().map((message) => ({
-          direction: message.direction,
-          textBody: decryptWhatsAppDirectMessageValue(
-            message.encryptedTextBody,
-          ),
-        })),
-      );
-    } catch (contextError) {
-      logger.warn(
-        { contextError },
-        "Failed to fetch previous WhatsApp conversation history for auto reply",
-      );
-    }
+          contextTurns = buildWhatsAppDirectMessageContext(
+            recentMessages.reverse().map((message) => ({
+              direction: message.direction,
+              textBody: decryptWhatsAppDirectMessageValue(
+                message.encryptedTextBody,
+              ),
+            })),
+          );
+        } catch (contextError) {
+          logger.warn(
+            { contextError },
+            "Failed to fetch previous WhatsApp conversation history for auto reply",
+          );
+        }
 
-    let matchingProduct = null;
-    try {
-      const activeProducts = await db
-        .select()
-        .from(products)
-        .where(
-          and(
-            eq(products.workspaceId, input.connection.workspaceId),
-            eq(products.status, "active"),
-            isNotNull(products.verifiedAt),
-          ),
-        )
-        .orderBy(desc(products.updatedAt))
-        .limit(100);
+        let matchingProduct = null;
+        try {
+          const activeProducts = await db
+            .select()
+            .from(products)
+            .where(
+              and(
+                eq(products.workspaceId, input.connection.workspaceId),
+                eq(products.status, "active"),
+                isNotNull(products.verifiedAt),
+              ),
+            )
+            .orderBy(desc(products.updatedAt))
+            .limit(100);
 
-      const matched = matchMetaAutoReplyProduct(
-        activeProducts,
-        input.customerMessage,
-      );
-      if (matched) {
-        matchingProduct = {
-          name: matched.name,
-          sku: matched.sku,
-          price: formatMetaAutoReplyPrice(matched.price),
-          currency: matched.currency,
-          availability: matched.availability,
-          description: matched.description,
-        };
-      }
-    } catch (productError) {
-      logger.warn(
-        { productError },
-        "Failed to query catalog products for WhatsApp auto reply",
-      );
-    }
+          const matched = matchMetaAutoReplyProduct(
+            activeProducts,
+            input.customerMessage,
+          );
+          if (matched) {
+            matchingProduct = {
+              name: matched.name,
+              sku: matched.sku,
+              price: formatMetaAutoReplyPrice(matched.price),
+              currency: matched.currency,
+              availability: matched.availability,
+              description: matched.description,
+            };
+          }
+        } catch (productError) {
+          logger.warn(
+            { productError },
+            "Failed to query catalog products for WhatsApp auto reply",
+          );
+        }
 
-    const reply = await generateWhatsAppAutoReply(
-      input.connection.workspaceId,
-      redactWhatsAppPrivateData(input.customerMessage),
-      {
-        language:
-          latestConnection.autoReplyLanguage === "match_customer"
-            ? "match_customer"
-            : "ar",
-        tone:
-          latestConnection.autoReplyTone === "concise" ||
-          latestConnection.autoReplyTone === "formal"
-            ? latestConnection.autoReplyTone
-            : "friendly_professional",
-        instructions: latestConnection.autoReplyInstructions ?? "",
+        const reply = await generateWhatsAppAutoReply(
+          input.connection.workspaceId,
+          redactWhatsAppPrivateData(input.customerMessage),
+          {
+            language:
+              latestConnection.autoReplyLanguage === "match_customer"
+                ? "match_customer"
+                : "ar",
+            tone:
+              latestConnection.autoReplyTone === "concise" ||
+              latestConnection.autoReplyTone === "formal"
+                ? latestConnection.autoReplyTone
+                : "friendly_professional",
+            instructions: latestConnection.autoReplyInstructions ?? "",
+          },
+          contextTurns.map((turn) => ({
+            ...turn,
+            text: redactWhatsAppPrivateData(turn.text),
+          })),
+          matchingProduct,
+        );
+
+        await deliverReply(reply);
       },
-      contextTurns.map((turn) => ({
-        ...turn,
-        text: redactWhatsAppPrivateData(turn.text),
-      })),
-      matchingProduct,
-    );
-
-    await deliverReply(reply);
+    });
+    if (consentGate.status === "opted_out") {
+      await stopWhatsAppAutoReplyEvent({
+        claimId: input.claimId,
+        workspaceId: input.connection.workspaceId,
+        errorCode: "CUSTOMER_OPTED_OUT",
+      });
+    }
   } catch (error) {
     // A limit that lifts by itself is not a failure: an exhausted AI quota
     // resets next period and a missing provider key is fixed in minutes, while a
@@ -2185,11 +2226,41 @@ export async function processWebhookEvent(
   const incomingMessageCandidate = isDirectIncoming
     ? (asRecord(eventPayload.message) ?? eventPayload)
     : null;
-  const customerOptedOut =
-    incomingMessageCandidate !== null &&
-    isWhatsAppOptOutMessage(
-      extractWhatsAppTextFromMessage(incomingMessageCandidate),
-    );
+  const customerMessageText = incomingMessageCandidate
+    ? extractWhatsAppTextFromMessage(incomingMessageCandidate)
+    : null;
+  const isDirectPhoneJid = isWhatsAppDirectPhoneJid(directRemoteJid);
+  const optOutCustomerId =
+    directRemoteJid && isDirectIncoming && isDirectPhoneJid
+      ? whatsappDirectConversationKeys(
+          connection.workspaceId,
+          instanceName,
+          directRemoteJid,
+        )[0]!
+      : null;
+  const consentAction = optOutCustomerId
+    ? whatsAppConsentActionForMessage(customerMessageText)
+    : null;
+  // Persist before any auto-reply decision is made. The original message is
+  // still stored below; consent only removes the customer from automation.
+  if (consentAction && optOutCustomerId) {
+    await recordWhatsAppConsent({
+      store: whatsAppOptOutStore,
+      ownerId: connection.ownerId,
+      workspaceId: connection.workspaceId,
+      customerId: optOutCustomerId,
+      action: consentAction,
+    });
+  }
+  const storedOptOut = optOutCustomerId
+    ? await isWhatsAppCustomerOptedOut({
+        store: whatsAppOptOutStore,
+        workspaceId: connection.workspaceId,
+        customerId: optOutCustomerId,
+      })
+    : false;
+  const customerOptedOut = storedOptOut || consentAction === "opt_out";
+  const isConsentCommand = consentAction !== null;
   const isDirectConversationMessage =
     eventName === "MESSAGES_UPSERT" &&
     (isDirectIncoming ||
@@ -2246,7 +2317,6 @@ export async function processWebhookEvent(
       expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
     }).onConflictDoNothing();
   }
-  const isDirectPhoneJid = isWhatsAppDirectPhoneJid(directRemoteJid);
   const remoteMessageId =
     typeof eventKey?.id === "string"
       ? eventKey.id
@@ -2257,6 +2327,7 @@ export async function processWebhookEvent(
     eventName,
     autoReplyEnabled: connection.autoReplyEnabled,
     customerOptedOut,
+    isConsentCommand,
     messageTimestamp: directMessageTimestamp,
     isDirectIncoming,
     isPhoneJid: isDirectPhoneJid,
