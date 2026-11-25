@@ -135,8 +135,10 @@ export type WhatsAppAutoReplyQueueInput = {
   eventName: string | null;
   /** Connection-level switch the merchant controls from the reply settings. */
   autoReplyEnabled: boolean;
-  /** The customer asked for a human in this conversation. */
+  /** A stored opt-out or this very message asked for a human. */
   customerOptedOut: boolean;
+  /** STOP/START commands only change consent; they never get an automatic reply. */
+  isConsentCommand?: boolean;
   /** Message time when known; null means "assume fresh". */
   messageTimestamp: Date | null;
   /** Direct (one-to-one) message sent by the customer, not by the business. */
@@ -161,6 +163,7 @@ export type WhatsAppAutoReplySkipReason =
   | "no_message_candidate"
   | "message_too_old"
   | "customer_opted_out"
+  | "consent_command"
   | "auto_reply_disabled"
   | "no_message_text"
   | "no_remote_message_id";
@@ -217,6 +220,7 @@ export function shouldQueueWhatsAppAutoReply(
   if (!withinWindow) return refuse("message_too_old");
 
   if (input.customerOptedOut) return refuse("customer_opted_out", true);
+  if (input.isConsentCommand) return refuse("consent_command");
   if (!input.autoReplyEnabled) return refuse("auto_reply_disabled", true);
 
   if (!input.customerMessageText?.trim()) return refuse("no_message_text");

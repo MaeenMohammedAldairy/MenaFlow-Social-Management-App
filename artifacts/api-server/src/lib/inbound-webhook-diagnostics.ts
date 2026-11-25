@@ -197,6 +197,7 @@ export type WhatsAppAutoReplySkipReason =
   | "no_message_candidate"
   | "message_too_old"
   | "customer_opted_out"
+  | "consent_command"
   | "auto_reply_disabled"
   | "no_message_text"
   | "no_remote_message_id";
@@ -234,6 +235,11 @@ const autoReplySkipOutcomes: Record<
     level: "info",
     deliveryConfirmed: true,
     hint: "العميل طلب التوقف عن الرد الآلي؛ تم تنبيهك للرد يدويًا.",
+  },
+  consent_command: {
+    level: "debug",
+    deliveryConfirmed: true,
+    hint: "رسالة تغيير الاشتراك حُفظت بلا رد آلي؛ لا يحتاج العميل إلى رد تلقائي عليها.",
   },
   auto_reply_disabled: {
     level: "info",

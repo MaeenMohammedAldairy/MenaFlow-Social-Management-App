@@ -627,3 +627,36 @@ export const menaWhatsAppMessageMedia = pgTable(
     ),
   ],
 );
+
+/**
+ * A customer's automation consent, scoped to one workspace and to the same
+ * conversation identity the direct messages already use (`remote_jid_hash`).
+ * One row per customer/workspace: opt-in and opt-out update that row instead
+ * of creating history duplicates.
+ */
+export const menaWhatsAppOptOuts = pgTable(
+  "mena_whatsapp_opt_outs",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict" }),
+    customerId: text("customer_id").notNull(),
+    optedOutAt: timestamp("opted_out_at", { withTimezone: true }).notNull(),
+    optedInAt: timestamp("opted_in_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mena_whatsapp_opt_outs_workspace_customer_key").on(
+      table.workspaceId,
+      table.customerId,
+    ),
+    index("mena_whatsapp_opt_outs_workspace_idx").on(table.workspaceId),
+  ],
+);
