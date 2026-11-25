@@ -9,11 +9,11 @@ import {
 
 import { recordOrEmpty as safeRecord } from "../lib/value-utils.ts";
 import { subscriptionDenial } from "../lib/subscription-denial.ts";
+import { publishPostToMeta } from "../lib/meta-publishing";
 import {
-  publishPostToMeta,
   signedProductMediaUrl,
   signedWhatsAppMediaUrl,
-} from "../lib/meta-publishing";
+} from "../lib/public-media-url";
 import {
   productMediaIdFromUrl,
   productMediaInfo,

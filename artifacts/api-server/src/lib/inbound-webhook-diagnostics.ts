@@ -32,6 +32,7 @@ export type InboundWebhookOutcome = {
 export type WhatsAppInboundReason =
   | "PAYLOAD_NOT_OBJECT"
   | "REJECTED_SECRET"
+  | "DUPLICATE"
   | "IGNORED_EVENT"
   | "MISSING_INSTANCE_OR_JID"
   | "UNKNOWN_INSTANCE"
@@ -64,6 +65,11 @@ const whatsAppOutcomes: Record<WhatsAppInboundReason, Omit<InboundWebhookOutcome
     deliveryConfirmed: true,
     hint: "رأس x-evolution-api-key لا يطابق WHATSAPP_EVOLUTION_WEBHOOK_SECRET. وحّد السر ثم أعد تسجيل رابط الويب هوك من شاشة واتساب.",
   },
+  DUPLICATE: {
+    level: "debug",
+    deliveryConfirmed: true,
+    hint: "رسالة وصلت مرة أخرى بنفس مفتاح الحدث؛ تم تجاهل التكرار لمنع الازدواج.",
+  },
   IGNORED_EVENT: {
     level: "debug",
     deliveryConfirmed: true,
@@ -75,9 +81,16 @@ const whatsAppOutcomes: Record<WhatsAppInboundReason, Omit<InboundWebhookOutcome
     hint: "الحمولة لا تحمل instance أو remoteJid. تحقق من إعداد الويب هوك في Evolution (webhookByEvents والأحداث المفعّلة).",
   },
   UNKNOWN_INSTANCE: {
-    level: "warn",
+    // Not a typo in a config file: instance names are
+    // `menaflow-` + sha256(workspaceId)[0:12], so a name no connection row
+    // matches is a session left behind by a workspace that was deleted or
+    // migrated away — and it can still be the session holding the phone's live
+    // events, which is how an inbox stays empty while sync keeps working. The
+    // re-register button now deletes those leftovers, so it is the first action
+    // to offer rather than a full re-pair.
+    level: "error",
     deliveryConfirmed: true,
-    hint: "لا يوجد اتصال واتساب بهذا الاسم. أعد ربط الرقم أو أعد تسجيل الويب هوك بعد تغيير اسم المثيل.",
+    hint: "لا يوجد اتصال واتساب بهذا الاسم: الغالب جلسة واتساب تركتها مساحة عمل محذوفة وما زالت تستلم الرسائل فترفضها. اضغط «إعادة تسجيل الويب هوك» في شاشة واتساب ليزيلها الخادم ويعيد تسجيل رابطك، فإن بقيت فارغة أعد ربط الرقم.",
   },
   AMBIGUOUS_INSTANCE: {
     level: "error",
@@ -263,6 +276,68 @@ export function logInboundWebhookOutcome(
     { event: outcome.event, hint: outcome.hint, ...context },
     outcome.event,
   );
+}
+
+/**
+ * Looks an emitted event name back up to its outcome.
+ *
+ * The delivery log stores the event name, and whoever reads it later — the
+ * diagnostics endpoints, the merchant's screen — needs the Arabic hint and the
+ * severity that went with it. Deriving the map from the same tables that emit
+ * the events keeps a recorded name from ever becoming unreadable.
+ */
+function outcomesByEvent(): Map<string, InboundWebhookOutcome> {
+  const map = new Map<string, InboundWebhookOutcome>();
+  for (const reason of Object.keys(
+    whatsAppOutcomes,
+  ) as WhatsAppInboundReason[]) {
+    const outcome = describeWhatsAppInboundOutcome(reason);
+    map.set(outcome.event, outcome);
+  }
+  for (const reason of Object.keys(metaOutcomes) as MetaInboundReason[]) {
+    const outcome = describeMetaInboundOutcome(reason);
+    map.set(outcome.event, outcome);
+  }
+  for (const reason of Object.keys(
+    autoReplySkipOutcomes,
+  ) as WhatsAppAutoReplySkipReason[]) {
+    const outcome = describeWhatsAppAutoReplySkip(reason);
+    map.set(outcome.event, outcome);
+  }
+  return map;
+}
+
+export function inboundWebhookOutcomeForEvent(
+  event: string | null | undefined,
+): InboundWebhookOutcome | null {
+  const name = event?.trim();
+  if (!name) return null;
+  return outcomesByEvent().get(name) ?? null;
+}
+
+/** Prefix of the auto-reply skip outcomes, which are not delivery refusals. */
+const AUTO_REPLY_SKIP_PREFIX = "WHATSAPP_AUTO_REPLY_SKIPPED_";
+
+/**
+ * True when a recorded event means the attempt was refused or was unusable,
+ * rather than accepted.
+ *
+ * Warn and error outcomes are exactly those — the accepted ones (`PROCESSED`,
+ * `INBOX_STORED`, `AUTO_REPLY_QUEUED`) are info or debug, and so are the
+ * deliberately ignored ones. Auto-reply skips are excluded by name even though
+ * some are logged at warn: by the time a reply is skipped the message was
+ * already stored, so counting it as a refusal would send the merchant to fix
+ * their webhook when the setting that mattered was the reply policy.
+ */
+export function isInboundWebhookRejection(
+  event: string | null | undefined,
+): boolean {
+  const name = event?.trim();
+  if (!name) return false;
+  if (name.startsWith(AUTO_REPLY_SKIP_PREFIX)) return false;
+  const outcome = inboundWebhookOutcomeForEvent(name);
+  if (!outcome) return false;
+  return outcome.level === "warn" || outcome.level === "error";
 }
 
 /** Every event name this module can emit, for documentation and tests. */

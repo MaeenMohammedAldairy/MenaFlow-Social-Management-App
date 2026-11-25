@@ -27,6 +27,10 @@ import { ActionButton, EmptyState, IconButton, Page, Panel } from "@/components/
 import { useColors } from "@/hooks/useColors";
 import { formatArabicDate } from "@/lib/formatting";
 import {
+  whatsAppAutoReplyLimitFailureMessage,
+  whatsAppAutoReplyPausedMessage,
+} from "@/lib/whatsapp-auto-reply-copy";
+import {
   confirmWhatsAppDirectReplyNotSent,
   getWhatsAppDirectConversations,
   getWhatsAppDirectMessages,
@@ -94,9 +98,12 @@ function sendFailureMessage(message: WhatsAppDirectMessage): string | null {
     message.autoReplyStatus === "failed"
   ) {
     if (suppressedAutoReplyMessage(message)) return null;
-    if (message.autoReplyErrorCode === "SubscriptionAiQuotaError") {
-      return "تعذّر إنشاء الرد الآلي لأن حصة الذكاء الاصطناعي مستنفدة. زد الحصة أو أرسل ردًا يدويًا.";
-    }
+    // Rows stored before the queue could postpone a limited reply are terminal;
+    // the advice for them is a manual reply, not "wait for the quota".
+    const limitFailure = whatsAppAutoReplyLimitFailureMessage(
+      message.autoReplyErrorCode,
+    );
+    if (limitFailure) return limitFailure;
     return "تعذّر إرسال الرد الآلي. يمكنك الرد يدويًا أو مراجعة إعداداته.";
   }
   if (message.direction === "outbound" && message.status === "failed") {
@@ -453,6 +460,9 @@ function DirectMessageBubble({
     message.status === "unknown" || message.autoReplyStatus === "unknown";
   const failureMessage = sendFailureMessage(message);
   const suppressedMessage = suppressedAutoReplyMessage(message);
+  const pausedReplyMessage = whatsAppAutoReplyPausedMessage(
+    message.autoReplyErrorCode,
+  );
   const messageTypeLabel = whatsappDirectMessagePlaceholder(message.messageType);
   return (
     <Panel
@@ -499,11 +509,19 @@ function DirectMessageBubble({
       ["queued", "processing", "sending"].includes(
         message.autoReplyStatus ?? "",
       ) ? (
-        <Text style={{ color: colors.mutedForeground, textAlign: "right" }}>
-          {message.autoReplyStatus === "sending"
-            ? "جارٍ إرسال الرد الآلي..."
-            : "جارٍ إعداد الرد الآلي..."}
-        </Text>
+        pausedReplyMessage ? (
+          // Waiting on a limit, not on the worker: saying "preparing" here
+          // would hide the one thing the merchant can act on.
+          <Text style={{ color: colors.warning, textAlign: "right" }}>
+            {pausedReplyMessage}
+          </Text>
+        ) : (
+          <Text style={{ color: colors.mutedForeground, textAlign: "right" }}>
+            {message.autoReplyStatus === "sending"
+              ? "جارٍ إرسال الرد الآلي..."
+              : "جارٍ إعداد الرد الآلي..."}
+          </Text>
+        )
       ) : null}
       {suppressedMessage ? (
         <Text style={{ color: colors.mutedForeground, textAlign: "right" }}>

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import {
   db,
   menaMetaConnections,
@@ -13,11 +13,69 @@ import {
 } from "./meta-inbox-graph";
 import { formatMetaOrderConfirmationMessage } from "./meta-order-messages";
 import { logger } from "./logger";
+import {
+  runOrderConfirmationQueue,
+  type OrderConfirmationQueue,
+} from "./order-confirmation-queue";
+import {
+  META_CONFIRMATION_LEASE_MS,
+  ORDER_CONFIRMATION_MAX_ATTEMPTS,
+} from "./order-confirmation-policy";
 
-const leaseMs = 90_000;
-const maxAttempts = 3;
 const messageReplyWindowMs = 24 * 60 * 60 * 1000;
 let processing = false;
+
+/**
+ * The Meta family's share of the confirmation state machine. Unlike the
+ * WhatsApp queue, an exhausted row is recorded as `failed` (the Graph API said
+ * why, and the merchant's inbox has the conversation), due rows are taken in
+ * creation order because `next_run_at` here is a rate-limit backoff rather than
+ * a schedule, and two sweeps run before each claim. The statements themselves
+ * are `order-confirmation-queue.ts`.
+ */
+const metaOrderConfirmationQueue: OrderConfirmationQueue = {
+  columns: {
+    status: menaOrders.metaConfirmationStatus,
+    attempts: menaOrders.metaConfirmationAttempts,
+    leaseExpiresAt: menaOrders.metaConfirmationLeaseExpiresAt,
+    nextRunAt: menaOrders.metaConfirmationNextRunAt,
+  },
+  patches: {
+    sweep: (to, error, now) => ({
+      metaConfirmationStatus: to,
+      metaConfirmationError: error,
+      metaConfirmationLeaseExpiresAt: null,
+      metaConfirmationNextRunAt: now,
+      updatedAt: now,
+    }),
+    exhausted: (now) => ({
+      metaConfirmationStatus: "failed",
+      metaConfirmationError: "META_CONFIRMATION_RETRY_LIMIT_REACHED",
+      metaConfirmationLeaseExpiresAt: null,
+      updatedAt: now,
+    }),
+    claim: (leaseExpiresAt, now) => ({
+      metaConfirmationStatus: "processing",
+      metaConfirmationAttempts: sql`${menaOrders.metaConfirmationAttempts} + 1`,
+      metaConfirmationLeaseExpiresAt: leaseExpiresAt,
+      metaConfirmationNextRunAt: now,
+      metaConfirmationError: null,
+      updatedAt: now,
+    }),
+  },
+  leaseMs: META_CONFIRMATION_LEASE_MS,
+  orderBy: asc(menaOrders.createdAt),
+  staleSweeps: [
+    { from: "sending", to: "unknown", error: "META_SEND_RESULT_UNKNOWN" },
+    {
+      from: "processing",
+      to: "failed",
+      error: "META_CONFIRMATION_RETRY_LIMIT_REACHED",
+      exhaustedOnly: true,
+    },
+  ],
+  process: processOrder,
+};
 
 async function updateConfirmation(
   orderId: string,
@@ -50,77 +108,6 @@ async function updateConfirmation(
     .where(
       and(eq(menaOrders.id, orderId), eq(menaOrders.workspaceId, workspaceId)),
     );
-}
-
-async function claimNextOrder() {
-  const now = new Date();
-  await db
-    .update(menaOrders)
-    .set({
-      metaConfirmationStatus: "unknown",
-      metaConfirmationError: "META_SEND_RESULT_UNKNOWN",
-      metaConfirmationLeaseExpiresAt: null,
-      metaConfirmationNextRunAt: now,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(menaOrders.metaConfirmationStatus, "sending"),
-        lt(menaOrders.metaConfirmationLeaseExpiresAt, now),
-      ),
-    );
-  await db
-    .update(menaOrders)
-    .set({
-      metaConfirmationStatus: "failed",
-      metaConfirmationError: "META_CONFIRMATION_RETRY_LIMIT_REACHED",
-      metaConfirmationLeaseExpiresAt: null,
-      metaConfirmationNextRunAt: now,
-      updatedAt: now,
-    })
-    .where(
-      and(
-        eq(menaOrders.metaConfirmationStatus, "processing"),
-        lt(menaOrders.metaConfirmationLeaseExpiresAt, now),
-        sql`${menaOrders.metaConfirmationAttempts} >= ${maxAttempts}`,
-      ),
-    );
-
-  return db.transaction(async (transaction) => {
-    const [candidate] = await transaction
-      .select()
-      .from(menaOrders)
-      .where(
-        or(
-          and(
-            eq(menaOrders.metaConfirmationStatus, "queued"),
-            lte(menaOrders.metaConfirmationNextRunAt, now),
-          ),
-          and(
-            eq(menaOrders.metaConfirmationStatus, "processing"),
-            lt(menaOrders.metaConfirmationLeaseExpiresAt, now),
-            sql`${menaOrders.metaConfirmationAttempts} < ${maxAttempts}`,
-          ),
-        ),
-      )
-      .orderBy(asc(menaOrders.createdAt))
-      .limit(1)
-      .for("update", { skipLocked: true });
-    if (!candidate) return null;
-    const [claimed] = await transaction
-      .update(menaOrders)
-      .set({
-        metaConfirmationStatus: "processing",
-        metaConfirmationAttempts: sql`${menaOrders.metaConfirmationAttempts} + 1`,
-        metaConfirmationLeaseExpiresAt: new Date(now.getTime() + leaseMs),
-        metaConfirmationNextRunAt: now,
-        metaConfirmationError: null,
-        updatedAt: now,
-      })
-      .where(eq(menaOrders.id, candidate.id))
-      .returning();
-    return claimed ?? null;
-  });
 }
 
 async function processOrder(order: typeof menaOrders.$inferSelect) {
@@ -247,7 +234,9 @@ async function processOrder(order: typeof menaOrders.$inferSelect) {
       .update(menaOrders)
       .set({
         metaConfirmationStatus: "sending",
-        metaConfirmationLeaseExpiresAt: new Date(Date.now() + leaseMs),
+        metaConfirmationLeaseExpiresAt: new Date(
+          Date.now() + META_CONFIRMATION_LEASE_MS,
+        ),
         updatedAt: new Date(),
       })
       .where(
@@ -307,7 +296,7 @@ async function processOrder(order: typeof menaOrders.$inferSelect) {
       error instanceof MetaInboxGraphError &&
       error.status === 429 &&
       !externalSendSucceeded &&
-      order.metaConfirmationAttempts < maxAttempts
+      order.metaConfirmationAttempts < ORDER_CONFIRMATION_MAX_ATTEMPTS
     ) {
       const delayMs = order.metaConfirmationAttempts === 1 ? 10_000 : 30_000;
       await updateConfirmation(order.id, order.workspaceId, "queued", {
@@ -354,18 +343,17 @@ export async function processMetaOrderConfirmationsQueue(
   if (processing) return;
   processing = true;
   try {
-    for (let count = 0; count < limit; count += 1) {
-      const order = await claimNextOrder();
-      if (!order) break;
-      try {
-        await processOrder(order);
-      } catch (error) {
+    // One failing order does not hold up the rest: the failure is logged with
+    // its order and the loop claims the next one.
+    await runOrderConfirmationQueue(metaOrderConfirmationQueue, {
+      limit,
+      onError: (error, order) => {
         logger.error(
           { err: error, workspaceId: order.workspaceId, orderId: order.id },
           "Meta order confirmation queue processing failed",
         );
-      }
-    }
+      },
+    });
   } finally {
     processing = false;
   }

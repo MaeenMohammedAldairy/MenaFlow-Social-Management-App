@@ -1,4 +1,3 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { and, eq, inArray, isNull, or } from "drizzle-orm";
@@ -18,11 +17,8 @@ import {
 } from "./publish-retry";
 import {
   PublicMediaUrlError,
-  resolvePublicMediaBaseUrl,
-} from "./meta-media-url";
-import {
-  metaTokenEncryptionKey,
-} from "./meta-token-crypto";
+  signedWhatsAppMediaUrl,
+} from "./public-media-url";
 import { metaConnectionAccessToken } from "./meta-connection-token.ts";
 import { getMetaGraphVersion } from "./meta-graph-config";
 import { logger } from "./logger";
@@ -79,83 +75,6 @@ class MetaNetworkError extends Error {
       this.causeCode = String(nestedCause.code);
     }
   }
-}
-
-export function signedWhatsAppMediaUrl(
-  mediaId: string,
-  allowLocalHttp = false,
-  variant: "original" | "thumbnail" | "instagram-jpeg" = "original",
-  requestOrigin?: string,
-): string {
-  const development = process.env.NODE_ENV === "development";
-  const publicBase = resolvePublicMediaBaseUrl({
-    configuredBase: process.env.MENA_PUBLIC_MEDIA_BASE_URL,
-    allowDeploymentFallbacks: development,
-    ...(development && allowLocalHttp && requestOrigin
-      ? { requestOrigin }
-      : {}),
-    ...(development
-      ? { expoPublicDomain: process.env.EXPO_PUBLIC_DOMAIN }
-      : {}),
-  });
-  const localBase = process.env.EXPO_PUBLIC_DOMAIN?.trim();
-  const base = publicBase ||
-    (allowLocalHttp && development && localBase
-      ? `${/^https?:\/\//i.test(localBase) ? "" : "http://"}${localBase}`
-      : "");
-  if (!base) throw new PublicMediaUrlError("PUBLIC_MEDIA_BASE_URL_REQUIRED");
-  const expires = Math.floor(Date.now() / 1000) + 3600;
-  const signature = createHmac("sha256", metaTokenEncryptionKey())
-    .update(`${mediaId}:${expires}:${variant}`)
-    .digest("hex");
-  const url = new URL(`/api/social/whatsapp/public-media/${encodeURIComponent(mediaId)}`, base);
-  url.searchParams.set("expires", String(expires));
-  url.searchParams.set("signature", signature);
-  if (variant !== "original") url.searchParams.set("variant", variant);
-  if (url.protocol !== "https:") {
-    const isLocalHost = ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
-    if (!allowLocalHttp || process.env.NODE_ENV !== "development" || !isLocalHost) {
-      throw new PublicMediaUrlError("PUBLIC_MEDIA_URL_MUST_USE_HTTPS");
-    }
-  }
-  return url.toString();
-}
-
-export function signedProductMediaUrl(
-  mediaId: string,
-  variant: "original" | "thumbnail" | "instagram-jpeg",
-  requestOrigin?: string,
-): string | null {
-  try {
-    const url = new URL(
-      signedWhatsAppMediaUrl(mediaId, true, variant, requestOrigin),
-    );
-    url.pathname = `/api/social/products/public-media/${encodeURIComponent(mediaId)}`;
-    return url.toString();
-  } catch (error) {
-    if (error instanceof PublicMediaUrlError) return null;
-    throw error;
-  }
-}
-
-export function verifySignedMediaRequest(
-  mediaId: string,
-  expiresValue: string,
-  signature: string,
-  variant: "original" | "thumbnail" | "instagram-jpeg" = "original",
-): boolean {
-  const expires = Number(expiresValue);
-  if (!Number.isSafeInteger(expires) || expires <= Math.floor(Date.now() / 1000)) return false;
-  const supplied = Buffer.from(signature, "hex");
-  const signedPayloads = variant === "original"
-    ? [`${mediaId}:${expires}:original`, `${mediaId}:${expires}`]
-    : [`${mediaId}:${expires}:${variant}`];
-  return signedPayloads.some((payload) => {
-    const expected = createHmac("sha256", metaTokenEncryptionKey())
-      .update(payload)
-      .digest();
-    return supplied.length === expected.length && timingSafeEqual(expected, supplied);
-  });
 }
 
 async function graphRequest(

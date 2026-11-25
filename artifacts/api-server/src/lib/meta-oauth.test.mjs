@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  canManageMetaConnections,
   grantedMetaPermissions,
   hasGrantedMetaPageListPermission,
   metaAutoReplyPermission,
@@ -14,12 +13,6 @@ import {
   normalizeMetaAccountId,
   missingMetaIntegrationPermissions,
 } from "./meta-oauth.ts";
-
-test("only workspace owners can manage Meta connections", () => {
-  assert.equal(canManageMetaConnections("owner"), true);
-  assert.equal(canManageMetaConnections("member"), false);
-  assert.equal(canManageMetaConnections("admin"), false);
-});
 
 test("recognizes Graph error 190 as an invalid access token", () => {
   assert.equal(isMetaAccessTokenInvalid(190), true);

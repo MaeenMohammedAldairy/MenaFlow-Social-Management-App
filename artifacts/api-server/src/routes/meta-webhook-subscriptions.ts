@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { Router } from "express";
 import { db, menaMetaConnections } from "@workspace/db";
 import { activateMetaWebhookSubscriptionsForConnection } from "../lib/meta-webhook-subscriptions";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 const router = Router();
@@ -11,10 +11,7 @@ router.post(
   "/social/meta-inbox/webhook-subscriptions",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     if (!process.env.MENA_META_WEBHOOK_VERIFY_TOKEN?.trim()) {
       res.status(503).json({
         error:

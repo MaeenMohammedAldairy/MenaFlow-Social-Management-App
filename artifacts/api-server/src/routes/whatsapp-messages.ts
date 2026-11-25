@@ -19,9 +19,10 @@ import { requestOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 import {
+  PublicMediaUrlError,
   signedWhatsAppMediaUrl,
   verifySignedMediaRequest,
-} from "../lib/meta-publishing";
+} from "../lib/public-media-url";
 import {
   assertMediaObjectPath,
   createMediaJpeg,
@@ -30,15 +31,16 @@ import {
   resolveWhatsAppMediaStorageRoot,
   streamMediaObject,
 } from "../lib/whatsapp-media-storage";
-import { PublicMediaUrlError } from "../lib/meta-media-url";
 import { findWhatsAppAssociationSuggestions } from "../lib/whatsapp-association-suggestions";
 import {
+  autoAcceptWhatsAppSuggestions,
   getWhatsAppContentAssociationDecisions,
   getWhatsAppContentBundles,
   whatsappAssociationPairKey,
   type WhatsAppContentAssociationDecision,
 } from "../lib/whatsapp-content-associations";
 import { isConfirmedWhatsAppMediaGroupSource } from "../lib/whatsapp-album-relations";
+import { enqueueWhatsAppMessageIfMissing } from "../lib/whatsapp-marketing";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
@@ -415,6 +417,43 @@ router.get(
         ids.push(message.id);
         messageIdsByGroup.set(message.groupId, ids);
       }
+      // Unambiguous text + media pairs are linked and queued for content
+      // creation on sight. Ambiguous pairs keep their manual review buttons.
+      for (const [messageGroupId, ids] of messageIdsByGroup) {
+        try {
+          const accepted = await autoAcceptWhatsAppSuggestions({
+            workspaceId,
+            instanceName: connection.instanceName,
+            groupId: messageGroupId,
+            messages: ids.flatMap((id) => {
+              const message = rows.find((row) => row.id === id);
+              if (!message) return [];
+              return [{
+                id: message.id,
+                remoteMessageId: message.remoteMessageId,
+                senderId: message.senderId,
+                textBody: message.textBody,
+                caption: message.caption,
+                mediaAvailable: message.mediaAvailable,
+                mediaGroupId: message.mediaGroupId,
+                mediaGroupSource: message.mediaGroupSource,
+                messageTimestamp: message.messageTimestamp?.toISOString() ?? null,
+                createdAt: message.createdAt.toISOString(),
+                replyToRemoteId: message.replyToRemoteId,
+                mediaCount: mediaByMessage.get(message.id)?.length ?? 0,
+              }];
+            }),
+          });
+          await Promise.all(accepted.messageIds.map((messageId) =>
+            enqueueWhatsAppMessageIfMissing(workspaceId, messageId),
+          ));
+        } catch (error) {
+          logger.error(
+            { error, workspaceId, groupId: messageGroupId },
+            "Failed to auto-accept WhatsApp content associations",
+          );
+        }
+      }
       const bundlesByMessage = new Map<
         string,
         { id: string; messageIds: string[] }
@@ -644,6 +683,7 @@ router.get(
           remoteMessageId: message.remoteMessageId,
           senderId: message.senderId,
           senderName: message.senderName,
+          fromMe: message.fromMe,
           messageType: message.messageType,
           textBody: message.textBody,
           caption: message.caption,

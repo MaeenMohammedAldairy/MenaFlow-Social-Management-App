@@ -11,7 +11,7 @@ import {
 } from "@workspace/db";
 
 import { Router, type IRouter } from "express";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 import {
@@ -23,6 +23,10 @@ import {
 import { resolveWhatsAppGroupSyncTargets } from "../lib/whatsapp-group-identity";
 import { buildWhatsAppSyncStatusGroups } from "../lib/whatsapp-sync-status";
 import { hasEnabledWhatsAppSyncType } from "../lib/whatsapp-sync-options";
+import {
+  mapWithConcurrency,
+  resolveSyncGroupConcurrency,
+} from "../lib/sync-run-control";
 
 import {
   ensureSyncState,
@@ -38,6 +42,13 @@ import {
   describeWhatsAppInboundOutcome,
   logInboundWebhookOutcome,
 } from "../lib/inbound-webhook-diagnostics";
+import { recordInboundWebhookAttempt } from "../lib/inbound-delivery-log";
+import { sweepOrphanWhatsAppInstances } from "../lib/whatsapp-orphan-instance-sweep";
+import {
+  claimWebhookEvent,
+  evolutionWebhookEventKey,
+  releaseWebhookEvent,
+} from "../lib/product-intake-service.ts";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
@@ -49,12 +60,9 @@ const syncSettingKeys = [
 ] as const;
 
 router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const includeHistory = req.body?.includeHistory !== false;
   const requestedHistoryLimit = req.body?.historyLimit;
   if (
@@ -243,8 +251,13 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
       return;
     }
 
-    void Promise.all(
-      claimedGroups.map(async (group) => {
+    // Bounded: forty selected groups used to mean forty parallel history
+    // scans against one Evolution instance and one database pool. The limit is
+    // configurable and clamped, so a typo cannot reintroduce the flood.
+    void mapWithConcurrency(
+      claimedGroups,
+      resolveSyncGroupConcurrency(),
+      async (group) => {
         try {
           await syncGroupHistory(
             workspaceId,
@@ -304,7 +317,7 @@ router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
             );
           }
         }
-      }),
+      },
     ).catch((error: unknown) => {
       logger.error(
         {
@@ -336,12 +349,9 @@ router.get(
   "/social/whatsapp/sync-status",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
 
     try {
       const [connection] = await db
@@ -514,12 +524,9 @@ router.put(
   "/social/whatsapp/sync-settings",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
 
     if (
       typeof req.body !== "object" ||
@@ -588,11 +595,8 @@ router.post(
   "/social/whatsapp/reconfigure-webhook",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    const ownerId = requireOwnerId(req, res);
+    if (!ownerId) return;
     const workspaceId = requestWorkspaceId(req);
     const [connection] = await db
       .select({
@@ -611,11 +615,31 @@ router.post(
     }
     try {
       await configureWhatsAppWebhook(connection.instanceName);
+      // Re-registering this instance's webhook is only half the repair when an
+      // orphaned session is the one holding the phone: our URL is set on an
+      // instance that Evolution is no longer sending events for, and the events
+      // keep arriving under a name no connection row matches
+      // (`WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE`). The sweep deletes those leftovers
+      // and reports what it decided, and it runs after the webhook is registered
+      // so a failure here cannot turn the repair into an error.
+      const sweep = await sweepOrphanWhatsAppInstances({
+        workspaceId,
+        keepInstanceName: connection.instanceName,
+        phoneNumber: connection.phoneNumber,
+        trigger: "webhook_reconfigure",
+      });
       res.json({
         ok: true,
         instanceName: connection.instanceName,
         webhookUrl: whatsappWebhookUrl(),
         reconfiguredAt: new Date().toISOString(),
+        orphanCleanup: {
+          attempted: sweep.attempted,
+          deleted: sweep.deleted,
+          failed: sweep.failed,
+          skipped: sweep.skipped,
+          instances: sweep.outcomes,
+        },
       });
     } catch (error) {
       const code =
@@ -649,21 +673,44 @@ router.post("/social/whatsapp/webhook", async (req, res) => {
   if (!verifyWhatsAppWebhookSecret(req.headers["x-evolution-api-key"])) {
     // Proves Evolution reached us with the wrong key — the alternative reading
     // of "no automatic replies" is that it never called us at all.
-    logInboundWebhookOutcome(
-      logger,
-      describeWhatsAppInboundOutcome("REJECTED_SECRET"),
-      { path: "/social/whatsapp/webhook" },
-    );
+    const rejected = describeWhatsAppInboundOutcome("REJECTED_SECRET");
+    logInboundWebhookOutcome(logger, rejected, {
+      path: "/social/whatsapp/webhook",
+    });
+    // The refusal happens before any instance lookup, so the row carries no
+    // workspace; it is still the evidence that Evolution reached us.
+    void recordInboundWebhookAttempt({
+      platform: "whatsapp",
+      event: rejected.event,
+      deliveryConfirmed: rejected.deliveryConfirmed,
+      context: { path: "/social/whatsapp/webhook" },
+    });
     res.status(401).json({ ok: false });
     return;
   }
   const body = req.body ?? {};
+  let claimedEventKey: string | null = null;
   try {
+    const eventKey = evolutionWebhookEventKey(body);
+    claimedEventKey = eventKey;
+    if (eventKey && !(await claimWebhookEvent("evolution", eventKey))) {
+      const duplicate = describeWhatsAppInboundOutcome("DUPLICATE");
+      logInboundWebhookOutcome(logger, duplicate, {
+        path: "/social/whatsapp/webhook",
+      });
+      res.status(200).json({ ok: true, duplicate: true });
+      return;
+    }
     await processWebhookEvent(body, {
       headers: req.headers as Record<string, string | string[] | undefined>,
     });
     res.status(200).json({ ok: true });
   } catch (error) {
+    if (claimedEventKey) {
+      await releaseWebhookEvent("evolution", claimedEventKey).catch((releaseError) => {
+        logger.error({ error: releaseError }, "Could not release webhook claim");
+      });
+    }
     logger.error({ error }, "Evolution webhook processing failed");
     res.status(500).json({ ok: false });
   }

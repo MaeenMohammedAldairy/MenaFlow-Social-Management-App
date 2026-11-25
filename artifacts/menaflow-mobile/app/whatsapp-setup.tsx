@@ -4,7 +4,7 @@ import {
   saveWhatsAppAutoReplySettings,
   testWhatsAppAutoReply,
   type WhatsAppAutoReplySettings,
-  type WhatsAppAutoReplyTone,
+  type WhatsAppAutoReplySettingsTone,
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
@@ -33,6 +33,11 @@ import {
 import { useColors } from "@/hooks/useColors";
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
+import { orphanCleanupSentence } from "@/lib/whatsapp-orphan-cleanup-copy";
+import {
+  webhookAttemptFacts,
+  webhookAttemptHeadline,
+} from "@/lib/inbound-webhook-copy";
 
 const defaultSettings: WhatsAppAutoReplySettings = {
   enabled: false,
@@ -41,7 +46,7 @@ const defaultSettings: WhatsAppAutoReplySettings = {
   instructions: "",
 };
 
-const tones: Array<{ value: WhatsAppAutoReplyTone; label: string }> = [
+const tones: Array<{ value: WhatsAppAutoReplySettingsTone; label: string }> = [
   { value: "friendly_professional", label: "ودود واحترافي" },
   { value: "concise", label: "مختصر ومباشر" },
   { value: "formal", label: "رسمي" },
@@ -197,8 +202,16 @@ function WhatsAppReplyContent({
     setWebhookResult(null);
     try {
       const result = await reconfigureWhatsAppWebhook();
+      // The sweep's finding outranks the "send a test message" advice: if a
+      // leftover session was holding this phone number, that is why the inbox was
+      // empty, and the merchant should read it before they test anything.
+      const cleanup = orphanCleanupSentence(result.orphanCleanup, {
+        formatNumber: formatArabicNumber,
+      });
       setWebhookResult(
-        `تم تسجيل الويب هوك على ${result.webhookUrl}. أرسل رسالة تجريبية من هاتف العميل للتحقق من وصولها.`,
+        cleanup
+          ? `تم تسجيل الويب هوك على ${result.webhookUrl}. ${cleanup}`
+          : `تم تسجيل الويب هوك على ${result.webhookUrl}. أرسل رسالة تجريبية من هاتف العميل للتحقق من وصولها.`,
       );
       await queryClient.invalidateQueries({ queryKey });
     } catch (error) {
@@ -213,6 +226,10 @@ function WhatsAppReplyContent({
     }
   };
 
+  const attemptFormatters = {
+    formatNumber: formatArabicNumber,
+    formatDateTime: formatArabicDateTime,
+  };
   const inbound = settingsQuery.data?.inbound;
   const inboundFacts: InboundDeliveryFact[] = inbound
     ? [
@@ -232,6 +249,19 @@ function WhatsAppReplyContent({
           label: "ردود في الانتظار",
           value: formatArabicNumber(inbound.autoReplyEvents.queued),
         },
+        // Only shown when non-zero: "0 replies postponed" is noise, while a
+        // non-zero number explains waiting replies the merchant cannot
+        // otherwise distinguish from a busy worker.
+        ...(inbound.autoReplyEvents.postponedByLimit > 0
+          ? [
+              {
+                label: "منها مؤجَّلة بسبب حدّ",
+                value: formatArabicNumber(
+                  inbound.autoReplyEvents.postponedByLimit,
+                ),
+              },
+            ]
+          : []),
         {
           label: "ردود فشلت",
           value: formatArabicNumber(inbound.autoReplyEvents.failed),
@@ -240,8 +270,13 @@ function WhatsAppReplyContent({
           label: "سر الويب هوك",
           value: inbound.webhookSecretConfigured ? "مهيأ" : "غير مهيأ",
         },
+        ...webhookAttemptFacts(inbound.webhookAttempts, attemptFormatters),
       ]
     : [];
+  const inboundSummary = webhookAttemptHeadline(
+    inbound?.webhookAttempts,
+    attemptFormatters,
+  );
 
   const retrySettings = () => void settingsQuery.refetch();
   const returnHref: Href =
@@ -301,6 +336,7 @@ function WhatsAppReplyContent({
               <InboundDeliveryCard
                 title="استقبال رسائل العملاء"
                 delivered={inbound.deliveryConfirmed}
+                summary={inboundSummary}
                 facts={inboundFacts}
                 issues={inbound.issues}
                 action={{

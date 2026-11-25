@@ -10,8 +10,8 @@ import {
 } from "@workspace/db";
 import {
   metaAutoReplyEnabled,
-  metaAutoReplyNextRunAt,
 } from "../lib/meta-auto-reply";
+import { autoReplyNextRunAt } from "../lib/auto-reply-policy";
 import {
   parseMetaWebhookEvents,
   resolveUniqueMetaConnection,
@@ -21,9 +21,43 @@ import { metaString } from "../lib/meta-inbox-utils";
 import {
   describeMetaInboundOutcome,
   logInboundWebhookOutcome,
+  type InboundWebhookOutcome,
   type MetaInboundReason,
 } from "../lib/inbound-webhook-diagnostics";
+import {
+  recordInboundWebhookAttempt,
+  type InboundDeliveryPlatform,
+} from "../lib/inbound-delivery-log";
 import { logger } from "../lib/logger.ts";
+
+/**
+ * Logs one Meta inbound outcome and keeps it in the delivery log.
+ *
+ * The log line tells the operator what happened today; the persisted row is
+ * what the reply-settings screen can still show tomorrow, which is the only
+ * way to separate "Meta never called" from "Meta called and we refused it".
+ * `platform` is null for attempts rejected before the object type was read —
+ * a Meta webhook serves Facebook and Instagram, so guessing one would mislead
+ * an Instagram-only merchant. Recording is fire-and-forget and swallows its
+ * own failures: a broken delivery log must never fail an inbound event.
+ */
+function recordMetaInboundOutcome(
+  platform: InboundDeliveryPlatform | null,
+  outcome: InboundWebhookOutcome,
+  context: Record<string, unknown> = {},
+): void {
+  logInboundWebhookOutcome(logger, outcome, context);
+  void recordInboundWebhookAttempt({
+    platform,
+    event: outcome.event,
+    deliveryConfirmed: outcome.deliveryConfirmed,
+    workspaceId:
+      typeof context.workspaceId === "string" ? context.workspaceId : null,
+    accountId:
+      typeof context.accountId === "string" ? context.accountId : null,
+    context,
+  });
+}
 
 const router = Router();
 
@@ -65,8 +99,8 @@ router.post("/social/meta/webhook", async (req, res) => {
   if (!signatureValid) {
     // Splitting the two causes matters: a missing secret is a deployment
     // mistake on our side, a bad signature is a mismatch with the Meta app.
-    logInboundWebhookOutcome(
-      logger,
+    recordMetaInboundOutcome(
+      null,
       describeMetaInboundOutcome(
         appSecret ? "REJECTED_SIGNATURE" : "MISSING_APP_SECRET",
       ),
@@ -80,12 +114,12 @@ router.post("/social/meta/webhook", async (req, res) => {
   try {
     payload = JSON.parse(rawBody!.toString("utf8"));
   } catch {
-    logInboundWebhookOutcome(logger, describeMetaInboundOutcome("INVALID_JSON"));
+    recordMetaInboundOutcome(null, describeMetaInboundOutcome("INVALID_JSON"));
     res.status(400).json({ error: "صيغة حدث Meta غير صالحة." });
     return;
   }
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    logInboundWebhookOutcome(logger, describeMetaInboundOutcome("INVALID_JSON"));
+    recordMetaInboundOutcome(null, describeMetaInboundOutcome("INVALID_JSON"));
     res.status(400).json({ error: "صيغة حدث Meta غير صالحة." });
     return;
   }
@@ -97,8 +131,8 @@ router.post("/social/meta/webhook", async (req, res) => {
         ? "instagram"
         : null;
   if (!platform) {
-    logInboundWebhookOutcome(
-      logger,
+    recordMetaInboundOutcome(
+      null,
       describeMetaInboundOutcome("IGNORED_OBJECT"),
       { objectType: objectType ?? null },
     );
@@ -113,10 +147,11 @@ router.post("/social/meta/webhook", async (req, res) => {
   const outcomeLog = (
     reason: MetaInboundReason,
     context: Record<string, unknown> = {},
-  ) => logInboundWebhookOutcome(logger, describeMetaInboundOutcome(reason), {
-    platform,
-    ...context,
-  });
+  ) =>
+    recordMetaInboundOutcome(platform, describeMetaInboundOutcome(reason), {
+      platform,
+      ...context,
+    });
   for (const entry of entries) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
     totals.entries += 1;
@@ -194,7 +229,7 @@ router.post("/social/meta/webhook", async (req, res) => {
         );
         if (eligible.length === 0) return;
         batchOutcome.queued = eligible.length;
-        const nextRunAt = metaAutoReplyNextRunAt();
+        const nextRunAt = autoReplyNextRunAt();
         await transaction
           .insert(menaMetaAutoReplyJobs)
           .values(

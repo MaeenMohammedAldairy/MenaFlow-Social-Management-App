@@ -5,12 +5,14 @@ import {
   fetchApiResponse,
   deletePost as apiDeletePost,
   getAutoPublishSettings,
+  getPostsPage,
   processWhatsAppBacklog,
-  publishPostToChannels,
-  saveAutoPublishSettings,
+  publishPost as apiPublishPost,
+  updateAutoPublishSettings as apiUpdateAutoPublishSettings,
   updatePost,
   type AutoPublishSettings,
-  type WhatsAppBacklogResult,
+  type PostItem,
+  type ProcessWhatsAppBacklogResult,
   type PostPublishResponse,
 } from '@workspace/api-client-react';
 import { AppState, Platform } from 'react-native';
@@ -92,7 +94,7 @@ export interface Post {
   updatedAt?: string;
 }
 
-function mapApiPost(post: Record<string, any>): Post {
+function mapApiPost(post: PostItem): Post {
   return {
     id: post.id,
     title: post.title,
@@ -152,7 +154,7 @@ interface StudioContextValue extends StudioState {
   updatePostStatus: (id: string, status: PostStatus) => Promise<void>;
   publishPost: (id: string, channels?: Channel[], retryUncertain?: boolean) => Promise<PostPublishResponse>;
   updateAutoPublishSettings: (enabled: boolean, channels: Channel[]) => Promise<AutoPublishSettings>;
-  analyzeWhatsAppBacklog: () => Promise<WhatsAppBacklogResult>;
+  analyzeWhatsAppBacklog: () => Promise<ProcessWhatsAppBacklogResult>;
   deletePost: (id: string) => Promise<void>;
   updatePreference: (key: keyof Preferences, value: boolean) => void;
   refreshPosts: () => Promise<void>;
@@ -243,17 +245,18 @@ export function StudioProvider({
     syncInFlightRef.current = true;
     try {
       if (showProgress) setSyncing(true);
-      const response = await fetchApiResponse('/api/posts/page?limit=20');
-      if (!response.ok) throw new Error(`POSTS_PAGE_HTTP_${response.status}`);
-      const page = await response.json() as { items?: unknown; nextCursor?: unknown };
-      if (!Array.isArray(page.items)) {
+      const page = await getPostsPage({ limit: 20 });
+      // The client types the page but does not validate it; without this guard a
+      // malformed body would surface as a TypeError, which the catch below reads
+      // as "offline".
+      if (!page || !Array.isArray(page.items)) {
         throw new Error('POSTS_PAGE_RESPONSE_INVALID');
       }
       setSyncError(null);
       postsCursorRef.current =
         typeof page.nextCursor === 'string' ? page.nextCursor : null;
       setHasMorePosts(postsCursorRef.current !== null);
-      const mapped = page.items.map((post) => mapApiPost(post as Record<string, any>));
+      const mapped = page.items.map((post) => mapApiPost(post));
 
       const current = stateRef.current;
       const serverIds = new Set(mapped.map((post) => post.id));
@@ -552,13 +555,9 @@ export function StudioProvider({
     loadMoreInFlightRef.current = true;
     setLoadingMorePosts(true);
     try {
-      const response = await fetchApiResponse(
-        `/api/posts/page?limit=20&cursor=${encodeURIComponent(cursor)}`,
-      );
-      if (!response.ok) throw new Error(`POSTS_PAGE_HTTP_${response.status}`);
-      const page = await response.json() as { items?: unknown; nextCursor?: unknown };
-      if (!Array.isArray(page.items)) throw new Error('POSTS_PAGE_RESPONSE_INVALID');
-      const morePosts = page.items.map((post) => mapApiPost(post as Record<string, any>));
+      const page = await getPostsPage({ limit: 20, cursor });
+      if (!page || !Array.isArray(page.items)) throw new Error('POSTS_PAGE_RESPONSE_INVALID');
+      const morePosts = page.items.map((post) => mapApiPost(post));
       postsCursorRef.current =
         typeof page.nextCursor === 'string' ? page.nextCursor : null;
       setHasMorePosts(postsCursorRef.current !== null);
@@ -659,16 +658,15 @@ export function StudioProvider({
           // undefined = untouched; null = clear the due time on the server.
           scheduledAt: patch.scheduledAt,
         };
-        if (patch.mediaUrls !== undefined) {
-          const response = await fetchApiResponse(`/api/posts/${encodeURIComponent(id)}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...updateBody, mediaUrls: patch.mediaUrls }),
-          });
-          if (!response.ok) throw new Error(`POST_UPDATE_HTTP_${response.status}`);
-        } else {
-          await updatePost(id, updateBody);
-        }
+        // mediaUrls is in the contract now, so the generated client carries it
+        // too; the edit dialog shows the server's reason for a refusal (409 while
+        // publishing, 422 for media outside the workspace) instead of a status code.
+        await updatePost(
+          id,
+          patch.mediaUrls === undefined
+            ? updateBody
+            : { ...updateBody, mediaUrls: patch.mediaUrls },
+        );
       } catch (error) {
         // Rollback to previous post state
         if (previous !== undefined) {
@@ -713,7 +711,10 @@ export function StudioProvider({
         (channel): channel is 'facebook' | 'instagram' =>
           channel === 'facebook' || channel === 'instagram',
       );
-      const payload = await publishPostToChannels(id, selectedChannels, retryUncertain);
+      const payload = await apiPublishPost(id, {
+        channels: selectedChannels,
+        ...(retryUncertain === undefined ? {} : { retryUncertain }),
+      });
       commit((current) => ({
         ...current,
         posts: current.posts.map((post) =>
@@ -741,12 +742,12 @@ export function StudioProvider({
         (channel): channel is 'facebook' | 'instagram' =>
           channel === 'facebook' || channel === 'instagram',
       );
-      const saved = await saveAutoPublishSettings({ enabled, channels: validChannels });
+      const saved = await apiUpdateAutoPublishSettings({ enabled, channels: validChannels });
       commit((current) => ({ ...current, autoPublishSettings: saved }));
       return saved;
     },
     analyzeWhatsAppBacklog: async () => {
-      const result = await processWhatsAppBacklog(50);
+      const result = await processWhatsAppBacklog({ limit: 50 });
       await syncWithServer();
       return result;
     },

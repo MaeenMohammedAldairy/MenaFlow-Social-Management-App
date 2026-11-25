@@ -24,7 +24,7 @@ import {
   productPosts,
   products,
 } from "@workspace/db";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import {
   metaAutoReplyPermission,
   missingMetaIntegrationPermissions,
@@ -32,6 +32,7 @@ import {
 } from "../lib/meta-oauth";
 import { isRecord } from "../lib/value-utils.ts";
 import { metaInboundDiagnostics } from "../lib/inbound-diagnostics";
+import { fetchInboundWebhookAttempts } from "../lib/inbound-delivery-log";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
   generateMetaAutoReply,
@@ -405,10 +406,7 @@ router.get(
   "/social/meta-auto-replies/historical-comments",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     const workspaceId = requestWorkspaceId(req);
     const [[settings], [connection]] = await Promise.all([
       db
@@ -498,11 +496,8 @@ router.post(
   "/social/meta-auto-replies/historical-comments",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    const ownerId = requireOwnerId(req, res);
+    if (!ownerId) return;
     const platform = req.body?.platform;
     const allEligible = req.body?.allEligible === true;
     const postIds = req.body?.postIds;
@@ -632,12 +627,9 @@ router.post(
 );
 
 router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const [[settings], [connection]] = await Promise.all([
     db
       .select()
@@ -694,6 +686,32 @@ router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
         .from(menaMetaWebhookSubscriptions)
         .where(eq(menaMetaWebhookSubscriptions.workspaceId, workspaceId)),
     ]);
+  // Recorded Meta webhook calls, including the server-wide refusals that carry
+  // no workspace: a rejected signature happens before the object type is read,
+  // and it is the one attempt that explains "Meta is calling but nothing is
+  // stored" for every merchant on the deployment at once.
+  // Error codes of the reply jobs still waiting, for the same reason: a job
+  // postponed by an exhausted quota is `queued` like any other.
+  const waitingJobRows = await db
+    .select({ errorCode: menaMetaAutoReplyJobs.errorCode })
+    .from(menaMetaAutoReplyJobs)
+    .where(
+      and(
+        eq(menaMetaAutoReplyJobs.workspaceId, workspaceId),
+        inArray(menaMetaAutoReplyJobs.status, ["queued", "processing"]),
+      ),
+    )
+    .limit(500);
+  const webhookAttempts = await fetchInboundWebhookAttempts({
+    workspaceId,
+    platforms: ["facebook", "instagram"],
+    accountIds: [
+      ...subscriptions.map((subscription) => subscription.accountId),
+      connection?.pageId ?? "",
+      connection?.instagramUserId ?? "",
+    ],
+    includeUnattributed: true,
+  });
   const inbound = metaInboundDiagnostics({
     lastInboxItemAt: inboxSummary?.lastAt ? new Date(inboxSummary.lastAt) : null,
     inboxItemCount: inboxSummary?.total ?? 0,
@@ -704,6 +722,8 @@ router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
       process.env.MENA_META_WEBHOOK_VERIFY_TOKEN?.trim(),
     ),
     appSecretConfigured: Boolean(process.env.FACEBOOK_APP_SECRET?.trim()),
+    webhookAttempts,
+    queuedJobErrorCodes: waitingJobRows.map((row) => row.errorCode),
   });
   res.json({
     settings: settings
@@ -724,12 +744,9 @@ router.get("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
 });
 
 router.put("/social/meta-auto-replies", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const settings = parseSettings(req.body);
   if (!settings) {
     res.status(400).json({ error: "إعدادات الرد الآلي غير صالحة." });
@@ -846,12 +863,9 @@ router.post(
   "/social/meta-auto-replies/test",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const message =
       typeof req.body?.message === "string" ? req.body.message.trim() : "";
     const platform =

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import {
   decideWhatsAppContentAssociation,
   WhatsAppContentAssociationError,
@@ -14,10 +14,7 @@ router.post(
   "/social/whatsapp/content-associations",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     if (
       !req.body ||
       typeof req.body !== "object" ||

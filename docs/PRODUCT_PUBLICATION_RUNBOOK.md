@@ -39,7 +39,7 @@ Table `mena_whatsapp_product_extraction_jobs`, one row per message
 | --- | --- | --- |
 | `pending` | Queued, `next_run_at` reached or future | Nothing; the worker picks 3 per pass |
 | `processing` | Claimed with `FOR UPDATE SKIP LOCKED` | Stuck > 10 min is reset to `pending` automatically |
-| `waiting_media` | A source message has media that is not `stored` yet | Requeued automatically when the download finishes; otherwise see §4 |
+| `waiting_media` | A source message has media that is still downloading (a retry is scheduled) | Requeued automatically when the download finishes. Media that gave up does **not** park here — see `failed` below |
 | `waiting_association` | The message may belong to a content bundle that a human has not confirmed | Confirm or reject the association in the app; both messages are requeued |
 | `complete` | Finished. `last_error` explains the outcome when there is no suggestion | `PRODUCT_TEXT_REQUIRED` means "no text and no readable image" |
 | `review` | Reserved for suggestions that need attention | — |
@@ -54,30 +54,129 @@ Retry policy: attempts < 5, delay `min(1h, 30s × 2^(attempt-1))`. Persistence
 runs under the advisory lock `product-extraction:{workspaceId}` so two workers
 cannot create the same draft.
 
+**A media failure is terminal only when nothing readable is left.** The download
+worker claims only messages whose `media_download_status` is `pending`, and a
+retryable error keeps it `pending` with a scheduled attempt — so `failed` means
+nothing will ever look at that media again. "The photo is gone" is not the same
+as "the message is unreadable", though: the live workspace holds an offer whose
+text is complete («سعر الطقم 3حبات 2300 ريال فقط») sent with four photos, and it
+was imported twenty-four days after it was sent — WhatsApp no longer serves
+media that old, so all four downloads gave up. `decideWhatsAppMediaGate()`
+(`lib/product-extraction-media-policy.ts`) therefore answers `terminal` only when
+the bundle holds **neither text nor stored media**; when text or a surviving
+photo remains it answers `ready` and names the dead downloads in
+`failedMediaSkipped`, which the worker logs as
+`PRODUCT_EXTRACTION_PROCEEDING_WITHOUT_FAILED_MEDIA`. The product then shows the
+photo as a field to complete instead of never appearing at all. Before that
+distinction existed, such a job was parked in `waiting_media` forever: the queue
+selects `pending` only, so no pass ever reached it again — three jobs sat like
+that in production for twelve hours behind a `waitingMedia` count that read as
+progress. Rows already parked there are released back to `pending` by
+`releaseJobsWaitingOnTerminalMedia()` (at most once every five minutes over at
+most 50 jobs), and the gate re-decides per bundle on the next pass: a bundle with
+nothing readable left is failed there, a bundle with an offer in text is
+extracted.
+
+Repair is a real action rather than a database edit: re-running extraction calls
+`resetFailedWhatsAppMedia()` (`lib/whatsapp-media-reset.ts`) for the messages it
+is about to queue, putting their `failed` media back to `pending` with
+`download_attempts` reset to zero. A message whose `source_media_payload` was
+dropped is skipped and logged (`WHATSAPP_MEDIA_RESET_SKIPPED_NO_PAYLOAD`) because
+there is nothing left to download from. When one specific message is requested
+and its media was just reset, the job is created anyway so it parks in
+`waiting_media` — the download worker requeues by message id, which needs a job
+row to update.
+
+**Old messages get one download attempt, and an honest failure.** WhatsApp stops
+serving a message's media a few weeks after it was sent — measured on the live
+workspace, where every row whose message was six to twelve days old at import
+downloaded on the first attempt and every row twenty-four to twenty-five days old
+burned all five attempts on `EVOLUTION_API_REQUEST_FAILED` and failed anyway.
+`mediaDownloadAttemptLimit()` (`lib/whatsapp-media-expiry-policy.ts`) therefore
+gives a message older than `MEDIA_UPSTREAM_EXPIRY_AGE_MS` (21 days) a single
+attempt, and `mediaDownloadFailureReason()` records
+`WHATSAPP_MEDIA_EXPIRED_UPSTREAM` — outside the retryable list, so nothing
+schedules another attempt on a timer — instead of the transport error. The
+catalog then reads «انتهت صلاحية الوسيط لدى واتساب — الرسالة أقدم من نحو ثلاثة
+أسابيع» rather than «فشل التحميل», which used to invite retries that could never
+work. The mobile copy carries the same window, pinned by a drift test. The
+operational consequence: import history close to send time; media past the window
+is unrecoverable at any attempt count, and a merchant who needs that product must
+re-send the photo.
+
 Queueing rules (`queueUnprocessedWhatsAppProductMessages`, also behind
 `POST /api/social/products/extract-whatsapp`):
 
 - at least one selected group in `mena_whatsapp_group_selections`
   (`selected = true`), matched by group or parent group;
 - `message_status = 'received'`;
-- non-empty `text_body` or `caption`;
+- non-empty `text_body` or `caption` — **or** `media_available`, but only when
+  `PRODUCT_VISION_EXTRACTION_ENABLED` is set (§6);
 - no row for that message in `mena_product_extraction_sources` yet;
 - at most 200 messages per call, oldest first.
+
+The text-or-media rule is `queueEligibilityPolicy()`
+(`lib/product-extraction-queue-eligibility.ts`), and it exists because the
+extractor reads text and never receives image bytes unless vision extraction is
+on. Admitting a caption-less photo while vision is off creates a job that can
+only end in `PRODUCT_TEXT_REQUIRED`; refusing it while vision is on means the
+stored image is never read by anything. `media_available` deliberately includes a
+`failed` download: queueing the message is what resets its media (§2 above), so
+this is the only path that can repair an image-only message whose download gave
+up. A message with neither text nor media is never eligible.
 
 A message that has media but no text is only queued when its media is complete;
 otherwise the call returns `queuedMessages: 0` and the job appears later through
 the media requeue path.
 
+Note that the historical sync also creates one job per imported received message
+(`persistImportedMessage`), without the eligibility filter — which is why
+caption-less photos have job rows at all. Queueing is therefore not manual-only
+for newly imported messages; the button and the automatic pass are how *older*
+messages get (re)queued and how settled jobs get retried.
+
+**The queue fills itself.** Selecting a group is the merchant's opt-in to having
+that conversation read, so the `product-extraction-queue` worker calls the same
+function every 60 s for every workspace with a selection — ten workspaces per
+pass, rotating through a cursor, so a large deployment is served round-robin
+rather than always starting from the same first ten. Before this worker existed
+the manual endpoint was the *only* caller, which meant a message arriving after
+the merchant's last tap was never extracted at all: the catalog looked idle while
+the queue was simply never filled.
+
+The automatic pass is deliberately not the manual button
+(`settledJobQueuePolicy()` in `lib/whatsapp-product-autoqueue-policy.ts`):
+
+| | manual (`POST …/extract-whatsapp`) | automatic (worker) |
+| --- | --- | --- |
+| Messages that already have a job row | Selected again | Skipped |
+| `failed` and `PRODUCT_TEXT_REQUIRED` jobs | Reset to `pending`, `attempts = 0` | Left alone |
+| Workspace paused for an exhausted AI quota | Queue anyway (the merchant asked) | Skipped for this pass |
+
+Each difference exists because the timer has no opinion about any particular
+message. Reviving a settled job every minute would retry a durable failure
+forever and spend the workspace's AI quota doing it; re-selecting messages that
+already have jobs would keep hitting the oldest-200 cap on the same page and
+never reach newer messages; and queueing over an active quota pause would insert
+jobs at `next_run_at = now`, each failing on the same quota and re-pausing the
+workspace, once per message. `WHATSAPP_PRODUCT_AUTOQUEUE_WORKER_ENABLED=false`
+stops the pass and returns the chain to manual-only queueing.
+
+Every pass logs `WHATSAPP_PRODUCT_AUTOQUEUE_PASS` with `workspaces`, `queued`,
+`quotaPaused`, `errored` and the `cursor`, so "is anything being extracted at
+all?" is one log query rather than an inference from the catalog.
+
 ### Extraction outcomes worth recognising
 
 | `last_error` | Cause | Action |
 | --- | --- | --- |
-| `PRODUCT_TEXT_REQUIRED` | No text and vision extraction produced nothing (disabled, no stored image, or unreadable) | Expected for pure emoji/sticker messages. Enable `PRODUCT_VISION_EXTRACTION_ENABLED` if photo-only offers matter (§6) |
+| `PRODUCT_TEXT_REQUIRED` | No text and vision extraction produced nothing (disabled, no stored image, or unreadable) | Expected for pure emoji/sticker messages. Enable `PRODUCT_VISION_EXTRACTION_ENABLED` if photo-only offers matter (§6), then re-run extraction: with the flag on the queue admits caption-less photos, so their stored images are finally read. Counted in `pendingJobs.noText` |
 | `WHATSAPP_MEDIA_DOWNLOAD_PENDING` | Media still downloading | Automatic; the download worker requeues on completion |
-| `WHATSAPP_MEDIA_DOWNLOAD_FAILED` | Evolution could not serve the file | Re-run the media download; the job is requeued when the object is stored |
+| `WHATSAPP_MEDIA_DOWNLOAD_FAILED` | The download gave up for good: a non-retryable error, or 5 attempts spent. Written only when the bundle holds neither text nor stored media — otherwise extraction proceeds and the product lists the missing photo among its incomplete fields | Re-run extraction (`POST /api/social/products/extract-whatsapp`); it resets the media to `pending` with a fresh set of attempts and the job is requeued when the object is stored. Media of messages imported weeks after they were sent can never succeed: WhatsApp stops serving it |
 | `WHATSAPP_ASSOCIATED_MESSAGE_UNAVAILABLE` | A bundled message row disappeared | Data problem; requeue the remaining message |
 | `WHATSAPP_CONTENT_ASSOCIATION_REQUIRES_REVIEW` | Possible bundle, unconfirmed | Confirm/reject in the association screen; retries hourly meanwhile |
 | `MISSING_AI_PROVIDER_KEY` | Neither `OPENAI_API_KEY` nor `GEMINI_API_KEY` set | Set a key and restart; jobs stay `pending` and are retried |
+| `SUBSCRIPTION_LIMIT_REACHED:aiGenerations` | The workspace spent its monthly AI quota | Not a fault: the job stays `pending`, its attempt is returned, and the whole workspace queue is postponed (`PRODUCT_EXTRACTION_QUOTA_PAUSE_MS`, default 6h). It resumes by itself, or immediately after an upgrade |
 | `AI_PROVIDER_COOLING_DOWN` | Both providers recently returned 429/402/401/403 | Wait for the cooldown (default 5 min, `AI_PROVIDER_COOLDOWN_MS`; credential errors wait 6× longer) |
 | `PRODUCT_EXTRACTION_INVALID_JSON` / `_INVALID_RESPONSE` / `_INVALID_CANDIDATE` | The model answered outside the contract | Transient; the job retries. If it repeats for one message, the message is unusual — check the corpus (§9) |
 | `PRODUCT_EXTRACTION_CROSS_GROUP_CANDIDATE` | The model mixed messages from different groups | Rejected by design; evidence must come from one bundle |
@@ -104,14 +203,57 @@ never auto-create anything.
 Required fields for publication (`PRODUCT_PUBLICATION_REQUIRED_FIELDS`): `name`,
 `price`, `currency`, `availability`, `media`. `description` is advisory — worth
 completing, never a blocker. Price and currency are accepted only as a verified
-pair quoted from the source text; a message saying «45 ريال» without a currency
-the extractor can map yields a null price, which then shows up as a blocker.
+pair quoted from the source text.
+
+**How a currency is resolved** (`lib/product-currency-resolution.ts`). The quote
+the model returns must contain the currency, and it is read strictly first:
+
+1. A bare three-letter code (`YER`, `SAR`, `USD`, …) is taken as-is.
+2. A currency named with its nationality is taken as that code — «ريال يمني» →
+   `YER`, «الريال السعودي» → `SAR`. The definite article is optional on both
+   halves.
+3. Two different codes in one quote cancel to `null`. Conflicting evidence is
+   never resolved by picking one.
+4. Only then does the workspace's own country
+   (`mena_workspaces.country`) settle an *ambiguous* word, and only when that
+   country actually uses the word: «٤٥ ريال» in `YE` → `YER`, in `SA` → `SAR`, in
+   `QA` → `QAR`. «٤٥ دولار» in `YE` still yields nothing, because guessing `USD`
+   from a country that does not use it is invention. A country that is `null`
+   (three of the five live workspaces) or that does not use the word changes
+   nothing, so the behaviour is exactly as strict as it was before.
+
+Arabic needs its own word boundaries here: JavaScript's `\b` is ASCII, so a
+plain `/ريال/` matched inside «ريالة» and «البرازيل». The patterns are built from
+a lookaround over the Arabic block instead.
+
+A currency that came from the country rather than from the message is grounded
+only as far as the word «ريال» goes — which rial came from a setting — so it
+forces `manualReviewRequired` exactly like a vision candidate does
+(`isCurrencyDerivedFromCountry()`). It can never become an automatic draft with a
+price the merchant has not seen, and the model's own claimed `currency` must
+still equal the resolved code.
 
 Endpoints:
 
-- `GET /api/social/products/whatsapp-extractions` → `{ suggestions, pendingJobs }`
-  where `pendingJobs` counts `pending`, `processing`, `waitingMedia`,
-  `waitingAssociation`, `failed`. This is the fastest single health check.
+- `GET /api/social/products/whatsapp-extractions` →
+  `{ suggestions, pendingJobs, suggestionCounts, pagination }`.
+  - Query: `classification=product|not_product`, `status` (repeatable or comma
+    separated, `review|draft_created|possible_duplicate`), `limit` (1–50,
+    clamped), `offset` (0–10 000, clamped). An unknown classification or status
+    is a `400`; `dismissed` cannot be requested at all. Out-of-range paging is
+    clamped rather than rejected so an older client still gets a usable page.
+    Rules in `lib/product-extraction-list-policy.ts`.
+  - `pendingJobs` counts `pending`, `processing`, `waitingMedia`,
+    `waitingAssociation`, `failed`, `quotaPaused` (pending jobs held back by an
+    exhausted AI quota) and `noText` — jobs that completed with nothing readable
+    (a photo with no caption, a sticker, a voice note). `noText` matters because
+    those jobs are neither failed nor waiting, so nothing else on screen mentions
+    them; six such messages sat on the live workspace invisible.
+  - `suggestionCounts` is counted over the whole queue ignoring the page filters,
+    so the catalog badge (`pendingProductReview`) does not change while the
+    merchant moves between slices, and `pagination.nextOffset` is `null` on the
+    last page.
+  - This is the fastest single health check.
 - `POST /api/social/products/extract-whatsapp` (`{ messageId? }`) → `202 { queuedMessages }`.
 - `POST /api/social/products/whatsapp-extractions/:id/create-draft`.
 - `POST /api/social/products/whatsapp-extractions/:id/dismiss`.
@@ -309,6 +451,9 @@ behaviour stays fixed.
 | Variable | Purpose |
 | --- | --- |
 | `WHATSAPP_PRODUCT_EXTRACTION_WORKER_ENABLED` | `false` stops the extraction worker |
+| `WHATSAPP_PRODUCT_AUTOQUEUE_WORKER_ENABLED` | `false` stops the pass that fills the queue on its own (§2); queueing becomes manual-only again |
+| `PRODUCT_EXTRACTION_QUOTA_PAUSE_MS` | How long the queue waits after the AI quota runs out (floored at 5 minutes) |
+| `WHATSAPP_SYNC_GROUP_CONCURRENCY`, `WHATSAPP_SYNC_RUN_BUDGET_MS`, `WHATSAPP_SYNC_HEARTBEAT_MS` | Bounds for the historical sync that feeds this chain — see `docs/WHATSAPP_SYNC.md` |
 | `PRODUCT_PUBLICATION_WORKER_ENABLED` | `false` stops the publication worker |
 | `MENA_WORKER_NAME` | Run a single worker (`product-extraction`, `product-publication`, …) instead of `all` |
 | `PRODUCT_VISION_EXTRACTION_ENABLED` | Opt into photo-only extraction |

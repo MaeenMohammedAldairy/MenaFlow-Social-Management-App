@@ -3,6 +3,21 @@ import type {
   WhatsAppMessageMedia,
 } from "@workspace/api-client-react";
 
+// Kept in sync with `whatsapp-media-failure-copy.ts` and the server policy by
+// the drift tests; a local copy avoids pulling a runtime import into this
+// pure grouping module (its unit tests run directly under Node).
+const MEDIA_UPSTREAM_EXPIRED_REASON = "WHATSAPP_MEDIA_EXPIRED_UPSTREAM";
+const MEDIA_UPSTREAM_EXPIRY_AGE_MS = 21 * 24 * 60 * 60 * 1000;
+
+function isExpiredMediaItem(item: WhatsAppMessageMedia, message: WhatsAppMessage): boolean {
+  if (item.downloadStatus !== "failed") return false;
+  if (item.failureReason === MEDIA_UPSTREAM_EXPIRED_REASON) return true;
+  const sentAt = message.messageTimestamp
+    ? new Date(message.messageTimestamp).getTime()
+    : Number.NaN;
+  return Number.isFinite(sentAt) && Date.now() - sentAt > MEDIA_UPSTREAM_EXPIRY_AGE_MS;
+}
+
 export type DisplayedWhatsAppMessageGroup = {
   key: string;
   messages: WhatsAppMessage[];
@@ -12,11 +27,14 @@ export type DisplayedWhatsAppMessageGroup = {
   contentBundleId: string | null;
   text: string;
   expectedCount: number;
+  expiredMediaCount: number;
+  mediaExpired: boolean;
   mediaFailed: boolean;
   mediaPending: boolean;
   postId: string | null;
   postStatus: string | null;
   senderName: string;
+  senderRole: "merchant" | "customer" | "unknown";
   messageTimestamp: string | null;
 };
 
@@ -28,17 +46,60 @@ export type DisplayedWhatsAppAssociationSuggestion =
 export function canConvertWhatsAppMessageGroup(
   group: Pick<
     DisplayedWhatsAppMessageGroup,
-    "text" | "media" | "expectedCount" | "mediaPending" | "mediaFailed"
+    | "text"
+    | "media"
+    | "expectedCount"
+    | "expiredMediaCount"
+    | "mediaPending"
+    | "mediaFailed"
   >,
 ): boolean {
+  const storedCount = group.media.filter(
+    ({ item }) => item.downloadStatus === "stored",
+  ).length;
   return Boolean(
     group.text.trim() &&
-      group.media.length > 0 &&
-      group.media.every(({ item }) => item.downloadStatus === "stored") &&
-      group.expectedCount <= group.media.length &&
+      storedCount > 0 &&
+      storedCount + group.expiredMediaCount === group.media.length &&
+      group.expectedCount - group.expiredMediaCount <= storedCount &&
       !group.mediaPending &&
       !group.mediaFailed,
   );
+}
+
+/** Tells the merchant why «إضافة إلى مراجعة المنتجات» is unavailable. */
+export function whatsAppGroupConversionBlocker(
+  group: Pick<
+    DisplayedWhatsAppMessageGroup,
+    | "text"
+    | "media"
+    | "expectedCount"
+    | "expiredMediaCount"
+    | "mediaPending"
+    | "mediaFailed"
+  >,
+): string | null {
+  if (!group.text.trim()) {
+    return "لا يوجد نص أو وصف في هذه الرسالة؛ أضف وصف المنتج قبل إرساله للمراجعة.";
+  }
+  if (group.mediaFailed) {
+    return "تعذّر تنزيل بعض الوسائط؛ أعد محاولة التنزيل قبل الإرسال للمراجعة.";
+  }
+  if (group.mediaPending) {
+    return "بعض الوسائط لا تزال قيد التنزيل؛ انتظر اكتمالها ثم أرسل الرسالة للمراجعة.";
+  }
+  const storedCount = group.media.filter(
+    ({ item }) => item.downloadStatus === "stored",
+  ).length;
+  if (!storedCount) {
+    return group.expiredMediaCount
+      ? "انتهت صلاحية جميع وسائط هذه الرسالة لدى واتساب؛ أعد إرسالها قبل المراجعة."
+      : "لا توجد وسائط محفوظة لهذه الرسالة؛ لا يمكن استخراج منتج منها.";
+  }
+  if (group.expectedCount - group.expiredMediaCount > storedCount) {
+    return "بعض وسائط الرسالة غير محفوظة؛ أكمل تنزيلها قبل الإرسال للمراجعة.";
+  }
+  return null;
 }
 
 export function groupWhatsAppMessages(
@@ -153,9 +214,19 @@ export function groupWhatsAppMessages(
           : 0,
       ),
     );
-    const mediaFailed = group.messages.some((message) =>
-      message.mediaDownloadStatus === "failed" ||
-      message.media.some((item) => item.downloadStatus === "failed"),
+    const expiredEntries = group.media.filter(({ item, message }) =>
+      isExpiredMediaItem(item, message),
+    );
+    const expiredMediaCount = expiredEntries.length;
+    const messagesWithExpiredMedia = new Set(
+      expiredEntries.map(({ message }) => message.id),
+    );
+    const mediaExpired = expiredMediaCount > 0;
+    const mediaFailed = group.media.some(({ item, message }) =>
+      item.downloadStatus === "failed" && !isExpiredMediaItem(item, message),
+    ) || group.messages.some((message) =>
+      message.mediaDownloadStatus === "failed" &&
+      !messagesWithExpiredMedia.has(message.id),
     );
     const mediaPending = group.messages.some((message) =>
       message.mediaAvailable &&
@@ -194,11 +265,20 @@ export function groupWhatsAppMessages(
         group.messages.find((message) => message.contentBundleId)?.contentBundleId ?? null,
       text,
       expectedCount,
+      expiredMediaCount,
+      mediaExpired,
       mediaFailed,
       mediaPending,
       postId,
       postStatus: group.messages.find((message) => message.linkedPostStatus)?.linkedPostStatus ?? null,
       senderName: first.senderName || first.senderId || "مستخدم واتساب",
+      senderRole: group.messages.some(
+        (message) => (message as { fromMe?: boolean }).fromMe === true,
+      )
+        ? "merchant"
+        : group.messages.some((message) => message.senderId)
+          ? "customer"
+          : "unknown",
       messageTimestamp: group.messages
         .map((message) => message.messageTimestamp)
         .filter((value): value is string => Boolean(value))

@@ -49,19 +49,34 @@ import {
 } from "../lib/whatsapp-message-scope";
 import { isWhatsAppOptOutMessage } from "../lib/whatsapp-opt-out";
 import {
+  createHeartbeat,
+  createRunDeadline,
+  resolveSyncHeartbeatMs,
+  resolveSyncRunBudgetMs,
+} from "../lib/sync-run-control";
+import {
   shouldQueueWhatsAppAutoReply,
   whatsAppAutoReplyHourlyLimit,
-  whatsAppAutoReplyLoopGuardCode,
   whatsAppAutoReplyMaxAgeMs,
-  whatsAppAutoReplyNextRunAt,
-  whatsAppAutoReplySupersededCode,
+  whatsAppAutoReplyQuotaPauseMs,
   whatsAppAutoReplyWindowExpiredCode,
 } from "../lib/whatsapp-auto-reply-policy";
+import {
+  autoReplyLoopGuardCode,
+  autoReplyNextRunAt,
+  autoReplySupersededCode,
+} from "../lib/auto-reply-policy";
+import {
+  planAutoReplyFailure,
+  whatsAppAutoReplyErrorCode,
+} from "../lib/auto-reply-failure";
 import {
   describeWhatsAppAutoReplySkip,
   describeWhatsAppInboundOutcome,
   logInboundWebhookOutcome,
+  type InboundWebhookOutcome,
 } from "../lib/inbound-webhook-diagnostics";
+import { recordInboundWebhookAttempt } from "../lib/inbound-delivery-log";
 import { processWhatsAppOrderIntake } from "../lib/whatsapp-order-intake";
 import {
   resolveWhatsAppAlbumSource,
@@ -104,6 +119,7 @@ import {
   decryptWhatsAppDirectMessageValue,
   encryptWhatsAppDirectMessageValue,
   isWhatsAppDirectPhoneJid,
+  outboundWhatsAppDirectMessageValues,
   normalizeWhatsAppDirectMessageText,
   redactWhatsAppPrivateData,
   selectWhatsAppDirectJid,
@@ -544,6 +560,7 @@ async function persistImportedMessage(
     remoteMessageId,
     senderId,
     senderName,
+    fromMe: fromBusiness,
     messageType,
     textBody: textBody ?? null,
     caption,
@@ -676,6 +693,7 @@ async function persistImportedMessage(
             effectiveRow.senderId ?? sql`${menaWhatsAppMessages.senderId}`,
           senderName:
             effectiveRow.senderName ?? sql`${menaWhatsAppMessages.senderName}`,
+          fromMe: effectiveRow.fromMe || sql`${menaWhatsAppMessages.fromMe}`,
           messageType:
             effectiveRow.messageType === "unknown"
               ? sql`${menaWhatsAppMessages.messageType}`
@@ -848,6 +866,14 @@ async function persistImportedMessage(
 // remoteJid filter (50 pages × 100 records per sync run per group).
 const WHATSAPP_HISTORY_SCAN_PAGE_CAP = 50;
 
+/** Cooperative controls for a history scan: a liveness beat and a stop check. */
+type WhatsAppHistoryFetchControls = {
+  /** Called after every page; the caller uses it to prove the run is alive. */
+  onPage?: (info: { page: number; recordCount: number }) => void | Promise<void>;
+  /** Returning false stops the scan and keeps whatever was collected. */
+  shouldContinue?: () => boolean;
+};
+
 async function fetchHistoryForGroup(
   instanceName: string,
   groupJid: string,
@@ -855,8 +881,10 @@ async function fetchHistoryForGroup(
   beforeCursor?: Date,
   maxNewMessages?: number,
   fullyPersistedMessageIds: ReadonlySet<string> = new Set(),
-): Promise<unknown[]> {
+  controls: WhatsAppHistoryFetchControls = {},
+): Promise<{ records: unknown[]; budgetReached: boolean }> {
   const matchingRecords = new Map<string, unknown>();
+  let budgetReached = false;
   let receivedRecordCount = 0;
   let newMessageCount = 0;
   // When the upstream Evolution deployment ignores the remoteJid filter it
@@ -868,7 +896,7 @@ async function fetchHistoryForGroup(
   let filterIgnored = false;
   let scannedPages = 0;
   for (const jidField of ["remoteJid", "remoteJidAlt"] as const) {
-    if (filterIgnored) break;
+    if (filterIgnored || budgetReached) break;
     if (
       maxNewMessages !== undefined &&
       newMessageCount >= maxNewMessages
@@ -877,6 +905,13 @@ async function fetchHistoryForGroup(
     }
     const seenPageRecordIds = new Set<string>();
     for (let page = 1; page <= 1000; page += 1) {
+      // Checked before the request, not after: a run that is out of budget must
+      // not start another 30-second page fetch. What was already collected is
+      // kept, and the next sync continues from the advanced cursor.
+      if (controls.shouldContinue && !controls.shouldContinue()) {
+        budgetReached = true;
+        break;
+      }
       const response = await evolutionRequest(
         `chat/findMessages/${encodeURIComponent(instanceName)}`,
         {
@@ -892,6 +927,9 @@ async function fetchHistoryForGroup(
         throw new Error("EVOLUTION_HISTORY_INVALID_RESPONSE");
       }
       receivedRecordCount += records.length;
+      if (controls.onPage) {
+        await controls.onPage({ page, recordCount: records.length });
+      }
       const pageRecordIds = records.map((record) => {
         const envelope = asRecord(record);
         const key = asRecord(envelope?.key);
@@ -982,12 +1020,24 @@ async function fetchHistoryForGroup(
   }
   if (
     !filterIgnored &&
+    !budgetReached &&
     receivedRecordCount > 0 &&
     matchingRecords.size === 0
   ) {
     throw new Error("EVOLUTION_HISTORY_GROUP_MISMATCH");
   }
-  return [...matchingRecords.values()];
+  if (budgetReached) {
+    logger.warn(
+      {
+        instanceName,
+        groupJid,
+        receivedRecordCount,
+        matchedRecordCount: matchingRecords.size,
+      },
+      "WHATSAPP_HISTORY_RUN_BUDGET_REACHED",
+    );
+  }
+  return { records: [...matchingRecords.values()], budgetReached };
 }
 
 export async function syncGroupHistory(
@@ -1080,6 +1130,9 @@ export async function syncGroupHistory(
   );
   const stats = { imported: 0, skipped: 0, failed: 0, status: "running" };
   const runStartedAt = Date.now();
+  const runDeadline = createRunDeadline(resolveSyncRunBudgetMs());
+  const heartbeat = createHeartbeat(resolveSyncHeartbeatMs());
+  let historyBudgetReached = false;
   let fetchedHistoryCount = 0;
   let alreadyPersistedCount = 0;
   const logSyncResult = (fetchedCount: number) => {
@@ -1094,6 +1147,7 @@ export async function syncGroupHistory(
         importedCount: stats.imported,
         skippedCount: stats.skipped,
         failedCount: stats.failed,
+        historyBudgetReached,
         durationMs: Date.now() - runStartedAt,
       },
       "WhatsApp historical sync completed",
@@ -1123,14 +1177,30 @@ export async function syncGroupHistory(
 
     if (await cancelIfAutoSyncDisabled()) return stats;
 
-    let messages = await fetchHistoryForGroup(
+    const history = await fetchHistoryForGroup(
       instanceName,
       groupJid,
       100,
       historyCursor,
       includeHistory ? historyLimit : undefined,
       fullyPersistedMessageIds,
+      {
+        shouldContinue: () => !runDeadline.expired(),
+        // The fetch phase can run for minutes without touching the database,
+        // and stale-run cancellation in another process only looks at
+        // updated_at. Beating once per interval keeps a live run alive without
+        // writing on every page.
+        onPage: async () => {
+          if (!heartbeat.due()) return;
+          heartbeat.beat();
+          await updateSyncState(workspaceId, instanceName, groupJid, groupId, {
+            status: "running",
+          });
+        },
+      },
     );
+    let messages = history.records;
+    historyBudgetReached = history.budgetReached;
     fetchedHistoryCount = messages.length;
     if (!includeHistory) {
       messages = filterWhatsAppHistoryFrom(messages, syncStartedAt);
@@ -1143,15 +1213,23 @@ export async function syncGroupHistory(
     alreadyPersistedCount = candidateMessageCount - messages.length;
     if (await cancelIfAutoSyncDisabled()) return stats;
     if (messages.length === 0) {
-      stats.status =
-        includeHistory && fetchedHistoryCount === 0 ? "empty" : "complete";
+      stats.status = historyBudgetReached
+        ? "partial"
+        : includeHistory && fetchedHistoryCount === 0
+          ? "empty"
+          : "complete";
       await updateSyncState(workspaceId, instanceName, groupJid, groupId, {
         status: stats.status,
         lastSyncedAt: new Date(),
         importedCount: 0,
         skippedCount: 0,
         failedCount: 0,
-        lastError: stats.status === "empty" ? "EVOLUTION_HISTORY_EMPTY" : null,
+        lastError:
+          stats.status === "empty"
+            ? "EVOLUTION_HISTORY_EMPTY"
+            : historyBudgetReached
+              ? "WHATSAPP_HISTORY_RUN_BUDGET_REACHED"
+              : null,
         completedAt: new Date(),
       });
       logSyncResult(fetchedHistoryCount);
@@ -1249,7 +1327,9 @@ export async function syncGroupHistory(
     if (await cancelIfAutoSyncDisabled()) return stats;
 
     const status =
-      stats.failed > 0 || (stats.imported === 0 && stats.skipped > 0)
+      stats.failed > 0 ||
+      historyBudgetReached ||
+      (stats.imported === 0 && stats.skipped > 0)
         ? "partial"
         : "complete";
     const cursorUpdates = latestCursor
@@ -1268,9 +1348,13 @@ export async function syncGroupHistory(
       lastError:
         stats.failed > 0
           ? (firstFailureCode ?? "WHATSAPP_MESSAGE_IMPORT_FAILED")
-          : stats.imported === 0 && stats.skipped > 0
-            ? "EVOLUTION_HISTORY_MESSAGES_SKIPPED"
-            : null,
+          : historyBudgetReached
+            // Not a fault: the run stopped on its budget and the next sync
+            // continues from the cursor this one advanced.
+            ? "WHATSAPP_HISTORY_RUN_BUDGET_REACHED"
+            : stats.imported === 0 && stats.skipped > 0
+              ? "EVOLUTION_HISTORY_MESSAGES_SKIPPED"
+              : null,
       completedAt: new Date(),
     });
     stats.status = status;
@@ -1324,6 +1408,63 @@ async function processWhatsAppAutoReplyAsync(input: {
   customerMessage: string;
 }): Promise<void> {
   let sendStarted = false;
+  // Both replies — the order-intake text and the generated one — leave through
+  // the same sequence, which used to be written out twice: mark the event
+  // `sending` (so a crash from here on is read as "may have landed"), send,
+  // record the outbound message in the conversation, settle the event as sent.
+  const deliverReply = async (text: string): Promise<void> => {
+    await db
+      .update(menaWhatsAppAutoReplyEvents)
+      .set({
+        status: "sending",
+        leaseExpiresAt: new Date(Date.now() + whatsappAutoReplyLeaseMs),
+      })
+      .where(
+        and(
+          eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+          eq(menaWhatsAppAutoReplyEvents.status, "processing"),
+        ),
+      );
+    sendStarted = true;
+    const replyMessageId = await sendWhatsAppAutoReply(
+      input.instanceName,
+      input.remoteJid,
+      text,
+    );
+    const sentAt = new Date();
+    await db
+      .insert(menaWhatsAppDirectMessages)
+      .values(
+        outboundWhatsAppDirectMessageValues({
+          ownerId: input.connection.ownerId,
+          workspaceId: input.connection.workspaceId,
+          instanceName: input.instanceName,
+          remoteJid: input.remoteJid,
+          text,
+          status: "sent",
+          messageTimestamp: sentAt,
+          providerMessageId: replyMessageId,
+        }),
+      )
+      .onConflictDoNothing();
+    await db
+      .update(menaWhatsAppAutoReplyEvents)
+      .set({
+        status: "sent",
+        replyMessageId,
+        leaseExpiresAt: null,
+        completedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
+          eq(
+            menaWhatsAppAutoReplyEvents.workspaceId,
+            input.connection.workspaceId,
+          ),
+        ),
+      );
+  };
   try {
     if (!isWhatsAppDirectPhoneJid(input.remoteJid)) {
       await db
@@ -1405,7 +1546,7 @@ async function processWhatsAppAutoReplyAsync(input: {
       await stopWhatsAppAutoReplyEvent({
         claimId: input.claimId,
         workspaceId: input.connection.workspaceId,
-        errorCode: whatsAppAutoReplySupersededCode,
+        errorCode: autoReplySupersededCode,
       });
       return;
     }
@@ -1419,7 +1560,7 @@ async function processWhatsAppAutoReplyAsync(input: {
       await stopWhatsAppAutoReplyEvent({
         claimId: input.claimId,
         workspaceId: input.connection.workspaceId,
-        errorCode: whatsAppAutoReplyLoopGuardCode,
+        errorCode: autoReplyLoopGuardCode,
       });
       return;
     }
@@ -1434,62 +1575,7 @@ async function processWhatsAppAutoReplyAsync(input: {
       text: input.customerMessage,
     });
     if (orderIntake.kind !== "ignored") {
-      await db
-        .update(menaWhatsAppAutoReplyEvents)
-        .set({
-          status: "sending",
-          leaseExpiresAt: new Date(Date.now() + whatsappAutoReplyLeaseMs),
-        })
-        .where(
-          and(
-            eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
-            eq(menaWhatsAppAutoReplyEvents.status, "processing"),
-          ),
-        );
-      sendStarted = true;
-      const sentAt = new Date();
-      const replyMessageId = await sendWhatsAppAutoReply(
-        input.instanceName,
-        input.remoteJid,
-        orderIntake.text,
-      );
-      await db.insert(menaWhatsAppDirectMessages).values({
-        id: randomUUID(),
-        ownerId: input.connection.ownerId,
-        workspaceId: input.connection.workspaceId,
-        instanceName: input.instanceName,
-        remoteJidHash: whatsappDirectConversationKeys(
-          input.connection.workspaceId,
-          input.instanceName,
-          input.remoteJid,
-        )[0]!,
-        encryptedRemoteJid: encryptWhatsAppDirectMessageValue(input.remoteJid),
-        providerMessageId: replyMessageId,
-        direction: "outbound",
-        status: "sent",
-        encryptedTextBody: encryptWhatsAppDirectMessageValue(
-          normalizeWhatsAppDirectMessageText(orderIntake.text),
-        ),
-        messageTimestamp: sentAt,
-        expiresAt: whatsappDirectMessageExpiry(sentAt),
-      }).onConflictDoNothing();
-      await db
-        .update(menaWhatsAppAutoReplyEvents)
-        .set({
-          status: "sent",
-          replyMessageId,
-          leaseExpiresAt: null,
-          completedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
-            eq(
-              menaWhatsAppAutoReplyEvents.workspaceId,
-              input.connection.workspaceId,
-            ),
-          ),
-        );
+      await deliverReply(orderIntake.text);
       return;
     }
 
@@ -1593,91 +1679,52 @@ async function processWhatsAppAutoReplyAsync(input: {
       matchingProduct,
     );
 
-    await db
-      .update(menaWhatsAppAutoReplyEvents)
-      .set({
-        status: "sending",
-        leaseExpiresAt: new Date(Date.now() + whatsappAutoReplyLeaseMs),
-      })
-      .where(
-        and(
-          eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
-          eq(menaWhatsAppAutoReplyEvents.status, "processing"),
-        ),
-      );
-    sendStarted = true;
-    const replyMessageId = await sendWhatsAppAutoReply(
-      input.instanceName,
-      input.remoteJid,
-      reply,
-    );
-    const sentAt = new Date();
-    const conversationKey = whatsappDirectConversationKeys(
-      input.connection.workspaceId,
-      input.instanceName,
-      input.remoteJid,
-    )[0]!;
-    await db.insert(menaWhatsAppDirectMessages).values({
-      id: randomUUID(),
-      ownerId: input.connection.ownerId,
+    await deliverReply(reply);
+  } catch (error) {
+    // A limit that lifts by itself is not a failure: an exhausted AI quota
+    // resets next period and a missing provider key is fixed in minutes, while a
+    // `failed` row is never claimed again, so the customer's message would lose
+    // its reply permanently. The planner keeps such an event `queued`, pushes
+    // `next_run_at` out and hands the attempt back; the age check above is what
+    // bounds the loop, so a quota that never lifts ends with the conversation
+    // handed to a human instead of an event queued forever.
+    const plan = planAutoReplyFailure({
+      errorCode: whatsAppAutoReplyErrorCode(
+        error,
+        error instanceof EvolutionApiError,
+      ),
+      retryable: retryMetaAutoReplyGeneration(error, input.attempts),
+      attempts: input.attempts,
+      sendStarted,
+      quotaPauseMs: whatsAppAutoReplyQuotaPauseMs(),
+    });
+    const logContext = {
       workspaceId: input.connection.workspaceId,
       instanceName: input.instanceName,
-      remoteJidHash: conversationKey,
-      encryptedRemoteJid: encryptWhatsAppDirectMessageValue(input.remoteJid),
-      providerMessageId: replyMessageId,
-      direction: "outbound",
-      status: "sent",
-      encryptedTextBody: encryptWhatsAppDirectMessageValue(
-        normalizeWhatsAppDirectMessageText(reply),
-      ),
-      messageTimestamp: sentAt,
-      expiresAt: whatsappDirectMessageExpiry(sentAt),
-    }).onConflictDoNothing();
-
-    await db
-      .update(menaWhatsAppAutoReplyEvents)
-      .set({
-        status: "sent",
-        replyMessageId,
-        leaseExpiresAt: null,
-        completedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(menaWhatsAppAutoReplyEvents.id, input.claimId),
-          eq(
-            menaWhatsAppAutoReplyEvents.workspaceId,
-            input.connection.workspaceId,
-          ),
-        ),
+      errorCode: plan.errorCode,
+      outcome: plan.kind,
+    };
+    if (plan.kind === "quota_pause") {
+      logger.warn(
+        { ...logContext, nextRunAt: plan.nextRunAt.toISOString() },
+        "WHATSAPP_AUTO_REPLY_PAUSED_FOR_LIMIT",
       );
-  } catch (error) {
-    const errorCode =
-      error instanceof EvolutionApiError
-        ? error.message.slice(0, 80)
-        : error instanceof Error
-          ? error.name.slice(0, 80)
-          : "AUTO_REPLY_FAILED";
-    logger.error(
-      {
-        workspaceId: input.connection.workspaceId,
-        instanceName: input.instanceName,
-        errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
-      },
-      "WhatsApp automatic reply failed",
-    );
-    const retry =
-      !sendStarted && retryMetaAutoReplyGeneration(error, input.attempts);
+    } else {
+      logger.error(logContext, "WhatsApp automatic reply failed");
+    }
     await db
       .update(menaWhatsAppAutoReplyEvents)
       .set({
-        status: sendStarted ? "unknown" : retry ? "queued" : "failed",
-        errorCode: sendStarted ? "AUTO_REPLY_RESULT_UNKNOWN" : errorCode,
-        nextRunAt: retry
-          ? new Date(Date.now() + Math.min(input.attempts * 10_000, 30_000))
-          : new Date(),
+        status: plan.status,
+        errorCode: plan.errorCode,
+        // The attempt was claimed but never spent on a generation, and the
+        // column is capped at 3, so it is handed back rather than lost.
+        attempts: plan.returnAttempt
+          ? sql`GREATEST(${menaWhatsAppAutoReplyEvents.attempts} - 1, 0)`
+          : undefined,
+        nextRunAt: plan.nextRunAt ?? new Date(),
         leaseExpiresAt: null,
-        completedAt: sendStarted || !retry ? new Date() : null,
+        completedAt: plan.completed ? new Date() : null,
       })
       .where(
         and(
@@ -1983,22 +2030,49 @@ async function coalesceQueuedWhatsAppAutoReply(input: {
   return updated.length > 0;
 }
 
+/**
+ * Logs one inbound outcome and keeps it in the delivery log.
+ *
+ * A log line disappears with the deployment; the merchant's question — "did
+ * Evolution ever call us?" — needs the answer to still exist hours later. The
+ * persisted contexts here carry event names, instance names and hashed
+ * conversation keys only, never message text.
+ *
+ * Recording is fire-and-forget: `recordInboundWebhookAttempt` swallows its own
+ * failures, so a broken delivery log can never turn a received message into a
+ * failed webhook.
+ */
+function recordWhatsAppInboundOutcome(
+  outcome: InboundWebhookOutcome,
+  context: Record<string, unknown> = {},
+): void {
+  logInboundWebhookOutcome(logger, outcome, context);
+  void recordInboundWebhookAttempt({
+    platform: "whatsapp",
+    event: outcome.event,
+    deliveryConfirmed: outcome.deliveryConfirmed,
+    workspaceId:
+      typeof context.workspaceId === "string" ? context.workspaceId : null,
+    instanceName:
+      typeof context.instanceName === "string" ? context.instanceName : null,
+    context,
+  });
+}
+
 export async function processWebhookEvent(
   body: unknown,
   req: { headers?: Record<string, string | string[] | undefined> },
 ): Promise<void> {
   const payload = asRecord(body);
   if (!payload) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("PAYLOAD_NOT_OBJECT"),
     );
     return;
   }
 
   if (!verifyWhatsAppWebhookSecret(req.headers?.["x-evolution-api-key"])) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("REJECTED_SECRET"),
     );
     return;
@@ -2008,8 +2082,7 @@ export async function processWebhookEvent(
     payload.event ?? payload.type,
   );
   if (!isWhatsAppMessageWebhookEvent(eventName)) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("IGNORED_EVENT"),
       { eventName },
     );
@@ -2043,8 +2116,7 @@ export async function processWebhookEvent(
     queryString(payload?.instanceName) ??
     null;
   if (!remoteJid || !instanceName) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("MISSING_INSTANCE_OR_JID"),
       { eventName, hasInstance: Boolean(instanceName), hasJid: Boolean(remoteJid) },
     );
@@ -2057,8 +2129,7 @@ export async function processWebhookEvent(
     .where(eq(menaWhatsAppConnections.instanceName, instanceName))
     .limit(2);
   if (matchingConnections.length !== 1) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome(
         matchingConnections.length > 1 ? "AMBIGUOUS_INSTANCE" : "UNKNOWN_INSTANCE",
       ),
@@ -2068,8 +2139,7 @@ export async function processWebhookEvent(
   }
   const [connection] = matchingConnections;
   if (!connection) {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("UNKNOWN_INSTANCE"),
       { eventName, instanceName, matches: 0 },
     );
@@ -2188,10 +2258,10 @@ export async function processWebhookEvent(
   if (!autoReplyDecision.shouldQueue && isDirectIncoming && isDirectPhoneJid) {
     // A real customer message that produced no reply is the one case an
     // operator must be able to find in the log, with the reason next to it.
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppAutoReplySkip(autoReplyDecision.reason),
       {
+        workspaceId: connection.workspaceId,
         instanceName,
         eventName,
         autoReplyEnabled: connection.autoReplyEnabled,
@@ -2200,10 +2270,10 @@ export async function processWebhookEvent(
     );
   }
   if (eventName === "MESSAGES_UPSERT") {
-    logInboundWebhookOutcome(
-      logger,
+    recordWhatsAppInboundOutcome(
       describeWhatsAppInboundOutcome("PROCESSED"),
       {
+        workspaceId: connection.workspaceId,
         instanceName,
         eventName,
         directIncoming: isDirectIncoming,
@@ -2216,7 +2286,7 @@ export async function processWebhookEvent(
       incomingMessageCandidate!,
     );
     if (customerMessage && remoteMessageId) {
-      const nextRunAt = whatsAppAutoReplyNextRunAt();
+      const nextRunAt = autoReplyNextRunAt();
       const coalesced =
         directConversationKey !== null &&
         (await coalesceQueuedWhatsAppAutoReply({

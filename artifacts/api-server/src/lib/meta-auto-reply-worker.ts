@@ -35,18 +35,21 @@ import {
   requestedMetaProductImages,
   formatMetaAutoReplyPrice,
   retryMetaAutoReplyGeneration,
-  classifyMetaAutoReplyFailure,
+  metaAutoReplyLimitPauseMs,
   buildMetaAutoReplyConversationContext,
   hasPreviousMetaAutoReplyInteraction,
   matchMetaAutoReplyProductFromPublishedPost,
   metaAutoReplyHourlyLimit,
-  metaAutoReplyLoopGuardCode,
-  metaAutoReplySupersededCode,
   type MetaAutoReplyConversationEvent,
 } from "./meta-auto-reply";
+import {
+  autoReplyLoopGuardCode,
+  autoReplySupersededCode,
+} from "./auto-reply-policy";
+import { planAutoReplyFailure } from "./auto-reply-failure";
 import { formatMetaOrderDraftReply } from "./meta-order-messages";
 import { processMetaOrderIntake } from "./meta-order-intake";
-import { signedWhatsAppMediaUrl } from "./meta-publishing";
+import { signedWhatsAppMediaUrl } from "./public-media-url";
 import { workspaceMediaKey } from "./product-utils.ts";
 import {
   getMetaPublishedPosts,
@@ -533,38 +536,77 @@ async function claimNextJob() {
   });
 }
 
+/**
+ * Settles a job whose attempt failed before anything could reach the customer.
+ *
+ * The decision itself — pause on a limit that lifts, retry a transient fault,
+ * otherwise fail — is the one both queues share, in `auto-reply-failure.ts`.
+ * A send that may have landed is settled by `processJob` before it gets here,
+ * so `sendStarted` is always false; the `unknown` branch of the plan exists for
+ * the caller that cannot know, and is applied rather than asserted away.
+ *
+ * The Meta-specific inputs are the Graph 429 (rate-limited, so retry) and the
+ * code stored, which `isUnansweredMetaReply` matches on.
+ */
 async function retryOrFail(
   job: typeof menaMetaAutoReplyJobs.$inferSelect,
   error: unknown,
 ): Promise<void> {
   const reason =
     error instanceof Error ? error.message : "META_AUTO_REPLY_FAILED";
-  if (classifyMetaAutoReplyFailure(reason) === "skipped") {
-    // Nothing left the server: the workspace has no AI budget or the provider
-    // is not configured. Pause the queue entry instead of failing it.
-    logger.info(
+  const plan = planAutoReplyFailure({
+    errorCode: reason,
+    retryable:
+      job.attempts < maxAttempts &&
+      (retryMetaAutoReplyGeneration(error, job.attempts) ||
+        (error instanceof MetaInboxGraphError && error.status === 429)),
+    attempts: job.attempts,
+    sendStarted: false,
+    quotaPauseMs: metaAutoReplyLimitPauseMs(),
+  });
+
+  if (plan.kind === "quota_pause") {
+    // Nothing left the server: the workspace has no AI budget or the provider is
+    // not configured. Both lift without the merchant — the quota at the next
+    // period, the key as soon as an operator adds it — so the job waits instead
+    // of ending. `skipped` was terminal unless someone pressed retry, which made
+    // a monthly limit cost the merchant a reply they had already paid for.
+    //
+    // The wait is bounded by the reply window checked before generation: a limit
+    // that never lifts ends with the job skipped as window-expired and the
+    // conversation handed to a human, never with a reply sent a day late. The
+    // attempt is handed back because it was claimed but never spent, and the
+    // column is capped at 3 — an attempt burned on nothing would strand the job
+    // even after the quota returned.
+    logger.warn(
       {
         workspaceId: job.workspaceId,
         jobId: job.id,
-        errorCode: reason.slice(0, 80),
+        errorCode: plan.errorCode,
+        nextRunAt: plan.nextRunAt.toISOString(),
       },
-      "Meta automatic reply paused before sending",
+      "META_AUTO_REPLY_PAUSED_FOR_LIMIT",
     );
-    await markJob(job.id, job.workspaceId, "skipped", reason.slice(0, 80));
-    return;
-  }
-  const retryable =
-    job.attempts < maxAttempts &&
-    (retryMetaAutoReplyGeneration(error, job.attempts) ||
-      (error instanceof MetaInboxGraphError && error.status === 429));
-  if (retryable) {
-    const delayMs = job.attempts === 1 ? 10_000 : 30_000;
     await db
       .update(menaMetaAutoReplyJobs)
       .set({
         status: "queued",
-        errorCode: reason.slice(0, 80),
-        nextRunAt: new Date(Date.now() + delayMs),
+        errorCode: plan.errorCode,
+        nextRunAt: plan.nextRunAt,
+        leaseExpiresAt: null,
+        attempts: sql`GREATEST(${menaMetaAutoReplyJobs.attempts} - 1, 0)`,
+        updatedAt: new Date(),
+      })
+      .where(eq(menaMetaAutoReplyJobs.id, job.id));
+    return;
+  }
+  if (plan.kind === "retry") {
+    await db
+      .update(menaMetaAutoReplyJobs)
+      .set({
+        status: "queued",
+        errorCode: plan.errorCode,
+        nextRunAt: plan.nextRunAt,
         leaseExpiresAt: null,
         updatedAt: new Date(),
       })
@@ -576,11 +618,11 @@ async function retryOrFail(
     {
       workspaceId: job.workspaceId,
       jobId: job.id,
-      errorCode: reason.slice(0, 80),
+      errorCode: plan.errorCode,
     },
     "Meta automatic reply failed",
   );
-  await markJob(job.id, job.workspaceId, "failed", reason.slice(0, 80));
+  await markJob(job.id, job.workspaceId, plan.status, plan.errorCode);
 }
 
 async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
@@ -697,7 +739,7 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       job.id,
       job.workspaceId,
       "skipped",
-      metaAutoReplyLoopGuardCode,
+      autoReplyLoopGuardCode,
     );
     return;
   }
@@ -735,7 +777,7 @@ async function processJob(job: typeof menaMetaAutoReplyJobs.$inferSelect) {
       job.id,
       job.workspaceId,
       "skipped",
-      metaAutoReplySupersededCode,
+      autoReplySupersededCode,
     );
     return;
   }

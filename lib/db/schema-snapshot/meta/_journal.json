@@ -43,6 +43,34 @@
       "when": 1795465575574,
       "tag": "0005_workspace_country",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795493337217,
+      "tag": "0006_aberrant_micromax",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795553972140,
+      "tag": "0007_careless_cardiac",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795557259593,
+      "tag": "0008_lucky_gorgon",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795565695957,
+      "tag": "0009_loose_vivisector",
+      "breakpoints": true
     }
   ]
 }

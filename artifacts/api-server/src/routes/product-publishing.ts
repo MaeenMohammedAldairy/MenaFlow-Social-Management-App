@@ -14,7 +14,8 @@ import {
   productPublicationBlockers,
 } from "../lib/product-draft-policy";
 import { requireWorkspace, requestWorkspaceId, requestWorkspaceUserId } from "../lib/workspace-context";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
+import { requireProductWriter } from "../lib/product-intake-service.ts";
 import { processProductPublicationQueue } from "../lib/product-publishing";
 import { logger } from "../lib/logger.ts";
 
@@ -72,12 +73,13 @@ function connectionIssue(
   return missing.length ? `META_PERMISSIONS_MISSING:${missing.join(",")}` : null;
 }
 
-router.post("/social/products/publish", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+router.post(
+  "/social/products/publish",
+  requireWorkspace,
+  requireProductWriter,
+  async (req, res) => {
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const body = req.body as Record<string, unknown> | null;
   const requestKey = typeof body?.requestKey === "string"
     ? body.requestKey.trim()
@@ -261,11 +263,8 @@ router.post("/social/products/publish", requireWorkspace, async (req, res) => {
 });
 
 router.get("/social/products/publish-jobs", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const requestKey = typeof req.query.requestKey === "string"
     ? req.query.requestKey.trim()
     : "";
@@ -288,12 +287,13 @@ router.get("/social/products/publish-jobs", requireWorkspace, async (req, res) =
   });
 });
 
-router.post("/social/products/publish-jobs/retry", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+router.post(
+  "/social/products/publish-jobs/retry",
+  requireWorkspace,
+  requireProductWriter,
+  async (req, res) => {
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const rawJobIds: unknown[] = Array.isArray(req.body?.jobIds)
     ? req.body.jobIds
     : [];

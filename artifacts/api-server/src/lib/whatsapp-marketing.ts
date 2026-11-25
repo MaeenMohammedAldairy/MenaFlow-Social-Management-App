@@ -38,6 +38,7 @@ import {
 import { isConfirmedWhatsAppMediaGroupSource } from "./whatsapp-album-relations";
 import { getWhatsAppContentBundle } from "./whatsapp-content-associations";
 import { retryWhatsAppMediaDownload } from "./whatsapp-media-download";
+import { isExpiredWhatsAppMediaFailure } from "./whatsapp-media-expiry-policy";
 import { extractWhatsAppAlbumAssociation } from "./whatsapp-message-scope";
 import { saveDraft, safePublishResults } from "./whatsapp-marketing-drafts";
 import { logger } from "./logger.ts";
@@ -233,8 +234,45 @@ async function processWhatsAppMessageUnlocked(
       ),
     ))
     .orderBy(asc(menaWhatsAppMessages.messageTimestamp), asc(menaWhatsAppMessages.createdAt));
+  const loadMediaState = async (messages: typeof groupMessages) => {
+    const ids = [...new Set(messages.map((item) => item.id))];
+    const rows = ids.length > 0
+      ? await db
+          .select()
+          .from(menaWhatsAppMessageMedia)
+          .where(and(
+            eq(menaWhatsAppMessageMedia.workspaceId, workspaceId),
+            inArray(menaWhatsAppMessageMedia.messageId, ids),
+          ))
+      : [];
+    const expired = new Set(rows
+      .filter((item) => item.downloadStatus === "failed" && isExpiredWhatsAppMediaFailure({
+        failureReason: item.failureReason,
+        messageTimestamp: messages
+          .find((message) => message.id === item.messageId)?.messageTimestamp ?? null,
+      }))
+      .map((item) => item.id));
+    return {
+      mediaRows: rows,
+      expiredMediaIds: expired,
+      messagesWithExpiredMedia: new Set(rows
+        .filter((item) => expired.has(item.id))
+        .map((item) => item.messageId)),
+    };
+  };
+  const beforeRetry = await loadMediaState(groupMessages);
   for (const groupMessage of groupMessages) {
     if (groupMessage.mediaDownloadStatus === "failed" || groupMessage.mediaDownloadStatus === "pending") {
+      // WhatsApp no longer serves media for an old message. The expiry policy
+      // already refuses another provider call; skip the whole reset here too so
+      // a review post is not held open by a re-queue that cannot succeed.
+      const failedMedia = beforeRetry.mediaRows.filter((item) =>
+        item.messageId === groupMessage.id && item.downloadStatus === "failed",
+      );
+      if (
+        failedMedia.length > 0 &&
+        failedMedia.every((item) => beforeRetry.expiredMediaIds.has(item.id))
+      ) continue;
       await retryWhatsAppMediaDownload(groupMessage);
     }
   }
@@ -265,6 +303,8 @@ async function processWhatsAppMessageUnlocked(
         asc(menaWhatsAppMessages.createdAt),
       );
   }
+  const { mediaRows, expiredMediaIds, messagesWithExpiredMedia } =
+    await loadMediaState(groupMessages);
   groupMessages.sort((left, right) => {
     const leftIndex = left.mediaGroupIndex;
     const rightIndex = right.mediaGroupIndex;
@@ -301,16 +341,6 @@ async function processWhatsAppMessageUnlocked(
     .limit(1);
   const sourceMessageId = existingPost?.sourceMessageId ?? albumSourceMessageId;
 
-  const messageIds = [...new Set(groupMessages.map((item) => item.id))];
-  const mediaRows = messageIds.length > 0
-    ? await db
-        .select()
-        .from(menaWhatsAppMessageMedia)
-        .where(and(
-          eq(menaWhatsAppMessageMedia.workspaceId, workspaceId),
-          inArray(menaWhatsAppMessageMedia.messageId, messageIds),
-        ))
-    : [];
   const messageOrder = new Map(groupMessages.map((item, index) => [item.id, index]));
   mediaRows.sort((left, right) => {
     return (messageOrder.get(left.messageId) ?? Number.MAX_SAFE_INTEGER) -
@@ -320,11 +350,14 @@ async function processWhatsAppMessageUnlocked(
   const readyMedia = mediaRows.filter((item) => item.downloadStatus === "stored");
   const expectedCount = Math.max(
     0,
-    ...groupMessages.map((item) =>
-      isConfirmedWhatsAppMediaGroupSource(item.mediaGroupSource)
-        ? item.mediaGroupExpectedCount ?? 0
-        : 0,
-    ),
+    Math.max(
+      0,
+      ...groupMessages.map((item) =>
+        isConfirmedWhatsAppMediaGroupSource(item.mediaGroupSource)
+          ? item.mediaGroupExpectedCount ?? 0
+          : 0,
+      ),
+    ) - expiredMediaIds.size,
   );
   const isAlbumGroup = groupMessages.some((item) =>
     item.mediaGroupId &&
@@ -334,13 +367,20 @@ async function processWhatsAppMessageUnlocked(
   const latestReceivedAt = Math.max(...groupMessages.map((item) => item.updatedAt.getTime()));
   const firstReceivedAt = Math.min(...groupMessages.map((item) => item.createdAt.getTime()));
   const missingMessageMedia = groupMessages.some((item) =>
-    item.mediaAvailable && !readyMedia.some((media) => media.messageId === item.id),
+    item.mediaAvailable &&
+    !readyMedia.some((media) => media.messageId === item.id) &&
+    !messagesWithExpiredMedia.has(item.id),
   );
   const hasPendingDownload = mediaRows.some((item) => item.downloadStatus === "pending") ||
     groupMessages.some((item) => item.mediaDownloadStatus === "pending");
-  const hasTerminalDownloadFailure = mediaRows.some((item) => item.downloadStatus === "failed") ||
-    groupMessages.some((item) => item.mediaDownloadStatus === "failed");
+  const hasTerminalDownloadFailure = mediaRows.some((item) =>
+    item.downloadStatus === "failed" && !expiredMediaIds.has(item.id),
+  ) || groupMessages.some((item) =>
+    item.mediaDownloadStatus === "failed" &&
+    !messagesWithExpiredMedia.has(item.id),
+  );
   const unresolvedAlbumContainer = readyMedia.length === 0 &&
+    expiredMediaIds.size === 0 &&
     groupMessages.some((item) =>
       item.mediaGroupSource === "provider_album_container" &&
       item.messageType.toLowerCase().includes("album"),
@@ -456,7 +496,9 @@ async function processWhatsAppMessageUnlocked(
     [item.textBody, item.caption].filter((value): value is string => Boolean(value?.trim())),
   ))].join("\n");
   const mediaReady = groupMessages.every((item) =>
-    !item.mediaAvailable || readyMedia.some((media) => media.messageId === item.id),
+    !item.mediaAvailable ||
+    readyMedia.some((media) => media.messageId === item.id) ||
+    messagesWithExpiredMedia.has(item.id),
   ) && completion.mediaReady;
   const safeText = containsSensitivePersonalData(text) ? null : text || null;
   const mediaUrls = readyMedia.map((media) => media.id);
@@ -491,6 +533,8 @@ async function processWhatsAppMessageUnlocked(
       messageTimestamp: groupMessages
         .find((message) => message.id === media.messageId)
         ?.messageTimestamp?.toISOString() ?? null,
+      downloadStatus: media.downloadStatus,
+      failureReason: media.failureReason,
     })),
     selection.groupName,
     contentBundle?.id ?? null,
@@ -505,7 +549,7 @@ async function processWhatsAppMessageUnlocked(
       ),
       sourceExpectedMediaCount: Math.max(
         expectedCount,
-        mediaRows.length,
+        mediaRows.length - expiredMediaIds.size,
         readyMedia.length,
       ),
     },
@@ -877,6 +921,27 @@ export async function enqueueWhatsAppMessage(workspaceId: string, messageId: str
         updatedAt: now,
       },
     });
+}
+
+/**
+ * Queues a message once. Opening the message history must not reset an
+ * existing job's attempts or re-run a post that already exists.
+ */
+export async function enqueueWhatsAppMessageIfMissing(
+  workspaceId: string,
+  messageId: string,
+): Promise<boolean> {
+  const [existing] = await db
+    .select({ id: menaContentJobs.id })
+    .from(menaContentJobs)
+    .where(and(
+      eq(menaContentJobs.workspaceId, workspaceId),
+      eq(menaContentJobs.messageId, messageId),
+    ))
+    .limit(1);
+  if (existing) return false;
+  await enqueueWhatsAppMessage(workspaceId, messageId);
+  return true;
 }
 
 let queueWorkerRunning = false;

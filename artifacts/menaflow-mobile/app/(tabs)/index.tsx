@@ -123,8 +123,15 @@ function postQueueStatus(value: string | undefined): PostStatus {
 
 function HomeScreenContent({ userId }: { userId: string | null }) {
   const colors = useColors();
-  const { posts, refreshPosts, syncing, ready, storageError, autoPublishSettings } =
-    useStudio();
+  const {
+    posts,
+    refreshPosts,
+    syncing,
+    ready,
+    storageError,
+    autoPublishSettings,
+    hasMorePosts,
+  } = useStudio();
   const { workspaces, activeWorkspaceId, scopeReady } = useWorkspace();
   const activeWorkspace =
     workspaces.find((workspace) => workspace.id === activeWorkspaceId) ??
@@ -193,6 +200,10 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
     refetchInterval: POLL_AGGREGATE_MS,
     refetchOnWindowFocus: true,
   });
+  // Distinct people in the *first* page only. The inbox endpoint caps a page at
+  // 50 (100 max), so this figure is a floor, never a total: a merchant with 120
+  // conversations used to read "50". `hasMore` is what lets the card say "50+"
+  // instead of quietly claiming there are exactly 50.
   const conversationCount = inboxQuery.data
     ? new Set(
         inboxQuery.data.items.map(
@@ -200,6 +211,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
         ),
       ).size
     : null;
+  const conversationCountIsFloor = inboxQuery.data?.hasMore ?? false;
   const activeProductCount = catalogQuery.data
     ? catalogQuery.data.filter((product) => product.status === "active").length
     : null;
@@ -692,7 +704,9 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
                 ? inboxQuery.isError
                   ? "—"
                   : "…"
-                : conversationCount,
+                : conversationCountIsFloor
+                  ? `${conversationCount}+`
+                  : conversationCount,
             loading: conversationCount === null && !inboxQuery.isError,
             href: "/(tabs)/inbox" as const,
             disabled: false,
@@ -701,7 +715,7 @@ function HomeScreenContent({ userId }: { userId: string | null }) {
             label: "المنشورات",
             description: ready ? "ضمن المحتوى المتاح" : "جارٍ تحميل المحتوى",
             icon: "file-text" as const,
-            value: ready ? posts.length : "…",
+            value: ready ? (hasMorePosts ? `${posts.length}+` : posts.length) : "…",
             loading: !ready,
             href: "/(tabs)/content" as const,
             disabled: false,

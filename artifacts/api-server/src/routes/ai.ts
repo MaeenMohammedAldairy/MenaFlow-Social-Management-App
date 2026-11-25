@@ -8,6 +8,7 @@ import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
   callMeteredAiProvider,
   SubscriptionAiQuotaError,
+  textAiProviderOptions,
 } from "../lib/metered-ai-provider.ts";
 import {
   errorPayload,
@@ -90,12 +91,10 @@ router.post("/ai/content", requireWorkspace, async (req, res): Promise<void> => 
   try {
     const generated = await callMeteredAiProvider(workspaceId, {
       preferredProvider: provider === "gemini" ? "gemini" : undefined,
-      openAiMessages: [
-        { role: "system", content: "أنت مساعد كتابة تسويقية. التزم بالتعليمات واكتب بالعربية فقط." },
-        { role: "user", content: prompt },
-      ],
-      geminiContents: [{ parts: [{ text: prompt }] }],
-      geminiSystemInstruction: "أنت مساعد كتابة تسويقية. التزم بالتعليمات واكتب بالعربية فقط.",
+      ...textAiProviderOptions({
+        system: "أنت مساعد كتابة تسويقية. التزم بالتعليمات واكتب بالعربية فقط.",
+        user: prompt,
+      }),
       temperature: 0.7,
       maxTokens: 700,
       timeoutMs: 30_000,

@@ -8,7 +8,11 @@ import {
   processWhatsAppMediaDownloadQueue,
   processWhatsAppMediaThumbnailQueue,
 } from "./whatsapp-media-download";
-import { processWhatsAppProductExtractionQueue } from "./whatsapp-product-extraction";
+import {
+  autoQueueWhatsAppProductExtractions,
+  processWhatsAppProductExtractionQueue,
+  relinkCompletedExtractionMedia,
+} from "./whatsapp-product-extraction";
 import { processWhatsAppAutoReplyQueue } from "./whatsapp-sync";
 import { processWhatsAppOrderConfirmationsQueue } from "./whatsapp-order-confirmation-queue";
 import { processProductPublicationQueue } from "./product-publishing";
@@ -17,6 +21,7 @@ import { processMetaAutoReplyQueue } from "./meta-auto-reply-worker";
 import { processMetaOrderConfirmationsQueue } from "./meta-order-confirmation-queue";
 import { markStaleWhatsAppAutoRepliesUnknown } from "./whatsapp-auto-reply-recovery";
 import { purgeExpiredWhatsAppDirectMessages } from "./whatsapp-direct-message-retention";
+import { purgeOldInboundWebhookEvents } from "./inbound-delivery-log";
 import { processScheduledPostsQueue } from "./scheduled-posts";
 import { processWorkspaceDeletionQueue } from "./workspace-deletion";
 import {
@@ -34,8 +39,11 @@ type WorkerName =
   | "whatsapp-auto-replies"
   | "whatsapp-order-confirmations"
   | "whatsapp-direct-message-retention"
+  | "inbound-webhook-retention"
   | "meta-webhook-subscriptions"
   | "product-extraction"
+  | "product-extraction-queue"
+  | "product-extraction-media-relink"
   | "product-publication"
   | "media-download"
   | "media-thumbnails"
@@ -96,6 +104,17 @@ const workers: WorkerDefinition[] = [
     errorMessage: "WhatsApp direct-message retention cleanup failed",
   },
   {
+    // The inbound delivery log is a diagnostics table, not a record: one row per
+    // webhook call would otherwise grow without bound. Hourly is far coarser
+    // than the 7-day window it enforces, and it runs wherever workers run.
+    name: "inbound-webhook-retention",
+    intervalMs: 60 * 60_000,
+    enabled: () => true,
+    run: purgeOldInboundWebhookEvents,
+    disabledMessage: "",
+    errorMessage: "Inbound webhook event retention cleanup failed",
+  },
+  {
     // Meta replies used to run from an inline loop inside the API process only,
     // so a deployment that runs this worker separately never answered Facebook
     // or Instagram messages. Both entries now run wherever workers run.
@@ -147,6 +166,28 @@ const workers: WorkerDefinition[] = [
     run: processWhatsAppProductExtractionQueue,
     disabledMessage: "WhatsApp product extraction worker disabled",
     errorMessage: "WhatsApp product extraction queue poll failed",
+  },
+  {
+    name: "product-extraction-media-relink",
+    intervalMs: 60_000,
+    enabled: () =>
+      process.env.WHATSAPP_PRODUCT_EXTRACTION_WORKER_ENABLED !== "false",
+    run: relinkCompletedExtractionMedia,
+    disabledMessage: "Product extraction media relink worker disabled",
+    errorMessage: "Product extraction media relink poll failed",
+  },
+  {
+    // Selecting a WhatsApp group is the merchant's opt-in to extracting products
+    // from it, so the queue is filled without anyone pressing a button. Runs
+    // slower than the extraction worker it feeds: queueing is a scan, not a
+    // deadline.
+    name: "product-extraction-queue",
+    intervalMs: 60_000,
+    enabled: () =>
+      process.env.WHATSAPP_PRODUCT_AUTOQUEUE_WORKER_ENABLED !== "false",
+    run: autoQueueWhatsAppProductExtractions,
+    disabledMessage: "WhatsApp product auto-queue worker disabled",
+    errorMessage: "WhatsApp product auto-queue pass failed",
   },
   {
     name: "product-publication",

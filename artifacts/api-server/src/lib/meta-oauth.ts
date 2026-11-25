@@ -17,10 +17,6 @@ export type MetaConnectionOwnershipConflict =
   | "facebook_page"
   | "instagram_account";
 
-export function canManageMetaConnections(role: string): boolean {
-  return role === "owner";
-}
-
 export function normalizeMetaAccountId(value: unknown): string | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== "string") throw new Error("INVALID_META_ACCOUNT_ID");

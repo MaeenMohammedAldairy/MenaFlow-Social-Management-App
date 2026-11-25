@@ -81,7 +81,9 @@ export const menaOAuthStates = pgTable("mena_oauth_states", {
 export const menaWhatsAppConnections = pgTable(
   "mena_whatsapp_connections",
   {
-    ownerId: text("owner_id").notNull().unique(),
+    // Not unique on its own: one user may hold a WhatsApp connection in each of
+    // their workspaces. Uniqueness is (owner_id, workspace_id), declared below.
+    ownerId: text("owner_id").notNull(),
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "restrict" }),
@@ -107,6 +109,10 @@ export const menaWhatsAppConnections = pgTable(
       .defaultNow(),
   },
   (table) => [
+    uniqueIndex("mena_whatsapp_connections_owner_workspace_key").on(
+      table.ownerId,
+      table.workspaceId,
+    ),
     uniqueIndex("mena_whatsapp_connections_workspace_key").on(
       table.workspaceId,
     ),
@@ -340,11 +346,7 @@ export const menaWhatsAppGroupSelections = pgTable(
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "restrict" }),
-    ownerId: text("owner_id")
-      .notNull()
-      .references(() => menaWhatsAppConnections.ownerId, {
-        onDelete: "cascade",
-      }),
+    ownerId: text("owner_id").notNull(),
     instanceName: text("instance_name").notNull(),
     groupJid: text("group_jid").notNull(),
     groupId: text("group_id"),
@@ -363,10 +365,9 @@ export const menaWhatsAppGroupSelections = pgTable(
       .defaultNow(),
   },
   (table) => [
-    uniqueIndex("mena_whatsapp_group_selections_owner_id_group_jid_key").on(
-      table.ownerId,
-      table.groupJid,
-    ),
+    uniqueIndex(
+      "mena_whatsapp_group_selections_workspace_instance_group_jid_key",
+    ).on(table.workspaceId, table.instanceName, table.groupJid),
     uniqueIndex(
       "mena_whatsapp_group_selections_workspace_instance_group_id_key",
     ).on(table.workspaceId, table.instanceName, table.groupId),
@@ -375,6 +376,14 @@ export const menaWhatsAppGroupSelections = pgTable(
       table.instanceName,
       table.groupJid,
     ),
+    foreignKey({
+      columns: [table.ownerId, table.workspaceId],
+      foreignColumns: [
+        menaWhatsAppConnections.ownerId,
+        menaWhatsAppConnections.workspaceId,
+      ],
+      name: "mena_whatsapp_group_selections_connection_fk",
+    }).onDelete("cascade"),
     foreignKey({
       columns: [table.groupId, table.workspaceId, table.instanceName],
       foreignColumns: [
@@ -459,6 +468,7 @@ export const menaWhatsAppMessages = pgTable(
     remoteMessageId: text("remote_message_id").notNull(),
     senderId: text("sender_id"),
     senderName: text("sender_name"),
+    fromMe: boolean("from_me").notNull().default(false),
     messageType: text("message_type").notNull(),
     textBody: text("text_body"),
     caption: text("caption"),

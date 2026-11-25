@@ -243,6 +243,18 @@ async function deleteWorkspaceRows(
         .where(eq(table.workspaceId, workspaceId));
     }
 
+    // `mena_whatsapp_group_identity_migration_issues` is an operational table
+    // that records unresolved matches from the 2026-10-24 group-identity
+    // backfill. It is deliberately outside the Drizzle schema (only
+    // `scripts/migrate-whatsapp-group-identities.mjs` writes it, with raw SQL),
+    // so it cannot join the typed loop above — but it still carries a
+    // workspace_id, an owner_id and group JIDs, which means it must not outlive
+    // the erasure the merchant was promised.
+    await transaction.execute(
+      sql`DELETE FROM public.mena_whatsapp_group_identity_migration_issues
+          WHERE workspace_id = ${workspaceId}`,
+    );
+
     await transaction
       .delete(workspaces)
       .where(eq(workspaces.id, workspaceId));

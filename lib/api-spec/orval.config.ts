@@ -51,7 +51,14 @@ export default defineConfig({
       workspace: apiZodSrc,
       client: "zod",
       target: "generated",
-      schemas: { path: "generated/types", type: "typescript" },
+      // No separate `schemas` output on purpose. The TypeScript mirror it
+      // produced was never imported by anything, and it contradicted the
+      // validators beside it: for an operation with both a path and a query
+      // parameter, orval emitted `GetWhatsAppMediaUrlParams` twice — once as the
+      // path validator in api.ts, once as a query-only *type* under
+      // generated/types — so `export *` from both was a TS2308 error and the
+      // two names meant different objects. Every consumer of this package wants
+      // a validator; the client-side types live in @workspace/api-client-react.
       mode: "split",
       clean: true,
       prettier: true,
@@ -62,13 +69,26 @@ export default defineConfig({
           // the catalog installs zod 3. Pin to match the catalog.
           version: 3,
           coerce: {
-            query: ['boolean', 'number', 'string'],
+            // No `string` in the query list either: for a `format: date-time`
+            // query parameter orval appends `.datetime()` to the coerced
+            // string, and `zod.coerce.string()` returns a type that has no
+            // `.datetime()` — the generated file stopped typechecking. Query
+            // values arrive as strings anyway, so `zod.string()` is the same
+            // validator without the coercion.
+            query: ['boolean', 'number'],
             param: ['boolean', 'number', 'string'],
-            body: ['bigint', 'date'],
-            response: ['bigint', 'date'],
+            // No `date` in a body or a response: the contract declares these
+            // fields as strings, the wire carries strings, and the generated
+            // client types them as strings — but `zod.coerce.date()` turned the
+            // parsed value into a `Date` object. Every handler that validated a
+            // body and then handed a field to code expecting a string got a
+            // `Date` instead: `parseScheduledAt` returned null for every
+            // scheduled post, so POST and PATCH /posts answered 422 to a valid
+            // future instant.
+            body: ['bigint'],
+            response: ['bigint'],
           },
         },
-        useDates: true,
         useBigInt: true,
       },
     },

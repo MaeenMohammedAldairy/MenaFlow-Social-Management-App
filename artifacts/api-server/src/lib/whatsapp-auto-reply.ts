@@ -1,5 +1,8 @@
 import { evolutionRequest } from "./whatsapp-evolution.ts";
-import { callMeteredAiProvider } from "./metered-ai-provider.ts";
+import {
+  callMeteredAiProvider,
+  textAiProviderOptions,
+} from "./metered-ai-provider.ts";
 import {
   buildWhatsAppAutoReplySystemInstruction,
   type WhatsAppAutoReplySettings,
@@ -57,13 +60,8 @@ export async function generateWhatsAppAutoReply(
   ].join("\n");
 
   const result = await callMeteredAiProvider(workspaceId, {
-    openAiMessages: [
-      { role: "system", content: systemInstruction },
-      { role: "user", content: userText },
-    ],
+    ...textAiProviderOptions({ system: systemInstruction, user: userText }),
     openAiResponseFormat: undefined,
-    geminiContents: [{ parts: [{ text: userText }] }],
-    geminiSystemInstruction: systemInstruction,
     temperature: 0.3,
     maxTokens: 500,
     timeoutMs: 20_000,

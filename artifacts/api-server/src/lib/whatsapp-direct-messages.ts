@@ -1,4 +1,4 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import {
   decryptSensitiveValue,
   encryptSensitiveValue,
@@ -181,6 +181,59 @@ export function whatsappDirectMessageExpiry(
     timestamp.getTime() +
       WHATSAPP_DIRECT_MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000,
   );
+}
+
+/**
+ * The stored form of one outbound direct message.
+ *
+ * Every outbound row — an automatic reply, an order confirmation, a manual
+ * reply from the inbox — is keyed, encrypted and given its expiry the same way,
+ * and getting any of it wrong is silent: a wrong conversation key breaks the
+ * thread's grouping, unencrypted text defeats the protection at rest, a missing
+ * expiry keeps the message forever. The three writers spelled this out
+ * separately; now they don't.
+ *
+ * Only the row's shape. When it is written — before the send so the inbox can
+ * show a pending reply, or after it so nothing is recorded that did not go —
+ * stays the caller's decision.
+ */
+export function outboundWhatsAppDirectMessageValues(input: {
+  ownerId: string;
+  workspaceId: string;
+  instanceName: string;
+  remoteJid: string;
+  text: string;
+  status: "sending" | "sent";
+  messageTimestamp: Date;
+  providerMessageId?: string | null;
+  clientRequestId?: string | null;
+}) {
+  const conversationKey = whatsappDirectConversationKeys(
+    input.workspaceId,
+    input.instanceName,
+    input.remoteJid,
+  )[0]!;
+  return {
+    id: randomUUID(),
+    ownerId: input.ownerId,
+    workspaceId: input.workspaceId,
+    instanceName: input.instanceName,
+    remoteJidHash: conversationKey,
+    encryptedRemoteJid: encryptWhatsAppDirectMessageValue(input.remoteJid),
+    ...(input.providerMessageId === undefined
+      ? {}
+      : { providerMessageId: input.providerMessageId }),
+    ...(input.clientRequestId === undefined
+      ? {}
+      : { clientRequestId: input.clientRequestId }),
+    direction: "outbound" as const,
+    status: input.status,
+    encryptedTextBody: encryptWhatsAppDirectMessageValue(
+      normalizeWhatsAppDirectMessageText(input.text),
+    ),
+    messageTimestamp: input.messageTimestamp,
+    expiresAt: whatsappDirectMessageExpiry(input.messageTimestamp),
+  };
 }
 
 export function buildWhatsAppDirectMessageContext(

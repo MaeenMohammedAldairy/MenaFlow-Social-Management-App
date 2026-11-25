@@ -229,6 +229,38 @@ router.post(
       if (!existing) {
         throw new Error("WORKSPACE_DELETION_REQUEST_NOT_FOUND_AFTER_CONFLICT");
       }
+      // A request whose retry budget was exhausted stays `failed` and the
+      // worker never reads it again, so asking again is the only way to retry
+      // the erasure — which is what the settings screen tells the merchant they
+      // may do. It starts a new 30-day grace period rather than resuming the
+      // expired one: the copy promises thirty days from the request, and a
+      // deletion that lands without that warning is the one outcome worth
+      // being conservative about. A request still `pending` is returned as it
+      // stands — re-asking must not restart a clock the merchant was promised.
+      if (existing.status === "failed") {
+        const [restarted] = await db
+          .update(workspaceDeletionRequests)
+          .set({
+            status: "pending",
+            requestedAt: new Date(),
+            requestedBy: context.userId,
+            attempts: 0,
+            lastError: null,
+            completedAt: null,
+          })
+          .where(eq(workspaceDeletionRequests.id, existing.id))
+          .returning({
+            id: workspaceDeletionRequests.id,
+            status: workspaceDeletionRequests.status,
+            requestedAt: workspaceDeletionRequests.requestedAt,
+            completedAt: workspaceDeletionRequests.completedAt,
+          });
+        if (!restarted) {
+          throw new Error("WORKSPACE_DELETION_REQUEST_NOT_FOUND_AFTER_CONFLICT");
+        }
+        res.json({ request: restarted });
+        return;
+      }
       res.json({ request: existing });
     } catch (error) {
       next(error);

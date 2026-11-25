@@ -1,12 +1,17 @@
 import { createHash } from "node:crypto";
 import { type AiProviderOptions } from "./ai-provider.ts";
 import { resolvePurposeModelOverrides } from "./ai-provider-fallback.ts";
-import { callMeteredAiProvider } from "./metered-ai-provider.ts";
+import {
+  callMeteredAiProvider,
+  textAiProviderOptions,
+} from "./metered-ai-provider.ts";
 import {
   asRecord as record,
   boundedString as extractedString,
 } from "./value-utils.ts";
 import { logger } from "./logger.ts";
+
+import { resolveCurrencyFromEvidence } from "./product-currency-resolution.ts";
 
 export type ProductExtractionSource = {
   id: string;
@@ -32,6 +37,11 @@ export type ProductExtractionCandidate = {
   data: ExtractedProductData;
   evidence: Record<string, string | null>;
   confidence: Record<string, number>;
+  /** Field → exact position in the source message, for shared-source items. */
+  evidenceSpans?: Record<
+    string,
+    { sourceId: string; start: number; end: number }
+  >;
   complete: boolean;
 };
 
@@ -135,34 +145,19 @@ function hasMultiplePriceMentions(sourceText: string): boolean {
   return priceMentions(sourceText).length > 1;
 }
 
-function currencyCodeFromEvidence(value: string): string | null {
-  const code = /(?:^|[^A-Za-z])([A-Za-z]{3})(?:$|[^A-Za-z])/.exec(value);
-  if (code) return code[1]!.toUpperCase();
-
-  const normalized = value
-    .normalize("NFKC")
-    .replace(/[\u064B-\u065F\u0670]/g, "")
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ة/g, "ه")
-    .toLocaleLowerCase();
-  const explicitCurrencies: Array<[RegExp, string]> = [
-    [/ريال\s+سعودي/, "SAR"],
-    [/ريال\s+يمني/, "YER"],
-    [/ريال\s+عماني/, "OMR"],
-    [/ريال\s+قطري/, "QAR"],
-    [/دينار\s+كويتي/, "KWD"],
-    [/دينار\s+بحريني/, "BHD"],
-    [/دينار\s+اردني/, "JOD"],
-    [/درهم\s+اماراتي/, "AED"],
-    [/جنيه\s+مصري/, "EGP"],
-    [/دولار\s+امريكي/, "USD"],
-  ];
-  return explicitCurrencies.find(([pattern]) => pattern.test(normalized))?.[1] ?? null;
-}
+export type ProductExtractionContext = {
+  /**
+   * ISO 3166-1 alpha-2 of the workspace's business country. Used only to settle
+   * an ambiguous currency word — see `product-currency-resolution.ts`. Omitting
+   * it keeps the strict behaviour: «45 ريال» yields no currency.
+   */
+  workspaceCountry?: string | null;
+};
 
 export function normalizeProductExtractionResponse(
   content: string,
   sources: readonly ProductExtractionSource[],
+  context: ProductExtractionContext = {},
 ): {
   candidates: ProductExtractionCandidate[];
   nonProductMessageIds: string[];
@@ -207,10 +202,41 @@ export function normalizeProductExtractionResponse(
     const sourceMessageIds = [...new Set(rawSourceMessageIds)];
     if (
       sourceMessageIds.length !== rawSourceMessageIds.length ||
-      sourceMessageIds.some((id) => !sourceById.has(id)) ||
-      sourceMessageIds.some((id) => assignedIds.has(id))
+      sourceMessageIds.some((id) => !sourceById.has(id))
     ) {
       throw new Error("PRODUCT_EXTRACTION_INVALID_SOURCE_GROUPING");
+    }
+    // A message may mention several products. Reusing a source is allowed only
+    // when the model also says which part of that message proves each item —
+    // otherwise every item would claim the same evidence and the review card
+    // would be impossible to trust.
+    const reusesSource = sourceMessageIds.some((id) => assignedIds.has(id));
+    const rawSpans = record(candidate.evidence_spans);
+    const evidenceSpans: NonNullable<ProductExtractionCandidate["evidenceSpans"]> = {};
+    if (rawSpans) {
+      for (const [field, value] of Object.entries(rawSpans)) {
+        const span = record(value);
+        const sourceId = typeof span?.sourceId === "string"
+          ? span.sourceId
+          : typeof span?.source_id === "string"
+            ? span.source_id
+            : null;
+        const start = Number(span?.start);
+        const end = Number(span?.end);
+        if (
+          sourceId &&
+          sourceMessageIds.includes(sourceId) &&
+          Number.isInteger(start) &&
+          Number.isInteger(end) &&
+          start >= 0 &&
+          end > start
+        ) {
+          evidenceSpans[field] = { sourceId, start, end };
+        }
+      }
+    }
+    if (reusesSource && !Object.keys(evidenceSpans).length) {
+      throw new Error("PRODUCT_EXTRACTION_SHARED_SOURCE_NEEDS_EVIDENCE");
     }
     sourceMessageIds.forEach((id) => assignedIds.add(id));
 
@@ -268,8 +294,15 @@ export function normalizeProductExtractionResponse(
     const currency = extractedString(rawData.currency, 3)?.toUpperCase() ?? null;
     const normalizedCurrency =
       currency && /^[A-Z]{3}$/.test(currency) ? currency : null;
+    // Strict resolution first; the workspace's country settles only an
+    // ambiguity the quote itself left open («45 ريال»). The model's claimed code
+    // still has to equal the resolved one, so a pair is never accepted on the
+    // country alone.
     const evidencedCurrency = evidence.currency
-      ? currencyCodeFromEvidence(evidence.currency)
+      ? resolveCurrencyFromEvidence({
+          evidence: evidence.currency,
+          country: context.workspaceCountry ?? null,
+        }).code
       : null;
     const verifiedCurrency = normalizedCurrency === evidencedCurrency
       ? normalizedCurrency
@@ -351,6 +384,7 @@ export function normalizeProductExtractionResponse(
       confidence: priceAmbiguous
         ? { ...confidence, price: 0, currency: 0 }
         : confidence,
+      evidenceSpans,
       complete,
     });
   }
@@ -470,6 +504,7 @@ export function remapProductExtractionCandidates(
 export async function extractWhatsAppProductCandidates(
   workspaceId: string,
   sources: readonly ProductExtractionSource[],
+  context: ProductExtractionContext = {},
 ): Promise<{ model: string; candidates: ProductExtractionCandidate[] }> {
   const localSources = toLocalProductExtractionSources(sources);
   const input = JSON.stringify(
@@ -489,19 +524,16 @@ export async function extractWhatsAppProductCandidates(
     "إذا احتوى النص على سعرين أو عملتين محتملتين، لا تختر واحدًا: أعد price وcurrency بقيمة null ليبقى السجل للمراجعة.",
     "اجعل name وsku قيمًا حرفية موجودة في النص. اجعل description اقتباسًا حرفيًا متصلًا من النص لا إعادة صياغة ولا مواصفات مستنتجة. أرفق لكل قيمة evidence حرفية؛ اتركها null إذا لم يوجد سند حرفي.",
     "ولّد من اسم المنتج وسياق النص من 1 إلى 5 أسماء بديلة قصيرة وملائمة للبحث، مثل المرادف الدارج أو اسم الفئة المذكورة. لا تضف علامة تجارية أو طرازاً أو صفة أو استخداماً غير مذكور أو غير واضح من النص. أعط evidence.aliases اقتباساً حرفياً يسند هوية المنتج، واترك القائمة فارغة إذا تعذر ذلك.",
-    "أعط confidence بين 0 و1 لكل من name وsku وaliases وdescription وprice وcurrency وavailability. لا ترفع الثقة للرسائل القديمة أو العروض المؤقتة أو الأرقام ذات الوحدات الملتبسة.",
-    "صنّف كل معرّف رسالة مرة واحدة فقط: إما ضمن منتج واضح في products أو ضمن nonProductMessageIds. لا تترك رسائل دون تصنيف. أعد JSON بالشكل {products:[{sourceMessageIds:[],data:{name,sku,aliases:[],description,price,currency,availability},evidence:{name,sku,aliases,description,price,currency,availability},confidence:{name,sku,aliases,description,price,currency,availability}}],nonProductMessageIds:[]}.",
+    "أعط confidence بين 0 و1 لكل من name وsku وaliases وdescription وprice وcurrency وavailability. لا ترفع الثقة للرسائل القديمة أو العروض المؤقتة أو الأرقام ذات الوحدات الملتبسة. الثقة النهائية يحسبها النظام، وقيمتك للمراقبة فقط.",
+    "إذا ذكرت رسالة واحدة أكثر من منتج، أعد منتجًا مستقلًا لكل عنصر مع نفس sourceMessageIds، وأضف evidence_spans يحدد لكل حقل source_id وموضع start/end داخل نص المصدر. بدون مواضع دقيقة تُرفض العناصر المتعددة.",
+    "صنّف كل معرّف رسالة مرة واحدة على الأقل: إما ضمن منتج واضح في products أو ضمن nonProductMessageIds. لا تترك رسائل دون تصنيف. أعد JSON بالشكل {products:[{sourceMessageIds:[],evidence_spans:{},data:{name,sku,aliases:[],description,price,currency,availability},evidence:{name,sku,aliases,description,price,currency,availability},confidence:{name,sku,aliases,description,price,currency,availability}}],nonProductMessageIds:[]}.",
   ].join("\n");
   const providerOptions = {
-    openAiMessages: [
-      { role: "system", content: instruction },
-      { role: "user", content: `رسائل المصدر بصيغة JSON:\n${input}` },
-    ],
+    ...textAiProviderOptions({
+      system: instruction,
+      user: `رسائل المصدر بصيغة JSON:\n${input}`,
+    }),
     openAiResponseFormat: { type: "json_object" },
-    geminiContents: [{
-      parts: [{ text: `رسائل المصدر بصيغة JSON:\n${input}` }],
-    }],
-    geminiSystemInstruction: instruction,
     geminiResponseFormat: {
       text: {
         mimeType: "application/json",
@@ -577,6 +609,19 @@ export async function extractWhatsAppProductCandidates(
                     ),
                     required: [...fieldNames],
                   },
+                  evidence_spans: {
+                    type: "object",
+                    additionalProperties: {
+                      type: "object",
+                      additionalProperties: false,
+                      properties: {
+                        source_id: { type: "string" },
+                        start: { type: "integer" },
+                        end: { type: "integer" },
+                      },
+                      required: ["source_id", "start", "end"],
+                    },
+                  },
                 },
                 required: [
                   "sourceMessageIds",
@@ -609,6 +654,7 @@ export async function extractWhatsAppProductCandidates(
     normalized = normalizeProductExtractionResponse(
       result.content,
       localSources,
+      context,
     );
   } catch (error) {
     if (!(error instanceof Error) || !error.message.startsWith("PRODUCT_EXTRACTION_")) {
@@ -637,6 +683,7 @@ export async function extractWhatsAppProductCandidates(
     normalized = normalizeProductExtractionResponse(
       fallbackResult.content,
       localSources,
+      context,
     );
     model = fallbackResult.model;
   }

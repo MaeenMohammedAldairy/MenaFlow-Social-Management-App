@@ -3,7 +3,7 @@ import { db, posts } from "@workspace/db";
 import { DeletePostParams } from "@workspace/api-zod";
 
 import { Router, type IRouter } from "express";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 import { processWhatsAppMessage } from "../lib/whatsapp-marketing";
@@ -14,12 +14,9 @@ import { sendPostQuotaError, responseForRow } from "./posts-domain";
 import { logger } from "../lib/logger.ts";
 
 router.post("/posts/from-message", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   const messageId =
     typeof req.body?.messageId === "string" ? req.body.messageId.trim() : null;
@@ -66,12 +63,9 @@ router.post("/posts/from-message", requireWorkspace, async (req, res) => {
 });
 
 router.delete("/posts/:id", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   const paramResult = DeletePostParams.safeParse(req.params);
   if (!paramResult.success) {

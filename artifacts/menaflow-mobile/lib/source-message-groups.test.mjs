@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   canConvertWhatsAppMessageGroup,
+  whatsAppGroupConversionBlocker,
   groupWhatsAppMessages,
 } from "./source-message-groups.ts";
 
@@ -335,7 +336,7 @@ test("shows media fetched through a confirmed content bundle on its message card
   assert.deepEqual(grouped[0].media.map(({ item }) => item.id), ["off-page-image"]);
 });
 
-test("allows conversion only when the group has text and complete stored media", () => {
+test("allows conversion only when the group has text and usable media", () => {
   const complete = {
     text: "نص المنتج",
     media: [
@@ -343,6 +344,7 @@ test("allows conversion only when the group has text and complete stored media",
       { item: { downloadStatus: "stored" } },
     ],
     expectedCount: 2,
+    expiredMediaCount: 0,
     mediaPending: false,
     mediaFailed: false,
   };
@@ -370,6 +372,85 @@ test("allows conversion only when the group has text and complete stored media",
     }),
     false,
   );
+});
+
+test("the conversion blocker explains why the action is unavailable", () => {
+  const base = {
+    text: "نص المنتج",
+    media: [{ item: { downloadStatus: "stored" } }],
+    expectedCount: 1,
+    expiredMediaCount: 0,
+    mediaPending: false,
+    mediaFailed: false,
+  };
+  assert.equal(whatsAppGroupConversionBlocker(base), null);
+  assert.ok(whatsAppGroupConversionBlocker({ ...base, text: " " })?.includes("لا يوجد نص"));
+  assert.ok(whatsAppGroupConversionBlocker({ ...base, mediaPending: true })?.includes("التنزيل"));
+  assert.ok(whatsAppGroupConversionBlocker({ ...base, media: [], expiredMediaCount: 1 })?.includes("صلاحية"));
+});
+
+test("an expired WhatsApp media item does not block conversion of its group", () => {
+  const expiredTimestamp = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const grouped = groupWhatsAppMessages([
+    message({
+      id: "with-media",
+      mediaAvailable: true,
+      mediaDownloadStatus: "failed",
+      mediaGroupId: "album",
+      mediaGroupSource: "protocol_association",
+      mediaGroupExpectedCount: 2,
+      caption: "نص المنتج",
+      messageTimestamp: expiredTimestamp,
+      media: [
+        { id: "kept", downloadStatus: "stored", mediaType: "image" },
+        {
+          id: "expired",
+          downloadStatus: "failed",
+          mediaType: "image",
+          failureReason: "WHATSAPP_MEDIA_EXPIRED_UPSTREAM",
+        },
+      ],
+    }),
+  ]);
+  assert.equal(grouped.length, 1);
+  assert.equal(grouped[0].mediaExpired, true);
+  assert.equal(grouped[0].mediaFailed, false);
+  assert.equal(grouped[0].expiredMediaCount, 1);
+  assert.equal(canConvertWhatsAppMessageGroup(grouped[0]), true);
+
+  const allExpired = groupWhatsAppMessages([
+    message({
+      id: "all-expired",
+      mediaAvailable: true,
+      mediaDownloadStatus: "failed",
+      caption: "نص المنتج",
+      messageTimestamp: expiredTimestamp,
+      media: [{
+        id: "expired",
+        downloadStatus: "failed",
+        failureReason: "WHATSAPP_MEDIA_EXPIRED_UPSTREAM",
+      }],
+    }),
+  ]);
+  assert.equal(allExpired[0].mediaExpired, true);
+  assert.equal(allExpired[0].mediaFailed, false);
+  assert.equal(canConvertWhatsAppMessageGroup(allExpired[0]), false);
+});
+
+test("a recent failed download is still a failure, not an expiry", () => {
+  const grouped = groupWhatsAppMessages([
+    message({
+      id: "recent",
+      mediaAvailable: true,
+      mediaDownloadStatus: "failed",
+      caption: "نص المنتج",
+      messageTimestamp: new Date().toISOString(),
+      media: [{ id: "broken", downloadStatus: "failed" }],
+    }),
+  ]);
+  assert.equal(grouped[0].mediaExpired, false);
+  assert.equal(grouped[0].mediaFailed, true);
+  assert.equal(canConvertWhatsAppMessageGroup(grouped[0]), false);
 });
 
 test("returns an empty list when there are no messages", () => {

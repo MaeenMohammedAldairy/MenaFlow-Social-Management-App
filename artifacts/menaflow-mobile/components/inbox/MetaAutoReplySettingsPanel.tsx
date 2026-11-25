@@ -23,8 +23,13 @@ import {
   InboundDeliveryCard,
   type InboundDeliveryFact,
 } from "@/components/inbox/InboundDeliveryCard";
+import { describeMetaSubscriptionFailure } from "@/lib/meta-subscription-failure";
 import { SocialPlatformIcon } from "@/components/SocialPlatformIcon";
 import { formatArabicDateTime, formatArabicNumber } from "@/lib/formatting";
+import {
+  webhookAttemptFacts,
+  webhookAttemptHeadline,
+} from "@/lib/inbound-webhook-copy";
 import { useColors } from "@/hooks/useColors";
 import {
   activateMetaWebhookSubscriptions,
@@ -257,6 +262,10 @@ export function MetaAutoReplySettingsPanel({
     },
   });
 
+  const attemptFormatters = {
+    formatNumber: formatArabicNumber,
+    formatDateTime: formatArabicDateTime,
+  };
   const inbound = query.data?.inbound;
   const inboundSubscription = inbound?.subscriptions.find(
     (subscription) => subscription.platform === platform,
@@ -284,6 +293,14 @@ export function MetaAutoReplySettingsPanel({
           label: "ردود في الانتظار",
           value: formatArabicNumber(inbound.autoReplyJobs.queued),
         },
+        ...(inbound.autoReplyJobs.postponedByLimit > 0
+          ? [
+              {
+                label: "منها مؤجَّلة بسبب حدّ",
+                value: formatArabicNumber(inbound.autoReplyJobs.postponedByLimit),
+              },
+            ]
+          : []),
         {
           label: "ردود فشلت",
           value: formatArabicNumber(inbound.autoReplyJobs.failed),
@@ -298,8 +315,13 @@ export function MetaAutoReplySettingsPanel({
           label: "رمز التحقق من الويب هوك",
           value: inbound.verifyTokenConfigured ? "مهيأ" : "غير مهيأ",
         },
+        ...webhookAttemptFacts(inbound.webhookAttempts, attemptFormatters),
       ]
     : [];
+  const inboundSummary = webhookAttemptHeadline(
+    inbound?.webhookAttempts,
+    attemptFormatters,
+  );
 
   const update = (changes: Partial<MetaAutoReplySettings>) => {
     setSettings((current) => {
@@ -480,6 +502,7 @@ export function MetaAutoReplySettingsPanel({
                       : "استقبال تفاعلات إنستغرام"
                   }
                   delivered={inbound.deliveryConfirmed}
+                  summary={inboundSummary}
                   facts={inboundFacts}
                   issues={inbound.issues}
                   action={{
@@ -490,7 +513,9 @@ export function MetaAutoReplySettingsPanel({
                     result: subscriptionNote,
                     error:
                       inboundSubscription?.lastErrorCode && !subscriptionNote
-                        ? `آخر خطأ من ميتا: ${inboundSubscription.lastErrorCode}`
+                        ? describeMetaSubscriptionFailure(
+                            inboundSubscription.lastErrorCode,
+                          )
                         : null,
                   }}
                 />

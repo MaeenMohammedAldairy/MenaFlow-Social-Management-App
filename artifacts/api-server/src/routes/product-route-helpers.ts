@@ -2,11 +2,11 @@ import { and, eq, inArray } from "drizzle-orm";
 
 import { db, menaWhatsAppMessageMedia, products } from "@workspace/db";
 
-import { PublicMediaUrlError } from "../lib/meta-media-url";
 import {
+  PublicMediaUrlError,
   signedProductMediaUrl,
   signedWhatsAppMediaUrl,
-} from "../lib/meta-publishing";
+} from "../lib/public-media-url";
 
 import { productMediaInfo } from "../lib/product-utils.ts";
 import {

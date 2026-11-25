@@ -24,6 +24,8 @@ import {
   parseMetaAutoReplyUnderstanding,
   requestedMetaProductImages,
   retryMetaAutoReplyGeneration,
+  META_AUTO_REPLY_QUOTA_PAUSE_ENV_KEY,
+  metaAutoReplyLimitPauseMs,
 } from "./meta-auto-reply.ts";
 
 function conversationEvent(overrides = {}) {
@@ -2246,4 +2248,28 @@ test("only paused or failed replies may be requeued", () => {
   assert.equal(metaAutoReplyRetryableStatus("sent"), false);
   assert.equal(metaAutoReplyRetryableStatus("unknown"), false);
   assert.equal(metaAutoReplyRetryableStatus(null), false);
+});
+
+test("the Meta queue reads its own pause variable with the shared bounds", () => {
+  assert.equal(META_AUTO_REPLY_QUOTA_PAUSE_ENV_KEY, "META_AUTO_REPLY_QUOTA_PAUSE_MINUTES");
+  assert.equal(metaAutoReplyLimitPauseMs({}), 30 * 60_000);
+  assert.equal(
+    metaAutoReplyLimitPauseMs({ META_AUTO_REPLY_QUOTA_PAUSE_MINUTES: "10" }),
+    10 * 60_000,
+  );
+  // Clamped, not defaulted: an operator who asks for a day gets the ceiling,
+  // which still fits inside Meta's 24-hour reply window.
+  assert.equal(
+    metaAutoReplyLimitPauseMs({ META_AUTO_REPLY_QUOTA_PAUSE_MINUTES: "1440" }),
+    120 * 60_000,
+  );
+  assert.equal(
+    metaAutoReplyLimitPauseMs({ META_AUTO_REPLY_QUOTA_PAUSE_MINUTES: "2" }),
+    5 * 60_000,
+  );
+  // The WhatsApp variable must not leak into the Meta queue.
+  assert.equal(
+    metaAutoReplyLimitPauseMs({ WHATSAPP_AUTO_REPLY_QUOTA_PAUSE_MINUTES: "100" }),
+    30 * 60_000,
+  );
 });

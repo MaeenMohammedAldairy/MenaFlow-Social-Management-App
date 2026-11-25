@@ -9,6 +9,7 @@ import { getGetSocialConnectionsQueryKey, getPostReportSummary, getSocialConnect
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@clerk/expo';
 import { isLocalAuthDisabled } from '@/constants/auth';
+import { getProductExtractionMetrics, type ProductExtractionMetrics } from '@/lib/product-catalog-api';
 
 export function ReportsScreen() {
   if (isLocalAuthDisabled) return <ReportsScreenContent userId={null} />;
@@ -36,6 +37,10 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
     ] as const,
     queryFn: getSocialConnections,
   });
+  const extractionMetricsQuery = useQuery({
+    queryKey: ['product-extraction-metrics', userId ?? 'local'],
+    queryFn: getProductExtractionMetrics,
+  });
   const connections = connectionsQuery.data;
 
   const summary = reportSummaryQuery.data;
@@ -57,7 +62,11 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      await Promise.all([reportSummaryQuery.refetch(), connectionsQuery.refetch()]);
+      await Promise.all([
+        reportSummaryQuery.refetch(),
+        connectionsQuery.refetch(),
+        extractionMetricsQuery.refetch(),
+      ]);
     } finally {
       setRefreshing(false);
     }
@@ -81,6 +90,14 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
         title="التقارير"
         subtitle="ملخص المحتوى وحالاته وتوزيعه على القنوات."
         back={{ href: "/(tabs)/more", label: "العودة إلى المزيد" }}
+      />
+
+      <SectionTitle title="استخراج المنتجات من الرسائل" />
+      <ExtractionMetricsPanel
+        metrics={extractionMetricsQuery.data}
+        loading={extractionMetricsQuery.isLoading}
+        error={extractionMetricsQuery.isError}
+        onRetry={() => void extractionMetricsQuery.refetch()}
       />
 
       {reportSummaryQuery.isError ? (
@@ -395,6 +412,186 @@ function ReportsScreenContent({ userId }: { userId: string | null }) {
   );
 }
 
+function ExtractionMetricsPanel({
+  metrics,
+  loading,
+  error,
+  onRetry,
+}: {
+  metrics: ProductExtractionMetrics | undefined;
+  loading: boolean;
+  error: boolean;
+  onRetry: () => void;
+}) {
+  const colors = useColors();
+  if (loading) {
+    return (
+      <Panel style={styles.connectionNotice}>
+        <Text style={[styles.connectionNoticeText, { color: colors.mutedForeground }]}>
+          جارٍ تحميل مؤشرات الاستخراج…
+        </Text>
+      </Panel>
+    );
+  }
+  if (error) {
+    return (
+      <Panel style={styles.connectionNotice}>
+        <Text style={[styles.connectionNoticeText, { color: colors.warning }]}>
+          تعذّر تحميل مؤشرات الاستخراج. أعد المحاولة بالتحديث.
+        </Text>
+        <ActionButton label="إعادة المحاولة" icon="refresh-cw" secondary onPress={onRetry} />
+      </Panel>
+    );
+  }
+  if (!metrics) return null;
+  const suggestionRows = metrics.suggestions ?? [];
+  const productSuggestions = suggestionRows
+    .filter((row) => row.classification === "product")
+    .reduce((sum, row) => sum + row.total, 0);
+  const draftsCreated = suggestionRows
+    .filter((row) => row.status === "draft_created")
+    .reduce((sum, row) => sum + row.total, 0);
+  const funnelSteps = [
+    { label: "رسائل عولجت", value: metrics.extractionSucceeded + metrics.extractionFailed },
+    { label: "استخراج ناجح", value: metrics.extractionSucceeded },
+    { label: "اقتراحات منتج", value: productSuggestions },
+    { label: "مسودات أُنشئت", value: draftsCreated },
+    { label: "تحديثات معتمدة", value: metrics.proposalsAccepted },
+  ];
+  const maxFunnel = Math.max(1, ...funnelSteps.map((step) => step.value));
+  const dailyByDay = new Map<string, { succeeded: number; failed: number }>();
+  for (const row of metrics.daily ?? []) {
+    const current = dailyByDay.get(row.day) ?? { succeeded: 0, failed: 0 };
+    if (row.event === "EXTRACTION_SUCCEEDED") current.succeeded += row.total;
+    if (row.event === "EXTRACTION_FAILED") current.failed += row.total;
+    dailyByDay.set(row.day, current);
+  }
+  const trend = [...dailyByDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-7);
+  const maxTrend = Math.max(
+    1,
+    ...trend.flatMap(([, value]) => [value.succeeded, value.failed]),
+  );
+  const metricCards = [
+    {
+      label: "استخراج ناجح",
+      value: metrics.extractionSucceeded,
+      filter: "pending",
+    },
+    {
+      label: "تحديثات مقبولة",
+      value: metrics.proposalsAccepted,
+      filter: "updates",
+    },
+    {
+      label: "مسودات أُنشئت",
+      value: draftsCreated,
+      filter: "processed",
+    },
+    {
+      label: "نسبة التحويل",
+      value: `${Math.round(metrics.conversionRate * 100)}%`,
+      filter: "processed",
+    },
+  ];
+  return (
+    <View style={styles.extractionMetrics}>
+      <View style={styles.extractionMetricGrid}>
+        {metricCards.map((card) => (
+          <Pressable
+            key={card.label}
+            accessibilityRole="button"
+            accessibilityLabel={`عرض ${card.label} في المراجعة`}
+            onPress={() =>
+              router.push({
+                pathname: "/(tabs)/products",
+                params: { tab: "extractions", filter: card.filter },
+              })
+            }
+            style={({ pressed }) => [
+              styles.extractionMetricCard,
+              { borderColor: colors.border, opacity: pressed ? 0.75 : 1 },
+            ]}
+          >
+            <Text style={[styles.extractionMetricValue, { color: colors.primary }]}>
+              {typeof card.value === "number" ? String(card.value) : card.value}
+            </Text>
+            <Text style={[styles.extractionMetricLabel, { color: colors.mutedForeground }]}>
+              {card.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      <Panel style={styles.connectionNotice}>
+        <Text style={[styles.connectionNoticeText, { color: colors.foreground }]}>
+          مسار التحويل خلال آخر 7 أيام
+        </Text>
+        {funnelSteps.map((step, index) => (
+          <View key={step.label} style={styles.funnelStep}>
+            <View style={styles.progressLabelLine}>
+              <Text style={[styles.progressLabel, { color: colors.mutedForeground }]}>
+                {index + 1}. {step.label}
+              </Text>
+              <Text style={[styles.progressValue, { color: colors.foreground }]}>
+                {step.value}
+              </Text>
+            </View>
+            <View style={[styles.track, { backgroundColor: colors.secondary }]}>
+              <View
+                style={[
+                  styles.bar,
+                  {
+                    width: `${Math.round((step.value / maxFunnel) * 100)}%`,
+                    backgroundColor: colors.primary,
+                  },
+                ]}
+              />
+            </View>
+          </View>
+        ))}
+        <Text style={[styles.connectionNoticeText, { color: colors.mutedForeground }]}>
+          فاشل: {metrics.extractionFailed} · أُعيد تحليلها: {metrics.reprocessed}
+        </Text>
+      </Panel>
+      <Panel style={styles.connectionNotice}>
+        <Text style={[styles.connectionNoticeText, { color: colors.foreground }]}>
+          اتجاه الاستخراج خلال آخر 7 أيام
+        </Text>
+        {trend.length ? (
+          <View style={styles.trendRows}>
+            {trend.map(([day, value]) => (
+              <View key={day} style={styles.trendRow}>
+                <Text style={[styles.trendDay, { color: colors.mutedForeground }]}>
+                  {day.slice(5)}
+                </Text>
+                <View style={[styles.track, { backgroundColor: colors.secondary }]}>
+                  <View
+                    style={[
+                      styles.bar,
+                      {
+                        width: `${Math.round((value.succeeded / maxTrend) * 100)}%`,
+                        backgroundColor: colors.green,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={[styles.trendValue, { color: colors.foreground }]}>
+                  {value.succeeded}/{value.failed}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Text style={[styles.connectionNoticeText, { color: colors.mutedForeground }]}>
+            لا توجد أحداث استخراج في آخر 7 أيام.
+          </Text>
+        )}
+      </Panel>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   rangeSection: { gap: 12 },
   rangeHeading: {
@@ -433,6 +630,24 @@ const styles = StyleSheet.create({
   },
   rangeChipText: { fontSize: 13, fontWeight: '700' },
   rangeHint: { fontSize: 13, lineHeight: 19, textAlign: 'right' },
+  extractionMetrics: { gap: 9 },
+  extractionMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  extractionMetricCard: {
+    flexGrow: 1,
+    minWidth: 120,
+    minHeight: 76,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+    gap: 4,
+  },
+  extractionMetricValue: { fontSize: 22, fontWeight: '800' },
+  extractionMetricLabel: { fontSize: 12.5, fontWeight: '700', textAlign: 'right' },
+  funnelStep: { gap: 4, paddingVertical: 4 },
+  trendRows: { gap: 6 },
+  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  trendDay: { width: 42, fontSize: 12, textAlign: 'right' },
+  trendValue: { minWidth: 46, fontSize: 12, fontWeight: '700', textAlign: 'right' },
   connectionNotice: { gap: 10, marginTop: 12, padding: 12, borderRadius: 14 },
   connectionNoticeText: { fontSize: 13.5, lineHeight: 20, textAlign: 'right' },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },

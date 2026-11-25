@@ -1,8 +1,110 @@
+/**
+ * The mobile app's product API.
+ *
+ * A thin adapter over the client generated from `lib/api-spec/openapi.yaml`. The
+ * shapes live in the contract now; what is left here is the mapping between the
+ * contract's names and the positional signatures the screens already call:
+ *
+ *  - `publishableAccountsFrom` flattens `/social/connections`, which returns
+ *    facebook/instagram slots rather than a list, into the list the publish
+ *    dialog selects from. It is a pure function of the response the product
+ *    screen already holds: the dialog used to run a second query for the same
+ *    endpoint under its own cache key, so opening it always issued a duplicate
+ *    request for data the screen had.
+ *  - `uploadProductMedia` used to be hand-written too: the contract declared the
+ *    body as `image/*`, which a code generator pins as a literal content type
+ *    and the server's `express.raw` filter rejects. The contract now declares
+ *    `application/octet-stream` plus a `mediaType` query parameter, so the
+ *    endpoint goes through the generated client like the rest.
+ */
 import {
-  fetchApiResponse,
-  readJsonResponse,
+  createCatalogProduct as generatedCreateCatalogProduct,
+  createProductExtractionDraft,
+  decideProductChangeProposal as generatedDecideProductChangeProposal,
+  dismissProductExtractionSuggestion,
+  extractScannedPostProduct as generatedExtractScannedPostProduct,
+  extractWhatsAppProductMessages,
+  getProductExtractionMetrics as generatedGetProductExtractionMetrics,
+  getProductPublicationJobs as generatedGetProductPublicationJobs,
+  getWhatsAppProductExtractions as generatedGetWhatsAppProductExtractions,
+  importPostAsProduct,
+  listCatalogProducts,
+  listInventoryMovements,
+  listProductCandidates,
+  listProductChangeProposals,
+  listProductChanges,
+  proposeProductUpdate as generatedProposeProductUpdate,
+  publishCatalogProducts as generatedPublishCatalogProducts,
+  reprocessProductExtraction as generatedReprocessProductExtraction,
+  restoreProductExtractionSuggestion,
+  retryProductPublicationJobs as generatedRetryProductPublicationJobs,
+  reviewProductExtractionSuggestion,
+  updateCatalogProduct as generatedUpdateCatalogProduct,
+  uploadProductMedia as generatedUploadProductMedia,
+  type CatalogProduct as GeneratedCatalogProduct,
+  type GetWhatsAppProductExtractionsStatusItem,
+  type ImportedMetaPost as GeneratedImportedMetaPost,
+  type InventoryMovement,
+  type ProductCandidate,
+  type ProductChangeDecisionResponse,
+  type ProductChangeDiff,
+  type ProductChangeProposal,
+  type SocialAccountStatus,
+  type SocialConnectionsResponse,
+  type ProductChangeRecord,
+  type ProductExtractionListResponse,
+  type ProductExtractionMetrics,
+  type ProductExtractionPagination,
+  type ProductExtractionQueueCounts,
+  type ProductExtractionReprocessResponse,
+  type ProductExtractionReviewInputField,
+  type ProductExtractionSuggestion,
+  type ProductExtractionSuggestionCounts,
+  type ProductFieldKey,
+  type ProductPublicationHistory,
+  type ProductPublicationJob,
+  type ProductPublicationRetryResponse,
+  type ProductPublicationSnapshot,
+  type ProductUpdateProposalResponse,
+  type ScannedPostExtraction,
+  type ScannedPostExtractionInput,
 } from "@workspace/api-client-react";
 
+/**
+ * The wire shape, generated from `lib/api-spec/openapi.yaml`. It used to be a
+ * hand-written copy that had drifted: it marked `sourceTrust`, `updatedBy` and
+ * `updatedReason` optional and omitted `ownerId`, `workspaceId`,
+ * `normalizedName` and `lastExtractionSuggestionId`, all of which the server
+ * always sends.
+ */
+export type CatalogProduct = GeneratedCatalogProduct;
+
+export type {
+  ProductFieldKey,
+  ProductPublicationHistory,
+  ProductPublicationJob,
+  ProductPublicationSnapshot,
+  InventoryMovement,
+  ProductCandidate,
+  ProductChangeDiff,
+  ProductChangeRecord,
+  ProductChangeProposal,
+  ProductExtractionMetrics,
+  ProductExtractionSuggestion,
+  ProductExtractionQueueCounts,
+  ProductExtractionSuggestionCounts,
+  ProductExtractionPagination,
+  ProductExtractionReviewInputField,
+};
+
+/** The statuses the review queue can be filtered by. `dismissed` is not one. */
+export type ProductExtractionListStatus = GetWhatsAppProductExtractionsStatusItem;
+
+/**
+ * A Meta post turned into a product. The contract requires every field, but the
+ * editor builds this from a screen that only knows some of them, so the mobile
+ * type keeps them optional and `createCatalogProduct` fills the rest.
+ */
 export type ImportedMetaPost = {
   platform: "facebook" | "instagram";
   id: string;
@@ -13,135 +115,26 @@ export type ImportedMetaPost = {
   mediaType?: string | null;
 };
 
-export type CatalogProduct = {
-  id: string;
-  sku: string | null;
-  name: string;
-  aliases: string[];
-  description: string;
-  price: string | null;
-  currency: string | null;
-  availability: "unknown" | "in_stock" | "out_of_stock" | "preorder";
-  inventoryTracked: boolean;
-  stockOnHand: number;
-  stockReserved: number;
-  lowStockThreshold: number;
-  status: "draft" | "active" | "archived";
-  mediaUrls: string[];
-  mediaPreviews: Array<{
-    id: string;
-    url: string;
-    mediaType: string;
-  }>;
-  verifiedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-  postIds: string[];
-  publicationHistory?: ProductPublicationHistory[];
-  /** Field keys the merchant still has to fill. */
-  missingFields?: ProductFieldKey[];
-  /** Arabic labels for `missingFields`, ready to render. */
-  missingFieldMessages?: string[];
-  /** Missing fields that stop publication. */
-  publicationBlockers?: ProductFieldKey[];
-  publicationBlockerMessages?: string[];
-  publicationBlocked?: boolean;
-  advisoryFields?: ProductFieldKey[];
-};
-
-export type ProductFieldKey =
-  | "name"
-  | "description"
-  | "price"
-  | "currency"
-  | "availability"
-  | "media";
-
-export type ProductPublicationHistory = {
-  channel: "facebook" | "instagram";
-  accountId: string;
-  permalink: string | null;
-  createdAt: string;
-  completedAt: string | null;
-};
-
-export type InventoryMovement = {
-  id: string;
-  type:
-    "opening_balance" | "adjustment" | "reservation" | "release" | "shipment";
-  stockDelta: number;
-  reservedDelta: number;
-  reason: string;
-  createdAt: string;
-};
-
-export type ProductCandidate = {
-  id: string;
-  title: string;
-  body: string;
-  mediaUrls: string[];
-  mediaPreviews: CatalogProduct["mediaPreviews"];
-  updatedAt: string;
-};
-
-export type ProductExtractionSuggestion = {
-  id: string;
-  classification: "product" | "not_product";
-  extractedData: {
-    name: string | null;
-    sku: string | null;
-    aliases: string[];
-    description: string | null;
-    price: string | null;
-    currency: string | null;
-    availability: "in_stock" | "out_of_stock" | "preorder" | null;
-  };
-  evidence: Record<string, string | null>;
-  confidence: Record<string, number>;
-  fieldReview: Record<string, boolean>;
-  /** Field keys still empty in this suggestion. */
-  missingFields?: ProductFieldKey[];
-  missingFieldMessages?: string[];
-  aiModel: string;
-  status: "review" | "draft_created" | "possible_duplicate";
-  productId: string | null;
-  possibleDuplicateProducts?: Array<{
-    id: string;
-    name: string;
-    sku: string | null;
-    status: string;
-    description: string;
-    price: string | null;
-    currency: string | null;
-    availability: string;
-  }>;
-  createdAt: string;
-  sources: Array<{
-    id: string;
-    text: string;
-    senderName: string | null;
-    messageTimestamp: string | null;
-    groupName: string | null;
-    mediaPreviews: CatalogProduct["mediaPreviews"];
-  }>;
-};
-
-export type ScannedPostProductExtraction = {
-  classification: "product" | "not_product";
-  extractedData: {
-    name: string | null;
-    sku: string | null;
-    aliases: string[];
-    description: string | null;
-    price: string | null;
-    currency: string | null;
-    availability: "in_stock" | "out_of_stock" | "preorder" | null;
-  } | null;
-};
-
 export type ProductInput = Omit<
   CatalogProduct,
+  // Server-assigned identity and bookkeeping. These are on the wire, so they
+  // belong on CatalogProduct, but a merchant never sends them back.
   | "id"
+  | "ownerId"
+  | "workspaceId"
+  | "normalizedName"
+  | "sourceTrust"
+  | "lastExtractionSuggestionId"
+  | "updatedBy"
+  | "updatedReason"
+  // Derived per read, never stored as the merchant wrote them.
+  | "missingFields"
+  | "missingFieldMessages"
+  | "publicationBlockers"
+  | "publicationBlockerMessages"
+  | "publicationBlocked"
+  | "advisoryFields"
+  | "publicationHistory"
   | "createdAt"
   | "updatedAt"
   | "verifiedAt"
@@ -158,72 +151,37 @@ export type ProductInput = Omit<
   inventoryReason?: string;
 };
 
-export type PublishableAccount = {
+/**
+ * One Meta account the publish dialog can target: the contract's slot plus the
+ * channel it came from. `authorizationStatus` is optional in the contract, and
+ * the one comparison the screens make (`=== "ready"`) reads correctly when it is
+ * absent: an account whose authorization is unknown is not a target.
+ */
+export type PublishableAccount = SocialAccountStatus & {
   channel: "facebook" | "instagram";
-  accountId: string;
-  accountName: string;
-  authorizationStatus: string;
-  authorizationReason: string | null;
 };
 
-export type ProductPublicationJob = {
-  id: string;
-  productId: string;
-  channel: "facebook" | "instagram";
-  accountId: string;
-  status: "queued" | "processing" | "published" | "failed" | "action_required";
-  postId: string | null;
-  permalink: string | null;
-  error: string | null;
-  attempts: number;
-  startedAt: string | null;
-  completedAt: string | null;
-  createdAt: string;
-};
-
-export type ProductPublicationSnapshot = {
-  requestKey: string;
-  jobs: ProductPublicationJob[];
-  summary: {
-    total: number;
-    successful: number;
-    failed: number;
-    inProgress: number;
-    needsAction: number;
-  };
-};
+/** The contract calls it `ScannedPostExtraction`; the screens call it this. */
+export type ScannedPostProductExtraction = ScannedPostExtraction;
 
 export async function getProductCatalog(
   includeArchived = false,
 ): Promise<CatalogProduct[]> {
-  const response = await fetchApiResponse(
-    `/api/social/products${includeArchived ? "?includeArchived=true" : ""}`,
-  );
-  const result = await readJsonResponse<{ products: CatalogProduct[] }>(response);
-  return result.products;
+  return (await listCatalogProducts({ includeArchived })).products;
 }
 
 export async function getInventoryMovements(
   productId: string,
 ): Promise<InventoryMovement[]> {
-  const response = await fetchApiResponse(
-    `/api/social/products/${encodeURIComponent(productId)}/inventory-movements`,
-  );
-  const result = await readJsonResponse<{ movements: InventoryMovement[] }>(
-    response,
-  );
-  return result.movements;
+  return (await listInventoryMovements(productId)).movements;
 }
 
-export async function getPublishableAccounts(): Promise<PublishableAccount[]> {
-  const response = await fetchApiResponse("/api/social/connections");
-  const result = await readJsonResponse<{
-    facebook: Omit<PublishableAccount, "channel"> | null;
-    instagram: Omit<PublishableAccount, "channel"> | null;
-  }>(response);
+export function publishableAccountsFrom(
+  connections: SocialConnectionsResponse,
+): PublishableAccount[] {
   return [
-    result.facebook ? { ...result.facebook, channel: "facebook" } : null,
-    result.instagram ? { ...result.instagram, channel: "instagram" } : null,
+    connections.facebook ? { ...connections.facebook, channel: "facebook" } : null,
+    connections.instagram ? { ...connections.instagram, channel: "instagram" } : null,
   ].filter((account): account is PublishableAccount => account !== null);
 }
 
@@ -235,54 +193,30 @@ export async function publishCatalogProducts(input: {
     accountId: string;
   }>;
 }): Promise<ProductPublicationSnapshot> {
-  const response = await fetchApiResponse("/api/social/products/publish", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  return readJsonResponse(response);
+  return generatedPublishCatalogProducts(input);
 }
 
 export async function getProductPublicationJobs(
   requestKey: string,
 ): Promise<ProductPublicationSnapshot> {
-  const response = await fetchApiResponse(
-    `/api/social/products/publish-jobs?requestKey=${encodeURIComponent(requestKey)}`,
-  );
-  return readJsonResponse(response);
+  return generatedGetProductPublicationJobs({ requestKey });
 }
 
+/**
+ * Not a `ProductPublicationSnapshot`: the retry response carries no
+ * `requestKey`, because the retried jobs can belong to several requests at once.
+ * The previous signature claimed otherwise, so a caller reading `.requestKey` off
+ * the result got `undefined` where the type promised a string.
+ */
 export async function retryProductPublicationJobs(
   jobIds: string[],
-): Promise<ProductPublicationSnapshot> {
-  const response = await fetchApiResponse(
-    "/api/social/products/publish-jobs/retry",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobIds }),
-    },
-  );
-  return readJsonResponse(response);
+): Promise<ProductPublicationRetryResponse> {
+  return generatedRetryProductPublicationJobs({ jobIds });
 }
 
 export async function getProductCandidates(): Promise<ProductCandidate[]> {
-  const response = await fetchApiResponse(
-    "/api/social/products/post-candidates",
-  );
-  const result = await readJsonResponse<{ candidates: ProductCandidate[] }>(
-    response,
-  );
-  return result.candidates;
+  return (await listProductCandidates()).candidates;
 }
-
-export type ProductExtractionQueueCounts = {
-  pending: number;
-  processing: number;
-  waitingMedia: number;
-  waitingAssociation: number;
-  failed: number;
-};
 
 export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
   pending: 0,
@@ -290,156 +224,235 @@ export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
   waitingMedia: 0,
   waitingAssociation: 0,
   failed: 0,
+  quotaPaused: 0,
+  noText: 0,
 };
 
-export type WhatsAppProductExtractions = {
-  suggestions: ProductExtractionSuggestion[];
-  /** Jobs stuck on something the merchant or a download has to resolve. */
-  pendingJobs: ProductExtractionQueueCounts;
-};
-
-export async function getWhatsAppProductExtractions(): Promise<
-  WhatsAppProductExtractions
-> {
-  const response = await fetchApiResponse(
-    "/api/social/products/whatsapp-extractions",
-  );
-  const result = await readJsonResponse<{
-    suggestions: ProductExtractionSuggestion[];
-    pendingJobs?: Partial<ProductExtractionQueueCounts>;
-  }>(response);
-  return {
-    suggestions: result.suggestions ?? [],
-    pendingJobs: {
-      ...emptyProductExtractionQueueCounts,
-      ...(result.pendingJobs ?? {}),
-    },
+export const emptyProductExtractionSuggestionCounts: ProductExtractionSuggestionCounts =
+  {
+    total: 0,
+    product: 0,
+    notProduct: 0,
+    pendingReview: 0,
+    pendingProductReview: 0,
+    draftCreated: 0,
+    possibleDuplicate: 0,
+    updateProposed: 0,
+    acceptedUpdate: 0,
+    rejectedUpdate: 0,
+    superseded: 0,
   };
+
+/** How big a page of the review queue is. The server clamps to the same bound. */
+export const PRODUCT_EXTRACTION_PAGE_SIZE = 50;
+
+export const emptyProductExtractionPagination: ProductExtractionPagination = {
+  total: 0,
+  limit: PRODUCT_EXTRACTION_PAGE_SIZE,
+  offset: 0,
+  nextOffset: null,
+};
+
+export type WhatsAppProductExtractionsQuery = {
+  classification?: "product" | "not_product";
+  statuses?: ProductExtractionListStatus[];
+  senderRole?: "merchant" | "customer" | "unknown";
+  limit?: number;
+  offset?: number;
+};
+
+export type WhatsAppProductExtractions = ProductExtractionListResponse;
+
+/**
+ * One page of the WhatsApp product review queue.
+ *
+ * Filtered and paged server-side: the queue holds one row per imported message,
+ * most of them `not_product`, so a client-side page of the fifty newest rows
+ * buried the handful of suggestions that actually held a product — and could
+ * never reach the rest.
+ */
+export async function getWhatsAppProductExtractions(
+  query: WhatsAppProductExtractionsQuery = {},
+): Promise<WhatsAppProductExtractions> {
+  return generatedGetWhatsAppProductExtractions({
+    classification: query.classification,
+    status: query.statuses,
+    senderRole: query.senderRole,
+    limit: query.limit,
+    offset: query.offset,
+  });
 }
+
+/** Defined with its merchant copy so the two cannot drift apart. */
+export type { ExtractionQuotaEstimate } from "./extraction-quota-copy";
+import type { ExtractionQuotaEstimate } from "./extraction-quota-copy";
 
 export async function analyzeWhatsAppProductMessages(
   messageId?: string,
 ): Promise<{
   queuedMessages: number;
+  quota?: ExtractionQuotaEstimate;
 }> {
-  const response = await fetchApiResponse(
-    "/api/social/products/extract-whatsapp",
-    messageId
-      ? {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messageId }),
-        }
-      : { method: "POST" },
-  );
-  return readJsonResponse(response);
+  return extractWhatsAppProductMessages(messageId ? { messageId } : {});
 }
 
 export async function createExtractionProductDraft(
   suggestionId: string,
   product?: ProductInput,
+  overrideReason?: string,
 ): Promise<CatalogProduct> {
-  const response = await fetchApiResponse(
-    `/api/social/products/whatsapp-extractions/${encodeURIComponent(suggestionId)}/create-draft`,
-    {
-      method: "POST",
-      ...(product
-        ? {
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ product }),
-          }
-        : {}),
-    },
-  );
-  const result = await readJsonResponse<{ product: CatalogProduct }>(response);
-  return result.product;
+  const created = await createProductExtractionDraft(suggestionId, {
+    ...(product ? { product } : {}),
+    ...(overrideReason ? { overrideReason } : {}),
+  });
+  return created.product;
 }
 
 export async function dismissProductExtraction(
   suggestionId: string,
 ): Promise<void> {
-  const response = await fetchApiResponse(
-    `/api/social/products/whatsapp-extractions/${encodeURIComponent(suggestionId)}/dismiss`,
-    { method: "POST" },
-  );
-  await readJsonResponse<{ dismissed: boolean }>(response);
+  await dismissProductExtractionSuggestion(suggestionId);
 }
 
 export async function reviewProductExtraction(input: {
   suggestionId: string;
-  field: string;
+  field: ProductExtractionReviewInputField;
   correct: boolean;
 }): Promise<void> {
-  const response = await fetchApiResponse(
-    `/api/social/products/whatsapp-extractions/${encodeURIComponent(input.suggestionId)}/review`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ field: input.field, correct: input.correct }),
-    },
+  await reviewProductExtractionSuggestion(input.suggestionId, {
+    field: input.field,
+    correct: input.correct,
+  });
+}
+
+export async function reprocessProductExtraction(
+  suggestionId: string,
+): Promise<ProductExtractionReprocessResponse> {
+  return generatedReprocessProductExtraction(suggestionId);
+}
+
+export async function proposeProductUpdate(
+  suggestionId: string,
+  productId?: string,
+): Promise<ProductUpdateProposalResponse> {
+  return generatedProposeProductUpdate(
+    suggestionId,
+    productId ? { productId } : {},
   );
-  await readJsonResponse<{ reviewed: boolean }>(response);
+}
+
+export async function decideProductChangeProposal(
+  proposalId: string,
+  decision: "accepted" | "rejected",
+): Promise<ProductChangeDecisionResponse> {
+  return generatedDecideProductChangeProposal(proposalId, { decision });
+}
+
+export async function getProductChanges(
+  productId: string,
+): Promise<ProductChangeRecord[]> {
+  return (await listProductChanges(productId)).changes;
+}
+
+export async function getProductExtractionMetrics(): Promise<ProductExtractionMetrics> {
+  return generatedGetProductExtractionMetrics();
+}
+
+export async function restoreProductExtraction(
+  suggestionId: string,
+): Promise<{ restored: boolean }> {
+  return restoreProductExtractionSuggestion(suggestionId);
+}
+
+export async function getProductChangeProposals(
+  query: { status?: ProductChangeProposal["status"] } = {},
+): Promise<{ proposals: ProductChangeProposal[] }> {
+  return listProductChangeProposals(
+    query.status ? { status: query.status } : undefined,
+  );
 }
 
 export async function createCatalogProduct(
   product: ProductInput,
   importedMetaPost?: ImportedMetaPost,
 ): Promise<CatalogProduct> {
-  const response = await fetchApiResponse("/api/social/products", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ...product,
-      ...(importedMetaPost && { importedMetaPost }),
-    }),
+  const created = await generatedCreateCatalogProduct({
+    ...product,
+    ...(importedMetaPost
+      ? { importedMetaPost: toGeneratedImportedMetaPost(importedMetaPost) }
+      : {}),
   });
-  const result = await readJsonResponse<{ product: CatalogProduct }>(response);
-  return result.product;
+  return created.product;
 }
 
 export async function updateCatalogProduct(input: {
   id: string;
   product: ProductInput;
 }): Promise<CatalogProduct> {
-  const response = await fetchApiResponse(
-    `/api/social/products/${encodeURIComponent(input.id)}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input.product),
-    },
-  );
-  const result = await readJsonResponse<{ product: CatalogProduct }>(response);
-  return result.product;
+  return (await generatedUpdateCatalogProduct(input.id, input.product)).product;
 }
 
 export async function importProductCandidate(
   postId: string,
 ): Promise<CatalogProduct> {
-  const response = await fetchApiResponse(
-    `/api/social/products/import-post/${encodeURIComponent(postId)}`,
-    { method: "POST" },
-  );
-  const result = await readJsonResponse<{ product: CatalogProduct }>(response);
-  return result.product;
+  return (await importPostAsProduct(postId)).product;
 }
 
 export async function extractScannedPostProduct(
-  input: {
-    text: string;
-    platform: "facebook" | "instagram";
-    postId: string;
-  },
+  input: ScannedPostExtractionInput,
 ): Promise<ScannedPostProductExtraction> {
-  const response = await fetchApiResponse(
-    "/api/social/products/extract-scanned-post",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
-  return readJsonResponse(response);
+  return generatedExtractScannedPostProduct(input);
+}
+
+/**
+ * Where each extracted value came from, as character offsets into a source
+ * message.
+ *
+ * The server writes these inside `extractedData.evidence_spans`, not as a
+ * top-level field — the review card used to read a top-level `evidenceSpans`
+ * that nothing ever sent, so the highlighting silently never fired.
+ */
+export function productExtractionEvidenceSpans(
+  suggestion: ProductExtractionSuggestion,
+): Array<{ sourceId: string; start: number; end: number }> {
+  const raw = suggestion.extractedData.evidence_spans;
+  if (!raw) return [];
+  const spans: Array<{ sourceId: string; start: number; end: number }> = [];
+  for (const value of Object.values(raw)) {
+    const sourceId =
+      typeof value?.sourceId === "string"
+        ? value.sourceId
+        : typeof value?.source_id === "string"
+          ? value.source_id
+          : null;
+    const start = value?.start;
+    const end = value?.end;
+    if (
+      sourceId &&
+      typeof start === "number" &&
+      typeof end === "number" &&
+      Number.isInteger(start) &&
+      Number.isInteger(end) &&
+      start >= 0 &&
+      end > start
+    ) {
+      spans.push({ sourceId, start, end });
+    }
+  }
+  return spans;
+}
+
+/**
+ * Why the extractor scored a suggestion the way it did, in words.
+ *
+ * The server writes these into `extractedData.confidence_reasons`. The review
+ * card used to read a top-level `confidenceReasons` that nothing ever sent, so
+ * the list never rendered — the merchant saw a bare score with no explanation.
+ */
+export function productExtractionConfidenceReasons(
+  suggestion: ProductExtractionSuggestion,
+): string[] {
+  return suggestion.extractedData.confidence_reasons ?? [];
 }
 
 export async function uploadProductMedia(asset: {
@@ -453,17 +466,25 @@ export async function uploadProductMedia(asset: {
   const fileResponse = await fetch(asset.uri);
   if (!fileResponse.ok) throw new Error("تعذّر قراءة ملف الوسائط المحدد.");
   const file = await fileResponse.blob();
-  const response = await fetchApiResponse("/api/social/products/media", {
-    method: "POST",
-    headers: { "Content-Type": asset.mimeType },
-    body: file,
-  });
-  const result = await readJsonResponse<{
-    media: {
-      id: string;
-      mediaType: string;
-      mediaPreview: CatalogProduct["mediaPreviews"][number] | null;
-    };
-  }>(response);
-  return result.media;
+  // The generated function sends `application/octet-stream`, which the server
+  // accepts alongside the file's own content type, and names the real type in the
+  // query. Pinning `image/*` instead — what the contract used to say — was
+  // rejected by the server's `express.raw` filter, because a wildcard is not a
+  // content type.
+  return (await generatedUploadProductMedia(file, { mediaType: asset.mimeType }))
+    .media;
+}
+
+function toGeneratedImportedMetaPost(
+  post: ImportedMetaPost,
+): GeneratedImportedMetaPost {
+  return {
+    platform: post.platform,
+    id: post.id,
+    text: post.text,
+    publishedAt: post.publishedAt,
+    url: post.url,
+    imageUrl: post.imageUrl,
+    mediaType: post.mediaType ?? null,
+  };
 }

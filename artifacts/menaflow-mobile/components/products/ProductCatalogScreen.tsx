@@ -22,6 +22,7 @@ import {
 } from "@workspace/api-client-react";
 import { router, useLocalSearchParams, useSegments } from "expo-router";
 import {
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -65,18 +66,35 @@ import {
   getProductCatalog,
   getInventoryMovements,
   getWhatsAppProductExtractions,
-  getPublishableAccounts,
+  productExtractionConfidenceReasons,
+  productExtractionEvidenceSpans,
+  publishableAccountsFrom,
   getProductPublicationJobs,
   publishCatalogProducts,
   retryProductPublicationJobs,
   importProductCandidate,
   reviewProductExtraction,
+  proposeProductUpdate,
+  reprocessProductExtraction,
+  restoreProductExtraction,
+  decideProductChangeProposal,
+  getProductChangeProposals,
+  getProductChanges,
+  type ProductChangeProposal,
+  type ProductChangeRecord,
+  PRODUCT_EXTRACTION_PAGE_SIZE,
+  emptyProductExtractionPagination,
+  emptyProductExtractionSuggestionCounts,
   type CatalogProduct,
   type PublishableAccount,
   type ProductExtractionQueueCounts,
   type ProductExtractionSuggestion,
+  type ProductExtractionSuggestionCounts,
+  type ProductExtractionReviewInputField,
+  type WhatsAppProductExtractionsQuery,
   type ProductPublicationSnapshot,
 } from "@/lib/product-catalog-api";
+import { analysisSummaryMessage } from "@/lib/extraction-quota-copy";
 import {
   draftFromExtraction,
   draftFromProduct,
@@ -95,6 +113,124 @@ const catalogTabDefinitions: Array<{ id: CatalogTabId; label: string }> = [
   { id: "archived", label: "الأرشيف" },
   { id: "extractions", label: "الاستخراج والمراجعة" },
 ];
+
+/**
+ * Which slice of the review queue the merchant is looking at.
+ *
+ * The queue holds one row per imported message and most messages are not
+ * products: a greeting, an order, a post candidate. Listed together they buried
+ * the few suggestions that did hold a product under cards saying «لم يستخرج
+ * منتجًا من الرسالة», so the slices are separate and only the first one is
+ * review work. Each slice is fetched from the server, which also means the queue
+ * is no longer capped at whatever fifty rows happened to be newest.
+ */
+type ExtractionFilterId =
+  | "pending"
+  | "processed"
+  | "updates"
+  | "not_product";
+
+const extractionFilterDefinitions: Array<{
+  id: ExtractionFilterId;
+  label: string;
+  query: WhatsAppProductExtractionsQuery;
+  count: (counts: ProductExtractionSuggestionCounts) => number;
+  /** What an empty slice means, in the merchant's own words. */
+  emptyMessage: string;
+}> = [
+  {
+    id: "pending",
+    label: "بانتظار مراجعتك",
+    query: { classification: "product", statuses: ["review"] },
+    count: (counts) => counts.pendingProductReview,
+    emptyMessage:
+      "لا يوجد منتج بانتظار المراجعة. تصل الاقتراحات إلى هنا تلقائيًا بعد مزامنة رسائل المجموعات المحددة.",
+  },
+  {
+    id: "processed",
+    label: "تمت معالجتها",
+    query: {
+      statuses: [
+        "draft_created",
+        "possible_duplicate",
+        "update_proposed",
+        "accepted_update",
+        "rejected_update",
+        "superseded",
+      ],
+    },
+    count: (counts) =>
+      counts.draftCreated +
+      counts.possibleDuplicate +
+      counts.updateProposed +
+      counts.acceptedUpdate +
+      counts.rejectedUpdate +
+      counts.superseded,
+    emptyMessage: "لم تُنشأ مسودة أو مقترح تحديث من أي اقتراح بعد.",
+  },
+  {
+    id: "updates",
+    label: "تحديثات المنتجات",
+    query: {
+      statuses: [
+        "update_proposed",
+        "accepted_update",
+        "rejected_update",
+        "superseded",
+      ],
+    },
+    count: (counts) =>
+      counts.updateProposed +
+      counts.acceptedUpdate +
+      counts.rejectedUpdate +
+      counts.superseded,
+    emptyMessage:
+      "لا توجد مقترحات تحديث لمنتجاتك. عند ورود بيانات جديدة لمنتج مطابق، ستظهر هنا لتقرر اعتمادها أو رفضها.",
+  },
+  {
+    id: "not_product",
+    label: "ليست منتجات",
+    query: { classification: "not_product" },
+    count: (counts) => counts.notProduct,
+    emptyMessage: "كل رسالة قرأها الاستخراج كانت تحمل منتجًا.",
+  },
+];
+
+/**
+ * Why the «ليست منتجات» slice exists at all. Without this the merchant reads
+ * twenty rejections as twenty failures of the feature.
+ */
+/** One Arabic label for a status wherever it appears in the review flow. */
+const extractionStatusLabels: Record<string, string> = {
+  review: "تحتاج مراجعة",
+  draft_created: "أُنشئت مسودة",
+  possible_duplicate: "مطابقة محتملة",
+  update_proposed: "تحديث مقترح",
+  accepted_update: "تحديث معتمد",
+  rejected_update: "تحديث مرفوض",
+  superseded: "نسخة قديمة",
+  dismissed: "مستبعد",
+};
+
+const senderRoleLabels: Record<
+  "all" | "merchant" | "customer" | "unknown",
+  string
+> = {
+  all: "كل المصادر",
+  merchant: "التاجر",
+  customer: "العميل",
+  unknown: "غير معروف",
+};
+
+function extractionStatusLabel(suggestion: ProductExtractionSuggestion): string {
+  if (suggestion.classification === "not_product") {
+    return "لم يُصنف كمنتج — راجع الرسالة";
+  }
+  return extractionStatusLabels[suggestion.status] ?? "تحتاج مراجعة";
+}
+
+const NOT_PRODUCT_FILTER_NOTE =
+  "هذه رسائل قرأها الاستخراج ولم يجد فيها منتجًا: تحية، أو طلب، أو منشور. تُحفظ لتعرف أين ذهبت كل رسالة، وليست عمل مراجعة.";
 
 function productPublicationPreview(product: CatalogProduct): string {
   const availability = {
@@ -289,6 +425,82 @@ function CatalogTabs({
   );
 }
 
+function ExtractionFilterTabs({
+  activeFilter,
+  counts,
+  loading,
+  onSelect,
+}: {
+  activeFilter: ExtractionFilterId;
+  counts: ProductExtractionSuggestionCounts;
+  loading: boolean;
+  onSelect: (filter: ExtractionFilterId) => void;
+}) {
+  const colors = useColors();
+  return (
+    <View
+      style={[styles.catalogTabsFrame, { backgroundColor: colors.secondary }]}
+    >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.catalogTabsScroll}
+        contentContainerStyle={styles.catalogTabsContent}
+      >
+        {extractionFilterDefinitions.map((filter) => {
+          const selected = activeFilter === filter.id;
+          return (
+            <Pressable
+              key={filter.id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+              onPress={() => onSelect(filter.id)}
+              style={({ pressed }) => [
+                styles.catalogTab,
+                {
+                  backgroundColor: selected ? colors.card : "transparent",
+                  borderColor: selected ? colors.border : "transparent",
+                  opacity: pressed ? 0.76 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color: selected ? colors.primary : colors.mutedForeground,
+                  fontSize: 12,
+                  fontWeight: selected ? "800" : "600",
+                }}
+              >
+                {filter.label}
+              </Text>
+              <View
+                style={[
+                  styles.catalogTabCount,
+                  {
+                    backgroundColor: selected
+                      ? colors.accent
+                      : colors.secondary,
+                  },
+                ]}
+              >
+                <Text
+                  style={{
+                    color: selected ? colors.primary : colors.mutedForeground,
+                    fontSize: 12,
+                    fontWeight: "700",
+                  }}
+                >
+                  {loading ? "…" : formatArabicNumber(filter.count(counts))}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
 export default function ProductCatalogScreen() {
   if (isLocalAuthDisabled) return <ProductCatalogContent userId={null} />;
   return <AuthenticatedProductCatalog />;
@@ -301,12 +513,13 @@ function AuthenticatedProductCatalog() {
 
 function ProductCatalogContent({ userId }: { userId: string | null }) {
   const colors = useColors();
-  const { returnTo, tab, sourceMessageId, queuedMessages } =
+  const { returnTo, tab, sourceMessageId, queuedMessages, filter } =
     useLocalSearchParams<{
       returnTo?: string;
       tab?: string;
       sourceMessageId?: string;
       queuedMessages?: string;
+      filter?: string;
     }>();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
@@ -351,9 +564,29 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   }, [tab, sourceMessageId]);
   const catalogKey = ["product-catalog", userId ?? "local", activeTab] as const;
   const candidatesKey = ["product-post-candidates", userId ?? "local"] as const;
+  const [extractionFilter, setExtractionFilter] =
+    useState<ExtractionFilterId>(() => {
+      const requested = filter as ExtractionFilterId | undefined;
+      return extractionFilterDefinitions.some((item) => item.id === requested)
+        ? (requested as ExtractionFilterId)
+        : "pending";
+    });
+  const [senderRoleFilter, setSenderRoleFilter] = useState<
+    "all" | "merchant" | "customer" | "unknown"
+  >("all");
+  const [selectedSuggestionIds, setSelectedSuggestionIds] = useState<
+    Set<string>
+  >(new Set());
+  const [editorStep, setEditorStep] = useState<0 | 1 | 2>(0);
+  const extractionFilterDefinition =
+    extractionFilterDefinitions.find(
+      (filter) => filter.id === extractionFilter,
+    ) ?? extractionFilterDefinitions[0];
   const extractionsKey = [
     "whatsapp-product-extractions",
     userId ?? "local",
+    extractionFilter,
+    senderRoleFilter,
   ] as const;
   const catalog = useQuery({
     queryKey: catalogKey,
@@ -369,9 +602,21 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     retry: false,
     refetchInterval: 45 * 60_000,
   });
-  const extractions = useQuery({
+  // Paged on the server. `getNextPageParam` returns `undefined` once the last
+  // page has been read, which is what stops the "load more" button appearing.
+  const extractions = useInfiniteQuery({
     queryKey: extractionsKey,
-    queryFn: getWhatsAppProductExtractions,
+    queryFn: ({ pageParam }) =>
+      getWhatsAppProductExtractions({
+        ...extractionFilterDefinition.query,
+        ...(senderRoleFilter !== "all"
+          ? { senderRole: senderRoleFilter }
+          : {}),
+        limit: PRODUCT_EXTRACTION_PAGE_SIZE,
+        offset: pageParam,
+      }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage) => lastPage.pagination.nextOffset ?? undefined,
     enabled: isLocalAuthDisabled || Boolean(userId),
     retry: false,
     refetchInterval: POLL_LIST_MS,
@@ -385,9 +630,17 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     enabled: isLocalAuthDisabled || Boolean(userId),
     retry: false,
   });
+  // Same endpoint and same cache entry as `connections` above: the dialog used
+  // to query `/social/connections` again under its own key, so opening it
+  // issued a duplicate request for data this screen already holds. `select`
+  // flattens the response into the list the dialog selects from.
   const publishableAccounts = useQuery({
-    queryKey: ["product-publish-accounts", userId ?? "local"],
-    queryFn: getPublishableAccounts,
+    queryKey: [
+      ...getGetSocialConnectionsQueryKey(),
+      userId ?? "local",
+    ] as const,
+    queryFn: getSocialConnections,
+    select: publishableAccountsFrom,
     enabled: (isLocalAuthDisabled || Boolean(userId)) && publishModalVisible,
     retry: false,
   });
@@ -424,11 +677,15 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
       }),
       queryClient.invalidateQueries({ queryKey: candidatesKey }),
       queryClient.invalidateQueries({ queryKey: extractionsKey }),
+      queryClient.invalidateQueries({
+        queryKey: ["product-change-proposals", userId ?? "local"],
+      }),
     ]);
   };
   const {
     editor,
     setEditor,
+    autosavedAt,
     save,
     mediaUploading,
     openEditor,
@@ -438,6 +695,16 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     addProductMedia,
     saveProduct,
   } = useProductEditorWorkflow({ catalogKey, refresh, setError });
+  useEffect(() => {
+    setEditorStep(0);
+  }, [editor?.id, editor?.extractionSuggestionId]);
+  const editorOriginalProduct = editor?.id
+    ? (catalog.data?.find((item) => item.id === editor.id) ?? null)
+    : null;
+  const editorDiff =
+    editor && editorOriginalProduct
+      ? editorDraftDiff(editorOriginalProduct, editor.value)
+      : [];
   const inventoryProductId = editor?.id;
   const inventoryMovements = useQuery({
     queryKey: [
@@ -455,16 +722,17 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
       (isLocalAuthDisabled || Boolean(userId)) &&
       Boolean(editor?.id && editor.value.inventoryTracked),
   });
+  const productChanges = useQuery<ProductChangeRecord[]>({
+    queryKey: ["product-changes", userId ?? "local", editor?.id ?? "new"],
+    queryFn: () => getProductChanges(editor!.id!),
+    enabled: (isLocalAuthDisabled || Boolean(userId)) && Boolean(editor?.id),
+  });
   const analyzeWhatsAppMessages = useMutation({
     mutationFn: analyzeWhatsAppProductMessages,
     onSuccess: async (result) => {
       await refresh();
       setError("");
-      setAnalysisSummary(
-        result.queuedMessages > 0
-          ? `أُضيفت ${result.queuedMessages} رسالة إلى طابور تحليل المنتجات. لا تُجدول للنشر تلقائيًا؛ ستظهر النتائج للمراجعة بعد اكتمالها.`
-          : "لا توجد رسائل جديدة أو غير معالجة في المجموعات المحددة.",
-      );
+      setAnalysisSummary(analysisSummaryMessage(result, formatArabicNumber));
       setScannedPosts([]);
     },
     onError: (cause) => {
@@ -589,8 +857,19 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   const selectableVisibleProducts = visibleProducts.filter(
     (product) => productPublicationDisabledReason(product) === null,
   );
-  const extractionSuggestions = extractions.data?.suggestions ?? [];
-  const extractionQueue = extractions.data?.pendingJobs;
+  const extractionPages = extractions.data?.pages ?? [];
+  const extractionSuggestions = extractionPages.flatMap(
+    (page) => page.suggestions,
+  );
+  const extractionQueue = extractionPages[0]?.pendingJobs;
+  // Counted over the whole queue rather than the loaded pages, so the filter
+  // chips and the tab badge keep their meaning while the merchant pages through.
+  const extractionCounts =
+    extractionPages[0]?.suggestionCounts ??
+    emptyProductExtractionSuggestionCounts;
+  const extractionPagination =
+    extractionPages[extractionPages.length - 1]?.pagination ??
+    emptyProductExtractionPagination;
   const targetedSuggestion = targetedSourceMessageId
     ? extractionSuggestions.find((suggestion) =>
         suggestion.sources.some((source) => source.id === targetedSourceMessageId),
@@ -604,10 +883,13 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         ),
       ]
     : extractionSuggestions;
-  const extractionCount =
-    extractions.isPending || candidates.isPending
-      ? null
-      : extractionSuggestions.length + (candidates.data?.length ?? 0);
+  // Review work only. This badge used to add the scanned post candidates to the
+  // number of loaded suggestion rows, so it counted twenty post candidates and
+  // eighteen «ليست منتجات» rows as twenty things the merchant owed a decision on
+  // — and it could never exceed the fifty rows the first page held.
+  const extractionCount = extractions.isPending
+    ? null
+    : extractionCounts.pendingProductReview;
   const tabCounts: Record<CatalogTabId, number | null> = {
     all: catalog.data === undefined ? null : allProducts.length,
     drafts:
@@ -779,6 +1061,139 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
         cause instanceof Error ? cause.message : "تعذر حفظ تقييم الاقتراح.",
       ),
   });
+  const proposeUpdate = useMutation({
+    mutationFn: (input: { suggestionId: string; productId?: string }) =>
+      proposeProductUpdate(input.suggestionId, input.productId),
+    onSuccess: async () => {
+      showAppNotice({
+        title: "مقترح التحديث جاهز",
+        message: "راجع الفرق بين المنتج الحالي والبيانات المستخرجة قبل تطبيقه.",
+        tone: "success",
+      });
+      await refresh();
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "تعذر إنشاء مقترح التحديث.",
+      ),
+  });
+  const reprocessExtraction = useMutation({
+    mutationFn: reprocessProductExtraction,
+    onSuccess: async () => {
+      showAppNotice({
+        title: "أُعيد إدخال الرسالة في الطابور",
+        message: "ستظهر نسخة جديدة من الاقتراح بعد اكتمال التحليل.",
+        tone: "success",
+      });
+      await refresh();
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "تعذرت إعادة تحليل الرسالة.",
+      ),
+  });
+  const restoreExtraction = useMutation({
+    mutationFn: restoreProductExtraction,
+    onSuccess: refresh,
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "تعذرت إعادة الاقتراح للمراجعة.",
+      ),
+  });
+  const changeProposals = useQuery({
+    queryKey: ["product-change-proposals", userId ?? "local"],
+    queryFn: () => getProductChangeProposals(),
+    enabled: (isLocalAuthDisabled || Boolean(userId)) && activeTab === "extractions",
+    retry: false,
+    refetchInterval: POLL_LIST_MS,
+  });
+  const decideProposal = useMutation({
+    mutationFn: (input: {
+      proposalId: string;
+      decision: "accepted" | "rejected";
+    }) => decideProductChangeProposal(input.proposalId, input.decision),
+    onSuccess: async (_result, input) => {
+      showAppNotice({
+        title:
+          input.decision === "accepted"
+            ? "اعتمد مقترح التحديث"
+            : "رُفض مقترح التحديث",
+        message:
+          input.decision === "accepted"
+            ? "طُبقت التغييرات على المنتج وسُجّل من قام بها."
+            : "بقي المنتج كما هو وسُجل قرار الرفض.",
+        tone: "success",
+      });
+      await Promise.all([
+        refresh(),
+        queryClient.invalidateQueries({
+          queryKey: ["product-change-proposals", userId ?? "local"],
+        }),
+      ]);
+    },
+    onError: (cause) =>
+      setError(
+        cause instanceof Error ? cause.message : "تعذر تسجيل قرار التحديث.",
+      ),
+  });
+  const undoDismissal = (suggestionIds: string[]) => {
+    Promise.all(suggestionIds.map((id) => restoreExtraction.mutateAsync(id)))
+      .then(async () => {
+        showAppNotice({
+          title: "عادت الاقتراحات إلى المراجعة",
+          message: "أُعيدت الاقتراحات المستبعدة إلى قائمة المراجعة.",
+          tone: "success",
+        });
+        await refresh();
+      })
+      .catch((cause: unknown) =>
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "تعذرت إعادة الاقتراحات المستبعدة.",
+        ),
+      );
+  };
+  const dismissManyExtractions = (suggestionIds: string[]) => {
+    Promise.all(suggestionIds.map((id) => dismissProductExtraction(id)))
+      .then(async () => {
+        setSelectedSuggestionIds(new Set());
+        showAppNotice({
+          title: `استُبعد ${formatArabicNumber(suggestionIds.length)} اقتراحًا`,
+          message: "يمكنك التراجع عن ذلك من هذا الإشعار.",
+          tone: "info",
+          actionLabel: "تراجع",
+          onAction: () => undoDismissal(suggestionIds),
+        });
+        await refresh();
+      })
+      .catch((cause: unknown) =>
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "تعذر استبعاد الاقتراحات المحددة.",
+        ),
+      );
+  };
+  const reprocessManyExtractions = (suggestionIds: string[]) => {
+    Promise.all(suggestionIds.map((id) => reprocessProductExtraction(id)))
+      .then(async () => {
+        setSelectedSuggestionIds(new Set());
+        showAppNotice({
+          title: "أُعيدت الرسائل إلى التحليل",
+          message: "ستظهر نسخ جديدة من الاقتراحات بعد اكتمال التحليل.",
+          tone: "success",
+        });
+        await refresh();
+      })
+      .catch((cause: unknown) =>
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "تعذرت إعادة تحليل الرسائل المحددة.",
+        ),
+      );
+  };
   const importPost = useMutation({
     mutationFn: importProductCandidate,
     onSuccess: async (product) => {
@@ -1447,20 +1862,162 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 ) : null}
               </Panel>
             ))}
-            <ProductExtractionQueueStrip counts={extractionQueue} />
-            {extractions.isError ? (
-              <Text
-                accessibilityRole="alert"
-                style={[styles.helper, { color: colors.destructive }]}
-              >
-                {extractions.error instanceof Error
-                  ? extractions.error.message
-                  : "تعذر تحميل اقتراحات المنتجات."}
-              </Text>
-            ) : extractions.isPending ? (
+            <ExtractionFilterTabs
+              activeFilter={extractionFilter}
+              counts={extractionCounts}
+              loading={extractions.isPending}
+              onSelect={(filter) => {
+                if (filter === extractionFilter) return;
+                setExtractionFilter(filter);
+                setSelectedSuggestionIds(new Set());
+                setError("");
+              }}
+            />
+            <View style={styles.senderFilterRow}>
+              {(Object.keys(senderRoleLabels) as Array<
+                keyof typeof senderRoleLabels
+              >).map((role) => (
+                <Pressable
+                  key={role}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: senderRoleFilter === role }}
+                  onPress={() => {
+                    setSenderRoleFilter(role);
+                    setSelectedSuggestionIds(new Set());
+                  }}
+                  style={({ pressed }) => [
+                    styles.senderFilterChip,
+                    {
+                      backgroundColor:
+                        senderRoleFilter === role
+                          ? colors.primary
+                          : colors.secondary,
+                      borderColor:
+                        senderRoleFilter === role
+                          ? colors.primary
+                          : colors.border,
+                      opacity: pressed ? 0.75 : 1,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.senderFilterLabel,
+                      {
+                        color:
+                          senderRoleFilter === role
+                            ? colors.primaryForeground
+                            : colors.mutedForeground,
+                      },
+                    ]}
+                  >
+                    {senderRoleLabels[role]}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            {extractionFilter === "updates" ? (
+              <ChangeProposalList
+                proposals={changeProposals.data?.proposals ?? []}
+                loading={changeProposals.isLoading}
+                error={
+                  changeProposals.isError
+                    ? "تعذر تحميل مقترحات التحديث. اسحب للتحديث أو أعد المحاولة."
+                    : null
+                }
+                pending={decideProposal.isPending}
+                onDecide={(proposalId, decision) =>
+                  decideProposal.mutate({ proposalId, decision })
+                }
+                onRetry={() => void changeProposals.refetch()}
+              />
+            ) : null}
+            {extractionFilter === "not_product" ? (
               <Text style={[styles.helper, { color: colors.mutedForeground }]}>
-                جارٍ تحميل اقتراحات المنتجات...
+                {NOT_PRODUCT_FILTER_NOTE}
               </Text>
+            ) : null}
+            {extractionPagination.total > 0 ? (
+              <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+                المعروض {formatArabicNumber(extractionSuggestions.length)} من{" "}
+                {formatArabicNumber(extractionPagination.total)}
+              </Text>
+            ) : null}
+            <ProductExtractionQueueStrip counts={extractionQueue} />
+            {selectedSuggestionIds.size > 0 ? (
+              <View
+                style={[
+                  styles.bulkBar,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                  },
+                ]}
+              >
+                <Text style={[styles.helper, { color: colors.foreground }]}>
+                  المحدد: {formatArabicNumber(selectedSuggestionIds.size)}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() =>
+                    dismissManyExtractions([...selectedSuggestionIds])
+                  }
+                  style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Text style={[styles.link, { color: colors.destructive }]}>
+                    استبعاد المحدد
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() =>
+                    reprocessManyExtractions([...selectedSuggestionIds])
+                  }
+                  style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Text style={[styles.link, { color: colors.primary }]}>
+                    إعادة تحليل المحدد
+                  </Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => setSelectedSuggestionIds(new Set())}
+                  style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Text style={[styles.link, { color: colors.mutedForeground }]}>
+                    إلغاء التحديد
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+            {extractions.isError ? (
+              <View
+                style={[
+                  styles.inventoryHistory,
+                  { borderColor: colors.destructive },
+                ]}
+              >
+                <Text
+                  accessibilityRole="alert"
+                  style={[styles.helper, { color: colors.destructive }]}
+                >
+                  {extractions.error instanceof Error
+                    ? extractions.error.message
+                    : "تعذر تحميل اقتراحات المنتجات."}
+                </Text>
+                <ActionButton
+                  label="إعادة تحميل الاقتراحات"
+                  icon="refresh-cw"
+                  secondary
+                  onPress={() => void extractions.refetch()}
+                />
+              </View>
+            ) : extractions.isPending ? (
+              <View accessibilityRole="progressbar" style={styles.reviewSkeleton}>
+                <Skeleton width="100%" height={18} />
+                <Skeleton width="72%" height={16} />
+                <Skeleton width="90%" height={56} />
+              </View>
             ) : extractionSuggestions.length ? (
               <>
                 {extractionsForDisplay.map((suggestion) => (
@@ -1477,7 +2034,20 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     actionPending={
                       createExtractionDraft.isPending ||
                       dismissExtraction.isPending ||
-                      reviewExtraction.isPending
+                      reviewExtraction.isPending ||
+                      proposeUpdate.isPending ||
+                      reprocessExtraction.isPending ||
+                      restoreExtraction.isPending ||
+                      decideProposal.isPending
+                    }
+                    selected={selectedSuggestionIds.has(suggestion.id)}
+                    onToggleSelected={() =>
+                      setSelectedSuggestionIds((current) => {
+                        const next = new Set(current);
+                        if (next.has(suggestion.id)) next.delete(suggestion.id);
+                        else next.add(suggestion.id);
+                        return next;
+                      })
                     }
                     onCreateDraft={() =>
                       suggestion.status === "possible_duplicate" ||
@@ -1486,6 +2056,15 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                         : createExtractionDraft.mutate(suggestion.id)
                     }
                     onDismiss={() => confirmDismissExtraction(suggestion.id)}
+                    onProposeUpdate={(productId) =>
+                      proposeUpdate.mutate({
+                        suggestionId: suggestion.id,
+                        productId,
+                      })
+                    }
+                    onReprocess={() =>
+                      reprocessExtraction.mutate(suggestion.id)
+                    }
                     onReview={(field, correct) => {
                       reviewExtraction.mutate(
                         {
@@ -1550,11 +2129,39 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                     }
                   />
                 ))}
+                {extractionPagination.nextOffset !== null ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="تحميل المزيد من الاقتراحات"
+                    disabled={extractions.isFetchingNextPage}
+                    hitSlop={10}
+                    onPress={() => void extractions.fetchNextPage()}
+                    style={({ pressed }) => [
+                      styles.loadMore,
+                      {
+                        borderColor: colors.border,
+                        opacity:
+                          pressed || extractions.isFetchingNextPage ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.link, { color: colors.primary }]}>
+                      {extractions.isFetchingNextPage
+                        ? "جارٍ تحميل المزيد..."
+                        : `تحميل المزيد (${formatArabicNumber(
+                            Math.max(
+                              0,
+                              extractionPagination.total -
+                                extractionSuggestions.length,
+                            ),
+                          )})`}
+                    </Text>
+                  </Pressable>
+                ) : null}
               </>
-            ) : (
+            ) : extractionFilter === "updates" ? null : (
               <Text style={[styles.helper, { color: colors.mutedForeground }]}>
-                لا توجد اقتراحات بعد. تظهر هنا نتائج المعالجة التلقائية للرسائل
-                المستوردة.
+                {extractionFilterDefinition.emptyMessage}
               </Text>
             )}
           </View>
@@ -2052,12 +2659,59 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 <Icon name="x" size={21} color={colors.foreground} />
               </Pressable>
             </View>
+            <View style={styles.editorSteps}>
+              {(["البيانات", "الوسائط والمخزون", "المراجعة"] as const).map(
+                (label, index) => {
+                  const step = index as 0 | 1 | 2;
+                  return (
+                    <Pressable
+                      key={label}
+                      accessibilityRole="tab"
+                      accessibilityState={{ selected: editorStep === step }}
+                      onPress={() => setEditorStep(step)}
+                      style={({ pressed }) => [
+                        styles.editorStep,
+                        {
+                          backgroundColor:
+                            editorStep === step
+                              ? colors.primary
+                              : colors.secondary,
+                          opacity: pressed ? 0.75 : 1,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.editorStepLabel,
+                          {
+                            color:
+                              editorStep === step
+                                ? colors.primaryForeground
+                                : colors.mutedForeground,
+                          },
+                        ]}
+                      >
+                        {formatArabicNumber(index + 1)}. {label}
+                      </Text>
+                    </Pressable>
+                  );
+                },
+              )}
+            </View>
             <ScrollView
               contentContainerStyle={styles.form}
               keyboardShouldPersistTaps="handled"
               automaticallyAdjustKeyboardInsets
               keyboardDismissMode="on-drag"
             >
+              {autosavedAt ? (
+                <Text
+                  accessibilityLiveRegion="polite"
+                  style={[styles.helper, { color: colors.mutedForeground }]}
+                >
+                  {autosavedAt}
+                </Text>
+              ) : null}
               {error ? (
                 <Text
                   accessibilityRole="alert"
@@ -2066,6 +2720,8 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   {error}
                 </Text>
               ) : null}
+              {editorStep === 0 ? (
+              <>
               {editor?.importedFromPost ? (
                 <Text style={[styles.helper, { color: colors.warning }]}>
                   استخرجنا البيانات المتاحة من المنشور. أكمل الحقول الناقصة
@@ -2108,6 +2764,10 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   ))}
                 </View>
               ) : null}
+              </>
+              ) : null}
+              {editorStep === 1 ? (
+              <>
               <View style={styles.productMediaSection}>
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
                   إضافة وسائط
@@ -2406,6 +3066,84 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   )}
                 </View>
               ) : null}
+              </>
+              ) : null}
+              {editorStep === 2 ? (
+              <>
+              {editorDiff.length ? (
+                <Panel>
+                  <Text style={[styles.description, { color: colors.foreground }]}>
+                    ما الذي سيتغير عند الحفظ؟
+                  </Text>
+                  {editorDiff.map((change) => (
+                    <Text
+                      key={change.label}
+                      style={[styles.helper, { color: colors.mutedForeground }]}
+                    >
+                      {change.label}: {change.before} ← {change.after}
+                    </Text>
+                  ))}
+                </Panel>
+              ) : null}
+              {editor?.extractionSuggestionId &&
+              extractionsForDisplay.find(
+                (item) => item.id === editor.extractionSuggestionId,
+              )?.status === "possible_duplicate" ? (
+                <Panel>
+                  <Text style={[styles.description, { color: colors.foreground }]}>
+                    سبب إنشاء منتج مختلف عن المنتج المطابق (إلزامي)
+                  </Text>
+                  <CairoTextInput
+                    accessibilityLabel="سبب إنشاء منتج مختلف"
+                    value={editor.overrideReason ?? ""}
+                    onChangeText={(value) =>
+                      setEditor((current) =>
+                        current
+                          ? { ...current, overrideReason: value }
+                          : current,
+                      )
+                    }
+                    placeholder="مثال: مقاس مختلف ولونه متطابق"
+                    style={[
+                      styles.input,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.border,
+                        backgroundColor: colors.background,
+                      },
+                    ]}
+                  />
+                  {!editor.overrideReason?.trim() ? (
+                    <Text
+                      accessibilityRole="alert"
+                      style={[styles.helper, { color: colors.destructive }]}
+                    >
+                      اكتب سببًا واضحًا قبل الحفظ؛ لا يمكن إنشاء منتج مطابق دون
+                      تبرير.
+                    </Text>
+                  ) : null}
+                </Panel>
+              ) : null}
+              {editor?.id && productChanges.data?.length ? (
+                <Panel>
+                  <Text style={[styles.description, { color: colors.foreground }]}>
+                    سجل تغييرات المنتج
+                  </Text>
+                  {productChanges.data.slice(0, 8).map((change) => (
+                    <Text
+                      key={change.id}
+                      style={[
+                        styles.helper,
+                        { color: colors.mutedForeground },
+                      ]}
+                    >
+                      {change.field}: {JSON.stringify(change.beforeValue)} ←{" "}
+                      {JSON.stringify(change.afterValue)} ·{" "}
+                      {formatArabicDate(change.createdAt)}
+                    </Text>
+                  ))}
+                </Panel>
+              ) : null}
               {!editor?.extractionSuggestionId ? (
                 <ChoiceField
                   label="حالة السجل"
@@ -2431,8 +3169,22 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                   السعر والتوفر والوصف قبل الحفظ.
                 </Text>
               ) : null}
+              </>
+              ) : null}
             </ScrollView>
             <View style={styles.footer}>
+              {editor?.extractionSuggestionId &&
+              extractionsForDisplay.find(
+                (item) => item.id === editor.extractionSuggestionId,
+              )?.status === "possible_duplicate" &&
+              !editor.overrideReason?.trim() ? (
+                <Text
+                  accessibilityRole="alert"
+                  style={[styles.helper, { color: colors.warning }]}
+                >
+                  أضف سببًا لإنشاء منتج مختلف في خطوة «المراجعة» قبل الحفظ.
+                </Text>
+              ) : null}
               <ActionButton
                 label={
                   mediaUploading
@@ -2445,7 +3197,16 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
                 }
                 icon={save.isPending ? "refresh-cw" : "save"}
                 disabled={
-                  save.isPending || mediaUploading || !editor?.value.name.trim()
+                  save.isPending ||
+                  mediaUploading ||
+                  !editor?.value.name.trim() ||
+                  Boolean(
+                    editor?.extractionSuggestionId &&
+                      extractionsForDisplay.find(
+                        (item) => item.id === editor.extractionSuggestionId,
+                      )?.status === "possible_duplicate" &&
+                      !editor.overrideReason?.trim(),
+                  )
                 }
                 onPress={() => void saveProduct()}
               />
@@ -2786,28 +3547,244 @@ function ExtractionFieldReview({
   );
 }
 
+/** Marks the exact words the extraction relied on, instead of only quoting them. */
+function EvidenceHighlightedText({
+  text,
+  sourceId,
+  spans,
+  numberOfLines,
+  style,
+}: {
+  text: string;
+  sourceId: string;
+  spans: Array<{ sourceId: string; start: number; end: number }>;
+  numberOfLines?: number;
+  style?: React.ComponentProps<typeof Text>["style"];
+}) {
+  const colors = useColors();
+  const pieces: React.ReactNode[] = [];
+  let cursor = 0;
+  const relevant = spans
+    .filter(
+      (span) =>
+        span.sourceId === sourceId &&
+        span.start >= 0 &&
+        span.end > span.start &&
+        span.start < text.length,
+    )
+    .sort((a, b) => a.start - b.start);
+  for (const span of relevant) {
+    const start = Math.max(cursor, Math.min(span.start, text.length));
+    const end = Math.max(start, Math.min(span.end, text.length));
+    if (start > cursor) {
+      pieces.push(<React.Fragment key={`plain-${cursor}`}>{text.slice(cursor, start)}</React.Fragment>);
+    }
+    if (end > start) {
+      pieces.push(
+        <Text
+          key={`span-${start}-${end}`}
+          accessibilityLabel={`الدليل: ${text.slice(start, end)}`}
+          style={{
+            backgroundColor: colors.accent,
+            color: colors.foreground,
+            fontWeight: "700",
+          }}
+        >
+          {text.slice(start, end)}
+        </Text>,
+      );
+      cursor = end;
+    }
+  }
+  if (cursor < text.length) {
+    pieces.push(<React.Fragment key={`plain-end`}>{text.slice(cursor)}</React.Fragment>);
+  }
+  return (
+    <Text numberOfLines={numberOfLines} style={style}>
+      {pieces.length ? pieces : text}
+    </Text>
+  );
+}
+
+function editorDraftDiff(
+  product: CatalogProduct,
+  draft: ProductDraft,
+): Array<{ label: string; before: string; after: string }> {
+  const baseline = draftFromProduct(product);
+  const fields: Array<[keyof ProductDraft, string]> = [
+    ["name", "الاسم"],
+    ["sku", "رقم المنتج"],
+    ["description", "الوصف"],
+    ["price", "السعر"],
+    ["currency", "العملة"],
+    ["availability", "التوفر"],
+    ["status", "حالة السجل"],
+    ["stockOnHand", "الكمية المتاحة"],
+    ["lowStockThreshold", "حد التنبيه"],
+  ];
+  return fields
+    .filter(([key]) =>
+      Array.isArray(baseline[key]) && Array.isArray(draft[key])
+        ? JSON.stringify(baseline[key]) !== JSON.stringify(draft[key])
+        : baseline[key] !== draft[key],
+    )
+    .map(([key, label]) => ({
+      label,
+      before: formatProposalValue(baseline[key]),
+      after: formatProposalValue(draft[key]),
+    }));
+}
+
+function formatProposalValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "فارغ";
+  if (Array.isArray(value)) return value.join("، ") || "فارغ";
+  return String(value);
+}
+
+const proposalStatusLabels: Record<ProductChangeProposal["status"], string> = {
+  proposed: "بانتظار قرارك",
+  accepted: "معتمد",
+  rejected: "مرفوض",
+  expired: "انتهت صلاحيته",
+};
+
+function ChangeProposalList({
+  proposals,
+  loading,
+  error,
+  pending,
+  onDecide,
+  onRetry,
+}: {
+  proposals: ProductChangeProposal[];
+  loading: boolean;
+  error: string | null;
+  pending: boolean;
+  onDecide: (proposalId: string, decision: "accepted" | "rejected") => void;
+  onRetry: () => void;
+}) {
+  const colors = useColors();
+  if (loading) {
+    return (
+      <View accessibilityRole="progressbar" style={styles.reviewSkeleton}>
+        <Skeleton width="100%" height={18} />
+        <Skeleton width="80%" height={54} />
+      </View>
+    );
+  }
+  if (error) {
+    return (
+      <View style={styles.inventoryHistory}>
+        <Text accessibilityRole="alert" style={[styles.helper, { color: colors.destructive }]}>
+          {error}
+        </Text>
+        <ActionButton label="إعادة المحاولة" icon="refresh-cw" secondary onPress={onRetry} />
+      </View>
+    );
+  }
+  if (!proposals.length) {
+    return (
+      <Text style={[styles.helper, { color: colors.mutedForeground }]}>
+        لا توجد مقترحات تحديث لمنتجاتك. عند ورود بيانات جديدة لمنتج مطابق، ستظهر هنا لتقرر اعتمادها أو رفضها.
+      </Text>
+    );
+  }
+  return (
+    <>
+      {proposals.map((proposal) => (
+        <Panel key={proposal.id} style={styles.extractionCard}>
+          <View style={styles.productHeading}>
+            <Text style={[styles.productName, { color: colors.foreground }]}>
+              {proposal.product?.name ?? "منتج محذوف"}
+            </Text>
+            <Text
+              style={[
+                styles.badge,
+                {
+                  color:
+                    proposal.status === "proposed"
+                      ? colors.primary
+                      : colors.mutedForeground,
+                  backgroundColor: colors.secondary,
+                },
+              ]}
+            >
+              {proposalStatusLabels[proposal.status]}
+            </Text>
+          </View>
+          <Text style={[styles.evidence, { color: colors.mutedForeground }]}>
+            {formatArabicDateTime(proposal.createdAt) ?? "وقت غير محدد"}
+            {proposal.decidedAt
+              ? ` · بُتّ فيه ${formatArabicDateTime(proposal.decidedAt) ?? ""}`
+              : ""}
+          </Text>
+          {Object.entries(proposal.diff).map(([field, change]) => (
+            <View key={field} style={styles.proposalDiffRow}>
+              <Text style={[styles.description, { color: colors.foreground }]}>
+                {field}: {formatProposalValue(change.before)} ← {formatProposalValue(change.after)}
+              </Text>
+              {change.evidence ? (
+                <Text style={[styles.evidence, { color: colors.mutedForeground }]}>
+                  الدليل: «{change.evidence}»
+                </Text>
+              ) : null}
+            </View>
+          ))}
+          {proposal.status === "proposed" ? (
+            <View style={styles.proposalActions}>
+              <ActionButton
+                label="اعتماد التحديث"
+                icon="check"
+                disabled={pending}
+                onPress={() => onDecide(proposal.id, "accepted")}
+              />
+              <ActionButton
+                label="رفض التحديث"
+                icon="x"
+                secondary
+                disabled={pending}
+                onPress={() => onDecide(proposal.id, "rejected")}
+              />
+            </View>
+          ) : null}
+        </Panel>
+      ))}
+    </>
+  );
+}
+
 function ProductExtractionCard({
   suggestion,
   product,
   actionPending,
+  selected,
+  onToggleSelected,
   onCreateDraft,
   onDismiss,
+  onProposeUpdate,
+  onReprocess,
   onReview,
   onEditProduct,
 }: {
   suggestion: ProductExtractionSuggestion;
   product: CatalogProduct | null;
   actionPending: boolean;
+  selected: boolean;
+  onToggleSelected: () => void;
   onCreateDraft: () => void;
   onDismiss: () => void;
-  onReview: (field: string, correct: boolean) => void;
+  onProposeUpdate: (productId?: string) => void;
+  onReprocess: () => void;
+  onReview: (field: ProductExtractionReviewInputField, correct: boolean) => void;
   onEditProduct: (product: CatalogProduct) => void;
 }) {
   const colors = useColors();
   const [expandedSourceIds, setExpandedSourceIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const fields: Array<[string, string, string | null]> = [
+  const fields: Array<
+    [string, string, ProductExtractionReviewInputField | null]
+  > = [
     ["الاسم", suggestion.extractedData.name ?? "غير مستخرج", "name"],
     [
       "الوصف",
@@ -2829,16 +3806,31 @@ function ProductExtractionCard({
     ],
     ["رقم المنتج", suggestion.extractedData.sku ?? "غير مستخرج", "sku"],
   ];
-  const statusLabel =
-    suggestion.status === "draft_created"
-      ? "أُنشئت مسودة"
-      : suggestion.classification === "not_product"
-        ? "لم يُصنف كمنتج — راجع الرسالة"
-        : suggestion.status === "possible_duplicate"
-          ? "مطابقة محتملة — تحتاج مراجعة"
-          : "تحتاج مراجعة";
+  const senderLabel =
+    suggestion.senderRole === "merchant"
+      ? "رسالة من التاجر"
+      : suggestion.senderRole === "customer"
+        ? "إشارة من عميل — غير موثوقة"
+        : "مصدر الرسالة غير معروف";
+  const statusLabel = extractionStatusLabel(suggestion);
+  const evidenceSpans = productExtractionEvidenceSpans(suggestion);
+  const confidenceReasons = productExtractionConfidenceReasons(suggestion);
   return (
     <Panel style={styles.extractionCard}>
+      <Pressable
+        accessibilityRole="checkbox"
+        accessibilityLabel={`تحديد اقتراح ${suggestion.extractedData.name ?? "بدون اسم"}`}
+        accessibilityState={{ checked: selected }}
+        hitSlop={8}
+        onPress={onToggleSelected}
+        style={styles.cardSelect}
+      >
+        <Icon
+          name={selected ? "check-circle" : "plus"}
+          size={20}
+          color={selected ? colors.primary : colors.mutedForeground}
+        />
+      </Pressable>
       <View style={styles.productHeading}>
         <Text style={[styles.productName, { color: colors.foreground }]}>
           {suggestion.classification === "not_product"
@@ -2860,14 +3852,31 @@ function ProductExtractionCard({
           {statusLabel}
         </Text>
       </View>
+      <View style={styles.sourceMetaRow}>
+        <Text style={[styles.description, { color: colors.mutedForeground }]}>
+          {senderLabel}
+          {suggestion.version > 1
+            ? ` · النسخة ${formatArabicNumber(suggestion.version)}`
+            : ""}
+        </Text>
+      </View>
+      {confidenceReasons.length ? (
+        <View style={styles.confidenceReasons}>
+          {confidenceReasons.map((reason) => (
+            <Text
+              key={reason}
+              style={[styles.evidence, { color: colors.mutedForeground }]}
+            >
+              • {reason}
+            </Text>
+          ))}
+        </View>
+      ) : null}
       {suggestion.classification === "product"
         ? fields.map(([label, value, key]) => (
             <View key={label} style={styles.extractionField}>
               <Text style={[styles.description, { color: colors.foreground }]}>
                 {label}: {value}
-                {key && suggestion.confidence[key] !== undefined
-                  ? ` — ثقة النموذج ${Math.round(suggestion.confidence[key] * 100)}%`
-                  : ""}
               </Text>
               {key && suggestion.evidence[key] ? (
                 <Text
@@ -2936,12 +3945,13 @@ function ProductExtractionCard({
                 )}
               </View>
             ) : null}
-            <Text
+            <EvidenceHighlightedText
+              text={source.text}
+              sourceId={source.id}
+              spans={evidenceSpans}
               numberOfLines={expanded ? undefined : 5}
               style={[styles.description, { color: colors.foreground }]}
-            >
-              {source.text}
-            </Text>
+            />
             {canExpand ? (
               <Pressable
                 accessibilityRole="button"
@@ -2977,6 +3987,31 @@ function ProductExtractionCard({
           <Text style={[styles.description, { color: colors.warning }]}>
             تحقق من المنتجات المشابهة قبل إنشاء منتج آخر:
           </Text>
+          {suggestion.possibleDuplicateProducts?.length ? (
+            suggestion.possibleDuplicateProducts.map((duplicate) => (
+              <View key={`compare-${duplicate.id}`} style={styles.duplicateComparison}>
+                <Text style={[styles.description, { color: colors.foreground }]}>
+                  مقارنة سريعة:{" "}
+                  {duplicate.name === suggestion.extractedData.name
+                    ? "الاسم متطابق"
+                    : `الاسم: «${suggestion.extractedData.name ?? "غير مستخرج"}» مقابل «${duplicate.name}»`}
+                  {" · "}
+                  {duplicate.sku === suggestion.extractedData.sku
+                    ? "رقم المنتج متطابق"
+                    : `رقم المنتج: «${suggestion.extractedData.sku ?? "غير مستخرج"}» مقابل «${duplicate.sku ?? "فارغ"}»`}
+                </Text>
+                <Text style={[styles.evidence, { color: colors.mutedForeground }]}>
+                  السعر المستخرج: {formatArabicCurrency(
+                    suggestion.extractedData.price,
+                    suggestion.extractedData.currency,
+                  ) ?? "غير مستخرج"}
+                  {" · "}السعر الحالي:{" "}
+                  {formatArabicCurrency(duplicate.price, duplicate.currency) ??
+                    "غير محدد"}
+                </Text>
+              </View>
+            ))
+          ) : null}
           {suggestion.possibleDuplicateProducts?.length ? (
             suggestion.possibleDuplicateProducts.map((duplicate) => (
               <View
@@ -3093,7 +4128,7 @@ function ProductExtractionCard({
         <ActionButton
           label={
             suggestion.status === "possible_duplicate"
-              ? "إنشاء مسودة جديدة بعد المقارنة"
+              ? "مقارنة وإنشاء منتج مختلف"
               : suggestion.extractedData.name?.trim()
                 ? "إنشاء مسودة للمراجعة"
                 : "إكمال بيانات المنتج يدويًا"
@@ -3101,6 +4136,27 @@ function ProductExtractionCard({
           icon="file-plus"
           disabled={actionPending}
           onPress={onCreateDraft}
+        />
+      ) : null}
+      {suggestion.matchedProductId &&
+      suggestion.classification === "product" &&
+      suggestion.status !== "accepted_update" ? (
+        <ActionButton
+          label="اقتراح تحديث المنتج المطابق"
+          icon="refresh-cw"
+          secondary
+          disabled={actionPending}
+          onPress={() => onProposeUpdate(suggestion.matchedProductId ?? undefined)}
+        />
+      ) : null}
+      {suggestion.classification === "product" &&
+      suggestion.status !== "draft_created" ? (
+        <ActionButton
+          label="إعادة تحليل هذه الرسالة"
+          icon="refresh-cw"
+          secondary
+          disabled={actionPending}
+          onPress={onReprocess}
         />
       ) : null}
       {suggestion.status !== "draft_created" ? (
@@ -3144,8 +4200,23 @@ function ProductExtractionQueueStrip({
   }
   if (counts.failed > 0) {
     lines.push({
-      text: `${formatArabicNumber(counts.failed)} رسالة تعذر استخراج بياناتها — أعد التحليل من زر «تحليل الرسائل».`,
+      text: `${formatArabicNumber(counts.failed)} رسالة تعذر استخراج بياناتها — أعد المحاولة من زر «إضافة إلى مراجعة المنتجات» في نافذة رسائل المجموعة.`,
       tone: "warning",
+    });
+  }
+  if (counts.quotaPaused > 0) {
+    lines.push({
+      text: `${formatArabicNumber(counts.quotaPaused)} رسالة توقّف تحليلها مؤقتًا لانتهاء حصة الذكاء الاصطناعي لهذا الشهر. تُستأنف تلقائيًا، أو رقِّ خطتك لمتابعتها الآن.`,
+      tone: "warning",
+    });
+  }
+  if (counts.noText > 0) {
+    // These jobs completed, so nothing else on screen mentions them. Saying it
+    // plainly — and saying what the merchant can do — is the difference between
+    // "the feature ignored six messages" and "six messages had no text in them".
+    lines.push({
+      text: `${formatArabicNumber(counts.noText)} رسالة بلا نص مقروء (صورة أو ملصق أو تسجيل صوتي) فلم يُستخرج منها منتج. اكتب وصف المنتج مع الصورة ليُستخرج تلقائيًا.`,
+      tone: "muted",
     });
   }
   if (working > 0) {
@@ -3729,6 +4800,45 @@ function DropdownField({
 }
 
 const styles = StyleSheet.create({
+  senderFilterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+  },
+  senderFilterChip: {
+    minHeight: 40,
+    paddingHorizontal: 12,
+    borderRadius: 11,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  senderFilterLabel: { fontSize: 12.5, fontWeight: "700" },
+  bulkBar: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 11,
+  },
+  reviewSkeleton: { gap: 9, padding: 14 },
+  cardSelect: { position: "absolute", left: 10, top: 10, zIndex: 2, padding: 4 },
+  confidenceReasons: { gap: 2, marginTop: 2 },
+  proposalDiffRow: { gap: 2, paddingVertical: 5 },
+  proposalActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  duplicateComparison: { gap: 3, paddingBottom: 8 },
+  editorSteps: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
+  editorStep: {
+    minHeight: 40,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  editorStepLabel: { fontSize: 12.5, fontWeight: "700" },
   screen: { flex: 1 },
   reviewGuidance: {
     flexDirection: "row-reverse",
@@ -3900,6 +5010,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
+  loadMore: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
   checkbox: {
     width: 22,
     height: 22,
@@ -4040,6 +5158,13 @@ const styles = StyleSheet.create({
   description: { fontSize: 14, lineHeight: 21, textAlign: "right" },
   candidate: { gap: 9 },
   extractionCard: { gap: 9 },
+  sourceMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    flexWrap: "wrap",
+  },
   fieldReview: {
     flexDirection: "row",
     flexWrap: "wrap",

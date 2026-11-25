@@ -12,7 +12,7 @@ import {
 } from "@workspace/db";
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
-import { requestOwnerId } from "../lib/owner-access";
+import { requestOwnerId, requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import { metaAuthorizationStatus } from "../lib/meta-oauth";
 import {
@@ -29,6 +29,7 @@ import {
   isExclusiveWhatsAppInstance,
   mapEvolutionConnectionState,
 } from "../lib/whatsapp-evolution";
+import { sweepOrphanWhatsAppInstances } from "../lib/whatsapp-orphan-instance-sweep";
 
 import { whatsappInstanceNameForWorkspace } from "../lib/whatsapp-instance";
 import { subscriptionDenial } from "../lib/subscription-denial.ts";
@@ -50,12 +51,9 @@ const MAX_WHATSAPP_GROUP_SELECTIONS = 500;
 export { extractRemoteJidFromEnvelope, filterHistoryRecordsForGroup };
 
 router.get("/social/connections", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   const [connection] = await db
     .select()
@@ -179,12 +177,9 @@ router.get("/social/connections", requireWorkspace, async (req, res) => {
 });
 
 router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   const channelAccess = await canConnectChannel(workspaceId, "whatsapp");
   if (!channelAccess.allowed) {
@@ -404,6 +399,22 @@ router.post("/social/whatsapp/connect", requireWorkspace, async (req, res) => {
       );
     }
 
+    // Sweep the leftovers of deleted or migrated-away workspaces before handing
+    // over the pairing code. Instance names are
+    // `menaflow-` + sha256(workspaceId)[0:12], so an instance bound to this phone
+    // that no connection row claims can only belong to a workspace that is gone —
+    // and while it lives it keeps the webhook traffic that this new session needs
+    // (production, 2026-11-24: every inbound event arrived as
+    // `WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE` for an orphan and the merchant's
+    // direct-message table stayed empty). Best effort: pairing must not fail
+    // because a cleanup did.
+    await sweepOrphanWhatsAppInstances({
+      workspaceId,
+      keepInstanceName: instanceName,
+      phoneNumber,
+      trigger: "pairing",
+    });
+
     res.json({
       instanceName,
       phoneNumber,
@@ -557,12 +568,9 @@ router.get(
   "/social/whatsapp/group-selections",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
 
     try {
       const [connection] = await db
@@ -628,12 +636,9 @@ router.put(
   "/social/whatsapp/group-selections",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
 
     const groupJids: unknown = req.body?.groupJids;
     if (

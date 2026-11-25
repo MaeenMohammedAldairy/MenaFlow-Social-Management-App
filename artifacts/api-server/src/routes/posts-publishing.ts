@@ -8,7 +8,7 @@ import {
 import { UpdatePostParams } from "@workspace/api-zod";
 
 import { Router, type IRouter } from "express";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import { recordOrEmpty as safeRecord } from "../lib/value-utils.ts";
 import {
@@ -35,12 +35,9 @@ router.post(
   "/posts/:id/verify-facebook",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
 
     const paramResult = UpdatePostParams.safeParse(req.params);
     if (!paramResult.success) {
@@ -229,12 +226,9 @@ router.post(
 );
 
 router.post("/posts/:id/publish", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   const publishRequest = parsePublishRequestBody(req.body);
   if (!publishRequest) {

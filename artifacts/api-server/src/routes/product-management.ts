@@ -11,7 +11,8 @@ import {
 } from "@workspace/db";
 import { metaString } from "../lib/meta-inbox-utils";
 
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
+import { normalizedProductName } from "../lib/product-utils.ts";
 import {
   extractWhatsAppProductCandidates,
   type ProductExtractionCandidate,
@@ -23,6 +24,15 @@ import {
   publishedPostProductDraft,
 } from "../lib/product-validation";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
+import {
+  buildChangeDiff,
+  matchProductCandidate,
+  requiresOverrideReason,
+} from "../lib/product-intake-policy.ts";
+import {
+  recordProductChanges,
+  requireProductWriter,
+} from "../lib/product-intake-service.ts";
 import { notifyPostsChanged } from "../lib/post-events";
 
 const router = Router();
@@ -116,10 +126,7 @@ router.post(
   "/social/products/extract-scanned-post",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     const text = metaString(req.body?.text)?.trim() ?? "";
     const platform = req.body?.platform;
     const postId = metaString(req.body?.postId)?.trim() ?? "";
@@ -195,10 +202,7 @@ router.get(
   "/social/products/:id/inventory-movements",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     const workspaceId = requestWorkspaceId(req);
     const productId = metaString(req.params.id);
     if (!productId) {
@@ -238,13 +242,14 @@ router.get(
   },
 );
 
-router.post("/social/products", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+router.post(
+  "/social/products",
+  requireWorkspace,
+  requireProductWriter,
+  async (req, res) => {
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const input = parseProductInput(req.body);
   if (!input) {
     res.status(400).json({ error: "تحقق من بيانات المنتج المدخلة." });
@@ -330,6 +335,9 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
               ? "in_stock"
               : input.availability,
         verifiedAt: input.status === "active" ? now : null,
+        normalizedName: normalizedProductName(normalizedProductInput.name),
+        updatedBy: ownerId,
+        updatedReason: "manual_create",
         updatedAt: now,
       })
       .returning();
@@ -460,12 +468,13 @@ router.post("/social/products", requireWorkspace, async (req, res) => {
   });
 });
 
-router.put("/social/products/:id", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+router.put(
+  "/social/products/:id",
+  requireWorkspace,
+  requireProductWriter,
+  async (req, res) => {
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const workspaceId = requestWorkspaceId(req);
   const productId = metaString(req.params.id);
   if (!productId) {
@@ -528,6 +537,9 @@ router.put("/social/products/:id", requireWorkspace, async (req, res) => {
         stockOnHand: nextStock,
         inventoryTracked: nextTracking,
         verifiedAt: input.status === "active" ? now : null,
+        normalizedName: normalizedProductName(productInput.name ?? current.name),
+        updatedBy: ownerId,
+        updatedReason: "manual_edit",
         updatedAt: now,
       })
       .where(
@@ -547,7 +559,22 @@ router.put("/social/products/:id", requireWorkspace, async (req, res) => {
         createdAt: now,
       });
     }
-    return { product: updated };
+    const changes = buildChangeDiff(
+      [
+        "sku",
+        "name",
+        "aliases",
+        "description",
+        "price",
+        "currency",
+        "availability",
+        "status",
+        "mediaUrls",
+      ],
+      current as unknown as Record<string, unknown>,
+      updated as unknown as Record<string, unknown>,
+    );
+    return { product: updated, changes };
   });
   if ("error" in updateResult) {
     if (updateResult.error === "NOT_FOUND") {
@@ -563,6 +590,18 @@ router.put("/social/products/:id", requireWorkspace, async (req, res) => {
   if (!updated) {
     res.status(404).json({ error: "لم يتم العثور على المنتج." });
     return;
+  }
+  if (updateResult.changes && Object.keys(updateResult.changes).length) {
+    await recordProductChanges(
+      Object.entries(updateResult.changes).map(([field, change]) => ({
+        workspaceId,
+        productId: updated.id,
+        field,
+        before: change.before,
+        after: change.after,
+        actorId: ownerId,
+      })),
+    );
   }
   const linkedPosts = await db
     .select({ postId: productPosts.postId })
@@ -588,12 +627,9 @@ router.post(
   "/social/products/import-post/:postId",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const postId = metaString(req.params.postId);
     if (!postId) {
       res.status(400).json({ error: "معرّف المنشور غير صالح." });

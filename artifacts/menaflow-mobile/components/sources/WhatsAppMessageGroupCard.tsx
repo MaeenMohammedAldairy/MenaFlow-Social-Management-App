@@ -4,10 +4,15 @@ import { CairoText as Text } from "@/components/CairoTypography";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { StatusPill } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
-import { formatArabicDateTime } from "@/lib/formatting";
+import {
+  formatArabicDateTime,
+  formatArabicNumber,
+} from "@/lib/formatting";
 import { mediaUrlForApp } from "@/lib/content-utils";
+import { describeMediaDownloadFailure } from "@/lib/whatsapp-media-failure-copy";
 import {
   canConvertWhatsAppMessageGroup,
+  whatsAppGroupConversionBlocker,
   type DisplayedWhatsAppMessageGroup,
 } from "@/lib/source-message-groups";
 
@@ -39,11 +44,17 @@ export function WhatsAppMessageGroupCard({
   const converting = Boolean(sourceMessage && convertingMessageIds[sourceMessage.id]);
   const canConvert = canConvertWhatsAppMessageGroup(group);
   return (
-    <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.background }]}>
+    <View style={[styles.card, {
+      borderColor: group.mediaExpired || group.mediaFailed ? colors.destructive : colors.border,
+      borderWidth: group.mediaExpired || group.mediaFailed ? 2 : 1,
+      backgroundColor: colors.background,
+    }]}>
       <View style={styles.header}>
         <View style={styles.groupStatus}>
           {group.mediaFailed ? (
             <StatusPill label="فشل تحميل وسيط" tone="amber" />
+          ) : group.mediaExpired ? (
+            <StatusPill label="وسائط منتهية مستبعدة" tone="amber" />
           ) : group.mediaPending ? (
             <StatusPill label="جارٍ تحميل الوسائط" tone="amber" />
           ) : group.postId ? (
@@ -55,6 +66,16 @@ export function WhatsAppMessageGroupCard({
           ) : (
             <StatusPill label="رسالة منفردة" tone="muted" />
           )}
+          <StatusPill
+            label={
+              group.senderRole === "merchant"
+                ? "من التاجر"
+                : group.senderRole === "customer"
+                  ? "إشارة من عميل"
+                  : "مصدر غير معروف"
+            }
+            tone={group.senderRole === "merchant" ? "blue" : "amber"}
+          />
         </View>
         <View style={styles.senderWrap}>
           <Text style={[styles.sender, { color: colors.foreground }]}>{group.senderName}</Text>
@@ -64,6 +85,20 @@ export function WhatsAppMessageGroupCard({
           </Text>
         </View>
       </View>
+      {group.mediaExpired || group.mediaFailed ? (
+        <View style={[styles.mediaWarning, { backgroundColor: colors.secondary }]}>
+          <Icon
+            name="wifi-off"
+            size={17}
+            color={colors.destructive}
+          />
+          <Text style={[styles.mediaWarningText, { color: colors.destructive }]}>
+            {group.mediaExpired
+              ? `وسائط منتهية: ${formatArabicNumber(group.expiredMediaCount)}. استخدم النص والوسائط المتاحة فقط.`
+              : "فشل تحميل وسيط؛ أعد المحاولة قبل تحويل الرسالة."}
+          </Text>
+        </View>
+      ) : null}
       {group.text ? (
         <Text style={[styles.body, { color: colors.foreground }]}>{group.text}</Text>
       ) : (
@@ -72,7 +107,7 @@ export function WhatsAppMessageGroupCard({
       {group.associationSuggestions.length > 0 ? (
         <View style={styles.suggestionList}>
           <Text style={[styles.meta, { color: colors.primary }]}>
-            اقتراحات ارتباط للمراجعة فقط؛ لم يتم دمج الرسائل تلقائياً:
+            اقتراحات ارتباط تحتاج مراجعة:
           </Text>
           {group.associationSuggestions.map((suggestion) => (
             <View
@@ -84,7 +119,7 @@ export function WhatsAppMessageGroupCard({
                   accessibilityLabel={`وسائط مقترحة، ${suggestion.candidateMediaCount} عنصر`}
                   style={styles.candidateMediaList}
                 >
-                  {suggestion.candidateMedia.map(({ item }) =>
+                  {suggestion.candidateMedia.map(({ item, message }) =>
                     item.downloadStatus === "stored" &&
                     item.mediaType === "image" &&
                     item.url ? (
@@ -109,15 +144,17 @@ export function WhatsAppMessageGroupCard({
                         ]}
                       >
                         <Text style={[styles.mediaType, { color: colors.primary }]}>
-                          {item.downloadStatus === "failed"
-                            ? "فشل التحميل"
-                            : item.downloadStatus !== "stored"
-                              ? "جارٍ التحميل"
-                              : item.mediaType === "video"
-                                ? "فيديو"
-                                : item.mediaType === "document"
-                                  ? "مستند"
-                                  : item.mediaType}
+                          {item.downloadStatus !== "stored"
+                            ? describeMediaDownloadFailure({
+                                downloadStatus: item.downloadStatus,
+                                failureReason: item.failureReason,
+                                messageTimestamp: message.messageTimestamp,
+                              })
+                            : item.mediaType === "video"
+                              ? "فيديو"
+                              : item.mediaType === "document"
+                                ? "مستند"
+                                : item.mediaType}
                         </Text>
                       </View>
                     ),
@@ -172,7 +209,7 @@ export function WhatsAppMessageGroupCard({
       ) : null}
       {group.media.length ? (
         <View style={styles.mediaList}>
-          {group.media.map(({ item }) => item.downloadStatus === "stored" &&
+          {group.media.map(({ item, message }) => item.downloadStatus === "stored" &&
           item.mediaType === "image" && item.url ? (
             <Pressable
               key={item.id}
@@ -189,12 +226,14 @@ export function WhatsAppMessageGroupCard({
           ) : (
             <View key={item.id} style={[styles.mediaPlaceholder, { backgroundColor: colors.accent }]}>
               <Text style={[styles.mediaType, { color: colors.primary }]}>
-                {item.downloadStatus === "failed"
-                  ? "فشل التحميل"
-                  : item.downloadStatus !== "stored"
-                    ? "جارٍ التحميل"
-                    : item.accessError
-                      ? "الرابط غير متاح"
+                {item.downloadStatus !== "stored"
+                  ? describeMediaDownloadFailure({
+                      downloadStatus: item.downloadStatus,
+                      failureReason: item.failureReason,
+                      messageTimestamp: message.messageTimestamp,
+                    })
+                  : item.accessError
+                    ? "الرابط غير متاح"
                     : item.mediaType === "video"
                       ? "فيديو"
                       : item.mediaType === "document"
@@ -209,6 +248,12 @@ export function WhatsAppMessageGroupCard({
         <Text style={[styles.meta, { color: colors.destructive }]}>
           لم يكتمل تحميل جميع الوسائط؛ لن تُعامل المجموعة كمنشور مكتمل.
         </Text>
+      ) : group.mediaExpired ? (
+        <Text style={[styles.meta, { color: colors.mutedForeground }]}>
+          {group.media.length > group.expiredMediaCount
+            ? `استُبعدت ${formatArabicNumber(group.expiredMediaCount)} وسائط انتهت صلاحيتها لدى واتساب؛ سيُبنى المنشور من النص والوسائط المتاحة.`
+            : "كل وسائط هذه الرسالة انتهت صلاحيتها لدى واتساب؛ أعد إرسالها لإنشاء منشور منها."}
+        </Text>
       ) : null}
       {group.postId ? (
         <Text style={[styles.meta, { color: colors.primary }]}>
@@ -219,6 +264,7 @@ export function WhatsAppMessageGroupCard({
         group.media.length > 0 ||
         group.messages.some((message) => message.mediaAvailable) ||
         group.mediaFailed ||
+        group.mediaExpired ||
         group.contentBundleId
       ) &&
       canConvert ? (
@@ -248,7 +294,15 @@ export function WhatsAppMessageGroupCard({
             إضافة إلى مراجعة المنتجات
           </Text>
         </Pressable>
-      ) : null}
+      ) : canConvertWhatsAppMessageGroup(group) ? null : (
+        <Text
+          accessibilityRole="note"
+          style={[styles.convertBlocker, { color: colors.mutedForeground }]}
+        >
+          {whatsAppGroupConversionBlocker(group) ??
+            "هذه الرسالة غير مؤهلة للمراجعة الآن."}
+        </Text>
+      )}
       <Text style={[styles.meta, { color: colors.mutedForeground }]}>
         {formatArabicDateTime(group.messageTimestamp) ?? "غير محدد"}
       </Text>
@@ -276,6 +330,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   meta: { fontSize: 12.5, textAlign: "right" },
+  mediaWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 10,
+    padding: 9,
+  },
+  mediaWarningText: { flex: 1, fontSize: 12.5, lineHeight: 19, textAlign: "right" },
+  convertBlocker: { fontSize: 12.5, lineHeight: 19, textAlign: "right" },
   mediaList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   mediaThumbnail: { width: 76, height: 76, borderRadius: 8 },
   mediaPlaceholder: { width: 76, height: 76, borderRadius: 8, alignItems: "center", justifyContent: "center" },
