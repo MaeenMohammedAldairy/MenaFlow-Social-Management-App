@@ -8,10 +8,13 @@ import {
   menaMetaConnections,
   menaMetaInboxItems,
 } from "@workspace/db";
-import {
-  metaAutoReplyEnabled,
-} from "../lib/meta-auto-reply";
 import { autoReplyNextRunAt } from "../lib/auto-reply-policy";
+import {
+  type MetaInboundItem,
+  metaInboundNotifications,
+  scheduleMetaAutoReplies,
+} from "../lib/meta-inbound-ingestion";
+import { notifyCustomerMessage } from "../lib/push-notifications";
 import {
   parseMetaWebhookEvents,
   resolveUniqueMetaConnection,
@@ -187,87 +190,123 @@ router.post("/social/meta/webhook", async (req, res) => {
       continue;
     }
     for (let offset = 0; offset < events.length; offset += 100) {
-      const batchOutcome = { stored: 0, queued: 0, autoReplyOff: false };
-      await db.transaction(async (transaction) => {
-        const inserted = await transaction
+      // Step 1: persist the inbox items in their own committed transaction.
+      // No settings lookup, no job insert and no push I/O may join it: a
+      // failure in automation must never roll a customer message back.
+      const prepared = events.slice(offset, offset + 100).map((event) => {
+        const { media, ...item } = event;
+        return {
+          id: randomUUID(),
+          ownerId: connection.ownerId,
+          workspaceId: connection.workspaceId,
+          ...item,
+          metadata: { media },
+        };
+      });
+      const inserted = await db.transaction((transaction) =>
+        transaction
           .insert(menaMetaInboxItems)
-          .values(
-            events.slice(offset, offset + 100).map((event) => {
-              const { media, ...item } = event;
-              return {
-                id: randomUUID(),
-                ownerId: connection.ownerId,
-                workspaceId: connection.workspaceId,
-                ...item,
-                metadata: { media },
-              };
-            }),
-          )
+          .values(prepared)
           .onConflictDoNothing()
           .returning({
             id: menaMetaInboxItems.id,
+            workspaceId: menaMetaInboxItems.workspaceId,
             platform: menaMetaInboxItems.platform,
             kind: menaMetaInboxItems.kind,
-          });
-        if (inserted.length === 0) return;
-        batchOutcome.stored = inserted.length;
+            conversationId: menaMetaInboxItems.conversationId,
+            actorId: menaMetaInboxItems.actorId,
+            actorName: menaMetaInboxItems.actorName,
+            text: menaMetaInboxItems.text,
+          }),
+      );
+      if (inserted.length === 0) continue;
+      totals.stored += inserted.length;
+      const items: MetaInboundItem[] = inserted;
 
-        const [settings] = await transaction
-          .select()
-          .from(menaMetaAutoReplySettings)
-          .where(
-            eq(menaMetaAutoReplySettings.workspaceId, connection.workspaceId),
-          )
-          .limit(1);
-        if (!settings?.enabled) {
-          batchOutcome.autoReplyOff = true;
-          return;
-        }
-
-        const eligible = inserted.filter((item) =>
-          metaAutoReplyEnabled(settings, item.platform, item.kind),
-        );
-        if (eligible.length === 0) return;
-        batchOutcome.queued = eligible.length;
-        const nextRunAt = autoReplyNextRunAt();
-        await transaction
-          .insert(menaMetaAutoReplyJobs)
-          .values(
-            eligible.map((item) => ({
-              id: randomUUID(),
-              ownerId: connection.ownerId,
+      // Step 2: optional automation. Its own errors are contained; the items
+      // above are already stored and cannot be rolled back.
+      const scheduling = await scheduleMetaAutoReplies({
+        items,
+        ownerId: connection.ownerId,
+        workspaceId: connection.workspaceId,
+        nextRunAt: () => autoReplyNextRunAt(),
+        newJobId: () => randomUUID(),
+        getSettings: async () => {
+          const [settings] = await db
+            .select()
+            .from(menaMetaAutoReplySettings)
+            .where(
+              eq(menaMetaAutoReplySettings.workspaceId, connection.workspaceId),
+            )
+            .limit(1);
+          return settings;
+        },
+        insertJobs: async (jobs) => {
+          const rows = await db
+            .insert(menaMetaAutoReplyJobs)
+            .values(jobs)
+            .onConflictDoNothing()
+            .returning({ inboxItemId: menaMetaAutoReplyJobs.inboxItemId });
+          return rows.map((row) => row.inboxItemId);
+        },
+        onError: (error) => {
+          logger.error(
+            {
+              err: error,
               workspaceId: connection.workspaceId,
-              inboxItemId: item.id,
-              nextRunAt,
-            })),
-          )
-          .onConflictDoNothing();
+              accountId,
+              count: items.length,
+            },
+            "META_AUTO_REPLY_QUEUE_FAILED",
+          );
+        },
       });
-      totals.stored += batchOutcome.stored;
-      totals.queued += batchOutcome.queued;
-      if (batchOutcome.stored > 0) {
-        outcomeLog("INBOX_STORED", {
-          accountId,
-          workspaceId: connection.workspaceId,
-          stored: batchOutcome.stored,
-        });
-      }
-      if (batchOutcome.autoReplyOff && batchOutcome.stored > 0) {
+      totals.queued += scheduling.queuedItemIds.length;
+
+      // Step 3: tell the merchant. This runs even when the reply worker has
+      // never been deployed, is stopped, or the reply queue failed.
+      const notifications = metaInboundNotifications(items, scheduling.queuedItemIds);
+      const notified = await Promise.allSettled(
+        notifications.map(({ item }) =>
+          notifyCustomerMessage({
+            workspaceId: item.workspaceId,
+            conversationId: item.conversationId,
+            platform: item.platform,
+            customerName: item.actorName,
+            preview: item.text,
+          }),
+        ),
+      );
+      const notificationFailures = notified.filter(
+        (result) => result.status === "rejected",
+      ).length;
+      outcomeLog("INBOX_STORED", {
+        accountId,
+        workspaceId: connection.workspaceId,
+        stored: items.length,
+        notified: notified.length - notificationFailures,
+      });
+
+      if (scheduling.reason === "disabled") {
         outcomeLog("AUTO_REPLY_DISABLED", {
           accountId,
           workspaceId: connection.workspaceId,
         });
-      } else if (batchOutcome.stored > 0 && batchOutcome.queued === 0) {
+      } else if (scheduling.reason === "channel_off") {
         outcomeLog("AUTO_REPLY_CHANNEL_OFF", {
           accountId,
           workspaceId: connection.workspaceId,
         });
-      }
-      if (batchOutcome.queued > 0) {
+      } else if (scheduling.reason === "queue_failed") {
+        outcomeLog("AUTO_REPLY_QUEUE_FAILED", {
+          accountId,
+          workspaceId: connection.workspaceId,
+        });
+      } else if (scheduling.queuedItemIds.length > 0) {
         outcomeLog("AUTO_REPLY_QUEUED", {
           accountId,
           workspaceId: connection.workspaceId,
-          queued: batchOutcome.queued,
+          queued: scheduling.queuedItemIds.length,
         });
       }
     }

@@ -39,6 +39,8 @@ export type NotificationDraft =
       platform?: string | null;
       customerName?: string | null;
       preview?: string | null;
+      /** False when an automatic reply is already scheduled for this item. */
+      awaitingReply?: boolean;
       at: Date;
     }
   | {
@@ -236,7 +238,12 @@ export function buildNotificationContent(
 
       return {
         eventType: draft.eventType,
-        title: truncateText("رسالة عميل بانتظار ردّك", MAX_TITLE_LENGTH),
+        title: truncateText(
+          draft.awaitingReply === false
+            ? "رسالة عميل جديدة"
+            : "رسالة عميل بانتظار ردّك",
+          MAX_TITLE_LENGTH,
+        ),
         body: truncateText(
           draft.preview?.trim() ? `${who}: ${draft.preview.trim()}` : `${who} أرسل لك رسالة.`,
           MAX_BODY_LENGTH,

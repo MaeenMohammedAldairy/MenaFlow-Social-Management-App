@@ -132,9 +132,11 @@ import {
   outboundWhatsAppDirectMessageValues,
   normalizeWhatsAppDirectMessageText,
   redactWhatsAppPrivateData,
+  classifyWhatsAppDirectMessage,
   selectWhatsAppDirectJid,
   whatsappDirectConversationKeys,
   whatsappDirectMessageExpiry,
+  whatsappDirectMessagePlaceholder,
 } from "../lib/whatsapp-direct-messages";
 import { asRecord, queryString } from "./value-utils.ts";
 import { resolveMessageSenderId } from "../lib/whatsapp-marketing-safety";
@@ -2280,7 +2282,15 @@ export async function processWebhookEvent(
   ) {
     const direction = eventKey?.fromMe === true ? "outbound" : "inbound";
     const directMessage = eventMessage ?? eventPayload;
-    const messageText = extractWhatsAppTextFromMessage(directMessage);
+    // A media-only DM has no conversation or caption. Store a typed Arabic
+    // placeholder instead of an empty body so the Inbox thread shows that a
+    // photo/voice note arrived. Nothing is downloaded or copied here: the body
+    // stays encrypted at rest with the same workspace/instance key as before.
+    const messageText =
+      extractWhatsAppTextFromMessage(directMessage) ??
+      whatsappDirectMessagePlaceholder(
+        classifyWhatsAppDirectMessage(directMessage, null),
+      );
     const messageTimestamp =
       [
         directMessage.messageTimestamp,

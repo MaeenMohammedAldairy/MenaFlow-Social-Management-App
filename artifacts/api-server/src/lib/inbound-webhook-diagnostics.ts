@@ -53,6 +53,7 @@ export type MetaInboundReason =
   | "AUTO_REPLY_CHANNEL_OFF"
   | "INBOX_STORED"
   | "AUTO_REPLY_QUEUED"
+  | "AUTO_REPLY_QUEUE_FAILED"
   | "PROCESSED";
 
 const whatsAppOutcomes: Record<WhatsAppInboundReason, Omit<InboundWebhookOutcome, "event">> = {
@@ -170,6 +171,13 @@ const metaOutcomes: Record<MetaInboundReason, Omit<InboundWebhookOutcome, "event
     level: "info",
     deliveryConfirmed: true,
     hint: "تم جدولة رد آلي.",
+  },
+  AUTO_REPLY_QUEUE_FAILED: {
+    // Info, never warn/error: the message is already saved and visible. This
+    // outcome describes an automation failure, not a refused webhook.
+    level: "info",
+    deliveryConfirmed: true,
+    hint: "حُفظت الرسالة في الصندوق، لكن تعذّر جدولة الرد الآلي. الرسالة ظاهرة ويمكن الرد عليها يدويًا.",
   },
   PROCESSED: {
     level: "info",
