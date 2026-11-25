@@ -15,6 +15,7 @@ import {
   type MetaInboxPlatform,
 } from "@/lib/meta-inbox-api";
 import { MetaAutoReplySettingsPanel } from "@/components/inbox/MetaAutoReplySettingsPanel";
+import { whatsAppFunctionalStatus } from "@/lib/whatsapp-functional-status";
 import { WhatsAppReplyPanel } from "../whatsapp-setup";
 
 type ReplyChannel = MetaInboxPlatform | "whatsapp";
@@ -134,6 +135,10 @@ function ReplySettingsContent({ userId }: { userId: string | null }) {
   };
 
   const whatsAppConnected = whatsAppSettings.data?.connected === true;
+  const whatsAppFunctional = whatsAppFunctionalStatus({
+    connected: whatsAppConnected,
+    inbound: whatsAppSettings.data?.inbound,
+  });
   const whatsAppCardState: ChannelCardState = whatsAppSettings.isPending
     ? {
         status: { label: "جارٍ التحقق", tone: "muted" },
@@ -150,16 +155,14 @@ function ReplySettingsContent({ userId }: { userId: string | null }) {
             hint: "اربط حساب واتساب من شاشة القنوات قبل إعداد الردود.",
           }
         : whatsAppSettings.data?.settings.enabled
-          ? whatsAppSettings.data?.inbound &&
-            !whatsAppSettings.data.inbound.deliveryConfirmed
+          ? whatsAppFunctional.tone === "amber"
             ? {
-                status: { label: "مفعّل بلا استقبال", tone: "amber" },
-                hint:
-                  "الرد الآلي مفعّل لكن لم تصل أي رسالة عميل إلى الخادم. افتح البطاقة لإعادة تسجيل الويب هوك.",
+                status: { label: whatsAppFunctional.label, tone: "amber" },
+                hint: whatsAppFunctional.message,
               }
             : {
                 status: { label: "مفعّل", tone: "green" },
-                hint: "الرد الآلي مفعّل على الرسائل الفردية.",
+                hint: "واتساب يعمل بشكل طبيعي.",
               }
           : {
               status: { label: "متوقف", tone: "muted" },

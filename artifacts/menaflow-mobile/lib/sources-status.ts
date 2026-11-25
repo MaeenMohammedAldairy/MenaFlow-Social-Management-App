@@ -35,6 +35,9 @@ export type SourceKey = "facebook" | "instagram" | "whatsapp";
 
 export type MetaPlatform = "facebook" | "instagram";
 
+const WHATSAPP_WORKING_MESSAGE = "واتساب يعمل بشكل طبيعي";
+const WHATSAPP_REPAIRING_MESSAGE = "نعمل على إصلاح اتصال واتساب تلقائيًا.";
+
 /**
  * Whether the connections payload is still unknown to the screen.
  *
@@ -112,14 +115,10 @@ export function sourceStatus(
     const connection = connections?.whatsapp;
     if (!connection) return "غير مربوط";
     if (isSourceConnected(connections, "whatsapp")) return "متصل";
-    if (connection.connectionState === "connecting") return "جارٍ الاتصال…";
-    if (connection.connectionState === "unavailable") return "غير متاح";
-    if (connection.connectionState === "failed") return "فشل الاتصال";
-    // `missing` means the row exists but the provider's instance for this
-    // workspace does not — the pairing is saved, the session is gone.
-    return connection.connectionState === "missing"
-      ? "غير متاح"
-      : "يحتاج إعادة ربط";
+    if (connection.connectionState === "connecting") return "جارٍ التحقق…";
+    // Every saved-but-not-working state is repaired in the background. The
+    // merchant only needs to know that the system is on it.
+    return "جارٍ الإصلاح";
   }
   return "غير مربوط";
 }
@@ -149,20 +148,12 @@ export function sourceDetail(
     const connection = connections?.whatsapp;
     if (!connection) return null;
     if (isSourceConnected(connections, "whatsapp")) {
-      return `الحساب: ${connection.accountName ?? ""}`;
+      return WHATSAPP_WORKING_MESSAGE;
     }
     if (connection.connectionState === "connecting") {
       return "يتم التحقق من الاتصال تلقائيًا.";
     }
-    if (connection.connectionState === "unavailable") {
-      return "الحساب محفوظ · تعذّر التحقق من الاتصال الآن.";
-    }
-    if (connection.connectionState === "failed") {
-      return "تعذر إعداد الاتصال · أعد محاولة الربط.";
-    }
-    return connection.connectionState === "missing"
-      ? "الحساب محفوظ · نسخة الخادم غير موجودة."
-      : "الحساب محفوظ · يحتاج إلى إعادة الاتصال.";
+    return WHATSAPP_REPAIRING_MESSAGE;
   }
   return null;
 }

@@ -45,22 +45,23 @@ test("a source that was never linked reads as not linked", () => {
   assert.equal(sourceDetail({}, "whatsapp", LOADED), null);
 });
 
-test("every WhatsApp connection state the server can report has its own words", () => {
+test("WhatsApp is described only by functional state, never internal mechanism", () => {
   const cases = [
-    ["connected", "متصل", "الحساب: +966561234567"],
-    ["connecting", "جارٍ الاتصال…", "يتم التحقق من الاتصال تلقائيًا."],
-    ["unavailable", "غير متاح", "الحساب محفوظ · تعذّر التحقق من الاتصال الآن."],
-    ["failed", "فشل الاتصال", "تعذر إعداد الاتصال · أعد محاولة الربط."],
-    // `missing`: the row is saved but the provider's instance for this workspace
-    // is gone, which the merchant experiences as "it was connected yesterday".
-    ["missing", "غير متاح", "الحساب محفوظ · نسخة الخادم غير موجودة."],
-    ["disconnected", "يحتاج إعادة ربط", "الحساب محفوظ · يحتاج إلى إعادة الاتصال."],
+    ["connected", "متصل", "واتساب يعمل بشكل طبيعي"],
+    ["connecting", "جارٍ التحقق…", "يتم التحقق من الاتصال تلقائيًا."],
+    ["unavailable", "جارٍ الإصلاح", "نعمل على إصلاح اتصال واتساب تلقائيًا."],
+    ["failed", "جارٍ الإصلاح", "نعمل على إصلاح اتصال واتساب تلقائيًا."],
+    ["missing", "جارٍ الإصلاح", "نعمل على إصلاح اتصال واتساب تلقائيًا."],
+    ["disconnected", "جارٍ الإصلاح", "نعمل على إصلاح اتصال واتساب تلقائيًا."],
   ];
   for (const [connectionState, status, detail] of cases) {
     const connections = { whatsapp: { connectionState, accountName: "+966561234567" } };
     assert.equal(sourceStatus(connections, "whatsapp", LOADED), status, connectionState);
     assert.equal(sourceDetail(connections, "whatsapp", LOADED), detail, connectionState);
     assert.equal(isSourceConnected(connections, "whatsapp"), connectionState === "connected");
+    for (const term of ["Evolution", "Instance", "مثيل", "Webhook", "ويب هوك"]) {
+      assert.equal(detail.includes(term), false, `${detail} must not contain ${term}`);
+    }
   }
 });
 
@@ -100,7 +101,7 @@ test("a missing account name never prints the word null to a merchant", () => {
     whatsapp: { connectionState: "connected", accountName: undefined },
   };
   assert.equal(sourceDetail(connections, "facebook", LOADED), "صفحة: ");
-  assert.equal(sourceDetail(connections, "whatsapp", LOADED), "الحساب: ");
+  assert.equal(sourceDetail(connections, "whatsapp", LOADED), "واتساب يعمل بشكل طبيعي");
 });
 
 test("only a saved-but-broken source counts as needing attention", () => {
