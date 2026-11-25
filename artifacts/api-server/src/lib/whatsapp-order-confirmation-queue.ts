@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, sql } from "drizzle-orm";
 import {
   db,
   menaOrderItems,
@@ -12,72 +12,55 @@ import {
   decryptWhatsAppDirectMessageValue,
   outboundWhatsAppDirectMessageValues,
 } from "./whatsapp-direct-messages";
+import {
+  runOrderConfirmationQueue,
+  type OrderConfirmationQueue,
+} from "./order-confirmation-queue";
+import { WHATSAPP_CONFIRMATION_LEASE_MS } from "./order-confirmation-policy";
 
-const confirmationLeaseMs = 60_000;
-
-async function claimNextWhatsAppOrderConfirmation() {
-  const now = new Date();
-  await db
-    .update(menaOrders)
-    .set({
-      whatsappConfirmationStatus: "unknown",
-      whatsappConfirmationError: "ORDER_CONFIRMATION_RESULT_UNKNOWN",
+/**
+ * The WhatsApp family's share of the confirmation state machine: which columns,
+ * how long a lease runs, which write ends an exhausted row (the merchant is
+ * asked to follow up — the number is known and the customer is reachable),
+ * due order (`next_run_at`, which this queue never defers, so it is the queue
+ * order), and the one sweep before each claim. The statements themselves are
+ * `order-confirmation-queue.ts`; what follows is the send.
+ */
+const whatsappOrderConfirmationQueue: OrderConfirmationQueue = {
+  columns: {
+    status: menaOrders.whatsappConfirmationStatus,
+    attempts: menaOrders.whatsappConfirmationAttempts,
+    leaseExpiresAt: menaOrders.whatsappConfirmationLeaseExpiresAt,
+    nextRunAt: menaOrders.whatsappConfirmationNextRunAt,
+  },
+  patches: {
+    sweep: (to, error) => ({
+      whatsappConfirmationStatus: to,
+      whatsappConfirmationError: error,
       whatsappConfirmationLeaseExpiresAt: null,
-    })
-    .where(
-      and(
-        eq(menaOrders.whatsappConfirmationStatus, "sending"),
-        lt(menaOrders.whatsappConfirmationLeaseExpiresAt, now),
-      ),
-    );
-
-  return db.transaction(async (transaction) => {
-    const [candidate] = await transaction
-      .select()
-      .from(menaOrders)
-      .where(
-        or(
-          and(
-            eq(menaOrders.whatsappConfirmationStatus, "queued"),
-            lte(menaOrders.whatsappConfirmationNextRunAt, now),
-          ),
-          and(
-            eq(menaOrders.whatsappConfirmationStatus, "processing"),
-            lt(menaOrders.whatsappConfirmationLeaseExpiresAt, now),
-          ),
-        ),
-      )
-      .orderBy(asc(menaOrders.whatsappConfirmationNextRunAt))
-      .limit(1)
-      .for("update", { skipLocked: true });
-    if (!candidate) return null;
-    if (candidate.whatsappConfirmationAttempts >= 3) {
-      await transaction
-        .update(menaOrders)
-        .set({
-          whatsappConfirmationStatus: "manual_followup",
-          whatsappConfirmationError: "ORDER_CONFIRMATION_RETRY_LIMIT_REACHED",
-          whatsappConfirmationLeaseExpiresAt: null,
-          updatedAt: now,
-        })
-        .where(eq(menaOrders.id, candidate.id));
-      return null;
-    }
-    const [claimed] = await transaction
-      .update(menaOrders)
-      .set({
-        whatsappConfirmationStatus: "processing",
-        whatsappConfirmationAttempts: sql`${menaOrders.whatsappConfirmationAttempts} + 1`,
-        whatsappConfirmationLeaseExpiresAt: new Date(
-          now.getTime() + confirmationLeaseMs,
-        ),
-        updatedAt: now,
-      })
-      .where(eq(menaOrders.id, candidate.id))
-      .returning();
-    return claimed ?? null;
-  });
-}
+    }),
+    exhausted: (now) => ({
+      whatsappConfirmationStatus: "manual_followup",
+      whatsappConfirmationError: "ORDER_CONFIRMATION_RETRY_LIMIT_REACHED",
+      whatsappConfirmationLeaseExpiresAt: null,
+      updatedAt: now,
+    }),
+    claim: (leaseExpiresAt, now) => ({
+      whatsappConfirmationStatus: "processing",
+      whatsappConfirmationAttempts: sql`${menaOrders.whatsappConfirmationAttempts} + 1`,
+      whatsappConfirmationLeaseExpiresAt: leaseExpiresAt,
+      updatedAt: now,
+    }),
+  },
+  leaseMs: WHATSAPP_CONFIRMATION_LEASE_MS,
+  orderBy: asc(menaOrders.whatsappConfirmationNextRunAt),
+  // A worker that died while sending: the Evolution API may have delivered, so
+  // the row is ended as unknown rather than retried (a retry could confirm twice).
+  staleSweeps: [
+    { from: "sending", to: "unknown", error: "ORDER_CONFIRMATION_RESULT_UNKNOWN" },
+  ],
+  process: processWhatsAppOrderConfirmation,
+};
 
 async function markConfirmation(
   orderId: string,
@@ -201,7 +184,7 @@ async function processWhatsAppOrderConfirmation(
     .set({
       whatsappConfirmationStatus: "sending",
       whatsappConfirmationLeaseExpiresAt: new Date(
-        Date.now() + confirmationLeaseMs,
+        Date.now() + WHATSAPP_CONFIRMATION_LEASE_MS,
       ),
       updatedAt: new Date(),
     })
@@ -276,12 +259,7 @@ async function processWhatsAppOrderConfirmation(
 export async function processWhatsAppOrderConfirmationsQueue(
   limit = 5,
 ): Promise<number> {
-  let processed = 0;
-  for (let count = 0; count < limit; count += 1) {
-    const order = await claimNextWhatsAppOrderConfirmation();
-    if (!order) break;
-    await processWhatsAppOrderConfirmation(order);
-    processed += 1;
-  }
-  return processed;
+  // No `onError`: a throw here is a database or decrypt failure, not a bad
+  // order, so the batch stops and the worker loop reports it on the next tick.
+  return runOrderConfirmationQueue(whatsappOrderConfirmationQueue, { limit });
 }
