@@ -10,8 +10,8 @@ import {
 } from "@workspace/db";
 import {
   metaAutoReplyEnabled,
-  metaAutoReplyNextRunAt,
 } from "../lib/meta-auto-reply";
+import { autoReplyNextRunAt } from "../lib/auto-reply-policy";
 import {
   parseMetaWebhookEvents,
   resolveUniqueMetaConnection,
@@ -229,7 +229,7 @@ router.post("/social/meta/webhook", async (req, res) => {
         );
         if (eligible.length === 0) return;
         batchOutcome.queued = eligible.length;
-        const nextRunAt = metaAutoReplyNextRunAt();
+        const nextRunAt = autoReplyNextRunAt();
         await transaction
           .insert(menaMetaAutoReplyJobs)
           .values(

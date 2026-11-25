@@ -1,5 +1,5 @@
 import { getAuth } from "@clerk/express";
-import type { Request, RequestHandler } from "express";
+import type { Request, RequestHandler, Response } from "express";
 
 export function isLocalAuthDisabled(): boolean {
   return (
@@ -96,6 +96,24 @@ export function assertProductionConfiguration(): void {
   }
 }
 
+/** The one wording of "you are not signed in", for every route that has to say it. */
+export const signInRequiredMessage = "سجّل الدخول أولاً.";
+
+/**
+ * The caller's owner id, or null after answering the request with 401.
+ *
+ * Routes need the id itself, not just a yes/no, so a middleware alone never
+ * replaced the check — `requireOwner` below sat unused while 70-odd handlers
+ * each wrote out "read the id, refuse if missing". This is the half they share;
+ * the caller keeps `if (!ownerId) return;` because only it knows what to do next.
+ */
+export function requireOwnerId(req: Request, res: Response): string | null {
+  const ownerId = requestOwnerId(req);
+  if (ownerId) return ownerId;
+  res.status(401).json({ error: signInRequiredMessage });
+  return null;
+}
+
 /** Returns the verified Clerk user ID, or the explicitly configured single local-dev identity. */
 export function requestOwnerId(req: Request): string | null {
   if (isLocalAuthDisabled()) {
@@ -116,11 +134,36 @@ export const requireOwner: RequestHandler = (req, res, next) => {
     next();
     return;
   }
-
-  const auth = getAuth(req);
-  if (!auth.userId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!requireOwnerId(req, res)) return;
   next();
 };
+
+/**
+ * Role policies — the only place that answers "who may do what by role".
+ *
+ * Three gates used to carry three spellings of the same question: an inline
+ * `role !== "owner"` in `routes/workspaces.ts`, this predicate in
+ * `meta-oauth.ts`, and an owner-or-admin check in `requireProductWriter`.
+ * The first stays inline (it answers 500 when the context is missing); the
+ * other two live here so the one difference between them is visible.
+ */
+
+/** Connecting or disconnecting Meta accounts: the owner only. */
+export function canManageMetaConnections(role: string): boolean {
+  return role === "owner";
+}
+
+/**
+ * Changing the product catalog: the owner, and `admin`.
+ *
+ * `admin` is a role nothing assigns today — memberships are created as `owner`
+ * (the workspace bootstrap) and invitations are not built — so this is
+ * owner-only in practice, like every other gate. The wider allowance is kept
+ * on purpose rather than folded into the owner-only rule: product writes change
+ * what the auto-reply and the order intake will tell customers, which is the
+ * one area a future `admin` was meant to help with. When roles arrive, this is
+ * where that decision is made — not in a middleware three modules away.
+ */
+export function canWriteProducts(role: string): boolean {
+  return role === "owner" || role === "admin";
+}

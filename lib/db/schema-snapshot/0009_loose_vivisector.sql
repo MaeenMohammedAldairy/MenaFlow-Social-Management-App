@@ -1,0 +1,1 @@
+ALTER TABLE "mena_workspace_onboarding" DROP COLUMN "social_accounts_completed";

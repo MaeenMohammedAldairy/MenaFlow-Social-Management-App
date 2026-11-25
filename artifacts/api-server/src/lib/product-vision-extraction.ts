@@ -28,7 +28,10 @@ import {
 } from "./ai-image-validation.ts";
 import { type AiProviderOptions } from "./ai-provider.ts";
 import { resolvePurposeModelOverrides } from "./ai-provider-fallback.ts";
-import { callMeteredAiProvider } from "./metered-ai-provider.ts";
+import {
+  callMeteredAiProvider,
+  textAiProviderOptions,
+} from "./metered-ai-provider.ts";
 import {
   normalizeProductExtractionResponse,
   type ProductExtractionContext,
@@ -277,13 +280,8 @@ export function buildVisionExtractionRequest(
   );
   const userText = `معرّفات المصدر بصيغة JSON:\n${input}`;
   return {
-    openAiMessages: [
-      { role: "system", content: instruction },
-      { role: "user", content: userText },
-    ],
+    ...textAiProviderOptions({ system: instruction, user: userText }),
     openAiResponseFormat: { type: "json_object" },
-    geminiContents: [{ parts: [{ text: userText }] }],
-    geminiSystemInstruction: instruction,
     geminiResponseFormat: {
       text: { mimeType: "application/json", schema: visionResponseSchema() },
     },

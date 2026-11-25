@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import { type AiProviderOptions } from "./ai-provider.ts";
 import { resolvePurposeModelOverrides } from "./ai-provider-fallback.ts";
-import { callMeteredAiProvider } from "./metered-ai-provider.ts";
+import {
+  callMeteredAiProvider,
+  textAiProviderOptions,
+} from "./metered-ai-provider.ts";
 import {
   asRecord as record,
   boundedString as extractedString,
@@ -526,15 +529,11 @@ export async function extractWhatsAppProductCandidates(
     "صنّف كل معرّف رسالة مرة واحدة على الأقل: إما ضمن منتج واضح في products أو ضمن nonProductMessageIds. لا تترك رسائل دون تصنيف. أعد JSON بالشكل {products:[{sourceMessageIds:[],evidence_spans:{},data:{name,sku,aliases:[],description,price,currency,availability},evidence:{name,sku,aliases,description,price,currency,availability},confidence:{name,sku,aliases,description,price,currency,availability}}],nonProductMessageIds:[]}.",
   ].join("\n");
   const providerOptions = {
-    openAiMessages: [
-      { role: "system", content: instruction },
-      { role: "user", content: `رسائل المصدر بصيغة JSON:\n${input}` },
-    ],
+    ...textAiProviderOptions({
+      system: instruction,
+      user: `رسائل المصدر بصيغة JSON:\n${input}`,
+    }),
     openAiResponseFormat: { type: "json_object" },
-    geminiContents: [{
-      parts: [{ text: `رسائل المصدر بصيغة JSON:\n${input}` }],
-    }],
-    geminiSystemInstruction: instruction,
     geminiResponseFormat: {
       text: {
         mimeType: "application/json",

@@ -8,7 +8,7 @@ import {
   products,
 } from "@workspace/db";
 
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
@@ -21,10 +21,7 @@ import {
 } from "./product-route-helpers";
 
 router.get("/social/products", requireWorkspace, async (req, res) => {
-  if (!requestOwnerId(req)) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!requireOwnerId(req, res)) return;
   const workspaceId = requestWorkspaceId(req);
   const requestOrigin = mediaRequestOrigin(req);
   const includeArchived = req.query.includeArchived === "true";
@@ -125,10 +122,7 @@ router.get(
   "/social/products/post-candidates",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     const workspaceId = requestWorkspaceId(req);
     const candidates = await db
       .select({

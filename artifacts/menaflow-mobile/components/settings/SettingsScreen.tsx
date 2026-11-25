@@ -24,8 +24,9 @@ import { signOutAndClearQueryCache } from "@/lib/sign-out";
 import { unregisterDeviceForPush } from "@/lib/push-notifications";
 import { downloadWorkspaceExport } from "@/lib/download-workspace-export";
 import {
+  createWorkspaceDeletionRequest,
   getGetSubscriptionQueryKey,
-  fetchApiResponse,
+  getWorkspaceDeletionRequest,
   useGetSubscription,
 } from "@workspace/api-client-react";
 import {
@@ -34,11 +35,17 @@ import {
   type AppearanceMode,
 } from "@/lib/appearance";
 
-async function hasWorkspaceDeletionRequest(
-  response: Response,
-): Promise<boolean> {
-  if (!response.ok) throw new Error("WORKSPACE_DELETION_REQUEST_FAILED");
-  const payload: unknown = await response.json();
+/**
+ * Whether a deletion-request response describes a live request.
+ *
+ * `request: null` is "none recorded". A recorded request whose status is not
+ * `pending` is reported as an invalid response rather than as "none": the
+ * settings row then says the check failed and keeps the button, instead of
+ * presenting a workspace as free of any deletion while a request is still on
+ * record. The generated client types the payload but does not validate it, so
+ * the shape is still checked at runtime.
+ */
+function hasWorkspaceDeletionRequest(payload: unknown): boolean {
   if (
     typeof payload !== "object" ||
     payload === null ||
@@ -265,7 +272,7 @@ function SettingsContent({
 
     let active = true;
     setDeletionRequestStatus("loading");
-    void fetchApiResponse("/api/workspaces/current/deletion-request")
+    void getWorkspaceDeletionRequest()
       .then(hasWorkspaceDeletionRequest)
       .then((exists) => {
         if (active) setDeletionRequestStatus(exists ? "pending" : "none");
@@ -324,9 +331,7 @@ function SettingsContent({
     setSubmittingDeletionRequest(true);
     try {
       const exists = await hasWorkspaceDeletionRequest(
-        await fetchApiResponse("/api/workspaces/current/deletion-request", {
-          method: "POST",
-        }),
+        await createWorkspaceDeletionRequest(),
       );
       if (!exists) throw new Error("WORKSPACE_DELETION_REQUEST_NOT_RECORDED");
       setDeletionRequestStatus("pending");

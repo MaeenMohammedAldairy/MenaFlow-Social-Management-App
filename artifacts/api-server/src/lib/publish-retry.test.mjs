@@ -13,7 +13,9 @@ const require = createRequire(new URL("../../package.json", import.meta.url));
 const { build } = require("esbuild");
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const clientBundle = await build({
-  entryPoints: [path.join(projectRoot, "lib", "api-client-react", "src", "content-management.ts")],
+  entryPoints: [
+    path.join(projectRoot, "lib", "api-client-react", "src", "generated", "api.ts"),
+  ],
   bundle: true,
   platform: "node",
   format: "esm",
@@ -22,7 +24,7 @@ const clientBundle = await build({
 const clientModule = await import(
   `data:text/javascript;base64,${Buffer.from(clientBundle.outputFiles[0].text).toString("base64")}`
 );
-const { publishPostToChannels } = clientModule;
+const { publishPost } = clientModule;
 
 test("confirmed retry survives the client request and authorizes verification before publishing", async () => {
   const originalFetch = globalThis.fetch;
@@ -37,7 +39,7 @@ test("confirmed retry survives the client request and authorizes verification be
       });
     };
 
-    await publishPostToChannels("post-test", ["facebook"], true);
+    await publishPost("post-test", { channels: ["facebook"], retryUncertain: true });
 
     const request = parsePublishRequestBody(sentBody);
     assert.deepEqual(request, { channels: ["facebook"], retryUncertain: true });
@@ -67,7 +69,7 @@ test("a retry without user confirmation remains blocked and does not query or pu
       });
     };
 
-    await publishPostToChannels("post-test", ["facebook"]);
+    await publishPost("post-test", { channels: ["facebook"] });
 
     const request = parsePublishRequestBody(sentBody);
     assert.deepEqual(request, { channels: ["facebook"], retryUncertain: false });

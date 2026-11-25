@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
 import { db, menaWhatsAppGroupSelections, posts } from "@workspace/db";
 
 import { Router, type IRouter } from "express";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 import { subscribeToPostChanges } from "../lib/post-events";
@@ -22,12 +22,9 @@ import {
 } from "./posts-domain";
 
 router.get("/posts", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   try {
     const requestHost = req.get("host");
@@ -79,12 +76,9 @@ router.get("/posts", requireWorkspace, async (req, res) => {
 });
 
 router.post("/posts/known-ids", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const body =
     req.body && typeof req.body === "object" && !Array.isArray(req.body)
       ? (req.body as Record<string, unknown>)
@@ -117,12 +111,9 @@ router.post("/posts/known-ids", requireWorkspace, async (req, res) => {
 });
 
 router.get("/posts/report-summary", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const range = parsePostReportRange(req.query.range);
   if (!range) {
     res.status(400).json({ error: "فترة التقرير غير صالحة." });
@@ -164,12 +155,9 @@ router.get("/posts/report-summary", requireWorkspace, async (req, res) => {
 });
 
 router.get("/posts/page", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   const requestedLimit = Number(req.query.limit ?? 20);
   if (
@@ -270,12 +258,9 @@ router.get("/posts/page", requireWorkspace, async (req, res) => {
 });
 
 router.get("/posts/events", requireWorkspace, (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   res.status(200);
   res.set({

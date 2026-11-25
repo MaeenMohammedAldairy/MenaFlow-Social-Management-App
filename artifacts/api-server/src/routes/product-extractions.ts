@@ -19,7 +19,7 @@ import {
 } from "@workspace/db";
 import { metaString } from "../lib/meta-inbox-utils";
 
-import { requestOwnerId } from "../lib/owner-access";
+import { requestOwnerId, requireOwnerId } from "../lib/owner-access";
 
 import { queueUnprocessedWhatsAppProductMessages } from "../lib/whatsapp-product-extraction";
 import {
@@ -91,10 +91,7 @@ router.get(
   "/social/products/whatsapp-extractions",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     const workspaceId = requestWorkspaceId(req);
     // A flat page of the fifty newest suggestions cannot serve a review queue:
     // most of them are `not_product` — a message that turned out to be a post
@@ -415,10 +412,7 @@ router.post(
   "/social/products/extract-whatsapp",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     const workspaceId = requestWorkspaceId(req);
     const hasTargetMessage = req.body?.messageId !== undefined;
     const messageId =
@@ -461,12 +455,9 @@ router.post(
   requireWorkspace,
   requireProductWriter,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const suggestionId = metaString(req.params.id);
     if (!suggestionId) {
       res.status(400).json({ error: "معرّف الاقتراح غير صالح." });
@@ -674,10 +665,7 @@ router.post(
   requireWorkspace,
   requireProductWriter,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     const workspaceId = requestWorkspaceId(req);
     const suggestionId = metaString(req.params.id);
     if (!suggestionId) {
@@ -743,12 +731,9 @@ router.post(
   requireWorkspace,
   requireProductWriter,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const suggestionId = metaString(req.params.id);
     const field = req.body?.field;
     const correct = req.body?.correct;

@@ -43,9 +43,6 @@ export const workspaceOnboarding = pgTable(
     userId: text("user_id").notNull(),
     currentStep: integer("current_step").notNull().default(3),
     completed: boolean("completed").notNull().default(true),
-    socialAccountsCompleted: boolean("social_accounts_completed")
-      .notNull()
-      .default(true),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

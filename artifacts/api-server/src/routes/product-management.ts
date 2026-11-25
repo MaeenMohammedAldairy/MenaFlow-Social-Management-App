@@ -11,7 +11,7 @@ import {
 } from "@workspace/db";
 import { metaString } from "../lib/meta-inbox-utils";
 
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { normalizedProductName } from "../lib/product-utils.ts";
 import {
   extractWhatsAppProductCandidates,
@@ -126,10 +126,7 @@ router.post(
   "/social/products/extract-scanned-post",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     const text = metaString(req.body?.text)?.trim() ?? "";
     const platform = req.body?.platform;
     const postId = metaString(req.body?.postId)?.trim() ?? "";
@@ -205,10 +202,7 @@ router.get(
   "/social/products/:id/inventory-movements",
   requireWorkspace,
   async (req, res) => {
-    if (!requestOwnerId(req)) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!requireOwnerId(req, res)) return;
     const workspaceId = requestWorkspaceId(req);
     const productId = metaString(req.params.id);
     if (!productId) {
@@ -253,12 +247,9 @@ router.post(
   requireWorkspace,
   requireProductWriter,
   async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const input = parseProductInput(req.body);
   if (!input) {
     res.status(400).json({ error: "تحقق من بيانات المنتج المدخلة." });
@@ -482,11 +473,8 @@ router.put(
   requireWorkspace,
   requireProductWriter,
   async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const workspaceId = requestWorkspaceId(req);
   const productId = metaString(req.params.id);
   if (!productId) {
@@ -639,12 +627,9 @@ router.post(
   "/social/products/import-post/:postId",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
     const postId = metaString(req.params.postId);
     if (!postId) {
       res.status(400).json({ error: "معرّف المنشور غير صالح." });

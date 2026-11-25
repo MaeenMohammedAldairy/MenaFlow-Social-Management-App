@@ -5,7 +5,7 @@ import express, { Router } from "express";
 
 import { metaString } from "../lib/meta-inbox-utils";
 
-import { verifySignedMediaRequest } from "../lib/meta-publishing";
+import { verifySignedMediaRequest } from "../lib/public-media-url";
 import {
   createMediaJpeg,
   readMediaObject,
@@ -13,7 +13,7 @@ import {
   streamMediaObject,
   thumbnailObjectPath,
 } from "../lib/whatsapp-media-storage";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import {
   PRODUCT_MEDIA_TYPES,
   storeProductMedia,
@@ -118,15 +118,25 @@ router.get("/social/products/public-media/:mediaId", async (req, res) => {
 router.post(
   "/social/products/media",
   requireWorkspace,
-  express.raw({ type: ["image/*", "video/*"], limit: "20mb" }),
+  // `application/octet-stream` is accepted so a generated client can send the
+  // body without having to name the exact type: a code generator has to pin one
+  // content type, and pinning a wildcard like `image/*` is rejected by `typeis`
+  // as a literal. The caller then says what the file is with `?mediaType=`.
+  express.raw({
+    type: ["image/*", "video/*", "application/octet-stream"],
+    limit: "20mb",
+  }),
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    const ownerId = requireOwnerId(req, res);
+    if (!ownerId) return;
     const workspaceId = requestWorkspaceId(req);
-    const mimeType = req.get("content-type")?.split(";", 1)[0].toLowerCase();
+    const declaredType = typeof req.query.mediaType === "string"
+      ? req.query.mediaType.split(";", 1)[0].trim().toLowerCase()
+      : "";
+    const mimeType =
+      declaredType ||
+      req.get("content-type")?.split(";", 1)[0].toLowerCase() ||
+      "";
     if (!Buffer.isBuffer(req.body) || !mimeType) {
       res.status(400).json({ error: "نوع ملف الوسائط غير مدعوم." });
       return;

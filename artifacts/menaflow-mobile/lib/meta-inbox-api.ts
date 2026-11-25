@@ -1,45 +1,58 @@
+/**
+ * The Facebook and Instagram inbox, and the automatic replies to it.
+ *
+ * A thin adapter over the client generated from `lib/api-spec/openapi.yaml`. The
+ * shapes live in the contract now; what is left here is the one filter the wire
+ * does not have (an "all platforms" tab) and the names the screens already
+ * import.
+ *
+ * This used to be a hand-written module with its own copies of the item,
+ * settings, readiness and diagnostics types, kept in step with the server by
+ * hand. It had already drifted: `inbound` was optional where the server always
+ * sends it, and `lastInboxItemAt` was required where the contract said optional.
+ */
 import {
-  fetchApiResponse,
-  readJsonResponse,
+  listMetaInbox as generatedListMetaInbox,
+  sendMetaInboxReply as generatedSendMetaInboxReply,
+  retryMetaInboxAutoReply as generatedRetryMetaInboxAutoReply,
+  confirmMetaInboxReplyNotSent as generatedConfirmMetaInboxReplyNotSent,
+  getMetaAutoReplySettings as generatedGetMetaAutoReplySettings,
+  saveMetaAutoReplySettings as generatedSaveMetaAutoReplySettings,
+  getMetaAutoReplyHistoricalPosts as generatedGetMetaAutoReplyHistoricalPosts,
+  queueMetaAutoReplyHistoricalComments as generatedQueueMetaAutoReplyHistoricalComments,
+  activateMetaWebhookSubscriptions as generatedActivateMetaWebhookSubscriptions,
+  testMetaAutoReply as generatedTestMetaAutoReply,
+  type MetaInboxItem,
+  type MetaInboxMedia,
+  type MetaInboxResponse,
+  type MetaAutoReplySettings,
+  type MetaAutoReplyReadiness,
+  type MetaAutoReplySettingsResponse,
+  type MetaAutoReplyHistoricalPostsResponse,
+  type MetaInboundDiagnostics,
+  type DiagnosticIssue,
+  type MetaAutoReplyTestInput,
 } from "@workspace/api-client-react";
-import type { WebhookAttemptSummary } from "./inbound-webhook-copy";
 
-export type MetaInboxPlatform = "facebook" | "instagram";
-export type MetaInboxKind = "message" | "comment";
+export type {
+  MetaInboxItem,
+  MetaInboxMedia,
+  MetaInboxResponse,
+  MetaAutoReplySettings,
+  MetaAutoReplyReadiness,
+  MetaAutoReplySettingsResponse,
+  MetaAutoReplyHistoricalPostsResponse,
+  MetaInboundDiagnostics,
+};
+
+export type MetaInboxPlatform = MetaInboxItem["platform"];
+export type MetaInboxKind = MetaInboxItem["kind"];
+
+/** The contract calls it `DiagnosticIssue`; the diagnostics screen imports this. */
+export type InboundDiagnosticIssue = DiagnosticIssue;
+
+/** The "all" tab is a client-side union; the wire only knows the two platforms. */
 export type InboxPlatform = "all" | MetaInboxPlatform | "whatsapp";
-
-export type MetaInboxMedia = {
-  type: string;
-  url: string | null;
-  thumbnailUrl: string | null;
-};
-
-export type MetaInboxItem = {
-  id: string;
-  platform: MetaInboxPlatform;
-  kind: MetaInboxKind;
-  externalId: string;
-  conversationId: string;
-  parentId: string | null;
-  actorId: string | null;
-  actorName: string | null;
-  text: string;
-  media: MetaInboxMedia[];
-  occurredAt: string;
-  replyText: string | null;
-  repliedAt: string | null;
-  replyStatus: "sending" | "unknown" | null;
-  autoReplyStatus:
-    | "queued"
-    | "processing"
-    | "sending"
-    | "sent"
-    | "failed"
-    | "skipped"
-    | "unknown"
-    | null;
-  autoReplyErrorCode: string | null;
-};
 
 export function metaInboxPersonId(item: MetaInboxItem): string {
   return (
@@ -50,120 +63,6 @@ export function metaInboxPersonId(item: MetaInboxItem): string {
   );
 }
 
-export type MetaAutoReplySettings = {
-  enabled: boolean;
-  facebookMessagesEnabled: boolean;
-  facebookCommentsEnabled: boolean;
-  instagramMessagesEnabled: boolean;
-  instagramCommentsEnabled: boolean;
-  language: "ar" | "match_customer";
-  tone: "friendly_professional" | "concise" | "formal";
-  instructions: string;
-};
-
-export type MetaAutoReplyReadiness = {
-  connected: boolean;
-  tokenReady: boolean;
-  webhookConfigured: boolean;
-  subscriptionReady: boolean;
-  messagesSubscriptionReady: boolean;
-  commentsSubscriptionReady: boolean;
-  aiConfigured: boolean;
-  messagesReady: boolean;
-  commentsReady: boolean;
-  missingPermissions: string[];
-};
-
-export type MetaInboxResponse = {
-  webhook: {
-    verificationConfigured: boolean;
-    callbackUrl: string | null;
-    lastEventAt: string | null;
-    accounts: Record<MetaInboxPlatform, string | null>;
-    subscriptions: Partial<
-      Record<
-        MetaInboxPlatform,
-        {
-          accountId: string;
-          subscribedAt: string | null;
-          fields: string[];
-          errorCode: string | null;
-        }
-      >
-    >;
-  };
-  hasMore: boolean;
-  nextCursor: string | null;
-  items: MetaInboxItem[];
-};
-
-/** One named problem with the inbound path, already worded for the merchant. */
-export type InboundDiagnosticIssue = {
-  code: string;
-  message: string;
-  severity: "warning" | "critical";
-};
-
-/** Whether Facebook/Instagram events reach the server at all. */
-export type MetaInboundDiagnostics = {
-  deliveryConfirmed: boolean;
-  lastInboxItemAt: string | null;
-  inboxItemCount: number;
-  inboxCountByPlatform: Record<string, number>;
-  autoReplyJobs: {
-    queued: number;
-    completed: number;
-    failed: number;
-    skipped: number;
-    /**
-     * Waiting on a limit that lifts by itself — an exhausted AI quota, an
-     * unconfigured provider — rather than on the worker.
-     */
-    postponedByLimit: number;
-  };
-  subscriptions: Array<{
-    platform: MetaInboxPlatform;
-    accountId: string;
-    subscribedFields: string[];
-    subscribedAt: string | null;
-    lastErrorCode: string | null;
-  }>;
-  verifyTokenConfigured: boolean;
-  appSecretConfigured: boolean;
-  /**
-   * Recorded Meta webhook calls, or null when the server did not read the
-   * delivery log. This is what tells "Meta never called" apart from "Meta
-   * called and we refused it".
-   */
-  webhookAttempts: WebhookAttemptSummary | null;
-  issues: InboundDiagnosticIssue[];
-};
-
-export type MetaAutoReplySettingsResponse = {
-  settings: MetaAutoReplySettings;
-  readiness: Record<MetaInboxPlatform, MetaAutoReplyReadiness>;
-  inbound?: MetaInboundDiagnostics;
-};
-
-export type MetaAutoReplyHistoricalPostsResponse = {
-  platforms: Record<
-    MetaInboxPlatform,
-    {
-      ready: boolean;
-      reason: string | null;
-      posts: Array<{
-        id: string;
-        title: string;
-        body: string;
-        createdAt: string;
-        imageUrl: string | null;
-        products: string[];
-        eligibleCommentCount: number;
-      }>;
-    }
-  >;
-};
-
 export type MetaInboxQuery = {
   cursor?: string;
   personId?: string;
@@ -173,37 +72,21 @@ export type MetaInboxQuery = {
 export async function getMetaInbox(
   query: MetaInboxQuery = {},
 ): Promise<MetaInboxResponse> {
-  const search = new URLSearchParams();
-  if (query.cursor) search.set("cursor", query.cursor);
-  if (query.personId) search.set("personId", query.personId);
-  if (query.platform) search.set("platform", query.platform);
-  const searchText = search.toString();
-  const suffix = searchText ? `?${searchText}` : "";
-  const response = await fetchApiResponse(`/api/social/meta-inbox${suffix}`);
-  return readJsonResponse<MetaInboxResponse>(response);
+  return generatedListMetaInbox(query);
 }
 
 export async function getMetaAutoReplySettings(): Promise<MetaAutoReplySettingsResponse> {
-  const response = await fetchApiResponse("/api/social/meta-auto-replies");
-  return readJsonResponse<MetaAutoReplySettingsResponse>(response);
+  return generatedGetMetaAutoReplySettings();
 }
 
 export async function saveMetaAutoReplySettings(
   settings: MetaAutoReplySettings,
 ): Promise<MetaAutoReplySettings> {
-  const response = await fetchApiResponse("/api/social/meta-auto-replies", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(settings),
-  });
-  return readJsonResponse<MetaAutoReplySettings>(response);
+  return generatedSaveMetaAutoReplySettings(settings);
 }
 
 export async function getMetaAutoReplyHistoricalPosts(): Promise<MetaAutoReplyHistoricalPostsResponse> {
-  const response = await fetchApiResponse(
-    "/api/social/meta-auto-replies/historical-comments",
-  );
-  return readJsonResponse<MetaAutoReplyHistoricalPostsResponse>(response);
+  return generatedGetMetaAutoReplyHistoricalPosts();
 }
 
 export async function queueMetaAutoReplyHistoricalComments(input: {
@@ -211,15 +94,7 @@ export async function queueMetaAutoReplyHistoricalComments(input: {
   postIds?: string[];
   allEligible?: boolean;
 }): Promise<{ queuedCount: number; batchCount: number }> {
-  const response = await fetchApiResponse(
-    "/api/social/meta-auto-replies/historical-comments",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
-  return readJsonResponse<{ queuedCount: number; batchCount: number }>(response);
+  return generatedQueueMetaAutoReplyHistoricalComments(input);
 }
 
 export async function activateMetaWebhookSubscriptions(): Promise<{
@@ -228,59 +103,31 @@ export async function activateMetaWebhookSubscriptions(): Promise<{
     { subscribed: boolean; fields: string[]; errorCode?: string }
   >;
 }> {
-  const response = await fetchApiResponse(
-    "/api/social/meta-inbox/webhook-subscriptions",
-    { method: "POST" },
-  );
-  return readJsonResponse(response);
+  return generatedActivateMetaWebhookSubscriptions();
 }
 
 export async function sendMetaInboxReply(
   itemId: string,
   text: string,
 ): Promise<{ sent: boolean }> {
-  const response = await fetchApiResponse(
-    `/api/social/meta-inbox/items/${encodeURIComponent(itemId)}/reply`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    },
-  );
-  return readJsonResponse(response);
+  return generatedSendMetaInboxReply(itemId, { text });
 }
 
 export async function retryMetaAutoReply(itemId: string): Promise<{
   queued: boolean;
   autoReplyStatus: string;
 }> {
-  const response = await fetchApiResponse(
-    `/api/social/meta-inbox/items/${encodeURIComponent(itemId)}/auto-reply`,
-    { method: "POST" },
-  );
-  return readJsonResponse(response);
+  return generatedRetryMetaInboxAutoReply(itemId);
 }
 
 export async function confirmMetaInboxReplyNotSent(
   itemId: string,
 ): Promise<{ cleared: boolean }> {
-  const response = await fetchApiResponse(
-    `/api/social/meta-inbox/items/${encodeURIComponent(itemId)}/retry-confirmation`,
-    { method: "POST" },
-  );
-  return readJsonResponse(response);
+  return generatedConfirmMetaInboxReplyNotSent(itemId);
 }
 
-export async function testMetaAutoReply(input: {
-  message: string;
-  settings: MetaAutoReplySettings;
-  platform?: MetaInboxPlatform;
-  kind?: MetaInboxKind;
-}): Promise<{ reply: string; matchedProduct?: string | null }> {
-  const response = await fetchApiResponse("/api/social/meta-auto-replies/test", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  return readJsonResponse<{ reply: string; matchedProduct?: string | null }>(response);
+export async function testMetaAutoReply(
+  input: MetaAutoReplyTestInput,
+): Promise<{ reply: string; matchedProduct?: string | null }> {
+  return generatedTestMetaAutoReply(input);
 }

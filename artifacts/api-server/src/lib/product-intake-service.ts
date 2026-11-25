@@ -8,12 +8,13 @@ import {
   menaWebhookIdempotency,
 } from "@workspace/db";
 import { requestWorkspaceContext } from "./workspace-context.ts";
-import { isLocalAuthDisabled } from "./owner-access.ts";
+import { canWriteProducts, isLocalAuthDisabled } from "./owner-access.ts";
 
 /**
  * Product writes change what the auto-reply and order intake will tell
- * customers. Membership alone is too weak: require owner/admin, while keeping
- * the existing local offline development mode usable.
+ * customers. Membership alone is too weak: `canWriteProducts` (owner, and the
+ * as-yet unassigned `admin`) decides, while the existing local offline
+ * development mode stays usable.
  */
 export const requireProductWriter: RequestHandler = (req, res, next) => {
   const context = requestWorkspaceContext(req);
@@ -25,7 +26,7 @@ export const requireProductWriter: RequestHandler = (req, res, next) => {
     next();
     return;
   }
-  if (context.role !== "owner" && context.role !== "admin") {
+  if (!canWriteProducts(context.role)) {
     res.status(403).json({ error: "يجب أن تكون مالك المساحة أو مديراً لتعديل المنتجات." });
     return;
   }

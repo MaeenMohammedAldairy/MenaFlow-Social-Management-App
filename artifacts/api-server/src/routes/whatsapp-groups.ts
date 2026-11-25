@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { Router, type IRouter } from "express";
 import { db, menaWhatsAppConnections, menaWhatsAppGroupSelections } from "@workspace/db";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
   EVOLUTION_GROUP_FETCH_TIMEOUT_MS,
@@ -75,11 +75,8 @@ export async function freshWhatsAppGroups(
 
 router.get("/social/whatsapp/groups", requireWorkspace, async (req, res) => {
   const workspaceId = requestWorkspaceId(req);
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
 
   const requestStartedAt = performance.now();
   const upstreamController = new AbortController();

@@ -1,5 +1,5 @@
 import { Platform } from "react-native";
-import { fetchApiResponse } from "@workspace/api-client-react";
+import { exportWorkspaceData } from "@workspace/api-client-react";
 
 /**
  * Downloads the workspace data export (§3.4: `GET /workspaces/current/export`)
@@ -10,11 +10,10 @@ import { fetchApiResponse } from "@workspace/api-client-react";
 export async function downloadWorkspaceExport(
   workspaceId: string,
 ): Promise<string> {
-  const response = await fetchApiResponse("/api/workspaces/current/export");
-  if (!response.ok) {
-    throw new Error(`WORKSPACE_EXPORT_HTTP_${response.status}`);
-  }
-  const payload = await response.json();
+  // Through the generated client: a refusal (401, a non-owner 403) arrives as
+  // an ApiError with the server's message instead of WORKSPACE_EXPORT_HTTP_<n>.
+  // The default read deadline is the same one fetchApiResponse applied.
+  const payload = await exportWorkspaceData();
   const contents = JSON.stringify(payload, null, 2);
   const fileName = `menaflow-export-${workspaceId}.json`;
 

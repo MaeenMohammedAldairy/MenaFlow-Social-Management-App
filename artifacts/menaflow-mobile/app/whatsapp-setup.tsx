@@ -4,7 +4,7 @@ import {
   saveWhatsAppAutoReplySettings,
   testWhatsAppAutoReply,
   type WhatsAppAutoReplySettings,
-  type WhatsAppAutoReplyTone,
+  type WhatsAppAutoReplySettingsTone,
 } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@clerk/expo";
@@ -46,7 +46,7 @@ const defaultSettings: WhatsAppAutoReplySettings = {
   instructions: "",
 };
 
-const tones: Array<{ value: WhatsAppAutoReplyTone; label: string }> = [
+const tones: Array<{ value: WhatsAppAutoReplySettingsTone; label: string }> = [
   { value: "friendly_professional", label: "ودود واحترافي" },
   { value: "concise", label: "مختصر ومباشر" },
   { value: "formal", label: "رسمي" },

@@ -69,6 +69,525 @@ export interface ApiError {
   requestId?: string;
 }
 
+export type OrderStatus = typeof OrderStatus[keyof typeof OrderStatus];
+
+
+export const OrderStatus = {
+  draft: 'draft',
+  confirmed: 'confirmed',
+  preparing: 'preparing',
+  shipped: 'shipped',
+  completed: 'completed',
+  cancelled: 'cancelled',
+} as const;
+
+export type DeliveryStatus = typeof DeliveryStatus[keyof typeof DeliveryStatus];
+
+
+export const DeliveryStatus = {
+  pending: 'pending',
+  ready: 'ready',
+  picked_up: 'picked_up',
+  in_transit: 'in_transit',
+  delivered: 'delivered',
+  failed: 'failed',
+  returned: 'returned',
+} as const;
+
+export type CollectionStatus = typeof CollectionStatus[keyof typeof CollectionStatus];
+
+
+export const CollectionStatus = {
+  not_collected: 'not_collected',
+  collected: 'collected',
+  remitted: 'remitted',
+} as const;
+
+export type MetaConfirmationStatus = typeof MetaConfirmationStatus[keyof typeof MetaConfirmationStatus];
+
+
+export const MetaConfirmationStatus = {
+  not_required: 'not_required',
+  queued: 'queued',
+  processing: 'processing',
+  sending: 'sending',
+  sent: 'sent',
+  manual_followup: 'manual_followup',
+  failed: 'failed',
+  unknown: 'unknown',
+} as const;
+
+export type WhatsAppConfirmationStatus = typeof WhatsAppConfirmationStatus[keyof typeof WhatsAppConfirmationStatus];
+
+
+export const WhatsAppConfirmationStatus = {
+  not_required: 'not_required',
+  queued: 'queued',
+  processing: 'processing',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+  unknown: 'unknown',
+  manual_followup: 'manual_followup',
+} as const;
+
+/**
+ * Order counts for the workspace, keyed by status
+ */
+export interface OrderSummary {
+  /** @minimum 0 */
+  draft: number;
+  /** @minimum 0 */
+  confirmed: number;
+  /** @minimum 0 */
+  preparing: number;
+  /** @minimum 0 */
+  shipped: number;
+  /** @minimum 0 */
+  completed: number;
+  /** @minimum 0 */
+  cancelled: number;
+  /** @minimum 0 */
+  total: number;
+  /** @minimum 0 */
+  metaDrafts: number;
+  /** @minimum 0 */
+  whatsappDrafts: number;
+}
+
+export interface OrderItem {
+  id: string;
+  productId: string | null;
+  productName: string;
+  productSku: string | null;
+  /** @minimum 1 */
+  quantity: number;
+  /** Decimal as a string, to keep exact money arithmetic on the client */
+  unitPrice: string;
+  lineTotal: string;
+}
+
+export interface OrderEvent {
+  id: string;
+  fromStatus: OrderStatus | null;
+  toStatus: OrderStatus;
+  createdAt: string;
+}
+
+export interface OrderDeliveryEvent {
+  id: string;
+  toStatus: DeliveryStatus;
+  createdAt: string;
+}
+
+export type OrderSourcePlatform = typeof OrderSourcePlatform[keyof typeof OrderSourcePlatform] | null;
+
+
+export const OrderSourcePlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+  whatsapp: 'whatsapp',
+} as const;
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  customerPhone: string | null;
+  deliveryAddress: string | null;
+  notes: string;
+  sourceMetaInboxItemId: string | null;
+  sourcePlatform: OrderSourcePlatform;
+  sourceConversationId: string | null;
+  sourceWhatsAppInstanceName: string | null;
+  metaConfirmationStatus: MetaConfirmationStatus;
+  metaConfirmationError: string | null;
+  metaConfirmationSentAt: string | null;
+  whatsappConfirmationStatus: WhatsAppConfirmationStatus;
+  whatsappConfirmationError: string | null;
+  whatsappConfirmationSentAt: string | null;
+  status: OrderStatus;
+  deliveryStatus: DeliveryStatus;
+  deliveryProvider: string | null;
+  trackingNumber: string | null;
+  /** Decimal as a string */
+  deliveryFee: string;
+  collectionStatus: CollectionStatus;
+  /** Decimal as a string */
+  collectedAmount: string;
+  deliveredAt: string | null;
+  currency: string;
+  /** Decimal as a string */
+  total: string;
+  createdAt: string;
+  updatedAt: string;
+  items: OrderItem[];
+  events: OrderEvent[];
+  deliveryEvents: OrderDeliveryEvent[];
+}
+
+export interface OrderListResponse {
+  orders: Order[];
+  nextCursor: string | null;
+}
+
+export interface OrderResponse {
+  order: Order;
+}
+
+export type CreateOrderRequestItemsItem = {
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  productId: string;
+  /** @minimum 1 */
+  quantity: number;
+};
+
+export interface CreateOrderRequest {
+  /**
+     * Idempotency key chosen by the client
+     * @minLength 1
+     * @maxLength 200
+     */
+  clientRequestId: string;
+  /**
+     * @minLength 1
+     * @maxLength 200
+     */
+  customerName: string;
+  /** @maxLength 40 */
+  customerPhone?: string;
+  /** @maxLength 1000 */
+  deliveryAddress?: string;
+  /** @maxLength 2000 */
+  notes?: string;
+  /**
+     * Set when the order was captured from an inbox conversation
+     * @maxLength 200
+     */
+  sourceMetaInboxItemId?: string;
+  /** @minItems 1 */
+  items: CreateOrderRequestItemsItem[];
+}
+
+export interface OrderStatusUpdateRequest {
+  status: OrderStatus;
+}
+
+export interface OrderDeliveryUpdateRequest {
+  deliveryStatus?: DeliveryStatus;
+  /** @maxLength 200 */
+  deliveryProvider?: string | null;
+  /** @maxLength 200 */
+  trackingNumber?: string | null;
+  /** Decimal as a string */
+  deliveryFee?: string;
+  collectionStatus?: CollectionStatus;
+  /** Decimal as a string */
+  collectedAmount?: string;
+}
+
+/**
+ * Which WhatsApp content types are synced automatically
+ */
+export interface WhatsAppSyncSettings {
+  autoSyncEnabled?: boolean;
+  syncMessagesEnabled?: boolean;
+  syncImagesEnabled?: boolean;
+  syncVideosEnabled?: boolean;
+}
+
+/**
+ * One selected group's sync state
+ */
+export interface WhatsAppSyncStatusGroup {
+  groupJid: string;
+  groupName: string;
+  /** Provider-backed state, e.g. "idle" for a selected group that has never been synced, "running", "completed" or "failed". Open-ended because the value is persisted, not enumerated by this contract. */
+  status: string;
+  /**
+     * Messages currently stored for this group, counted directly rather than read from the sync state, so webhook-only traffic surfaces.
+     * @minimum 0
+     */
+  savedMessageCount: number;
+  /** @minimum 0 */
+  importedCount: number;
+  /** @minimum 0 */
+  skippedCount: number;
+  /** @minimum 0 */
+  failedCount: number;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface WhatsAppSyncStatusResponse {
+  autoSyncEnabled: boolean;
+  syncMessagesEnabled: boolean;
+  syncImagesEnabled: boolean;
+  syncVideosEnabled: boolean;
+  groups: WhatsAppSyncStatusGroup[];
+}
+
+/**
+ * "started" means queued (202). Every other value is a 200 that explains why nothing was queued.
+ */
+export type WhatsAppSyncTriggerStatus = typeof WhatsAppSyncTriggerStatus[keyof typeof WhatsAppSyncTriggerStatus];
+
+
+export const WhatsAppSyncTriggerStatus = {
+  started: 'started',
+  already_running: 'already_running',
+  no_selected_groups: 'no_selected_groups',
+  no_linked_announcement_groups: 'no_linked_announcement_groups',
+  no_sync_options: 'no_sync_options',
+} as const;
+
+export type WhatsAppSyncTriggerResponseGroupsItem = {
+  groupJid: string;
+  groupName: string;
+};
+
+export interface WhatsAppSyncTriggerResponse {
+  status: WhatsAppSyncTriggerStatus;
+  /** Only present when a sync was queued */
+  includeHistory?: boolean;
+  /**
+     * Only present when a sync was queued with history
+     * @minimum 1
+     */
+  historyLimit?: number;
+  /** Empty unless a sync was queued or is already running */
+  groups: WhatsAppSyncTriggerResponseGroupsItem[];
+}
+
+export interface WhatsAppMessageMedia {
+  id: string;
+  /** @minimum 0 */
+  mediaIndex?: number;
+  mediaType: string;
+  fileName?: string | null;
+  mimeType?: string | null;
+  /** @minimum 0 */
+  sizeBytes?: number | null;
+  downloadStatus?: string | null;
+  failureReason?: string | null;
+  accessError?: string | null;
+  url?: string | null;
+  thumbnailUrl?: string | null;
+  storageKey?: string | null;
+  createdAt?: string | null;
+}
+
+export type WhatsAppAssociationSuggestionDecision = typeof WhatsAppAssociationSuggestionDecision[keyof typeof WhatsAppAssociationSuggestionDecision] | null;
+
+
+export const WhatsAppAssociationSuggestionDecision = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+/**
+ * A proposed link between an inbound message and a content bundle
+ */
+export interface WhatsAppAssociationSuggestion {
+  sourceMessageId: string;
+  candidateMessageId: string;
+  candidateGroupKey: string;
+  candidateMediaGroupId: string | null;
+  candidateText: string | null;
+  /** @minimum 0 */
+  candidateMediaCount: number;
+  reason: string;
+  decision: WhatsAppAssociationSuggestionDecision;
+}
+
+export type WhatsAppMessageMediaGroupSource = typeof WhatsAppMessageMediaGroupSource[keyof typeof WhatsAppMessageMediaGroupSource] | null;
+
+
+export const WhatsAppMessageMediaGroupSource = {
+  protocol_association: 'protocol_association',
+  provider_album_container: 'provider_album_container',
+} as const;
+
+export interface WhatsAppMessage {
+  id: string;
+  remoteMessageId: string;
+  senderId?: string | null;
+  senderName?: string | null;
+  messageType: string;
+  textBody?: string | null;
+  caption?: string | null;
+  mediaAvailable: boolean;
+  mediaGroupId?: string | null;
+  mediaGroupSource?: WhatsAppMessageMediaGroupSource;
+  contentBundleId?: string | null;
+  contentBundleMedia?: WhatsAppMessageMedia[];
+  /** @minimum 0 */
+  mediaGroupIndex?: number | null;
+  /** @minimum 0 */
+  mediaGroupExpectedCount?: number | null;
+  mediaDownloadStatus?: string | null;
+  mediaDownloadError?: string | null;
+  messageStatus?: string | null;
+  source?: string | null;
+  messageTimestamp?: string | null;
+  createdAt?: string | null;
+  replyToRemoteId?: string | null;
+  linkedPostId?: string | null;
+  linkedPostStatus?: string | null;
+  media: WhatsAppMessageMedia[];
+  associationSuggestions?: WhatsAppAssociationSuggestion[];
+}
+
+export interface WhatsAppGroupMessagesResponse {
+  groupJid: string;
+  groupName: string;
+  /** @minimum 1 */
+  page: number;
+  /** @minimum 1 */
+  limit: number;
+  /** @minimum 0 */
+  totalCount: number;
+  hasNextPage: boolean;
+  messages: WhatsAppMessage[];
+}
+
+export interface WhatsAppMediaUrlResponse {
+  url: string;
+}
+
+export type ProductPublicationHistoryChannel = typeof ProductPublicationHistoryChannel[keyof typeof ProductPublicationHistoryChannel];
+
+
+export const ProductPublicationHistoryChannel = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+/**
+ * One channel+account the product was actually published to
+ */
+export interface ProductPublicationHistory {
+  channel: ProductPublicationHistoryChannel;
+  accountId: string;
+  permalink: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+/**
+ * Who supplied the data, so the UI can flag customer-sourced prices
+ */
+export type CatalogProductSourceTrust = typeof CatalogProductSourceTrust[keyof typeof CatalogProductSourceTrust];
+
+
+export const CatalogProductSourceTrust = {
+  merchant: 'merchant',
+  customer: 'customer',
+  unknown: 'unknown',
+} as const;
+
+export type CatalogProductAvailability = typeof CatalogProductAvailability[keyof typeof CatalogProductAvailability];
+
+
+export const CatalogProductAvailability = {
+  unknown: 'unknown',
+  in_stock: 'in_stock',
+  out_of_stock: 'out_of_stock',
+  preorder: 'preorder',
+} as const;
+
+export type CatalogProductStatus = typeof CatalogProductStatus[keyof typeof CatalogProductStatus];
+
+
+export const CatalogProductStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export interface ProductMediaPreview {
+  id: string;
+  url: string;
+  mediaType: string;
+}
+
+/**
+ * A product field the merchant may still need to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.
+ */
+export type ProductFieldKey = typeof ProductFieldKey[keyof typeof ProductFieldKey];
+
+
+export const ProductFieldKey = {
+  name: 'name',
+  description: 'description',
+  price: 'price',
+  currency: 'currency',
+  availability: 'availability',
+  media: 'media',
+} as const;
+
+/**
+ * A product plus everything derived from it: media previews, the fields it is missing, and whether those omissions block publication.
+ */
+export interface CatalogProduct {
+  id: string;
+  /** The user who created the product; the workspace is the tenant */
+  ownerId: string;
+  workspaceId: string;
+  sku: string | null;
+  name: string;
+  /** Match key used to spot duplicates */
+  normalizedName: string | null;
+  /** Who supplied the data, so the UI can flag customer-sourced prices */
+  sourceTrust: CatalogProductSourceTrust;
+  lastExtractionSuggestionId: string | null;
+  updatedBy: string | null;
+  updatedReason: string | null;
+  aliases: string[];
+  description: string;
+  /** Decimal as a string, to keep exact money arithmetic on the client */
+  price: string | null;
+  currency: string | null;
+  availability: CatalogProductAvailability;
+  inventoryTracked: boolean;
+  stockOnHand: number;
+  stockReserved: number;
+  lowStockThreshold: number;
+  status: CatalogProductStatus;
+  /**
+     * Deduplicated and capped, not the raw column
+     * @maxItems 20
+     */
+  mediaUrls: string[];
+  verifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  mediaPreviews: ProductMediaPreview[];
+  /** Posts this product is linked to */
+  postIds: string[];
+  /** Every empty field, so the catalog can badge an incomplete product */
+  missingFields: ProductFieldKey[];
+  /** Arabic labels for the empty fields, ready to show */
+  missingFieldMessages: string[];
+  /** Missing fields that stop publication */
+  publicationBlockers: ProductFieldKey[];
+  publicationBlockerMessages: string[];
+  publicationBlocked: boolean;
+  /** Worth completing, but not enforced */
+  advisoryFields: ProductFieldKey[];
+  /** Newest completed publication per channel+account, only for jobs that actually reached "published". Returned by the catalog list; omitted by single-product reads. */
+  publicationHistory?: ProductPublicationHistory[];
+}
+
+export interface CatalogProductListResponse {
+  products: CatalogProduct[];
+}
+
 export interface OnboardingStatus {
   started: boolean;
   /**
@@ -161,6 +680,18 @@ export interface KnownPostIdsInput {
   ids: string[];
 }
 
+export interface CurrentWorkspace {
+  id: string;
+  name: string;
+  /** The caller's role in this workspace, which the settings screens consult. */
+  role: string;
+}
+
+export type PlansResponseTrial = {
+  planId: string;
+  days: number;
+};
+
 export type SubscriptionPlanId = typeof SubscriptionPlanId[keyof typeof SubscriptionPlanId];
 
 
@@ -181,6 +712,217 @@ export interface SubscriptionPlan {
   name: string;
   monthlyPriceUsd: number;
   limits: SubscriptionPlanLimits;
+}
+
+export interface PlansResponse {
+  plans: SubscriptionPlan[];
+  trial: PlansResponseTrial;
+  paymentAvailable: boolean;
+}
+
+export type ReadinessResponseStatus = typeof ReadinessResponseStatus[keyof typeof ReadinessResponseStatus];
+
+
+export const ReadinessResponseStatus = {
+  ok: 'ok',
+  error: 'error',
+} as const;
+
+/**
+ * Per worker, the state of its last run. Present only on the success path, so a client must not rely on it.
+ */
+export type ReadinessResponseWorkers = { [key: string]: unknown };
+
+export interface ReadinessResponse {
+  status: ReadinessResponseStatus;
+  /** Per worker, the state of its last run. Present only on the success path, so a client must not rely on it. */
+  workers?: ReadinessResponseWorkers;
+  /** `table.column` pairs the database is missing. */
+  missingSchema?: string[];
+}
+
+export type FacebookPostVerificationStatus = typeof FacebookPostVerificationStatus[keyof typeof FacebookPostVerificationStatus];
+
+
+export const FacebookPostVerificationStatus = {
+  found: 'found',
+  'not-found': 'not-found',
+  unavailable: 'unavailable',
+} as const;
+
+/**
+ * @nullable
+ */
+export type FacebookPostVerificationReason = typeof FacebookPostVerificationReason[keyof typeof FacebookPostVerificationReason] | null;
+
+
+export const FacebookPostVerificationReason = {
+  FACEBOOK_PAGES_READ_ENGAGEMENT_REQUIRED: 'FACEBOOK_PAGES_READ_ENGAGEMENT_REQUIRED',
+  FACEBOOK_RESULT_CANNOT_BE_VERIFIED: 'FACEBOOK_RESULT_CANNOT_BE_VERIFIED',
+  FACEBOOK_POST_NOT_FOUND_AFTER_VERIFICATION: 'FACEBOOK_POST_NOT_FOUND_AFTER_VERIFICATION',
+  null: 'null',
+} as const;
+
+export type PostItemChannelsItem = typeof PostItemChannelsItem[keyof typeof PostItemChannelsItem];
+
+
+export const PostItemChannelsItem = {
+  instagram: 'instagram',
+  facebook: 'facebook',
+  whatsapp: 'whatsapp',
+} as const;
+
+/**
+ * `publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit.
+ */
+export type PostItemStatus = typeof PostItemStatus[keyof typeof PostItemStatus];
+
+
+export const PostItemStatus = {
+  draft: 'draft',
+  review: 'review',
+  approved: 'approved',
+  scheduled: 'scheduled',
+  publishing: 'publishing',
+  published: 'published',
+  failed: 'failed',
+} as const;
+
+export type PostItemAutoPublishChannelsItem = typeof PostItemAutoPublishChannelsItem[keyof typeof PostItemAutoPublishChannelsItem];
+
+
+export const PostItemAutoPublishChannelsItem = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+  whatsapp: 'whatsapp',
+} as const;
+
+/**
+ * `unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate.
+ */
+export type ChannelPublishResultStatus = typeof ChannelPublishResultStatus[keyof typeof ChannelPublishResultStatus];
+
+
+export const ChannelPublishResultStatus = {
+  published: 'published',
+  failed: 'failed',
+  unknown: 'unknown',
+  publishing: 'publishing',
+  skipped: 'skipped',
+} as const;
+
+export interface ChannelPublishResult {
+  /** `unknown` means the platform was asked but did not answer; the post may be live. Verify before retrying or the merchant gets a duplicate. */
+  status: ChannelPublishResultStatus;
+  postId?: string;
+  /** @nullable */
+  url?: string | null;
+  reason?: string;
+  attemptedAt?: string;
+}
+
+export type PostItemMetadata = { [key: string]: unknown };
+
+/**
+ * The last publish attempt per channel.
+ */
+export type PostItemPublishResults = {[key: string]: ChannelPublishResult};
+
+export interface PostItem {
+  id: string;
+  title: string;
+  body: string;
+  channels: PostItemChannelsItem[];
+  /** `publishing` while a publish attempt is in flight, `failed` when one failed — the two the app needs most and the contract used to omit. */
+  status: PostItemStatus;
+  /** How the post came to exist; "manual" unless it came from a message. */
+  sourceType: string;
+  /** @nullable */
+  sourceMessageId: string | null;
+  /** @nullable */
+  sourceGroupJid: string | null;
+  /** @nullable */
+  sourceGroupName: string | null;
+  /** @nullable */
+  sourceMessageDate: string | null;
+  /** @nullable */
+  sourceText: string | null;
+  metadata: PostItemMetadata;
+  /** Signed URLs, valid for a limited time; re-fetch rather than cache. */
+  mediaUrls: string[];
+  mediaPreviewUrls: string[];
+  autoPublish: boolean;
+  autoPublishChannels: PostItemAutoPublishChannelsItem[];
+  /** The last publish attempt per channel. */
+  publishResults: PostItemPublishResults;
+  /** Due time for posts with status "scheduled"; null otherwise. */
+  scheduledAt: string | null;
+  /**
+     * Why the last publish failed, already worded for the merchant.
+     * @nullable
+     */
+  error: string | null;
+  createdAt: string;
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+export interface FacebookPostVerification {
+  status: FacebookPostVerificationStatus;
+  /** @nullable */
+  reason: FacebookPostVerificationReason;
+  post: PostItem;
+}
+
+export interface CreatePostFromMessageInput {
+  messageId: string;
+}
+
+/**
+ * Present only on the save that turned the setting on: what happened to the posts already waiting in `approved`.
+ */
+export type AutoPublishSettingsInitialPublish = {
+  processed: number;
+  published: number;
+  failed: number;
+};
+
+export type AutoPublishChannelsItem = typeof AutoPublishChannelsItem[keyof typeof AutoPublishChannelsItem];
+
+
+export const AutoPublishChannelsItem = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+  whatsapp: 'whatsapp',
+} as const;
+
+export type AutoPublishChannels = AutoPublishChannelsItem[];
+
+export interface AutoPublishSettings {
+  /** False for a workspace that has never saved the setting. */
+  enabled: boolean;
+  channels: AutoPublishChannels;
+  /** @nullable */
+  enabledAt: string | null;
+  /** Present only on the save that turned the setting on: what happened to the posts already waiting in `approved`. */
+  initialPublish?: AutoPublishSettingsInitialPublish;
+}
+
+export interface AutoPublishSettingsInput {
+  enabled: boolean;
+  channels?: AutoPublishChannels;
+}
+
+export interface ProcessWhatsAppBacklogInput {
+  limit?: number;
+}
+
+export interface ProcessWhatsAppBacklogResult {
+  scanned: number;
+  created: number;
+  existing: number;
+  skipped: number;
+  deferred: number;
 }
 
 export interface SubscriptionUsage {
@@ -283,6 +1025,145 @@ export interface SocialAccountStatus {
   accessTokenExpiresAt?: string | null;
 }
 
+export type AccountPlatform = typeof AccountPlatform[keyof typeof AccountPlatform];
+
+
+export const AccountPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+  whatsapp: 'whatsapp',
+} as const;
+
+export interface SocialAccountMetric {
+  key: string;
+  /** Already worded for the merchant. */
+  label: string;
+  value: number;
+  period?: string;
+}
+
+export interface SocialAccountPost {
+  id: string;
+  text: string;
+  /** @nullable */
+  publishedAt: string | null;
+  /** @nullable */
+  url: string | null;
+  /** @nullable */
+  imageUrl: string | null;
+  /** @nullable */
+  mediaType: string | null;
+  /** @nullable */
+  likes: number | null;
+  /** @nullable */
+  comments: number | null;
+  /** @nullable */
+  views: number | null;
+}
+
+export interface SocialAccountPermissions {
+  required: string[];
+  /**
+     * Null when the platform did not answer the permissions query.
+     * @nullable
+     */
+  granted: string[] | null;
+  missing: string[];
+}
+
+export type SocialAccountPerformanceWeeklyPublishedItem = {
+  label: string;
+  count: number;
+};
+
+export type SocialAccountPerformanceRecentActivityItem = {
+  id: string;
+  postId: string;
+  title: string;
+  eventType: string;
+  occurredAt: string;
+  actorLabel: string;
+  /** @nullable */
+  attempt: number | null;
+  /** @nullable */
+  reason: string | null;
+};
+
+/**
+ * Facebook only. What this workspace's publishing actually achieved.
+ */
+export interface SocialAccountPerformance {
+  publishedCount: number;
+  attemptedCount: number;
+  /**
+     * Null when nothing has been attempted yet, rather than a misleading 0.
+     * @nullable
+     */
+  successRate: number | null;
+  scheduledCount: number;
+  reviewCount: number;
+  failedCount: number;
+  aiPublishedCount: number;
+  weeklyPublished: SocialAccountPerformanceWeeklyPublishedItem[];
+  recentActivity: SocialAccountPerformanceRecentActivityItem[];
+}
+
+export type SocialAccountDetailsGroupsItem = {
+  groupJid: string;
+  groupName: string;
+};
+
+export type SocialAccountDetailsMessagesItem = {
+  id: string;
+  groupName: string;
+  text: string;
+  messageType: string;
+  sentAt: string;
+  source: string;
+};
+
+export interface SocialAccountDetails {
+  platform: AccountPlatform;
+  accountId: string;
+  accountName: string;
+  connectedAt: string;
+  connectionState: string;
+  /** @nullable */
+  profileImageUrl: string | null;
+  /**
+     * Facebook.
+     * @nullable
+     */
+  coverImageUrl?: string | null;
+  /** @nullable */
+  externalUrl: string | null;
+  /**
+     * Facebook.
+     * @nullable
+     */
+  category?: string | null;
+  /**
+     * Facebook and Instagram.
+     * @nullable
+     */
+  description?: string | null;
+  /** @nullable */
+  lastSyncedAt: string | null;
+  /** WhatsApp. Whether new messages are pulled without a click. */
+  autoSyncEnabled?: boolean;
+  permissions: SocialAccountPermissions;
+  metrics: SocialAccountMetric[];
+  /** Facebook and Instagram. The most recent 25. */
+  posts?: SocialAccountPost[];
+  performance?: SocialAccountPerformance;
+  /** WhatsApp. The groups chosen for syncing. */
+  groups?: SocialAccountDetailsGroupsItem[];
+  /** WhatsApp. The latest messages from those groups. */
+  messages?: SocialAccountDetailsMessagesItem[];
+  /** Problems met while assembling this, already worded for the merchant. */
+  issues: string[];
+}
+
 export interface SocialConnectionsResponse {
   facebook: SocialAccountStatus | null;
   instagram: SocialAccountStatus | null;
@@ -329,41 +1210,28 @@ export interface MetaDisconnectResponse {
   externalRevocation?: MetaDisconnectResponseExternalRevocation;
 }
 
-export type PostItemChannelsItem = typeof PostItemChannelsItem[keyof typeof PostItemChannelsItem];
+export type PostPublishResponseResults = {[key: string]: ChannelPublishResult};
+
+export interface PostPublishResponse {
+  /** True only when every requested channel published. */
+  success: boolean;
+  results: PostPublishResponseResults;
+  post: PostItem;
+}
+
+export type PublishPostInputChannelsItem = typeof PublishPostInputChannelsItem[keyof typeof PublishPostInputChannelsItem];
 
 
-export const PostItemChannelsItem = {
-  instagram: 'instagram',
+export const PublishPostInputChannelsItem = {
   facebook: 'facebook',
-  whatsapp: 'whatsapp',
+  instagram: 'instagram',
 } as const;
 
-export type PostItemStatus = typeof PostItemStatus[keyof typeof PostItemStatus];
-
-
-export const PostItemStatus = {
-  draft: 'draft',
-  review: 'review',
-  approved: 'approved',
-  scheduled: 'scheduled',
-  published: 'published',
-} as const;
-
-export type PostItemMetadata = { [key: string]: unknown };
-
-export interface PostItem {
-  id: string;
-  title: string;
-  body: string;
-  channels: PostItemChannelsItem[];
-  status: PostItemStatus;
-  metadata?: PostItemMetadata;
-  mediaUrls?: string[];
-  mediaPreviewUrls?: string[];
-  /** Due time for posts with status "scheduled"; null otherwise. */
-  scheduledAt?: string | null;
-  createdAt: string;
-  updatedAt?: string;
+export interface PublishPostInput {
+  /** @minItems 1 */
+  channels: PublishPostInputChannelsItem[];
+  /** Required to re-attempt a post whose previous result was `unknown`. Without it the server refuses, to avoid posting twice. */
+  retryUncertain?: boolean;
 }
 
 export type CreatePostInputChannelsItem = typeof CreatePostInputChannelsItem[keyof typeof CreatePostInputChannelsItem];
@@ -434,6 +1302,23 @@ export const UpdatePostInputStatus = {
   published: 'published',
 } as const;
 
+/**
+ * Shallow-merged into the post's existing metadata.
+ */
+export type UpdatePostInputMetadata = { [key: string]: unknown };
+
+export type UpdatePostInputAutoPublishChannelsItem = typeof UpdatePostInputAutoPublishChannelsItem[keyof typeof UpdatePostInputAutoPublishChannelsItem];
+
+
+export const UpdatePostInputAutoPublishChannelsItem = {
+  instagram: 'instagram',
+  facebook: 'facebook',
+  whatsapp: 'whatsapp',
+} as const;
+
+/**
+ * Every property is optional; only the ones present are changed.
+ */
 export interface UpdatePostInput {
   title?: string;
   body?: string;
@@ -441,6 +1326,12 @@ export interface UpdatePostInput {
   status?: UpdatePostInputStatus;
   /** Future instant required to move a post into "scheduled"; null clears it. */
   scheduledAt?: string | null;
+  /** Replaces the post's media. An entry is an absolute http(s) URL or a media id owned by the workspace (product media or imported WhatsApp media; product-media and WhatsApp public-media URLs are reduced to their id). An id from another workspace is refused with 422. */
+  mediaUrls?: string[];
+  /** Shallow-merged into the post's existing metadata. */
+  metadata?: UpdatePostInputMetadata;
+  autoPublish?: boolean;
+  autoPublishChannels?: UpdatePostInputAutoPublishChannelsItem[];
 }
 
 export interface PostDeleteResult {
@@ -731,56 +1622,246 @@ export interface PushTokenRemovedResponse {
   removed: boolean;
 }
 
+export type WhatsAppDirectMessageDirection = typeof WhatsAppDirectMessageDirection[keyof typeof WhatsAppDirectMessageDirection];
+
+
+export const WhatsAppDirectMessageDirection = {
+  inbound: 'inbound',
+  outbound: 'outbound',
+} as const;
+
 /**
- * A product field the merchant still has to fill. `price`, `currency`, `availability`, `media` and `name` block publication; `description` is advisory.
+ * `unknown` means the provider took the request but never said what happened. It is a real state, not a failure: the app offers to confirm the message was not sent rather than retrying into a possible duplicate.
  */
-export type ProductFieldKey = typeof ProductFieldKey[keyof typeof ProductFieldKey];
+export type WhatsAppDirectMessageStatus = typeof WhatsAppDirectMessageStatus[keyof typeof WhatsAppDirectMessageStatus];
 
 
-export const ProductFieldKey = {
-  name: 'name',
-  description: 'description',
-  price: 'price',
-  currency: 'currency',
-  availability: 'availability',
-  media: 'media',
+export const WhatsAppDirectMessageStatus = {
+  received: 'received',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+  unknown: 'unknown',
 } as const;
 
-export type ProductMediaPreviewMediaType = typeof ProductMediaPreviewMediaType[keyof typeof ProductMediaPreviewMediaType];
+/**
+ * Whether the message held text. The server derives this from the stored body rather than reading a type field, so it cannot name an attachment type.
+ */
+export type WhatsAppDirectMessageMessageType = typeof WhatsAppDirectMessageMessageType[keyof typeof WhatsAppDirectMessageMessageType];
 
 
-export const ProductMediaPreviewMediaType = {
-  image: 'image',
-  video: 'video',
+export const WhatsAppDirectMessageMessageType = {
+  text: 'text',
+  unknown: 'unknown',
 } as const;
 
-export interface ProductMediaPreview {
+/**
+ * One message of a one-to-one WhatsApp conversation. The inbox stores only encrypted text, so a message either has text or it does not — there is no attachment type to report.
+ */
+export interface WhatsAppDirectMessage {
   id: string;
-  url: string;
-  mediaType: ProductMediaPreviewMediaType;
+  remoteJid: string;
+  direction: WhatsAppDirectMessageDirection;
+  /** `unknown` means the provider took the request but never said what happened. It is a real state, not a failure: the app offers to confirm the message was not sent rather than retrying into a possible duplicate. */
+  status: WhatsAppDirectMessageStatus;
+  /**
+     * Only set on inbound messages that the auto-replier acted on.
+     * @nullable
+     */
+  autoReplyStatus: string | null;
+  /**
+     * Why the automatic reply stopped, so the app can explain it.
+     * @nullable
+     */
+  autoReplyErrorCode: string | null;
+  /** Empty when nothing readable was stored. */
+  text: string;
+  /** Whether the message held text. The server derives this from the stored body rather than reading a type field, so it cannot name an attachment type. */
+  messageType: WhatsAppDirectMessageMessageType;
+  occurredAt: string;
+  createdAt: string;
+  /** @nullable */
+  errorCode: string | null;
 }
 
-export type CatalogProductAvailability = typeof CatalogProductAvailability[keyof typeof CatalogProductAvailability];
+/**
+ * Null once the conversation is exhausted.
+ */
+export type WhatsAppDirectMessageListResponseNextCursor = {
+  beforeTimestamp: string;
+  beforeId: string;
+} | null;
+
+export interface WhatsAppDirectMessageListResponse {
+  messages: WhatsAppDirectMessage[];
+  /** Null once the conversation is exhausted. */
+  nextCursor: WhatsAppDirectMessageListResponseNextCursor;
+}
+
+export type WhatsAppDirectConversationLastDirection = typeof WhatsAppDirectConversationLastDirection[keyof typeof WhatsAppDirectConversationLastDirection];
 
 
-export const CatalogProductAvailability = {
+export const WhatsAppDirectConversationLastDirection = {
+  inbound: 'inbound',
+  outbound: 'outbound',
+} as const;
+
+export type WhatsAppDirectConversationLastStatus = typeof WhatsAppDirectConversationLastStatus[keyof typeof WhatsAppDirectConversationLastStatus];
+
+
+export const WhatsAppDirectConversationLastStatus = {
+  received: 'received',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+  unknown: 'unknown',
+} as const;
+
+export interface WhatsAppDirectConversation {
+  remoteJid: string;
+  /** The phone number where the provider supplies one; otherwise a label carrying the opaque id, so the row is never blank. */
+  customerNumber: string;
+  preview: string;
+  lastDirection: WhatsAppDirectConversationLastDirection;
+  lastStatus: WhatsAppDirectConversationLastStatus;
+  lastMessageAt: string;
+}
+
+export interface WhatsAppDirectConversationListResponse {
+  conversations: WhatsAppDirectConversation[];
+}
+
+export interface WhatsAppDirectReplyInput {
+  remoteJid: string;
+  text: string;
+  /** Chosen by the client. Replaying a request with the same id returns the original message instead of sending again, so a retried tap on a slow connection cannot double-send. */
+  clientRequestId: string;
+}
+
+export interface WhatsAppDirectReplyResponse {
+  /** Null only if the stored row could not be read back. */
+  message: WhatsAppDirectMessage | null;
+  /** True when the request id had already been used and nothing new was sent. */
+  duplicate?: boolean;
+}
+
+export interface WhatsAppDirectMessageEnvelope {
+  message: WhatsAppDirectMessage;
+}
+
+export type WhatsAppDirectReplyUncertain = ApiError & ({
+  /** The message as stored, with status `unknown`. */
+  message?: WhatsAppDirectMessage | null;
+});
+
+export type WhatsAppContentAssociationInputDecision = typeof WhatsAppContentAssociationInputDecision[keyof typeof WhatsAppContentAssociationInputDecision];
+
+
+export const WhatsAppContentAssociationInputDecision = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export interface WhatsAppContentAssociationInput {
+  firstMessageId: string;
+  secondMessageId: string;
+  decision: WhatsAppContentAssociationInputDecision;
+}
+
+export type WhatsAppContentAssociationDecisionDecision = typeof WhatsAppContentAssociationDecisionDecision[keyof typeof WhatsAppContentAssociationDecisionDecision];
+
+
+export const WhatsAppContentAssociationDecisionDecision = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export interface WhatsAppContentAssociationDecision {
+  decision: WhatsAppContentAssociationDecisionDecision;
+  /**
+     * The bundle the pair was linked into. Null when rejected.
+     * @nullable
+     */
+  contentBundleId: string | null;
+}
+
+export type ProductMediaUploadResponseMedia = {
+  id: string;
+  mediaType: string;
+  /** Null only if the server has no media signing key configured. */
+  mediaPreview: ProductMediaPreview | null;
+};
+
+export interface ProductMediaUploadResponse {
+  media: ProductMediaUploadResponseMedia;
+}
+
+/**
+ * A published post offered as the source of a new product.
+ */
+export interface ProductCandidate {
+  id: string;
+  title: string;
+  body: string;
+  mediaUrls: string[];
+  mediaPreviews: ProductMediaPreview[];
+  updatedAt: string;
+}
+
+export interface ProductCandidateListResponse {
+  candidates: ProductCandidate[];
+}
+
+export type ImportedMetaPostPlatform = typeof ImportedMetaPostPlatform[keyof typeof ImportedMetaPostPlatform];
+
+
+export const ImportedMetaPostPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+/**
+ * A post that is already live on Facebook or Instagram and is being turned into a product. The image host is restricted to Meta's CDNs, so a link to an arbitrary site cannot be stored as product media.
+ */
+export interface ImportedMetaPost {
+  platform: ImportedMetaPostPlatform;
+  /** @maxLength 500 */
+  id: string;
+  /** @maxLength 6000 */
+  text: string;
+  /** @nullable */
+  publishedAt: string | null;
+  /** @nullable */
+  url: string | null;
+  /** @nullable */
+  imageUrl: string | null;
+  /**
+     * @maxLength 50
+     * @nullable
+     */
+  mediaType: string | null;
+}
+
+export type ProductInputAvailability = typeof ProductInputAvailability[keyof typeof ProductInputAvailability];
+
+
+export const ProductInputAvailability = {
   unknown: 'unknown',
   in_stock: 'in_stock',
   out_of_stock: 'out_of_stock',
   preorder: 'preorder',
 } as const;
 
-export type CatalogProductStatus = typeof CatalogProductStatus[keyof typeof CatalogProductStatus];
+export type ProductInputStatus = typeof ProductInputStatus[keyof typeof ProductInputStatus];
 
 
-export const CatalogProductStatus = {
+export const ProductInputStatus = {
   draft: 'draft',
   active: 'active',
   archived: 'archived',
 } as const;
 
-export interface CatalogProduct {
-  id: string;
+export interface ProductInput {
   /** @nullable */
   sku?: string | null;
   name: string;
@@ -790,26 +1871,283 @@ export interface CatalogProduct {
   price?: string | null;
   /** @nullable */
   currency?: string | null;
-  availability: CatalogProductAvailability;
+  availability: ProductInputAvailability;
+  status: ProductInputStatus;
+  mediaUrls: string[];
   inventoryTracked?: boolean;
   stockOnHand?: number;
-  stockReserved?: number;
   lowStockThreshold?: number;
-  status: CatalogProductStatus;
-  mediaUrls: string[];
-  mediaPreviews: ProductMediaPreview[];
-  /** @nullable */
-  verifiedAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
+  inventoryReason?: string;
+}
+
+export type CreateCatalogProductInput = ProductInput & ({
+  /** Optional. When present, the product is linked to that post and its image is copied into workspace media. */
+  importedMetaPost?: ImportedMetaPost | null;
+});
+
+/**
+ * The product as the server stored it, with the posts it is linked to.
+ */
+export interface ProductWriteResponse {
+  product: CatalogProduct;
   postIds: string[];
-  missingFields: ProductFieldKey[];
-  /** Arabic labels for missingFields, ready to render */
-  missingFieldMessages?: string[];
-  publicationBlockers: ProductFieldKey[];
-  publicationBlockerMessages?: string[];
-  publicationBlocked: boolean;
-  advisoryFields?: ProductFieldKey[];
+}
+
+export type ScannedPostExtractionInputPlatform = typeof ScannedPostExtractionInputPlatform[keyof typeof ScannedPostExtractionInputPlatform];
+
+
+export const ScannedPostExtractionInputPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export interface ScannedPostExtractionInput {
+  /** @maxLength 6000 */
+  text: string;
+  platform: ScannedPostExtractionInputPlatform;
+  /** @maxLength 500 */
+  postId: string;
+}
+
+export type ScannedPostExtractionClassification = typeof ScannedPostExtractionClassification[keyof typeof ScannedPostExtractionClassification];
+
+
+export const ScannedPostExtractionClassification = {
+  product: 'product',
+  not_product: 'not_product',
+} as const;
+
+/**
+ * @nullable
+ */
+export type ExtractedProductDataAvailability = typeof ExtractedProductDataAvailability[keyof typeof ExtractedProductDataAvailability] | null;
+
+
+export const ExtractedProductDataAvailability = {
+  in_stock: 'in_stock',
+  out_of_stock: 'out_of_stock',
+  preorder: 'preorder',
+} as const;
+
+/**
+ * What the extractor read out of a message or post, before anyone edits it.
+ */
+export interface ExtractedProductData {
+  /** @nullable */
+  name: string | null;
+  /** @nullable */
+  sku: string | null;
+  aliases: string[];
+  /** @nullable */
+  description: string | null;
+  /** @nullable */
+  price: string | null;
+  /** @nullable */
+  currency: string | null;
+  /** @nullable */
+  availability: ExtractedProductDataAvailability;
+}
+
+export interface ScannedPostExtraction {
+  classification: ScannedPostExtractionClassification;
+  /** Null when the post held no product. */
+  extractedData: ExtractedProductData | null;
+}
+
+export type InventoryMovementType = typeof InventoryMovementType[keyof typeof InventoryMovementType];
+
+
+export const InventoryMovementType = {
+  opening_balance: 'opening_balance',
+  adjustment: 'adjustment',
+  reservation: 'reservation',
+  release: 'release',
+  shipment: 'shipment',
+} as const;
+
+export interface InventoryMovement {
+  id: string;
+  type: InventoryMovementType;
+  stockDelta: number;
+  reservedDelta: number;
+  reason: string;
+  createdAt: string;
+}
+
+export interface InventoryMovementListResponse {
+  movements: InventoryMovement[];
+}
+
+export interface ProductExtractionRestoreResponse {
+  restored: boolean;
+}
+
+export interface ProductExtractionReprocessResponse {
+  /** The version the new pass will run with, e.g. `v2`. */
+  rulesetVersion: string;
+  queued: boolean;
+}
+
+/**
+ * Field name to what it was and what it would become. Only fields that actually differ appear, so an empty diff means nothing to propose.
+ */
+export interface ProductChangeDiff {[key: string]: {
+  before: unknown;
+  after: unknown;
+  /** @nullable */
+  evidence: string | null;
+}}
+
+export interface ProductUpdateProposalInput {
+  /** Defaults to the suggestion's own match. Send it when the merchant picked a different product than the one the matcher chose. */
+  productId?: string;
+}
+
+export interface ProductUpdateProposalResponse {
+  proposalId: string;
+  diff: ProductChangeDiff;
+}
+
+export type ProductChangeDecisionInputDecision = typeof ProductChangeDecisionInputDecision[keyof typeof ProductChangeDecisionInputDecision];
+
+
+export const ProductChangeDecisionInputDecision = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export interface ProductChangeDecisionInput {
+  decision: ProductChangeDecisionInputDecision;
+}
+
+export type ProductChangeDecisionResponseStatus = typeof ProductChangeDecisionResponseStatus[keyof typeof ProductChangeDecisionResponseStatus];
+
+
+export const ProductChangeDecisionResponseStatus = {
+  accepted: 'accepted',
+  rejected: 'rejected',
+} as const;
+
+export interface ProductChangeDecisionResponse {
+  status: ProductChangeDecisionResponseStatus;
+  /** The fields the diff covered. Empty when rejected. */
+  changedFields: string[];
+}
+
+export type ProductChangeRecordSourceType = typeof ProductChangeRecordSourceType[keyof typeof ProductChangeRecordSourceType];
+
+
+export const ProductChangeRecordSourceType = {
+  manual: 'manual',
+  extraction: 'extraction',
+  order: 'order',
+  publication: 'publication',
+} as const;
+
+export interface ProductChangeRecord {
+  id: string;
+  workspaceId: string;
+  productId: string;
+  field: string;
+  /** JSON, so its shape depends on the field — a price is a string, media a list. */
+  beforeValue: unknown | null;
+  afterValue: unknown | null;
+  sourceType: ProductChangeRecordSourceType;
+  /** @nullable */
+  sourceId: string | null;
+  /** @nullable */
+  actorId: string | null;
+  createdAt: string;
+}
+
+export interface ProductChangeListResponse {
+  changes: ProductChangeRecord[];
+}
+
+export type ProductChangeProposalStatus = typeof ProductChangeProposalStatus[keyof typeof ProductChangeProposalStatus];
+
+
+export const ProductChangeProposalStatus = {
+  proposed: 'proposed',
+  accepted: 'accepted',
+  rejected: 'rejected',
+  expired: 'expired',
+} as const;
+
+/**
+ * The product the diff applies to, for showing it next to the evidence.
+ */
+export type ProductChangeProposalProduct = {
+  id: string;
+  name: string;
+  /** @nullable */
+  sku: string | null;
+  status: string;
+} | null;
+
+export type ProductChangeProposalEvidence = {[key: string]: string | null};
+
+export type ProductChangeProposalSenderRole = typeof ProductChangeProposalSenderRole[keyof typeof ProductChangeProposalSenderRole];
+
+
+export const ProductChangeProposalSenderRole = {
+  merchant: 'merchant',
+  customer: 'customer',
+  unknown: 'unknown',
+} as const;
+
+export interface ProductChangeProposal {
+  id: string;
+  productId: string;
+  suggestionId: string;
+  diff: ProductChangeDiff;
+  status: ProductChangeProposalStatus;
+  createdAt: string;
+  /** @nullable */
+  decidedAt: string | null;
+  /** The product the diff applies to, for showing it next to the evidence. */
+  product: ProductChangeProposalProduct;
+  evidence: ProductChangeProposalEvidence;
+  senderRole: ProductChangeProposalSenderRole;
+}
+
+export interface ProductChangeProposalListResponse {
+  proposals: ProductChangeProposal[];
+}
+
+export type ProductExtractionMetricsEventsItem = {
+  event: string;
+  total: number;
+};
+
+export type ProductExtractionMetricsSuggestionsItem = {
+  /** @nullable */
+  status: string | null;
+  /** @nullable */
+  classification: string | null;
+  total: number;
+};
+
+export type ProductExtractionMetricsDailyItem = {
+  /** YYYY-MM-DD */
+  day: string;
+  event: string;
+  total: number;
+};
+
+export interface ProductExtractionMetrics {
+  /** Event counters, one row per event type that occurred. */
+  events: ProductExtractionMetricsEventsItem[];
+  /** Suggestion counts broken down by status and classification. */
+  suggestions: ProductExtractionMetricsSuggestionsItem[];
+  extractionSucceeded: number;
+  extractionFailed: number;
+  reprocessed: number;
+  proposalsAccepted: number;
+  /** Products activated over product suggestions read, 0-1. */
+  conversionRate: number;
+  /** Succeeded and failed extractions per day, for the sparkline. */
+  daily: ProductExtractionMetricsDailyItem[];
 }
 
 export interface ProductExtractionSourceMessage {
@@ -823,6 +2161,69 @@ export interface ProductExtractionSourceMessage {
   groupName?: string | null;
   mediaPreviews: ProductMediaPreview[];
 }
+
+export type PossibleDuplicateProductStatus = typeof PossibleDuplicateProductStatus[keyof typeof PossibleDuplicateProductStatus];
+
+
+export const PossibleDuplicateProductStatus = {
+  draft: 'draft',
+  active: 'active',
+  archived: 'archived',
+} as const;
+
+export type PossibleDuplicateProductAvailability = typeof PossibleDuplicateProductAvailability[keyof typeof PossibleDuplicateProductAvailability];
+
+
+export const PossibleDuplicateProductAvailability = {
+  unknown: 'unknown',
+  in_stock: 'in_stock',
+  out_of_stock: 'out_of_stock',
+  preorder: 'preorder',
+} as const;
+
+/**
+ * The catalog product a `possible_duplicate` suggestion may already describe. A trimmed read-only view — the editor that resolves the duplicate only needs enough to recognise the existing entry.
+ */
+export interface PossibleDuplicateProduct {
+  id: string;
+  name: string;
+  /** @nullable */
+  sku: string | null;
+  status: PossibleDuplicateProductStatus;
+  description: string;
+  /** @nullable */
+  price: string | null;
+  /** @nullable */
+  currency: string | null;
+  availability: PossibleDuplicateProductAvailability;
+}
+
+/**
+ * Who wrote the message. A customer-sourced price is a question or a complaint, not a fact about the product, and is shown differently.
+ */
+export type ProductExtractionSuggestionSenderRole = typeof ProductExtractionSuggestionSenderRole[keyof typeof ProductExtractionSuggestionSenderRole];
+
+
+export const ProductExtractionSuggestionSenderRole = {
+  merchant: 'merchant',
+  customer: 'customer',
+  unknown: 'unknown',
+} as const;
+
+/**
+ * How the suggestion was matched against the existing catalog.
+ * @nullable
+ */
+export type ProductExtractionSuggestionMatchStrategy = typeof ProductExtractionSuggestionMatchStrategy[keyof typeof ProductExtractionSuggestionMatchStrategy] | null;
+
+
+export const ProductExtractionSuggestionMatchStrategy = {
+  exact_sku: 'exact_sku',
+  exact_name: 'exact_name',
+  alias_match: 'alias_match',
+  fuzzy_candidate: 'fuzzy_candidate',
+  new_product: 'new_product',
+} as const;
 
 export type ProductExtractionSuggestionClassification = typeof ProductExtractionSuggestionClassification[keyof typeof ProductExtractionSuggestionClassification];
 
@@ -842,24 +2243,44 @@ export const ProductExtractionSuggestionExtractedDataAvailability = {
   in_stock: 'in_stock',
   out_of_stock: 'out_of_stock',
   preorder: 'preorder',
-  null: 'null',
 } as const;
 
+/**
+ * Field name to where its value came from, as character offsets into a source message. This is what lets the UI highlight the words a value was read from instead of asking the merchant to trust the model. A span's source may be keyed `sourceId` or `source_id`.
+ */
+export type ProductExtractionSuggestionExtractedDataEvidenceSpans = {[key: string]: {
+  sourceId?: string;
+  source_id?: string;
+  start?: number;
+  end?: number;
+}};
+
+/**
+ * The extracted values, plus the extraction's own bookkeeping written in snake_case alongside them. Those extras are not a stable API — read the camelCase fields, and treat the rest as diagnostic.
+ */
 export type ProductExtractionSuggestionExtractedData = {
   /** @nullable */
-  name?: string | null;
+  name: string | null;
   /** @nullable */
-  sku?: string | null;
-  aliases?: string[];
+  sku: string | null;
+  aliases: string[];
   /** @nullable */
-  description?: string | null;
+  description: string | null;
   /** @nullable */
-  price?: string | null;
+  price: string | null;
   /** @nullable */
-  currency?: string | null;
+  currency: string | null;
   /** @nullable */
-  availability?: ProductExtractionSuggestionExtractedDataAvailability;
-};
+  availability: ProductExtractionSuggestionExtractedDataAvailability;
+  /** Field name to where its value came from, as character offsets into a source message. This is what lets the UI highlight the words a value was read from instead of asking the merchant to trust the model. A span's source may be keyed `sourceId` or `source_id`. */
+  evidence_spans?: ProductExtractionSuggestionExtractedDataEvidenceSpans;
+  confidence_reasons?: string[];
+  computed_confidence?: number;
+  self_confidence?: number;
+  generated_sku?: boolean;
+  sender_role?: string;
+  [key: string]: unknown;
+ };
 
 export type ProductExtractionSuggestionEvidence = {[key: string]: string | null};
 
@@ -875,12 +2296,46 @@ export const ProductExtractionSuggestionStatus = {
   draft_created: 'draft_created',
   possible_duplicate: 'possible_duplicate',
   dismissed: 'dismissed',
+  superseded: 'superseded',
+  update_proposed: 'update_proposed',
+  accepted_update: 'accepted_update',
+  rejected_update: 'rejected_update',
 } as const;
 
+/**
+ * One message's extraction. The server returns the whole suggestion row, so the bookkeeping fields (`version`, `matchStrategy`, `senderRole`, the evidence spans) are on the wire alongside the extracted values, and the client uses them to explain *why* a suggestion looks the way it does.
+ */
 export interface ProductExtractionSuggestion {
   id: string;
   sourceKey?: string;
+  /** Bumped each time the suggestion is re-extracted. */
+  version: number;
+  /** @nullable */
+  previousSuggestionId?: string | null;
+  /** Who wrote the message. A customer-sourced price is a question or a complaint, not a fact about the product, and is shown differently. */
+  senderRole: ProductExtractionSuggestionSenderRole;
+  /**
+     * How the suggestion was matched against the existing catalog.
+     * @nullable
+     */
+  matchStrategy?: ProductExtractionSuggestionMatchStrategy;
+  /** @nullable */
+  matchedProductId?: string | null;
+  /**
+     * Decimal as a string, 0-1.
+     * @nullable
+     */
+  matchScore?: string | null;
+  rulesetVersion?: string;
+  /** @nullable */
+  modelVersion?: string | null;
+  /**
+     * Set when the merchant created a product despite a duplicate warning.
+     * @nullable
+     */
+  overrideReason?: string | null;
   classification: ProductExtractionSuggestionClassification;
+  /** The extracted values, plus the extraction's own bookkeeping written in snake_case alongside them. Those extras are not a stable API — read the camelCase fields, and treat the rest as diagnostic. */
   extractedData: ProductExtractionSuggestionExtractedData;
   evidence: ProductExtractionSuggestionEvidence;
   confidence: ProductExtractionSuggestionConfidence;
@@ -892,7 +2347,8 @@ export interface ProductExtractionSuggestion {
   status: ProductExtractionSuggestionStatus;
   /** @nullable */
   productId?: string | null;
-  possibleDuplicateProducts?: CatalogProduct[];
+  /** Only present when `status` is `possible_duplicate`. */
+  possibleDuplicateProducts?: PossibleDuplicateProduct[];
   createdAt: string;
   updatedAt?: string;
   sources: ProductExtractionSourceMessage[];
@@ -928,6 +2384,12 @@ export interface ProductExtractionSuggestionCounts {
   pendingProductReview: number;
   draftCreated: number;
   possibleDuplicate: number;
+  /** Suggestions waiting on the merchant to accept or reject a change to an existing product */
+  updateProposed: number;
+  acceptedUpdate: number;
+  rejectedUpdate: number;
+  /** Replaced by a newer extraction of the same message */
+  superseded: number;
 }
 
 export interface ProductExtractionPagination {
@@ -970,46 +2432,11 @@ export interface ExtractWhatsAppProductsResponse {
   quota?: ExtractionQuotaEstimate;
 }
 
-export type ProductInputAvailability = typeof ProductInputAvailability[keyof typeof ProductInputAvailability];
-
-
-export const ProductInputAvailability = {
-  unknown: 'unknown',
-  in_stock: 'in_stock',
-  out_of_stock: 'out_of_stock',
-  preorder: 'preorder',
-} as const;
-
-export type ProductInputStatus = typeof ProductInputStatus[keyof typeof ProductInputStatus];
-
-
-export const ProductInputStatus = {
-  draft: 'draft',
-  active: 'active',
-  archived: 'archived',
-} as const;
-
-export interface ProductInput {
-  /** @nullable */
-  sku?: string | null;
-  name: string;
-  aliases: string[];
-  description: string;
-  /** @nullable */
-  price?: string | null;
-  /** @nullable */
-  currency?: string | null;
-  availability: ProductInputAvailability;
-  status: ProductInputStatus;
-  mediaUrls: string[];
-  inventoryTracked?: boolean;
-  stockOnHand?: number;
-  lowStockThreshold?: number;
-  inventoryReason?: string;
-}
-
 export interface CreateProductDraftInput {
-  product?: ProductInput;
+  /** Omit it to accept the extracted values as-is; send it when the merchant corrected them in the editor first. */
+  product?: ProductInput | null;
+  /** Required when the suggestion is `possible_duplicate` and a `product` is sent: it is the merchant's stated reason for creating a product that looks like one he already has. Without it the server refuses rather than silently adding a duplicate. */
+  overrideReason?: string;
 }
 
 export interface ProductDraftResponse {
@@ -1115,18 +2542,34 @@ export interface ProductPublicationJob {
   createdAt: string;
 }
 
-export type ProductPublicationSnapshotSummary = {
+/**
+ * Counters over a batch of publication jobs. `inProgress` counts both queued and processing, because to the merchant they are the same wait.
+ */
+export interface ProductPublicationSummary {
   total: number;
   successful: number;
   failed: number;
   inProgress: number;
   needsAction: number;
-};
+}
 
 export interface ProductPublicationSnapshot {
   requestKey: string;
   jobs: ProductPublicationJob[];
-  summary: ProductPublicationSnapshotSummary;
+  summary: ProductPublicationSummary;
+}
+
+export interface ProductPublicationRetryInput {
+  /** At most 50. Ids that are not failed are ignored, not rejected. */
+  jobIds: string[];
+}
+
+/**
+ * The batch's state after retrying. Unlike the snapshot this carries no `requestKey`: the retried jobs may belong to several requests, so there is no single key to report.
+ */
+export interface ProductPublicationRetryResponse {
+  jobs: ProductPublicationJob[];
+  summary: ProductPublicationSummary;
 }
 
 export interface IncompletePublicationProduct {
@@ -1218,7 +2661,7 @@ export type MetaInboundDiagnosticsSubscriptionsItem = {
 export interface MetaInboundDiagnostics {
   deliveryConfirmed: boolean;
   /** @nullable */
-  lastInboxItemAt?: string | null;
+  lastInboxItemAt: string | null;
   inboxItemCount: number;
   inboxCountByPlatform: MetaInboundDiagnosticsInboxCountByPlatform;
   autoReplyJobs: MetaInboundDiagnosticsAutoReplyJobs;
@@ -1229,15 +2672,290 @@ export interface MetaInboundDiagnostics {
   issues: DiagnosticIssue[];
 }
 
+export interface MetaInboxMedia {
+  type: string;
+  /** @nullable */
+  url: string | null;
+  /** @nullable */
+  thumbnailUrl: string | null;
+}
+
+export type MetaInboxItemPlatform = typeof MetaInboxItemPlatform[keyof typeof MetaInboxItemPlatform];
+
+
+export const MetaInboxItemPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type MetaInboxItemKind = typeof MetaInboxItemKind[keyof typeof MetaInboxItemKind];
+
+
+export const MetaInboxItemKind = {
+  message: 'message',
+  comment: 'comment',
+} as const;
+
+/**
+ * @nullable
+ */
+export type MetaInboxItemReplyStatus = typeof MetaInboxItemReplyStatus[keyof typeof MetaInboxItemReplyStatus] | null;
+
+
+export const MetaInboxItemReplyStatus = {
+  sending: 'sending',
+  unknown: 'unknown',
+  null: 'null',
+} as const;
+
+/**
+ * @nullable
+ */
+export type MetaInboxItemAutoReplyStatus = typeof MetaInboxItemAutoReplyStatus[keyof typeof MetaInboxItemAutoReplyStatus] | null;
+
+
+export const MetaInboxItemAutoReplyStatus = {
+  queued: 'queued',
+  processing: 'processing',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+  skipped: 'skipped',
+  unknown: 'unknown',
+  null: 'null',
+} as const;
+
+/**
+ * One message or comment from Facebook or Instagram. `autoReplyStatus` and `autoReplyErrorCode` come from the job that acted on the item, so a screen can explain why no reply went out instead of showing a generic failure.
+ */
+export interface MetaInboxItem {
+  id: string;
+  platform: MetaInboxItemPlatform;
+  kind: MetaInboxItemKind;
+  externalId: string;
+  conversationId: string;
+  /**
+     * The comment this one replies to, for threads.
+     * @nullable
+     */
+  parentId: string | null;
+  /**
+     * Null when the platform did not identify the author; the conversation id or external id is used to group the thread instead.
+     * @nullable
+     */
+  actorId: string | null;
+  /** @nullable */
+  actorName: string | null;
+  text: string;
+  media: MetaInboxMedia[];
+  occurredAt: string;
+  /** @nullable */
+  replyText: string | null;
+  /** @nullable */
+  repliedAt: string | null;
+  /** @nullable */
+  replyStatus: MetaInboxItemReplyStatus;
+  /** @nullable */
+  autoReplyStatus: MetaInboxItemAutoReplyStatus;
+  /** @nullable */
+  autoReplyErrorCode: string | null;
+}
+
+export type MetaInboxWebhookStateAccounts = {
+  /** @nullable */
+  facebook: string | null;
+  /** @nullable */
+  instagram: string | null;
+};
+
+export type MetaInboxWebhookStateSubscriptions = {[key: string]: {
+  accountId: string;
+  /** @nullable */
+  subscribedAt: string | null;
+  fields: string[];
+  /** @nullable */
+  errorCode: string | null;
+}};
+
+export interface MetaInboxWebhookState {
+  verificationConfigured: boolean;
+  /** @nullable */
+  callbackUrl: string | null;
+  /**
+     * When Meta last called, across every platform.
+     * @nullable
+     */
+  lastEventAt: string | null;
+  accounts: MetaInboxWebhookStateAccounts;
+  subscriptions: MetaInboxWebhookStateSubscriptions;
+}
+
+export interface MetaInboxResponse {
+  webhook: MetaInboxWebhookState;
+  hasMore: boolean;
+  /** @nullable */
+  nextCursor: string | null;
+  items: MetaInboxItem[];
+}
+
+export interface MetaInboxReplyInput {
+  /**
+     * @minLength 1
+     * @maxLength 2000
+     */
+  text: string;
+}
+
+export interface MetaInboxReplyResponse {
+  sent: boolean;
+  itemId: string;
+  replyText: string;
+  replyExternalId: string;
+  repliedAt: string;
+}
+
+export type MetaInboxAutoReplyResponseAutoReplyStatus = typeof MetaInboxAutoReplyResponseAutoReplyStatus[keyof typeof MetaInboxAutoReplyResponseAutoReplyStatus];
+
+
+export const MetaInboxAutoReplyResponseAutoReplyStatus = {
+  queued: 'queued',
+  processing: 'processing',
+  sending: 'sending',
+  sent: 'sent',
+  failed: 'failed',
+  skipped: 'skipped',
+  unknown: 'unknown',
+} as const;
+
+export interface MetaInboxAutoReplyResponse {
+  queued: boolean;
+  autoReplyStatus: MetaInboxAutoReplyResponseAutoReplyStatus;
+}
+
+export interface MetaInboxRetryConfirmationResponse {
+  cleared: boolean;
+}
+
+export interface MetaAutoReplyHistoricalPost {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  /** @nullable */
+  imageUrl: string | null;
+  /** Catalog products this post is linked to, by name. */
+  products: string[];
+  /** Comments old enough that answering them will not look like a duplicate. */
+  eligibleCommentCount: number;
+}
+
+export interface MetaAutoReplyHistoricalPlatform {
+  ready: boolean;
+  /**
+     * Why not, when `ready` is false. Null when ready.
+     * @nullable
+     */
+  reason: string | null;
+  /** Empty when `ready` is false. */
+  posts: MetaAutoReplyHistoricalPost[];
+}
+
+export type MetaAutoReplyHistoricalPostsResponsePlatforms = {
+  facebook: MetaAutoReplyHistoricalPlatform;
+  instagram: MetaAutoReplyHistoricalPlatform;
+};
+
+export interface MetaAutoReplyHistoricalPostsResponse {
+  platforms: MetaAutoReplyHistoricalPostsResponsePlatforms;
+}
+
+export type MetaAutoReplyHistoricalQueueInputPlatform = typeof MetaAutoReplyHistoricalQueueInputPlatform[keyof typeof MetaAutoReplyHistoricalQueueInputPlatform];
+
+
+export const MetaAutoReplyHistoricalQueueInputPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+/**
+ * Exactly one of `allEligible` or `postIds`. Sending both, or neither, is rejected rather than guessed at.
+ */
+export interface MetaAutoReplyHistoricalQueueInput {
+  platform: MetaAutoReplyHistoricalQueueInputPlatform;
+  allEligible?: boolean;
+  /**
+     * @minItems 1
+     * @maxItems 100
+     * @items.minLength 1
+     */
+  postIds?: string[];
+}
+
+export interface MetaAutoReplyHistoricalQueueResponse {
+  queuedCount: number;
+  /** How many worker batches the queue became. */
+  batchCount: number;
+}
+
+export type MetaAutoReplyTestInputPlatform = typeof MetaAutoReplyTestInputPlatform[keyof typeof MetaAutoReplyTestInputPlatform];
+
+
+export const MetaAutoReplyTestInputPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type MetaAutoReplyTestInputKind = typeof MetaAutoReplyTestInputKind[keyof typeof MetaAutoReplyTestInputKind];
+
+
+export const MetaAutoReplyTestInputKind = {
+  message: 'message',
+  comment: 'comment',
+} as const;
+
+export type MetaAutoReplySettingsLanguage = typeof MetaAutoReplySettingsLanguage[keyof typeof MetaAutoReplySettingsLanguage];
+
+
+export const MetaAutoReplySettingsLanguage = {
+  ar: 'ar',
+  match_customer: 'match_customer',
+} as const;
+
+export type MetaAutoReplySettingsTone = typeof MetaAutoReplySettingsTone[keyof typeof MetaAutoReplySettingsTone];
+
+
+export const MetaAutoReplySettingsTone = {
+  friendly_professional: 'friendly_professional',
+  concise: 'concise',
+  formal: 'formal',
+} as const;
+
 export interface MetaAutoReplySettings {
   enabled: boolean;
   facebookMessagesEnabled: boolean;
   facebookCommentsEnabled: boolean;
   instagramMessagesEnabled: boolean;
   instagramCommentsEnabled: boolean;
-  language: string;
-  tone: string;
+  language: MetaAutoReplySettingsLanguage;
+  tone: MetaAutoReplySettingsTone;
+  /** @maxLength 2000 */
   instructions: string;
+}
+
+export interface MetaAutoReplyTestInput {
+  message: string;
+  settings: MetaAutoReplySettings;
+  platform?: MetaAutoReplyTestInputPlatform;
+  kind?: MetaAutoReplyTestInputKind;
+}
+
+export interface MetaAutoReplyTestResponse {
+  reply: string;
+  /**
+     * The catalog product the reply quoted a price for, by name.
+     * @nullable
+     */
+  matchedProduct: string | null;
 }
 
 export interface MetaAutoReplyReadiness {
@@ -1315,9 +3033,13 @@ export type GetWhatsAppProductExtractionsParams = {
  */
 classification?: GetWhatsAppProductExtractionsClassification;
 /**
- * Restrict the page to these statuses. Repeat the parameter or pass a comma separated list. Omit it for every status.
+ * Restrict the page to these statuses. Repeat the parameter or pass a comma separated list. Omit it for every status. `dismissed` is not selectable: a dismissed suggestion is not review work, and the list never returns one.
  */
 status?: GetWhatsAppProductExtractionsStatusItem[];
+/**
+ * Restrict the page to who wrote the message. Useful for a merchant who only wants to review prices he himself quoted. Omit it for every role.
+ */
+senderRole?: GetWhatsAppProductExtractionsSenderRole;
 /**
  * Page size, clamped to 1-50. Out of range values are clamped, not rejected.
  * @minimum 1
@@ -1347,6 +3069,19 @@ export const GetWhatsAppProductExtractionsStatusItem = {
   review: 'review',
   draft_created: 'draft_created',
   possible_duplicate: 'possible_duplicate',
+  update_proposed: 'update_proposed',
+  accepted_update: 'accepted_update',
+  rejected_update: 'rejected_update',
+  superseded: 'superseded',
+} as const;
+
+export type GetWhatsAppProductExtractionsSenderRole = typeof GetWhatsAppProductExtractionsSenderRole[keyof typeof GetWhatsAppProductExtractionsSenderRole];
+
+
+export const GetWhatsAppProductExtractionsSenderRole = {
+  merchant: 'merchant',
+  customer: 'customer',
+  unknown: 'unknown',
 } as const;
 
 export type GetPostsPageParams = {
@@ -1387,5 +3122,199 @@ export type UnregisterPushTokenParams = {
  * @maxLength 200
  */
 token: string;
+};
+
+export type ListOrdersParams = {
+/**
+ * Filter by order status. "all", or omitting the parameter, returns every status.
+ */
+status?: ListOrdersStatus;
+/**
+ * Match the order number, customer name or phone
+ */
+search?: string;
+/**
+ * Opaque cursor returned by a previous page
+ */
+cursor?: string;
+};
+
+export type ListOrdersStatus = typeof ListOrdersStatus[keyof typeof ListOrdersStatus];
+
+
+export const ListOrdersStatus = {
+  draft: 'draft',
+  confirmed: 'confirmed',
+  preparing: 'preparing',
+  shipped: 'shipped',
+  completed: 'completed',
+  cancelled: 'cancelled',
+  all: 'all',
+} as const;
+
+export type ListCatalogProductsParams = {
+/**
+ * Defaults to false, which excludes archived products
+ */
+includeArchived?: boolean;
+};
+
+export type UploadProductMediaParams = {
+/**
+ * Required when the body is sent as `application/octet-stream`; otherwise it overrides the content type. One of `image/jpeg`, `image/png`, `image/webp`, `image/heic`, `image/heif`, `video/mp4`, `video/quicktime`.
+ * @pattern ^(image|video)/[a-z0-9.+-]+$
+ */
+mediaType?: string;
+};
+
+export type GetProductPublicMediaParams = {
+expires: string;
+signature: string;
+/**
+ * `thumbnail` and `instagram-jpeg` are only valid for images; anything else is served as `original`.
+ */
+variant?: GetProductPublicMediaVariant;
+};
+
+export type GetProductPublicMediaVariant = typeof GetProductPublicMediaVariant[keyof typeof GetProductPublicMediaVariant];
+
+
+export const GetProductPublicMediaVariant = {
+  original: 'original',
+  thumbnail: 'thumbnail',
+  'instagram-jpeg': 'instagram-jpeg',
+} as const;
+
+export type ListProductChangeProposalsParams = {
+/**
+ * Omit it for every status. An unknown value is ignored rather than rejected.
+ */
+status?: ListProductChangeProposalsStatus;
+};
+
+export type ListProductChangeProposalsStatus = typeof ListProductChangeProposalsStatus[keyof typeof ListProductChangeProposalsStatus];
+
+
+export const ListProductChangeProposalsStatus = {
+  proposed: 'proposed',
+  accepted: 'accepted',
+  rejected: 'rejected',
+  expired: 'expired',
+} as const;
+
+export type GetProductPublicationJobsParams = {
+/**
+ * The key the publish request was sent with
+ * @pattern ^[A-Za-z0-9._:-]{8,128}$
+ */
+requestKey: string;
+};
+
+export type TriggerWhatsAppSyncBody = {
+  /** Defaults to true */
+  includeHistory?: boolean;
+  /**
+     * Only read when includeHistory is true
+     * @minimum 1
+     */
+  historyLimit?: number;
+};
+
+export type ListWhatsAppGroupMessagesParams = {
+/**
+ * @minimum 1
+ */
+page?: number;
+/**
+ * @minimum 1
+ */
+limit?: number;
+sort?: ListWhatsAppGroupMessagesSort;
+};
+
+export type ListWhatsAppGroupMessagesSort = typeof ListWhatsAppGroupMessagesSort[keyof typeof ListWhatsAppGroupMessagesSort];
+
+
+export const ListWhatsAppGroupMessagesSort = {
+  asc: 'asc',
+  desc: 'desc',
+} as const;
+
+export type ListMetaInboxParams = {
+platform?: ListMetaInboxPlatform;
+kind?: ListMetaInboxKind;
+/**
+ * One conversation. Matches the actor id where there is one, and falls back to the conversation id for messages or the external id for comments, so a thread with no actor still opens.
+ */
+personId?: string;
+cursor?: string;
+/**
+ * @minimum 1
+ * @maximum 100
+ */
+limit?: number;
+};
+
+export type ListMetaInboxPlatform = typeof ListMetaInboxPlatform[keyof typeof ListMetaInboxPlatform];
+
+
+export const ListMetaInboxPlatform = {
+  facebook: 'facebook',
+  instagram: 'instagram',
+} as const;
+
+export type ListMetaInboxKind = typeof ListMetaInboxKind[keyof typeof ListMetaInboxKind];
+
+
+export const ListMetaInboxKind = {
+  message: 'message',
+  comment: 'comment',
+} as const;
+
+export type GetWhatsAppMediaUrlParams = {
+variant?: GetWhatsAppMediaUrlVariant;
+};
+
+export type GetWhatsAppMediaUrlVariant = typeof GetWhatsAppMediaUrlVariant[keyof typeof GetWhatsAppMediaUrlVariant];
+
+
+export const GetWhatsAppMediaUrlVariant = {
+  original: 'original',
+  thumbnail: 'thumbnail',
+} as const;
+
+export type GetWhatsAppPublicMediaParams = {
+expires: string;
+signature: string;
+/**
+ * `instagram-jpeg` is a re-encode for Meta and is only valid for images; anything else is served as the original.
+ */
+variant?: GetWhatsAppPublicMediaVariant;
+};
+
+export type GetWhatsAppPublicMediaVariant = typeof GetWhatsAppPublicMediaVariant[keyof typeof GetWhatsAppPublicMediaVariant];
+
+
+export const GetWhatsAppPublicMediaVariant = {
+  original: 'original',
+  thumbnail: 'thumbnail',
+  'instagram-jpeg': 'instagram-jpeg',
+} as const;
+
+export type ListWhatsAppDirectMessagesParams = {
+/**
+ * The conversation to read
+ * @minLength 1
+ */
+remoteJid: string;
+/**
+ * Where the previous page ended. Send together with `beforeId`.
+ */
+beforeTimestamp?: string;
+/**
+ * Where the previous page ended. Send together with `beforeTimestamp`.
+ * @maxLength 200
+ */
+beforeId?: string;
 };
 

@@ -1,122 +1,83 @@
+/**
+ * The one-to-one WhatsApp inbox.
+ *
+ * A thin adapter over the client generated from `lib/api-spec/openapi.yaml`. The
+ * shapes live in the contract now; what is left here is the one piece of
+ * presentation the wire does not carry — the placeholder text for a message that
+ * stored nothing readable — and the names the screens already import.
+ *
+ * This used to be a hand-written module with its own copies of the message and
+ * conversation types. One of them claimed ten message types where the server
+ * sends two: the inbox stores only encrypted text, so a message either has text
+ * or it does not, and eight of the ten placeholder labels were unreachable.
+ */
 import {
-  fetchApiResponse,
-  readJsonResponse,
+  listWhatsAppDirectConversations,
+  listWhatsAppDirectMessages,
+  sendWhatsAppDirectReply as generatedSendWhatsAppDirectReply,
+  confirmWhatsAppDirectReplyNotSent as generatedConfirmWhatsAppDirectReplyNotSent,
+  type WhatsAppDirectConversation,
+  type WhatsAppDirectMessage,
+  type WhatsAppDirectMessageListResponse,
+  type WhatsAppDirectReplyResponse,
+  type WhatsAppDirectMessageEnvelope,
 } from "@workspace/api-client-react";
 
-export type WhatsAppDirectMessageStatus =
-  | "received"
-  | "sending"
-  | "sent"
-  | "failed"
-  | "unknown";
-
-export type WhatsAppDirectMessageType =
-  | "text"
-  | "image"
-  | "video"
-  | "audio"
-  | "document"
-  | "sticker"
-  | "album"
-  | "location"
-  | "contact"
-  | "unknown";
-
-export type WhatsAppDirectMessageCursor = {
-  beforeTimestamp: string;
-  beforeId: string;
+export type {
+  WhatsAppDirectConversation,
+  WhatsAppDirectMessage,
+  WhatsAppDirectMessageListResponse,
 };
+
+/**
+ * Whether a message held text. The server derives this from the stored body
+ * rather than reading a type field, so it cannot name an attachment type.
+ */
+export type WhatsAppDirectMessageType = WhatsAppDirectMessage["messageType"];
+
+/** The page cursor, echoed back by the screen as the next request's `before*`. */
+export type WhatsAppDirectMessageCursor = NonNullable<
+  WhatsAppDirectMessageListResponse["nextCursor"]
+>;
 
 export function whatsappDirectMessagePlaceholder(
   messageType: WhatsAppDirectMessageType,
 ): string {
   const labels: Record<WhatsAppDirectMessageType, string> = {
     text: "رسالة بدون نص محفوظ",
-    image: "صورة — المرفق غير محفوظ في صندوق الخاص",
-    video: "مقطع فيديو — المرفق غير محفوظ في صندوق الخاص",
-    audio: "رسالة صوتية — المرفق غير محفوظ في صندوق الخاص",
-    document: "ملف — المرفق غير محفوظ في صندوق الخاص",
-    sticker: "ملصق — المرفق غير محفوظ في صندوق الخاص",
-    album: "ألبوم وسائط — المرفقات غير محفوظة في صندوق الخاص",
-    location: "موقع جغرافي",
-    contact: "جهة اتصال",
     unknown: "رسالة واتساب بدون محتوى نصي",
   };
-  return labels[messageType] ?? labels.unknown;
+  return labels[messageType];
 }
-
-export type WhatsAppDirectConversation = {
-  remoteJid: string;
-  customerNumber: string;
-  preview: string;
-  lastDirection: "inbound" | "outbound";
-  lastStatus: WhatsAppDirectMessageStatus;
-  lastMessageAt: string;
-};
-
-export type WhatsAppDirectMessage = {
-  id: string;
-  remoteJid: string;
-  direction: "inbound" | "outbound";
-  status: WhatsAppDirectMessageStatus;
-  messageType: WhatsAppDirectMessageType;
-  autoReplyStatus: string | null;
-  autoReplyErrorCode: string | null;
-  text: string;
-  occurredAt: string;
-  createdAt: string;
-  errorCode: string | null;
-};
 
 export async function getWhatsAppDirectConversations(): Promise<{
   conversations: WhatsAppDirectConversation[];
 }> {
-  const response = await fetchApiResponse(
-    "/api/social/whatsapp/direct-conversations",
-  );
-  return readJsonResponse(response);
+  return listWhatsAppDirectConversations();
 }
 
 export async function getWhatsAppDirectMessages(
   remoteJid: string,
-  cursor?: WhatsAppDirectMessageCursor,
-): Promise<{
-  messages: WhatsAppDirectMessage[];
-  nextCursor: WhatsAppDirectMessageCursor | null;
-}> {
-  const query = new URLSearchParams({ remoteJid });
-  if (cursor) {
-    query.set("beforeTimestamp", cursor.beforeTimestamp);
-    query.set("beforeId", cursor.beforeId);
-  }
-  const response = await fetchApiResponse(
-    `/api/social/whatsapp/direct-messages?${query.toString()}`,
-  );
-  return readJsonResponse(response);
+  cursor?: WhatsAppDirectMessageCursor | null,
+): Promise<WhatsAppDirectMessageListResponse> {
+  return listWhatsAppDirectMessages({
+    remoteJid,
+    ...(cursor
+      ? { beforeTimestamp: cursor.beforeTimestamp, beforeId: cursor.beforeId }
+      : {}),
+  });
 }
 
 export async function sendWhatsAppDirectReply(input: {
   remoteJid: string;
   text: string;
   clientRequestId: string;
-}): Promise<{ message: WhatsAppDirectMessage | null; duplicate?: boolean }> {
-  const response = await fetchApiResponse(
-    "/api/social/whatsapp/direct-messages/reply",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    },
-  );
-  return readJsonResponse(response);
+}): Promise<WhatsAppDirectReplyResponse> {
+  return generatedSendWhatsAppDirectReply(input);
 }
 
 export async function confirmWhatsAppDirectReplyNotSent(
   messageId: string,
-): Promise<{ message: WhatsAppDirectMessage }> {
-  const response = await fetchApiResponse(
-    `/api/social/whatsapp/direct-messages/${encodeURIComponent(messageId)}/confirm-not-sent`,
-    { method: "POST" },
-  );
-  return readJsonResponse(response);
+): Promise<WhatsAppDirectMessageEnvelope> {
+  return generatedConfirmWhatsAppDirectReplyNotSent(messageId);
 }

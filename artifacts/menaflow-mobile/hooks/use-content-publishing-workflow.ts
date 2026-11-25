@@ -1,4 +1,4 @@
-import { verifyFacebookPostStatus } from "@workspace/api-client-react";
+import { verifyFacebookPost } from "@workspace/api-client-react";
 import { useState } from "react";
 import { showAppNotice } from "@/components/AppFeedback";
 import { publishReasonLabel } from "@/lib/content-utils";
@@ -129,7 +129,7 @@ export function useContentPublishingWorkflow({
     setVerifyingPostId(postId);
     setVerificationFeedback((current) => ({ ...current, [postId]: "" }));
     try {
-      const result = await verifyFacebookPostStatus(postId);
+      const result = await verifyFacebookPost(postId);
       await refreshPosts();
       const message =
         result.status === "found"

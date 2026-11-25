@@ -10,7 +10,7 @@ import {
 import { metaConnectionAccessToken } from "../lib/meta-connection-token.ts";
 import { getMetaGraphVersion } from "../lib/meta-graph-config";
 import { metaString, metaWebhookCallbackUrl } from "../lib/meta-inbox-utils";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
   encodeMetaInboxCursor,
@@ -124,12 +124,9 @@ async function resolveMissingActorNames(
 }
 
 router.get("/social/meta-inbox", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
 
   const platformValue = metaString(req.query.platform);
   const kindValue = metaString(req.query.kind);

@@ -11,7 +11,7 @@ import {
 } from "@workspace/db";
 
 import { Router, type IRouter } from "express";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 import {
@@ -60,12 +60,9 @@ const syncSettingKeys = [
 ] as const;
 
 router.post("/social/whatsapp/sync-now", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
+  const ownerId = requireOwnerId(req, res);
   const workspaceId = requestWorkspaceId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  if (!ownerId) return;
   const includeHistory = req.body?.includeHistory !== false;
   const requestedHistoryLimit = req.body?.historyLimit;
   if (
@@ -352,12 +349,9 @@ router.get(
   "/social/whatsapp/sync-status",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
 
     try {
       const [connection] = await db
@@ -530,12 +524,9 @@ router.put(
   "/social/whatsapp/sync-settings",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
+    const ownerId = requireOwnerId(req, res);
     const workspaceId = requestWorkspaceId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    if (!ownerId) return;
 
     if (
       typeof req.body !== "object" ||
@@ -604,11 +595,8 @@ router.post(
   "/social/whatsapp/reconfigure-webhook",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    const ownerId = requireOwnerId(req, res);
+    if (!ownerId) return;
     const workspaceId = requestWorkspaceId(req);
     const [connection] = await db
       .select({

@@ -4,7 +4,7 @@ import {
   whatsappMediaExpiryFromUrl,
   whatsappMediaIdFromUrl,
 } from "@/lib/content-utils";
-import { fetchApiResponse } from "@workspace/api-client-react";
+import { getWhatsAppMediaUrl } from "@workspace/api-client-react";
 
 export function useWhatsAppMediaPreviewRefresh(posts: Post[]) {
   const [mediaPreviewUrls, setMediaPreviewUrls] = useState<
@@ -54,35 +54,21 @@ export function useWhatsAppMediaPreviewRefresh(posts: Post[]) {
         const refreshedEntries = await Promise.all(
           dueMedia.map(async ([mediaId]) => {
             try {
-              const originalResponse = await fetchApiResponse(
-                `/api/social/whatsapp/media/${encodeURIComponent(mediaId)}/url`,
-              );
-              if (!originalResponse.ok)
-                throw new Error("Media URL refresh failed.");
-              const originalResult = (await originalResponse.json()) as {
-                url?: unknown;
-              };
-              const refreshedUrl = originalResult.url;
-              if (typeof refreshedUrl !== "string" || !refreshedUrl) {
+              // A refusal arrives as an ApiError from the generated client and
+              // takes the same path as any other failure: warn, retry in a minute.
+              const { url: refreshedUrl } = await getWhatsAppMediaUrl(mediaId);
+              if (!refreshedUrl) {
                 throw new Error("Media URL refresh returned no URL.");
               }
               let refreshedThumbnailUrl: string | undefined;
               if (thumbnailMediaIds.has(mediaId)) {
-                const thumbnailResponse = await fetchApiResponse(
-                  `/api/social/whatsapp/media/${encodeURIComponent(mediaId)}/url?variant=thumbnail`,
-                );
-                if (!thumbnailResponse.ok)
-                  throw new Error("Thumbnail URL refresh failed.");
-                const thumbnailResult = (await thumbnailResponse.json()) as {
-                  url?: unknown;
-                };
-                if (
-                  typeof thumbnailResult.url !== "string" ||
-                  !thumbnailResult.url
-                ) {
+                const thumbnail = await getWhatsAppMediaUrl(mediaId, {
+                  variant: "thumbnail",
+                });
+                if (!thumbnail.url) {
                   throw new Error("Thumbnail URL refresh returned no URL.");
                 }
-                refreshedThumbnailUrl = thumbnailResult.url;
+                refreshedThumbnailUrl = thumbnail.url;
               }
               mediaRefreshRetryAtRef.current.delete(mediaId);
               return {

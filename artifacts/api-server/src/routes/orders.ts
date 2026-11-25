@@ -18,7 +18,7 @@ import {
   type DeliveryStatus,
   type CollectionStatus,
 } from "@workspace/db";
-import { requestOwnerId } from "../lib/owner-access";
+import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import {
   calculateOrder,
@@ -131,11 +131,8 @@ function orderResponse(
 }
 
 router.get("/social/orders/summary", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const workspaceId = requestWorkspaceId(req);
   const [summary] = await db
     .select({
@@ -155,11 +152,8 @@ router.get("/social/orders/summary", requireWorkspace, async (req, res) => {
 });
 
 router.get("/social/orders", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const workspaceId = requestWorkspaceId(req);
   const statusValue = req.query.status;
   const cursorValue =
@@ -293,11 +287,8 @@ router.get("/social/orders", requireWorkspace, async (req, res) => {
 });
 
 router.post("/social/orders", requireWorkspace, async (req, res) => {
-  const ownerId = requestOwnerId(req);
-  if (!ownerId) {
-    res.status(401).json({ error: "سجّل الدخول أولاً." });
-    return;
-  }
+  const ownerId = requireOwnerId(req, res);
+  if (!ownerId) return;
   const workspaceId = requestWorkspaceId(req);
   const input = parseCreateOrderInput(req.body);
   if (!input) {
@@ -346,11 +337,8 @@ router.patch(
   "/social/orders/:id/status",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    const ownerId = requireOwnerId(req, res);
+    if (!ownerId) return;
     const workspaceId = requestWorkspaceId(req);
     const orderId =
       typeof req.params.id === "string" ? req.params.id.trim() : "";
@@ -773,11 +761,8 @@ router.patch(
   "/social/orders/:id/delivery",
   requireWorkspace,
   async (req, res) => {
-    const ownerId = requestOwnerId(req);
-    if (!ownerId) {
-      res.status(401).json({ error: "سجّل الدخول أولاً." });
-      return;
-    }
+    const ownerId = requireOwnerId(req, res);
+    if (!ownerId) return;
     const workspaceId = requestWorkspaceId(req);
     const orderId =
       typeof req.params.id === "string" ? req.params.id.trim() : "";

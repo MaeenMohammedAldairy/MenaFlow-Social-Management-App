@@ -8,6 +8,7 @@ import {
   isWhatsAppDirectPhoneJid,
   normalizeWhatsAppDirectJid,
   normalizeWhatsAppDirectMessageText,
+  outboundWhatsAppDirectMessageValues,
   redactWhatsAppPrivateData,
   selectWhatsAppDirectJid,
   whatsappDirectMessageExpiry,
@@ -110,6 +111,77 @@ test("encrypts message content and finds conversations during key rotation", () 
     else process.env.ENCRYPTION_KEY = originalKey;
     if (originalPreviousKey === undefined) delete process.env.ENCRYPTION_KEY_PREVIOUS;
     else process.env.ENCRYPTION_KEY_PREVIOUS = originalPreviousKey;
+  }
+});
+
+test("an outbound row is keyed, encrypted and expired the same way whoever writes it", () => {
+  // Three writers used to spell this out — the automatic reply, the order
+  // confirmation, the manual reply — and a slip in any one of them is silent.
+  const originalKey = process.env.ENCRYPTION_KEY;
+  try {
+    process.env.ENCRYPTION_KEY = "outbound-row-encryption-key";
+    delete process.env.ENCRYPTION_KEY_PREVIOUS;
+    const sentAt = new Date("2026-11-24T08:00:00.000Z");
+    const row = outboundWhatsAppDirectMessageValues({
+      ownerId: "owner-1",
+      workspaceId: "workspace-1",
+      instanceName: "instance-1",
+      remoteJid: "967777123456@s.whatsapp.net",
+      text: "  تأكيد طلبك  ",
+      status: "sent",
+      messageTimestamp: sentAt,
+      providerMessageId: "provider-message-1",
+    });
+
+    assert.equal(row.direction, "outbound");
+    assert.equal(row.status, "sent");
+    assert.equal(row.ownerId, "owner-1");
+    assert.equal(row.instanceName, "instance-1");
+    assert.match(row.id, /^[0-9a-f-]{36}$/u);
+    assert.equal(
+      row.remoteJidHash,
+      whatsappDirectConversationKeys(
+        "workspace-1",
+        "instance-1",
+        "967777123456@s.whatsapp.net",
+      )[0],
+    );
+    // Neither the number nor the text is stored in the clear, and the text is
+    // what the inbox will render back.
+    assert.equal(
+      decryptWhatsAppDirectMessageValue(row.encryptedRemoteJid),
+      "967777123456@s.whatsapp.net",
+    );
+    assert.equal(
+      decryptWhatsAppDirectMessageValue(row.encryptedTextBody),
+      "تأكيد طلبك",
+    );
+    assert.equal(
+      row.expiresAt.toISOString(),
+      new Date(
+        sentAt.getTime() +
+          WHATSAPP_DIRECT_MESSAGE_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+      ).toISOString(),
+    );
+
+    // A manual reply is written before the send, so it has no provider id yet
+    // and must not carry an `undefined` key the insert would reject.
+    const pending = outboundWhatsAppDirectMessageValues({
+      ownerId: "owner-1",
+      workspaceId: "workspace-1",
+      instanceName: "instance-1",
+      remoteJid: "967777123456@s.whatsapp.net",
+      text: "رد يدوي",
+      status: "sending",
+      messageTimestamp: sentAt,
+      clientRequestId: "reply-1",
+    });
+    assert.equal("providerMessageId" in pending, false);
+    assert.equal(pending.clientRequestId, "reply-1");
+    assert.equal(pending.status, "sending");
+  } finally {
+    if (originalKey === undefined) delete process.env.ENCRYPTION_KEY;
+    else process.env.ENCRYPTION_KEY = originalKey;
   }
 });
 

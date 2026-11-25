@@ -15,7 +15,10 @@ import {
 } from "@workspace/db";
 import { metaAuthorizationStatus } from "../lib/meta-oauth";
 import { transitionOnboardingProgress } from "../lib/onboarding-progress";
-import { getWorkspaceOnboardingStatus } from "../lib/onboarding-status";
+import {
+  getWorkspaceOnboardingStatus,
+  socialAccountsCompletedForWorkspace,
+} from "../lib/onboarding-status";
 import {
   EvolutionApiError,
   evolutionConnectionState,
@@ -60,8 +63,6 @@ router.post(
           .select({
             step: workspaceOnboarding.currentStep,
             completed: workspaceOnboarding.completed,
-            socialAccountsCompleted:
-              workspaceOnboarding.socialAccountsCompleted,
           })
           .from(workspaceOnboarding)
           .where(
@@ -74,12 +75,7 @@ router.post(
           .limit(1);
 
         if (!current) {
-          return {
-            step: 3,
-            completed: true,
-            socialAccountsCompleted: true,
-            changed: false,
-          };
+          return { step: 3, completed: true, changed: false };
         }
 
         const next = transitionOnboardingProgress(current, action, expectedStep);
@@ -106,8 +102,6 @@ router.post(
           .returning({
             step: workspaceOnboarding.currentStep,
             completed: workspaceOnboarding.completed,
-            socialAccountsCompleted:
-              workspaceOnboarding.socialAccountsCompleted,
           });
 
         return updated ? { ...updated, changed: true } : null;
@@ -127,7 +121,8 @@ router.post(
           started: !progress.completed,
           currentStep: progress.step,
           completed: progress.completed,
-          socialAccountsCompleted: progress.socialAccountsCompleted,
+          socialAccountsCompleted:
+            await socialAccountsCompletedForWorkspace(workspaceId),
         }),
       );
     } catch (error) {
@@ -235,12 +230,16 @@ router.post(
         return;
       }
 
+      // The check above is what "complete" means now: the flag used to be stored
+      // here, but it was only ever set and never reset, so the status is derived
+      // from the live connections (`socialAccountsCompletedForWorkspace`) and the
+      // column is gone. The row is still required to exist and be completed.
       const [progress] = await db
-        .update(workspaceOnboarding)
-        .set({
-          socialAccountsCompleted: true,
-          updatedAt: new Date(),
+        .select({
+          step: workspaceOnboarding.currentStep,
+          completed: workspaceOnboarding.completed,
         })
+        .from(workspaceOnboarding)
         .where(
           and(
             eq(workspaceOnboarding.workspaceId, workspaceId),
@@ -248,12 +247,7 @@ router.post(
             eq(workspaceOnboarding.completed, true),
           ),
         )
-        .returning({
-          step: workspaceOnboarding.currentStep,
-          completed: workspaceOnboarding.completed,
-          socialAccountsCompleted:
-            workspaceOnboarding.socialAccountsCompleted,
-        });
+        .limit(1);
 
       if (!progress) {
         res.status(409).json({ error: "تعذر العثور على إعداد مساحة العمل." });
@@ -265,7 +259,8 @@ router.post(
           started: !progress.completed,
           currentStep: progress.step,
           completed: progress.completed,
-          socialAccountsCompleted: progress.socialAccountsCompleted,
+          socialAccountsCompleted:
+            await socialAccountsCompletedForWorkspace(workspaceId),
         }),
       );
     } catch (error) {
