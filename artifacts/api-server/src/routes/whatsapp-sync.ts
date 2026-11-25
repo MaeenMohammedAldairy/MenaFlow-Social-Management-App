@@ -15,7 +15,6 @@ import { requireOwnerId } from "../lib/owner-access";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 
 import {
-  configureWhatsAppWebhook,
   EvolutionApiError,
   verifyWhatsAppWebhookSecret,
   whatsappWebhookUrl,
@@ -43,7 +42,11 @@ import {
   logInboundWebhookOutcome,
 } from "../lib/inbound-webhook-diagnostics";
 import { recordInboundWebhookAttempt } from "../lib/inbound-delivery-log";
-import { sweepOrphanWhatsAppInstances } from "../lib/whatsapp-orphan-instance-sweep";
+import {
+  orphanCleanupFromSweep,
+  repairWhatsAppInbound,
+} from "../lib/whatsapp-webhook-self-heal";
+import type { WhatsAppInboundProbe } from "../lib/whatsapp-webhook-self-heal-policy";
 import {
   claimWebhookEvent,
   evolutionWebhookEventKey,
@@ -588,8 +591,9 @@ router.put(
  * Pairing and reconnect-confirm both configure it, but the two things that break
  * it later — a rotated `WHATSAPP_EVOLUTION_WEBHOOK_SECRET`, or an API domain that
  * moved — happen without any pairing, and the only symptom is that inbound events
- * stop arriving. This gives the merchant (and support) a button instead of a
- * re-pair, and answers with the exact URL that was registered.
+ * stop arriving. The scheduled self-heal worker handles both automatically;
+ * this route remains a support-only escape hatch and answers with the exact URL
+ * that was registered.
  */
 router.post(
   "/social/whatsapp/reconfigure-webhook",
@@ -614,32 +618,41 @@ router.post(
       return;
     }
     try {
-      await configureWhatsAppWebhook(connection.instanceName);
-      // Re-registering this instance's webhook is only half the repair when an
-      // orphaned session is the one holding the phone: our URL is set on an
-      // instance that Evolution is no longer sending events for, and the events
-      // keep arriving under a name no connection row matches
-      // (`WHATSAPP_WEBHOOK_UNKNOWN_INSTANCE`). The sweep deletes those leftovers
-      // and reports what it decided, and it runs after the webhook is registered
-      // so a failure here cannot turn the repair into an error.
-      const sweep = await sweepOrphanWhatsAppInstances({
-        workspaceId,
-        keepInstanceName: connection.instanceName,
-        phoneNumber: connection.phoneNumber,
-        trigger: "webhook_reconfigure",
+      // Support-only escape hatch. It runs the same repair function as the
+      // scheduled self-healing worker, with an explicit reconfigure because a
+      // human asked for one; the orphan sweep still goes through the unchanged
+      // ownership policy. This endpoint has no merchant UI after verification.
+      const probe: WhatsAppInboundProbe = {
+        windowMs: 0,
+        unknownInstanceNames: [],
+        rejectedSecretCount: 0,
+        lastRejectedAt: null,
+        lastAcceptedAt: null,
+        activeConnections: [
+          {
+            workspaceId,
+            instanceName: connection.instanceName,
+            phoneNumber: connection.phoneNumber ?? null,
+          },
+        ],
+      };
+      const repair = await repairWhatsAppInbound({
+        trigger: "support",
+        plan: {
+          action: "sweep",
+          reasons: [],
+          needsSweep: true,
+          needsReconfigure: false,
+        },
+        probe,
+        forceReconfigure: true,
       });
       res.json({
         ok: true,
         instanceName: connection.instanceName,
         webhookUrl: whatsappWebhookUrl(),
         reconfiguredAt: new Date().toISOString(),
-        orphanCleanup: {
-          attempted: sweep.attempted,
-          deleted: sweep.deleted,
-          failed: sweep.failed,
-          skipped: sweep.skipped,
-          instances: sweep.outcomes,
-        },
+        orphanCleanup: orphanCleanupFromSweep(repair.sweep),
       });
     } catch (error) {
       const code =

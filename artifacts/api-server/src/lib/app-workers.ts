@@ -24,6 +24,7 @@ import { purgeExpiredWhatsAppDirectMessages } from "./whatsapp-direct-message-re
 import { purgeOldInboundWebhookEvents } from "./inbound-delivery-log";
 import { processScheduledPostsQueue } from "./scheduled-posts";
 import { processWorkspaceDeletionQueue } from "./workspace-deletion";
+import { runWhatsAppWebhookSelfHeal } from "./whatsapp-webhook-self-heal";
 import {
   isPushDeliveryConfigured,
   processPushNotificationQueue,
@@ -37,6 +38,7 @@ type WorkerName =
   | "meta-auto-replies"
   | "meta-order-confirmations"
   | "whatsapp-auto-replies"
+  | "whatsapp-webhook-self-heal"
   | "whatsapp-order-confirmations"
   | "whatsapp-direct-message-retention"
   | "inbound-webhook-retention"
@@ -140,6 +142,17 @@ const workers: WorkerDefinition[] = [
     run: processWhatsAppAutoReplyQueue,
     disabledMessage: "WhatsApp automatic reply worker disabled",
     errorMessage: "WhatsApp automatic reply queue poll failed",
+  },
+  {
+    // Five minutes is a monitor period, not a re-registration period. The
+    // policy writes to Evolution only after a fresh rejection signal, and every
+    // repair arms a verification window before the worker calls it a success.
+    name: "whatsapp-webhook-self-heal",
+    intervalMs: 5 * 60_000,
+    enabled: () => process.env.WHATSAPP_WEBHOOK_SELF_HEAL_ENABLED !== "false",
+    run: runWhatsAppWebhookSelfHeal,
+    disabledMessage: "WhatsApp webhook self-heal worker disabled",
+    errorMessage: "WhatsApp webhook self-heal poll failed",
   },
   {
     name: "whatsapp-order-confirmations",
