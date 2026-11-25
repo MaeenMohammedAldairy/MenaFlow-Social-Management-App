@@ -68,7 +68,7 @@ import {
   getWhatsAppProductExtractions,
   productExtractionConfidenceReasons,
   productExtractionEvidenceSpans,
-  getPublishableAccounts,
+  publishableAccountsFrom,
   getProductPublicationJobs,
   publishCatalogProducts,
   retryProductPublicationJobs,
@@ -630,9 +630,17 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
     enabled: isLocalAuthDisabled || Boolean(userId),
     retry: false,
   });
+  // Same endpoint and same cache entry as `connections` above: the dialog used
+  // to query `/social/connections` again under its own key, so opening it
+  // issued a duplicate request for data this screen already holds. `select`
+  // flattens the response into the list the dialog selects from.
   const publishableAccounts = useQuery({
-    queryKey: ["product-publish-accounts", userId ?? "local"],
-    queryFn: getPublishableAccounts,
+    queryKey: [
+      ...getGetSocialConnectionsQueryKey(),
+      userId ?? "local",
+    ] as const,
+    queryFn: getSocialConnections,
+    select: publishableAccountsFrom,
     enabled: (isLocalAuthDisabled || Boolean(userId)) && publishModalVisible,
     retry: false,
   });

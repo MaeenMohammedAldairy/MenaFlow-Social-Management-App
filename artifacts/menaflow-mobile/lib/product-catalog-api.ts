@@ -5,10 +5,12 @@
  * shapes live in the contract now; what is left here is the mapping between the
  * contract's names and the positional signatures the screens already call:
  *
- *  - `getPublishableAccounts` flattens `/social/connections`, which returns
+ *  - `publishableAccountsFrom` flattens `/social/connections`, which returns
  *    facebook/instagram slots rather than a list, into the list the publish
- *    dialog selects from. The request itself goes through the generated
- *    `getSocialConnections`, so a refusal is an `ApiError` like everywhere else.
+ *    dialog selects from. It is a pure function of the response the product
+ *    screen already holds: the dialog used to run a second query for the same
+ *    endpoint under its own cache key, so opening it always issued a duplicate
+ *    request for data the screen had.
  *  - `uploadProductMedia` used to be hand-written too: the contract declared the
  *    body as `image/*`, which a code generator pins as a literal content type
  *    and the server's `express.raw` filter rejects. The contract now declares
@@ -24,7 +26,6 @@ import {
   extractWhatsAppProductMessages,
   getProductExtractionMetrics as generatedGetProductExtractionMetrics,
   getProductPublicationJobs as generatedGetProductPublicationJobs,
-  getSocialConnections,
   getWhatsAppProductExtractions as generatedGetWhatsAppProductExtractions,
   importPostAsProduct,
   listCatalogProducts,
@@ -49,6 +50,7 @@ import {
   type ProductChangeDiff,
   type ProductChangeProposal,
   type SocialAccountStatus,
+  type SocialConnectionsResponse,
   type ProductChangeRecord,
   type ProductExtractionListResponse,
   type ProductExtractionMetrics,
@@ -174,11 +176,12 @@ export async function getInventoryMovements(
   return (await listInventoryMovements(productId)).movements;
 }
 
-export async function getPublishableAccounts(): Promise<PublishableAccount[]> {
-  const result = await getSocialConnections();
+export function publishableAccountsFrom(
+  connections: SocialConnectionsResponse,
+): PublishableAccount[] {
   return [
-    result.facebook ? { ...result.facebook, channel: "facebook" } : null,
-    result.instagram ? { ...result.instagram, channel: "instagram" } : null,
+    connections.facebook ? { ...connections.facebook, channel: "facebook" } : null,
+    connections.instagram ? { ...connections.instagram, channel: "instagram" } : null,
   ].filter((account): account is PublishableAccount => account !== null);
 }
 
