@@ -17,7 +17,11 @@ import {
   PostMetaConnectBody,
   PostMetaConnectResponse,
 } from "@workspace/api-zod";
-import { requestOwnerId, requireOwnerId } from "../lib/owner-access";
+import {
+  canManageMetaConnections,
+  requestOwnerId,
+  requireOwnerId,
+} from "../lib/owner-access";
 import {
   requireWorkspace,
   requestWorkspaceContext,
@@ -25,7 +29,6 @@ import {
 } from "../lib/workspace-context";
 import { subscriptionDenial } from "../lib/subscription-denial.ts";
 import {
-  canManageMetaConnections,
   grantedMetaPermissions,
   metaGraphErrorDetails,
   hasGrantedMetaPageListPermission,

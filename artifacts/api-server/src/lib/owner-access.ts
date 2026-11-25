@@ -137,3 +137,33 @@ export const requireOwner: RequestHandler = (req, res, next) => {
   if (!requireOwnerId(req, res)) return;
   next();
 };
+
+/**
+ * Role policies — the only place that answers "who may do what by role".
+ *
+ * Three gates used to carry three spellings of the same question: an inline
+ * `role !== "owner"` in `routes/workspaces.ts`, this predicate in
+ * `meta-oauth.ts`, and an owner-or-admin check in `requireProductWriter`.
+ * The first stays inline (it answers 500 when the context is missing); the
+ * other two live here so the one difference between them is visible.
+ */
+
+/** Connecting or disconnecting Meta accounts: the owner only. */
+export function canManageMetaConnections(role: string): boolean {
+  return role === "owner";
+}
+
+/**
+ * Changing the product catalog: the owner, and `admin`.
+ *
+ * `admin` is a role nothing assigns today — memberships are created as `owner`
+ * (the workspace bootstrap) and invitations are not built — so this is
+ * owner-only in practice, like every other gate. The wider allowance is kept
+ * on purpose rather than folded into the owner-only rule: product writes change
+ * what the auto-reply and the order intake will tell customers, which is the
+ * one area a future `admin` was meant to help with. When roles arrive, this is
+ * where that decision is made — not in a middleware three modules away.
+ */
+export function canWriteProducts(role: string): boolean {
+  return role === "owner" || role === "admin";
+}

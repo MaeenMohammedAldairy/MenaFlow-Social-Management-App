@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   assertProductionConfiguration,
+  canManageMetaConnections,
+  canWriteProducts,
   isLocalAuthDisabled,
   requestOwnerId,
 } from "./owner-access.ts";
@@ -24,6 +26,23 @@ function withEnvironment(values, operation) {
     }
   }
 }
+
+test("only workspace owners can manage Meta connections", () => {
+  assert.equal(canManageMetaConnections("owner"), true);
+  assert.equal(canManageMetaConnections("member"), false);
+  assert.equal(canManageMetaConnections("admin"), false);
+});
+
+test("product writes admit the owner and the (so far unassigned) admin role only", () => {
+  // The one deliberate difference from every other owner gate. Changing this
+  // line is a product decision, which is why it is asserted here and not left
+  // to a middleware three modules away.
+  assert.equal(canWriteProducts("owner"), true);
+  assert.equal(canWriteProducts("admin"), true);
+  assert.equal(canWriteProducts("member"), false);
+  assert.equal(canWriteProducts(""), false);
+  assert.equal(canWriteProducts("unknown"), false);
+});
 
 test("local auth bypass requires an explicit development-only flag", () => {
   withEnvironment(
