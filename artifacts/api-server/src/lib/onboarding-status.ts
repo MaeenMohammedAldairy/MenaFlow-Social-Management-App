@@ -14,12 +14,12 @@ import { metaAuthorizationStatus } from "./meta-oauth";
 /**
  * Whether the workspace currently holds an account that can publish or reply.
  *
- * Derived from the live connection rows instead of the stored
- * `workspace_onboarding.social_accounts_completed` column. That column is only
- * ever written as `true` (by `POST /onboarding/social-accounts/complete`) and
- * never reset, so it kept answering "done" after a merchant disconnected their
- * last account — the dashboard told them to link one while the setup screen
- * reported the accounts step complete.
+ * Derived from the live connection rows. It used to be read from a stored
+ * `mena_workspace_onboarding.social_accounts_completed` column that was only
+ * ever written as `true` and never reset, so it kept answering "done" after a
+ * merchant disconnected their last account — the dashboard told them to link
+ * one while the setup screen reported the accounts step complete. The column
+ * was dropped (migration `20261125002000`); the API field stays, computed.
  *
  * Deliberately database-only: no provider call. WhatsApp counts when its stored
  * status is `connected`, which is the same signal the rest of the app reads.

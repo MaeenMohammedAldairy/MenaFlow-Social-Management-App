@@ -64,6 +64,13 @@
       "when": 1795557259593,
       "tag": "0008_lucky_gorgon",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795565695957,
+      "tag": "0009_loose_vivisector",
+      "breakpoints": true
     }
   ]
 }
