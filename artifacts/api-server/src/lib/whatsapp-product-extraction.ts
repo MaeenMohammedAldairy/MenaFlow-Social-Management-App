@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import {
   and,
   asc,
-  desc,
   eq,
   gt,
   inArray,
@@ -49,7 +48,6 @@ import {
 } from "./product-extraction-media-policy.ts";
 import { resetFailedWhatsAppMedia } from "./whatsapp-media-reset.ts";
 import {
-  collapseProductCandidatesForBundle,
   extractWhatsAppProductCandidates,
   generatedProductSku,
   isCompleteProductExtraction,
@@ -71,10 +69,7 @@ import {
   getWhatsAppContentBundle,
   whatsappAssociationPairKey,
 } from "./whatsapp-content-associations.ts";
-import {
-  findWhatsAppProductBundleSuggestions,
-  selectAutoAcceptableProductBundleSuggestions,
-} from "./whatsapp-association-suggestions.ts";
+import { findWhatsAppAssociationSuggestions } from "./whatsapp-association-suggestions.ts";
 import type { ProductAvailability } from "./product-validation.ts";
 import { normalizedProductName } from "./product-utils.ts";
 import { shouldAutoCreateProductDraft } from "./product-draft-policy.ts";
@@ -87,7 +82,6 @@ import {
 } from "./product-vision-extraction.ts";
 import { readMediaObject } from "./whatsapp-media-storage.ts";
 import { logger } from "./logger.ts";
-import { resolveWhatsAppSourceMediaIds } from "./product-source-media.ts";
 
 function extractionProductInput(candidate: ProductExtractionCandidate) {
   const hasVerifiedPricePair = Boolean(
@@ -116,98 +110,6 @@ export async function requeueWhatsAppProductMessage(
   messageId: string,
 ): Promise<void> {
   const now = new Date();
-  const [job] = await db
-    .select()
-    .from(whatsappProductExtractionJobs)
-    .where(and(
-      eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
-      eq(whatsappProductExtractionJobs.messageId, messageId),
-    ))
-    .limit(1);
-  if (job) {
-    // A bundle accepted *after* a single-message suggestion was created has to
-    // produce a new version with every source, without touching the old row.
-    const [message] = await db
-      .select({
-        instanceName: menaWhatsAppMessages.instanceName,
-        groupId: menaWhatsAppMessages.groupId,
-      })
-      .from(menaWhatsAppMessages)
-      .where(and(
-        eq(menaWhatsAppMessages.id, messageId),
-        eq(menaWhatsAppMessages.workspaceId, workspaceId),
-      ))
-      .limit(1);
-    const bundle = message?.groupId
-      ? await getWhatsAppContentBundle({
-          workspaceId,
-          instanceName: message.instanceName,
-          groupId: message.groupId,
-        }, messageId)
-      : null;
-    if (bundle && bundle.messageIds.length > 1) {
-      const [priorSource] = await db
-        .select({ suggestionId: productExtractionSources.suggestionId })
-        .from(productExtractionSources)
-        .where(and(
-          eq(productExtractionSources.workspaceId, workspaceId),
-          eq(productExtractionSources.messageId, messageId),
-        ))
-        .limit(1);
-      const [prior] = priorSource?.suggestionId
-        ? await db
-            .select({
-              id: productExtractionSuggestions.id,
-              version: productExtractionSuggestions.version,
-              status: productExtractionSuggestions.status,
-              productId: productExtractionSuggestions.productId,
-            })
-            .from(productExtractionSuggestions)
-            .where(and(
-              eq(productExtractionSuggestions.workspaceId, workspaceId),
-              eq(productExtractionSuggestions.id, priorSource.suggestionId),
-            ))
-            .limit(1)
-        : [];
-      if (
-        prior &&
-        prior.status !== "superseded" &&
-        prior.status !== "dismissed" &&
-        !prior.productId
-      ) {
-        const priorSources = await db
-          .select({ messageId: productExtractionSources.messageId })
-          .from(productExtractionSources)
-          .where(and(
-            eq(productExtractionSources.workspaceId, workspaceId),
-            eq(productExtractionSources.suggestionId, prior.id),
-          ));
-        const known = new Set(priorSources.map((item) => item.messageId));
-        if (bundle.messageIds.some((id) => !known.has(id))) {
-          const rulesetVersion = `v${prior.version + 1}`;
-          await db
-            .update(whatsappProductExtractionJobs)
-            .set({
-              status: "pending",
-              stage: "received",
-              attempts: 0,
-              lastError: null,
-              rulesetVersion,
-              idempotencyKey: createHash("sha256")
-                .update(`${workspaceId}:${messageId}:${rulesetVersion}`)
-                .digest("hex"),
-              nextRunAt: now,
-              updatedAt: now,
-            })
-            .where(and(
-              eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
-              eq(whatsappProductExtractionJobs.id, job.id),
-            ));
-          return;
-        }
-      }
-    }
-  }
   await db
     .update(whatsappProductExtractionJobs)
     .set({
@@ -522,10 +424,6 @@ async function hasUnresolvedAssociation(message: {
   const rows = await db
     .select({
       id: menaWhatsAppMessages.id,
-      workspaceId: menaWhatsAppMessages.workspaceId,
-      instanceName: menaWhatsAppMessages.instanceName,
-      groupId: menaWhatsAppMessages.groupId,
-      groupJid: menaWhatsAppMessages.groupJid,
       remoteMessageId: menaWhatsAppMessages.remoteMessageId,
       senderId: menaWhatsAppMessages.senderId,
       textBody: menaWhatsAppMessages.textBody,
@@ -551,17 +449,13 @@ async function hasUnresolvedAssociation(message: {
     ))
     .orderBy(asc(menaWhatsAppMessages.messageTimestamp))
     .limit(500);
-  const suggestions = findWhatsAppProductBundleSuggestions(rows.map((item) => ({
+  const suggestions = findWhatsAppAssociationSuggestions(rows.map((item) => ({
     ...item,
     textBody: item.textBody ?? item.caption,
     messageTimestamp: item.messageTimestamp?.toISOString() ?? null,
     createdAt: item.createdAt.toISOString(),
   })));
-  const candidates = selectAutoAcceptableProductBundleSuggestions(suggestions)
-    .filter((suggestion) =>
-      suggestion.sourceMessageId === message.id ||
-      suggestion.candidateMessageId === message.id,
-    );
+  const candidates = suggestions.get(message.id) ?? [];
   if (candidates.length === 0) return false;
   const decisions = await getWhatsAppContentAssociationDecisions({
     workspaceId: message.workspaceId,
@@ -690,7 +584,7 @@ async function workspaceExtractionContext(
   }
 }
 
-export async function processProductExtractionJob(
+async function processProductExtractionJob(
   job: typeof whatsappProductExtractionJobs.$inferSelect,
 ): Promise<void> {
   const [message] = await db
@@ -713,7 +607,7 @@ export async function processProductExtractionJob(
       eq(productExtractionSources.messageId, job.messageId),
     ))
     .limit(1);
-  if (existingSource && job.rulesetVersion === "v1") {
+  if (existingSource) {
     await updateJob(job, { status: "complete", stage: "persistence", lastError: null });
     return;
   }
@@ -857,25 +751,12 @@ export async function processProductExtractionJob(
     });
     return;
   }
-  const rawExtraction = visionExtraction ??
+  const extraction = visionExtraction ??
     (await extractWhatsAppProductCandidates(
       job.workspaceId,
       sources,
       extractionContext,
     ));
-  // The model sees every bundle message as one source group. Collapse its
-  // answer back to one candidate so a four-message bundle cannot become four
-  // single-source suggestions even if the model splits its evidence.
-  const bundled = sourceMessageIds.length > 1
-    ? collapseProductCandidatesForBundle(
-        rawExtraction.candidates,
-        sourceMessageIds,
-      )
-    : { candidates: rawExtraction.candidates, mixedBundle: false };
-  const extraction = {
-    model: rawExtraction.model,
-    candidates: bundled.candidates,
-  };
   // A currency the workspace's country settled is grounded in the message only
   // as far as the word «ريال» goes — which rial came from a setting. It stays
   // reviewable for the same reason a vision candidate does, so it never becomes
@@ -887,8 +768,7 @@ export async function processProductExtractionJob(
       country: extractionContext.workspaceCountry ?? null,
     }),
   );
-  const requiresManualReview = visionExtraction !== null ||
-    currencyDerivedFromCountry || bundled.mixedBundle;
+  const requiresManualReview = visionExtraction !== null || currencyDerivedFromCountry;
 
   const senderRole: SenderRole = sourceMessages.some((message) => message.fromMe)
     ? "merchant"
@@ -901,36 +781,10 @@ export async function processProductExtractionJob(
         hashtextextended(${`product-extraction:${job.workspaceId}`}, 0)
       )
     `);
-    const [priorSource] = await transaction
-      .select({ suggestionId: productExtractionSources.suggestionId })
-      .from(productExtractionSources)
-      .where(and(
-        eq(productExtractionSources.workspaceId, job.workspaceId),
-        eq(productExtractionSources.messageId, job.messageId),
-      ))
-      .limit(1);
-    const [priorSuggestion] = priorSource?.suggestionId
-      ? await transaction
-          .select({
-            id: productExtractionSuggestions.id,
-            version: productExtractionSuggestions.version,
-            status: productExtractionSuggestions.status,
-            productId: productExtractionSuggestions.productId,
-          })
-          .from(productExtractionSuggestions)
-          .where(and(
-            eq(productExtractionSuggestions.workspaceId, job.workspaceId),
-            eq(productExtractionSuggestions.id, priorSource.suggestionId),
-          ))
-          .limit(1)
-      : [];
     const isReprocess = job.rulesetVersion !== "v1";
-    const jobVersion = isReprocess
+    const suggestionVersion = isReprocess
       ? Number(job.rulesetVersion.replace(/\D/g, "")) || 2
       : 1;
-    const suggestionVersion = priorSuggestion && isReprocess
-      ? Math.max(jobVersion, priorSuggestion.version + 1)
-      : jobVersion;
     if (!isReprocess) {
       const alreadyProcessed = await transaction
         .select({ messageId: productExtractionSources.messageId })
@@ -940,31 +794,6 @@ export async function processProductExtractionJob(
           inArray(productExtractionSources.messageId, sourceMessageIds),
         ));
       if (alreadyProcessed.length > 0) return;
-    } else {
-      // A replayed reprocess must return the existing version, not insert a
-      // second row with the same (workspace, sourceKey).
-      const sameVersion = await transaction
-        .select({ id: productExtractionSuggestions.id })
-        .from(productExtractionSuggestions)
-        .where(and(
-          eq(productExtractionSuggestions.workspaceId, job.workspaceId),
-          eq(productExtractionSuggestions.sourceKey,
-            productExtractionSourceKey(sourceMessageIds)),
-          eq(productExtractionSuggestions.version, suggestionVersion),
-        ))
-        .limit(1);
-      if (sameVersion.length > 0) return;
-    }
-    // Supersede before inserting: the unique (workspace, sourceKey) index
-    // cannot hold two live versions of the same evidence set.
-    if (isReprocess && priorSuggestion && priorSuggestion.status !== "superseded") {
-      await transaction
-        .update(productExtractionSuggestions)
-        .set({ status: "superseded", updatedAt: new Date() })
-        .where(and(
-          eq(productExtractionSuggestions.workspaceId, job.workspaceId),
-          eq(productExtractionSuggestions.id, priorSuggestion.id),
-        ));
     }
 
     const existingProducts = await transaction
@@ -1019,12 +848,8 @@ export async function processProductExtractionJob(
         manualReviewRequired: manualReviewBySource || match.strategy !== "new_product",
       };
       const decision = shouldAutoCreateProductDraft(draftCandidate, name, sku);
-      // A suggestion that already created a product is never silently merged
-      // into a new bundle version: the merchant reviews the conflict instead.
       const canCreate =
-        decision.canCreate &&
-        match.strategy === "new_product" &&
-        !priorSuggestion?.productId;
+        decision.canCreate && match.strategy === "new_product";
       const status =
         candidate.classification !== "product"
           ? "review"
@@ -1052,10 +877,16 @@ export async function processProductExtractionJob(
         "Product extraction suggestion recorded",
       );
       if (productId) {
-        const sourceMedia = await resolveWhatsAppSourceMediaIds({
-          workspaceId: job.workspaceId,
-          messageIds: candidate.sourceMessageIds,
-        });
+        const sourceMedia = await transaction
+          .select({ id: menaWhatsAppMessageMedia.id })
+          .from(menaWhatsAppMessageMedia)
+          .where(and(
+            eq(menaWhatsAppMessageMedia.workspaceId, job.workspaceId),
+            inArray(menaWhatsAppMessageMedia.messageId, candidate.sourceMessageIds),
+            eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
+          ))
+          .orderBy(asc(menaWhatsAppMessageMedia.createdAt), asc(menaWhatsAppMessageMedia.mediaIndex))
+          .limit(20);
         await transaction.insert(products).values({
           id: productId,
           ownerId: job.ownerId,
@@ -1066,7 +897,7 @@ export async function processProductExtractionJob(
           sourceTrust: senderRole,
           lastExtractionSuggestionId: suggestionId,
           updatedReason: "extraction",
-          mediaUrls: sourceMedia,
+          mediaUrls: sourceMedia.map((item) => item.id),
           verifiedAt: null,
           updatedAt: new Date(),
         });
@@ -1135,16 +966,34 @@ export async function processProductExtractionJob(
         });
       }
     }
-    if (isReprocess && createdSuggestionIds.length && priorSuggestion) {
-      // The chain follows the message that was reprocessed, not the sourceKey:
-      // a bundle expansion legitimately changes the source key.
-      await transaction
-        .update(productExtractionSuggestions)
-        .set({ previousSuggestionId: priorSuggestion.id, updatedAt: new Date() })
+    if (isReprocess && createdSuggestionIds.length) {
+      const previous = await transaction
+        .select({ id: productExtractionSuggestions.id })
+        .from(productExtractionSuggestions)
         .where(and(
           eq(productExtractionSuggestions.workspaceId, job.workspaceId),
-          inArray(productExtractionSuggestions.id, createdSuggestionIds),
-        ));
+          eq(productExtractionSuggestions.sourceKey,
+            productExtractionSourceKey(sourceMessageIds)),
+          lt(productExtractionSuggestions.version, suggestionVersion),
+        ))
+        .orderBy(productExtractionSuggestions.version);
+      const previousSuggestionId = previous.at(-1)?.id ?? null;
+      if (previousSuggestionId) {
+        await transaction
+          .update(productExtractionSuggestions)
+          .set({ status: "superseded", updatedAt: new Date() })
+          .where(and(
+            eq(productExtractionSuggestions.workspaceId, job.workspaceId),
+            eq(productExtractionSuggestions.id, previousSuggestionId),
+          ));
+        await transaction
+          .update(productExtractionSuggestions)
+          .set({ previousSuggestionId, updatedAt: new Date() })
+          .where(and(
+            eq(productExtractionSuggestions.workspaceId, job.workspaceId),
+            inArray(productExtractionSuggestions.id, createdSuggestionIds),
+          ));
+      }
     }
   });
 
@@ -1523,36 +1372,46 @@ export async function processWhatsAppProductExtractionQueue(): Promise<void> {
  * it only appends media ids that are not on the product yet.
  */
 export async function relinkCompletedExtractionMedia(): Promise<number> {
-  const suggestions = await db
+  const rows = await db
     .select({
-      id: productExtractionSuggestions.id,
       workspaceId: productExtractionSuggestions.workspaceId,
       productId: productExtractionSuggestions.productId,
+      mediaId: menaWhatsAppMessageMedia.id,
     })
     .from(productExtractionSuggestions)
+    .innerJoin(
+      productExtractionSources,
+      and(
+        eq(productExtractionSources.workspaceId, productExtractionSuggestions.workspaceId),
+        eq(productExtractionSources.suggestionId, productExtractionSuggestions.id),
+      ),
+    )
+    .innerJoin(
+      menaWhatsAppMessageMedia,
+      and(
+        eq(menaWhatsAppMessageMedia.workspaceId, productExtractionSources.workspaceId),
+        eq(menaWhatsAppMessageMedia.messageId, productExtractionSources.messageId),
+        eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
+      ),
+    )
     .where(and(
       isNotNull(productExtractionSuggestions.productId),
       ne(productExtractionSuggestions.status, "dismissed"),
     ))
-    .limit(100);
-
-  const byProduct = new Map<string, { workspaceId: string; mediaIds: Set<string> }>();
-  for (const suggestion of suggestions) {
-    if (!suggestion.productId) continue;
-    const mediaIds = await resolveWhatsAppSourceMediaIds({
-      workspaceId: suggestion.workspaceId,
-      suggestionId: suggestion.id,
-    });
-    if (mediaIds.length === 0) continue;
-    const current = byProduct.get(suggestion.productId) ?? {
-      workspaceId: suggestion.workspaceId,
-      mediaIds: new Set<string>(),
-    };
-    for (const mediaId of mediaIds) current.mediaIds.add(mediaId);
-    byProduct.set(suggestion.productId, current);
-  }
+    .limit(500);
 
   let relinked = 0;
+  const byProduct = new Map<string, { workspaceId: string; mediaIds: Set<string> }>();
+  for (const row of rows) {
+    if (!row.productId) continue;
+    const current = byProduct.get(row.productId) ?? {
+      workspaceId: row.workspaceId,
+      mediaIds: new Set<string>(),
+    };
+    current.mediaIds.add(row.mediaId);
+    byProduct.set(row.productId, current);
+  }
+
   for (const [productId, value] of byProduct) {
     const [product] = await db
       .select({ id: products.id, mediaUrls: products.mediaUrls })

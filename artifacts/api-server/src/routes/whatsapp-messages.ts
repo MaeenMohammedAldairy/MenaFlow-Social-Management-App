@@ -41,7 +41,6 @@ import {
 } from "../lib/whatsapp-content-associations";
 import { isConfirmedWhatsAppMediaGroupSource } from "../lib/whatsapp-album-relations";
 import { enqueueWhatsAppMessageIfMissing } from "../lib/whatsapp-marketing";
-import { requeueWhatsAppProductMessage } from "../lib/whatsapp-product-extraction";
 import { findStoredDirectAttachmentForServing } from "../lib/whatsapp-direct-media-serving";
 import { logger } from "../lib/logger.ts";
 
@@ -464,19 +463,12 @@ router.get(
                 createdAt: message.createdAt.toISOString(),
                 replyToRemoteId: message.replyToRemoteId,
                 mediaCount: mediaByMessage.get(message.id)?.length ?? 0,
-                workspaceId: message.workspaceId,
-                instanceName: message.instanceName,
-                groupId: message.groupId,
-                groupJid: message.groupJid,
               }];
             }),
           });
-          await Promise.all(accepted.messageIds.flatMap((messageId) => [
+          await Promise.all(accepted.messageIds.map((messageId) =>
             enqueueWhatsAppMessageIfMissing(workspaceId, messageId),
-            // A bundle accepted after extraction must be re-derived as a new
-            // version; a message already used as a source cannot be re-queued.
-            requeueWhatsAppProductMessage(workspaceId, messageId),
-          ]));
+          ));
         } catch (error) {
           logger.error(
             { error, workspaceId, groupId: messageGroupId },
@@ -780,10 +772,7 @@ router.get(
         ? await db
             .select({
               id: menaWhatsAppMessages.id,
-              workspaceId: menaWhatsAppMessages.workspaceId,
-              instanceName: menaWhatsAppMessages.instanceName,
               groupId: menaWhatsAppMessages.groupId,
-              groupJid: menaWhatsAppMessages.groupJid,
               remoteMessageId: menaWhatsAppMessages.remoteMessageId,
               senderId: menaWhatsAppMessages.senderId,
               textBody: menaWhatsAppMessages.textBody,
@@ -842,7 +831,6 @@ router.get(
         suggestionMessagesByGroup.set(messageGroupId, groupMessages);
       };
       for (const message of messages) {
-        const row = rows.find((item) => item.id === message.id)!;
         appendSuggestionMessage(groupIdByMessage.get(message.id), {
           id: message.id,
           remoteMessageId: message.remoteMessageId,
@@ -856,10 +844,6 @@ router.get(
           createdAt: message.createdAt,
           replyToRemoteId: message.replyToRemoteId,
           mediaCount: message.media.length,
-          workspaceId: row.workspaceId,
-          instanceName: row.instanceName,
-          groupId: row.groupId,
-          groupJid: row.groupJid,
         });
       }
       for (const message of externalContextRows) {
@@ -876,10 +860,6 @@ router.get(
           createdAt: message.createdAt.toISOString(),
           replyToRemoteId: message.replyToRemoteId,
           mediaCount: contextMediaCountByMessageId.get(message.id) ?? 0,
-          workspaceId: message.workspaceId,
-          instanceName: message.instanceName,
-          groupId: message.groupId,
-          groupJid: message.groupJid,
         });
       }
       const suggestionsByMessage = new Map<
