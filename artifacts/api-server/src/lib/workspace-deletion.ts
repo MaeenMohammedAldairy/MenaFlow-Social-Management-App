@@ -19,6 +19,7 @@ import {
   menaWhatsAppAutoReplyEvents,
   menaWhatsAppConnections,
   menaWhatsAppContentAssociations,
+  menaWhatsAppDirectMessageMedia,
   menaWhatsAppDirectMessages,
   menaWhatsAppGroupJids,
   menaWhatsAppGroupSelections,
@@ -226,6 +227,9 @@ async function deleteWorkspaceRows(
       pushNotificationOutbox,
       workspaceSubscriptionUsage,
       workspaceSubscriptions,
+      // Restrict-FK child of the direct message: erase the attachments before
+      // the message rows they belong to (and before the workspace itself).
+      menaWhatsAppDirectMessageMedia,
       menaWhatsAppDirectMessages,
       menaWhatsAppAutoReplyEvents,
       menaWhatsAppOptOuts,

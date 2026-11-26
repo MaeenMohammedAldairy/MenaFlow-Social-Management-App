@@ -43,6 +43,7 @@ import {
 } from "@/lib/meta-inbox-api";
 import {
   getWhatsAppDirectConversations,
+  whatsappDirectConversationLabel,
   type WhatsAppDirectConversation,
 } from "@/lib/whatsapp-direct-inbox-api";
 
@@ -232,7 +233,11 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
     showsWhatsApp && filter !== "comment"
       ? whatsappConversations.filter((conversation) =>
           normalizedSearch
-            ? [conversation.customerNumber, conversation.preview].some((value) =>
+            ? [
+                whatsappDirectConversationLabel(conversation),
+                conversation.customerNumber,
+                conversation.preview,
+              ].some((value) =>
                 value.toLocaleLowerCase().includes(normalizedSearch),
               )
             : true,
@@ -280,7 +285,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
         <Pressable
           key={row.key}
           accessibilityRole="button"
-          accessibilityLabel={`فتح محادثة WhatsApp مع ${conversation.customerNumber}`}
+          accessibilityLabel={`فتح محادثة WhatsApp مع ${whatsappDirectConversationLabel(conversation)}`}
           onPress={() =>
             router.push({
               pathname: "/inbox/whatsapp",
@@ -306,7 +311,7 @@ function MetaInboxContent({ userId }: { userId: string | null }) {
                 style={[styles.conversationTitle, { color: colors.foreground }]}
                 numberOfLines={1}
               >
-                {conversation.customerNumber}
+                {whatsappDirectConversationLabel(conversation)}
               </Text>
               <Text style={[styles.conversationDate, { color: colors.mutedForeground }]}>
                 {formatArabicDateTime(conversation.lastMessageAt) ?? "غير محدد"}

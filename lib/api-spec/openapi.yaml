@@ -6001,12 +6001,53 @@ components:
         `availability`, `media` and `name` block publication; `description` is
         advisory.
       enum: [name, description, price, currency, availability, media]
+    WhatsAppDirectMessageAttachment:
+      type: object
+      description: >-
+        A stored attachment of a one-to-one WhatsApp message. `url` and
+        `thumbnailUrl` are short-lived signed links to the app's own media
+        route; the storage path is never exposed. `caption` is not duplicated
+        here — it remains part of the message text.
+      required:
+        - id
+        - mediaIndex
+        - mediaType
+        - downloadStatus
+        - url
+        - thumbnailUrl
+        - accessError
+      properties:
+        id:
+          type: string
+        mediaIndex:
+          type: integer
+          minimum: 0
+        mediaType:
+          type: string
+        mimeType:
+          type: [string, "null"]
+        fileName:
+          type: [string, "null"]
+        sizeBytes:
+          type: [integer, "null"]
+          minimum: 0
+        downloadStatus:
+          type: string
+          enum: [pending, stored, failed]
+        errorCode:
+          type: [string, "null"]
+        url:
+          type: [string, "null"]
+        thumbnailUrl:
+          type: [string, "null"]
+        accessError:
+          type: [string, "null"]
     WhatsAppDirectMessage:
       type: object
       description: >-
-        One message of a one-to-one WhatsApp conversation. The inbox stores only
-        encrypted text, so a message either has text or it does not — there is no
-        attachment type to report.
+        One message of a one-to-one WhatsApp conversation. Text and attachments
+        are stored separately: `text` may carry a caption while `attachments`
+        carries the stored file. `messageType` still describes text only.
       required:
         - id
         - remoteJid
@@ -6019,6 +6060,7 @@ components:
         - occurredAt
         - createdAt
         - errorCode
+        - attachments
       properties:
         id:
           type: string
@@ -6059,6 +6101,10 @@ components:
           format: date-time
         errorCode:
           type: [string, "null"]
+        attachments:
+          type: array
+          items:
+            $ref: "#/components/schemas/WhatsAppDirectMessageAttachment"
     WhatsAppDirectMessageListResponse:
       type: object
       required: [messages, nextCursor]
@@ -6091,6 +6137,12 @@ components:
       properties:
         remoteJid:
           type: string
+        senderName:
+          type: [string, "null"]
+          description: >-
+            The customer name from Evolution's `pushName`/`senderName` field,
+            when one is available. Null means the client must show
+            `customerNumber` instead. The conversation identity never changes.
         customerNumber:
           type: string
           description: >-

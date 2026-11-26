@@ -41,11 +41,25 @@ import {
 } from "../lib/whatsapp-content-associations";
 import { isConfirmedWhatsAppMediaGroupSource } from "../lib/whatsapp-album-relations";
 import { enqueueWhatsAppMessageIfMissing } from "../lib/whatsapp-marketing";
+import { requeueWhatsAppProductMessage } from "../lib/whatsapp-product-extraction";
+import { findStoredDirectAttachmentForServing } from "../lib/whatsapp-direct-media-serving";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 
 const WHATSAPP_MEDIA_STORAGE_ROOT = resolveWhatsAppMediaStorageRoot();
+
+/** Fields shared by group media and direct-message media. */
+type ServableWhatsAppMedia = {
+  id: string;
+  storagePath: string | null;
+  storageProvider: string | null;
+  mimeType: string | null;
+  fileName: string | null;
+  thumbnailPath: string | null;
+  mediaType: string;
+  downloadStatus: string;
+};
 
 function buildMediaUrl(
   mediaId: string,
@@ -98,9 +112,10 @@ function serializeWhatsAppMessageMedia(
 }
 
 async function mediaResponse(
-  media: typeof menaWhatsAppMessageMedia.$inferSelect,
+  media: ServableWhatsAppMedia,
   variant: "original" | "thumbnail" | "instagram-jpeg",
 ) {
+  if (!media.storagePath) throw new Error("MEDIA_FILE_MISSING");
   const thumbnailPath =
     variant === "thumbnail" &&
     media.thumbnailPath &&
@@ -179,9 +194,10 @@ async function sendMediaResponse(
 }
 
 async function storedMediaExists(
-  media: typeof menaWhatsAppMessageMedia.$inferSelect,
+  media: ServableWhatsAppMedia,
   variant: "original" | "thumbnail",
 ): Promise<boolean> {
+  if (!media.storagePath) return false;
   const thumbnailPath = variant === "thumbnail" ? media.thumbnailPath : null;
   const storagePath = thumbnailPath ?? media.storagePath;
   if (media.storageProvider === "supabase") return hasMediaObject(storagePath);
@@ -207,8 +223,11 @@ async function storedMediaExists(
   }
 }
 
-async function getWhatsAppMediaRecord(mediaId: string, workspaceId?: string) {
-  const predicates = [
+async function getWhatsAppMediaRecord(
+  mediaId: string,
+  workspaceId?: string,
+): Promise<ServableWhatsAppMedia | null> {
+  const groupPredicates = [
     eq(menaWhatsAppMessageMedia.id, mediaId),
     eq(menaWhatsAppMessages.id, menaWhatsAppMessageMedia.messageId),
     eq(menaWhatsAppMessages.workspaceId, menaWhatsAppMessageMedia.workspaceId),
@@ -220,9 +239,9 @@ async function getWhatsAppMediaRecord(mediaId: string, workspaceId?: string) {
     eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
   ];
   if (workspaceId) {
-    predicates.push(eq(menaWhatsAppMessageMedia.workspaceId, workspaceId));
+    groupPredicates.push(eq(menaWhatsAppMessageMedia.workspaceId, workspaceId));
   }
-  const [result] = await db
+  const [group] = await db
     .select({ media: menaWhatsAppMessageMedia })
     .from(menaWhatsAppMessageMedia)
     .innerJoin(
@@ -240,9 +259,13 @@ async function getWhatsAppMediaRecord(mediaId: string, workspaceId?: string) {
         eq(menaWhatsAppMessages.groupId, menaWhatsAppMessageMedia.groupId),
       ),
     )
-    .where(and(...predicates))
+    .where(and(...groupPredicates))
     .limit(1);
-  return result?.media ?? null;
+  if (group) return group.media;
+
+  // One-to-one attachments are owned by a separate helper/table; the group
+  // lookup above is unchanged and always wins if an id overlaps.
+  return findStoredDirectAttachmentForServing(mediaId, workspaceId);
 }
 
 router.get(
@@ -441,12 +464,19 @@ router.get(
                 createdAt: message.createdAt.toISOString(),
                 replyToRemoteId: message.replyToRemoteId,
                 mediaCount: mediaByMessage.get(message.id)?.length ?? 0,
+                workspaceId: message.workspaceId,
+                instanceName: message.instanceName,
+                groupId: message.groupId,
+                groupJid: message.groupJid,
               }];
             }),
           });
-          await Promise.all(accepted.messageIds.map((messageId) =>
+          await Promise.all(accepted.messageIds.flatMap((messageId) => [
             enqueueWhatsAppMessageIfMissing(workspaceId, messageId),
-          ));
+            // A bundle accepted after extraction must be re-derived as a new
+            // version; a message already used as a source cannot be re-queued.
+            requeueWhatsAppProductMessage(workspaceId, messageId),
+          ]));
         } catch (error) {
           logger.error(
             { error, workspaceId, groupId: messageGroupId },
@@ -750,7 +780,10 @@ router.get(
         ? await db
             .select({
               id: menaWhatsAppMessages.id,
+              workspaceId: menaWhatsAppMessages.workspaceId,
+              instanceName: menaWhatsAppMessages.instanceName,
               groupId: menaWhatsAppMessages.groupId,
+              groupJid: menaWhatsAppMessages.groupJid,
               remoteMessageId: menaWhatsAppMessages.remoteMessageId,
               senderId: menaWhatsAppMessages.senderId,
               textBody: menaWhatsAppMessages.textBody,
@@ -809,6 +842,7 @@ router.get(
         suggestionMessagesByGroup.set(messageGroupId, groupMessages);
       };
       for (const message of messages) {
+        const row = rows.find((item) => item.id === message.id)!;
         appendSuggestionMessage(groupIdByMessage.get(message.id), {
           id: message.id,
           remoteMessageId: message.remoteMessageId,
@@ -822,6 +856,10 @@ router.get(
           createdAt: message.createdAt,
           replyToRemoteId: message.replyToRemoteId,
           mediaCount: message.media.length,
+          workspaceId: row.workspaceId,
+          instanceName: row.instanceName,
+          groupId: row.groupId,
+          groupJid: row.groupJid,
         });
       }
       for (const message of externalContextRows) {
@@ -838,6 +876,10 @@ router.get(
           createdAt: message.createdAt.toISOString(),
           replyToRemoteId: message.replyToRemoteId,
           mediaCount: contextMediaCountByMessageId.get(message.id) ?? 0,
+          workspaceId: message.workspaceId,
+          instanceName: message.instanceName,
+          groupId: message.groupId,
+          groupJid: message.groupJid,
         });
       }
       const suggestionsByMessage = new Map<

@@ -4,9 +4,18 @@ import {
   db,
   menaWhatsAppAutoReplyEvents,
   menaWhatsAppConnections,
+  menaWhatsAppDirectMessageMedia,
   menaWhatsAppDirectMessages,
 } from "@workspace/db";
 import { requireOwnerId } from "../lib/owner-access";
+import {
+  PublicMediaUrlError,
+  signedWhatsAppMediaUrl,
+} from "../lib/public-media-url.ts";
+import {
+  serializeWhatsAppDirectAttachment,
+  type WhatsAppDirectAttachmentView,
+} from "../lib/whatsapp-direct-media.ts";
 import { sendWhatsAppAutoReply } from "../lib/whatsapp-auto-reply";
 import {
   decryptWhatsAppDirectMessageValue,
@@ -14,6 +23,7 @@ import {
   normalizeWhatsAppDirectJid,
   whatsappDirectMessagePlaceholder,
   whatsappDirectConversationKeys,
+  normalizeWhatsAppDirectSenderName,
   outboundWhatsAppDirectMessageValues,
 } from "../lib/whatsapp-direct-messages";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
@@ -53,10 +63,47 @@ async function connectionForRequest(ownerId: string, workspaceId: string) {
   return connection ?? null;
 }
 
+type DirectMediaRow = typeof menaWhatsAppDirectMessageMedia.$inferSelect;
+
+type DirectMediaAttachment = WhatsAppDirectAttachmentView;
+
+function signedMediaUrl(
+  mediaId: string,
+  variant: "original" | "thumbnail" | null,
+  requestOrigin?: string,
+): { url: string | null; accessError: string | null } {
+  try {
+    return {
+      url: signedWhatsAppMediaUrl(
+        mediaId,
+        true,
+        variant ?? "original",
+        requestOrigin,
+      ),
+      accessError: null,
+    };
+  } catch (error) {
+    if (error instanceof PublicMediaUrlError) {
+      return { url: null, accessError: error.reason };
+    }
+    throw error;
+  }
+}
+
+function attachmentResponse(
+  media: DirectMediaRow,
+  requestOrigin?: string,
+): DirectMediaAttachment {
+  return serializeWhatsAppDirectAttachment(media, (variant) =>
+    signedMediaUrl(media.id, variant, requestOrigin),
+  );
+}
+
 function messageResponse(
   message: typeof menaWhatsAppDirectMessages.$inferSelect,
   autoReplyStatus: string | null = null,
   autoReplyErrorCode: string | null = null,
+  attachments: DirectMediaAttachment[] = [],
 ) {
   const remoteJid = decryptWhatsAppDirectMessageValue(
     message.encryptedRemoteJid,
@@ -74,6 +121,7 @@ function messageResponse(
     occurredAt: message.messageTimestamp,
     createdAt: message.createdAt,
     errorCode: message.errorCode,
+    attachments,
   };
 }
 
@@ -108,7 +156,7 @@ router.get(
 
     const latestByConversation = new Map<
       string,
-      { message: typeof rows[number]; text: string }
+      { message: typeof rows[number]; text: string; senderName: string | null }
     >();
     let skippedEncryptedMessages = 0;
     for (const row of rows) {
@@ -116,11 +164,18 @@ router.get(
         const remoteJid = decryptWhatsAppDirectMessageValue(
           row.encryptedRemoteJid,
         );
-        if (!latestByConversation.has(remoteJid)) {
+        const senderName = normalizeWhatsAppDirectSenderName(row.senderName);
+        const existing = latestByConversation.get(remoteJid);
+        if (!existing) {
           latestByConversation.set(remoteJid, {
             message: row,
             text: decryptWhatsAppDirectMessageValue(row.encryptedTextBody),
+            senderName,
           });
+        } else if (!existing.senderName && senderName) {
+          // Keep the newest message for the preview, but display a name from
+          // any message in the scanned window instead of an older blank label.
+          existing.senderName = senderName;
         }
       } catch (error) {
         if (
@@ -140,12 +195,13 @@ router.get(
     }
     const conversations = [...latestByConversation.values()]
       .slice(0, conversationPageSize)
-      .map(({ message, text }) => {
+      .map(({ message, text, senderName }) => {
         const remoteJid = decryptWhatsAppDirectMessageValue(
           message.encryptedRemoteJid,
         );
         return {
           remoteJid,
+          senderName,
           customerNumber: remoteJid.endsWith("@s.whatsapp.net")
             ? remoteJid.replace(/@s\.whatsapp\.net$/, "")
             : `معرّف ${remoteJid.replace(/@lid$/, "")}`,
@@ -274,6 +330,32 @@ router.get(
       const key = message.providerMessageId ?? message.id;
       if (!uniqueMessages.has(key)) uniqueMessages.set(key, message);
     }
+    const directMessageIds = [...uniqueMessages.values()].map((message) => message.id);
+    const attachmentRows = directMessageIds.length
+      ? await db
+          .select()
+          .from(menaWhatsAppDirectMessageMedia)
+          .where(
+            and(
+              eq(menaWhatsAppDirectMessageMedia.workspaceId, workspaceId),
+              eq(menaWhatsAppDirectMessageMedia.instanceName, connection.instanceName),
+              inArray(menaWhatsAppDirectMessageMedia.directMessageId, directMessageIds),
+            ),
+          )
+          .orderBy(
+            menaWhatsAppDirectMessageMedia.directMessageId,
+            menaWhatsAppDirectMessageMedia.mediaIndex,
+          )
+      : [];
+    const attachmentsByMessage = new Map<string, DirectMediaAttachment[]>();
+    const requestOrigin = req.get("host")
+      ? `${req.protocol}://${req.get("host")}`
+      : undefined;
+    for (const media of attachmentRows) {
+      const list = attachmentsByMessage.get(media.directMessageId) ?? [];
+      list.push(attachmentResponse(media, requestOrigin));
+      attachmentsByMessage.set(media.directMessageId, list);
+    }
     const responseMessages: ReturnType<typeof messageResponse>[] = [];
     let skippedEncryptedMessages = 0;
     for (const message of uniqueMessages.values()) {
@@ -287,6 +369,7 @@ router.get(
             message,
             autoReply?.status ?? null,
             autoReply?.errorCode ?? null,
+            attachmentsByMessage.get(message.id) ?? [],
           ),
         );
       } catch (error) {

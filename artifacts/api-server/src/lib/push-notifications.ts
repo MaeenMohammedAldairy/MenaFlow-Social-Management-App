@@ -369,6 +369,7 @@ export async function notifyCustomerMessage(input: {
   platform?: string | null;
   customerName?: string | null;
   preview?: string | null;
+  awaitingReply?: boolean;
 }): Promise<void> {
   const { workspaceId, ...draft } = input;
   await enqueueNotificationSafely(

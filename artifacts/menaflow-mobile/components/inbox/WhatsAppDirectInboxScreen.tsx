@@ -22,6 +22,7 @@ import {
 } from "@/lib/poll-intervals";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { Skeleton } from "@/components/Skeleton";
+import { WhatsAppDirectMedia } from "@/components/inbox/WhatsAppDirectMedia";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, EmptyState, IconButton, Page, Panel } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
@@ -35,6 +36,7 @@ import {
   getWhatsAppDirectConversations,
   getWhatsAppDirectMessages,
   sendWhatsAppDirectReply,
+  whatsappDirectConversationLabel,
   whatsappDirectMessagePlaceholder,
   type WhatsAppDirectMessage,
   type WhatsAppDirectMessageCursor,
@@ -252,7 +254,9 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
           </View>
           <View style={styles.conversationCopy}>
             <Text style={{ color: colors.foreground, fontWeight: "800" }}>
-              {selectedConversation?.customerNumber ?? directConversationLabel(selectedRemoteJid)}
+              {selectedConversation
+                ? whatsappDirectConversationLabel(selectedConversation)
+                : directConversationLabel(selectedRemoteJid)}
             </Text>
             <Text numberOfLines={1} style={{ color: colors.mutedForeground, fontSize: 12 }}>
               تنتهي صلاحية الرسائل بعد 90 يومًا.
@@ -487,6 +491,7 @@ function DirectMessageBubble({
       <Text selectable style={{ color: colors.foreground, textAlign: "right", lineHeight: 22 }}>
         {message.text || messageTypeLabel}
       </Text>
+      <WhatsAppDirectMedia attachments={message.attachments ?? []} />
       {message.text && message.messageType !== "text" ? (
         <Text style={{ color: colors.mutedForeground, textAlign: "right", fontSize: 12 }}>
           {messageTypeLabel}

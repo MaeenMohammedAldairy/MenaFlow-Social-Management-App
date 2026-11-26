@@ -306,13 +306,14 @@ test("the schema the migrations build is the schema the live database holds", ()
   // A deliberate tripwire, not a drift gate: this number is the count of
   // `public` tables measured on the production project on 2026-11-24 (43), plus
   // the five rebuilt intake tables added the same day (48), plus the persistent
-  // WhatsApp opt-out table added on 2026-11-25 (49, of which 0 have RLS off).
+  // WhatsApp opt-out table added on 2026-11-25 (49, of which 0 have RLS off),
+  // plus the direct-message attachment table added by the DM media fix (50).
   // Changing it means a migration added or removed a table, which is exactly the
   // moment the lockdown requirement applies, so it should be updated by hand
   // with the guard's verdict in front of you.
   assert.equal(
     repo.existing.length,
-    49,
+    50,
     `surviving tables: ${repo.existing.map((entry) => entry.table).join(", ")}`,
   );
   // The 13 WhatsApp Cloud tables were removed a day after they were added.

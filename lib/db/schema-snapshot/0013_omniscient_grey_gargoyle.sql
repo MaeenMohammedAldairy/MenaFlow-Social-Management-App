@@ -1,0 +1,1 @@
+ALTER TABLE "mena_whatsapp_direct_messages" ADD COLUMN "sender_name" text;

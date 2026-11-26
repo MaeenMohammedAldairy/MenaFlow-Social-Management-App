@@ -35,6 +35,7 @@ const metaReasons = [
   "AUTO_REPLY_CHANNEL_OFF",
   "INBOX_STORED",
   "AUTO_REPLY_QUEUED",
+  "AUTO_REPLY_QUEUE_FAILED",
   "PROCESSED",
 ];
 
@@ -189,6 +190,7 @@ test("rejections are exactly the warn and error outcomes", () => {
     "META_WEBHOOK_PROCESSED",
     "META_WEBHOOK_INBOX_STORED",
     "META_WEBHOOK_AUTO_REPLY_QUEUED",
+    "META_WEBHOOK_AUTO_REPLY_QUEUE_FAILED",
     "META_WEBHOOK_IGNORED_OBJECT",
     "META_WEBHOOK_NO_EVENTS",
   ];

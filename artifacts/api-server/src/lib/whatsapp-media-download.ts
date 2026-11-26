@@ -19,11 +19,15 @@ import {
 import {
   db,
   menaWhatsAppConnections,
+  menaWhatsAppDirectMessageMedia,
   menaWhatsAppMessageMedia,
   menaWhatsAppMessages,
 } from "@workspace/db";
 import { menaWhatsAppMessages as WhatsAppMessageTable } from "@workspace/db";
-import { extractMediaItemsFromMessage } from "./whatsapp-message-scope";
+import {
+  extractMediaItemsFromMessage,
+  type WhatsAppMediaDetails,
+} from "./whatsapp-message-scope";
 import { evolutionRequest } from "./whatsapp-evolution";
 import { filterWhatsAppMediaItems } from "./whatsapp-sync-options";
 import { assertWorkspaceContext } from "./workspace-record-access";
@@ -188,6 +192,149 @@ async function fetchMedia(
   };
 }
 
+type StoredMediaLike = {
+  storageKey: string | null;
+  storagePath: string | null;
+  storageProvider: string | null;
+  thumbnailPath: string | null;
+  mimeType: string | null;
+  fileName: string | null;
+  sizeBytes: number | null;
+};
+
+type ReusableMedia = StoredMediaLike & { id: string; hash: string };
+
+type AcquiredMedia =
+  | { kind: "reuse"; reusable: ReusableMedia }
+  | {
+      kind: "downloaded";
+      mimeType: string | null;
+      hash: string;
+      storageKey: string;
+      storagePath: string;
+      provider: "supabase" | "local";
+      fileName: string;
+      sizeBytes: number;
+      downloadMs: number;
+      uploadMs: number;
+      localWriteMs: number;
+      bytes: number;
+    };
+
+/**
+ * The binary half of the media pipeline, shared by group and direct messages.
+ * Both callers keep their own row identity and retry policy; only downloading,
+ * verifying and storing the bytes lives here.
+ */
+async function acquireAndStoreMediaBuffer(input: {
+  instanceName: string;
+  workspaceId: string;
+  ownerId: string;
+  storageScope: string;
+  details: WhatsAppMediaDetails;
+  sourceMessage: Record<string, unknown>;
+  messageKey: Record<string, unknown>;
+  findReusable?: (hash: string) => Promise<ReusableMedia | null>;
+}): Promise<AcquiredMedia> {
+  if (
+    input.details.sizeBytes !== null &&
+    input.details.sizeBytes > MAX_WHATSAPP_MEDIA_BYTES
+  ) {
+    throw new Error("WHATSAPP_MEDIA_SIZE_LIMIT_EXCEEDED");
+  }
+
+  const advertisedHash = sourceMediaHash(input.details.sourceSha256);
+  if (advertisedHash && input.findReusable) {
+    const reusable = await input.findReusable(advertisedHash);
+    if (
+      reusable &&
+      (!input.details.sizeBytes ||
+        !reusable.sizeBytes ||
+        input.details.sizeBytes === reusable.sizeBytes) &&
+      reusable.storagePath &&
+      await hasUsableFile(reusable.storagePath, reusable.storageProvider ?? "local")
+    ) {
+      return { kind: "reuse", reusable };
+    }
+  }
+
+  const inlineData = input.details.base64Data
+    ? mediaBuffer({ base64: input.details.base64Data })
+    : null;
+  const downloadStartedAt = performance.now();
+  const downloaded = inlineData
+    ? { buffer: inlineData, mimeType: input.details.mimeType }
+    : await fetchMedia(
+        input.instanceName,
+        input.sourceMessage,
+        input.messageKey,
+      );
+  const downloadMs = Math.round(performance.now() - downloadStartedAt);
+  const bytes = downloaded.buffer.length;
+  if (bytes > MAX_WHATSAPP_MEDIA_BYTES) {
+    throw new Error("WHATSAPP_MEDIA_SIZE_LIMIT_EXCEEDED");
+  }
+  const mimeType = normalizeMimeType(downloaded.mimeType ?? input.details.mimeType);
+  const mimeExtension = mimeType?.split("/")[1];
+  const fileExtension = input.details.fileName?.slice(
+    input.details.fileName.lastIndexOf("."),
+  );
+  const extension = mimeExtension && /^[a-z0-9.+-]{1,20}$/i.test(mimeExtension)
+    ? `.${mimeExtension}`
+    : fileExtension && /^\.[a-z0-9]{1,12}$/i.test(fileExtension)
+      ? fileExtension
+      : ".bin";
+  const hash = createHash("sha256").update(downloaded.buffer).digest("hex");
+  if (advertisedHash && hash !== advertisedHash) {
+    throw new Error("MEDIA_SOURCE_HASH_MISMATCH");
+  }
+  const fileName = input.details.fileName ?? `${hash}${extension}`;
+  const objectPath = [
+    pathSegment(input.workspaceId),
+    "objects",
+    `${hash}${extension}`,
+  ].join("/");
+  const storageKey = objectPath;
+  const uploadStartedAt = performance.now();
+  const provider = await storeMediaObject(
+    objectPath,
+    downloaded.buffer,
+    mimeType ?? "application/octet-stream",
+  );
+  const uploadMs = Math.round(performance.now() - uploadStartedAt);
+  const storagePath = provider === "supabase"
+    ? objectPath
+    : path.join(
+        MEDIA_ROOT,
+        pathSegment(input.workspaceId),
+        pathSegment(input.ownerId),
+        pathSegment(input.instanceName),
+        pathSegment(input.storageScope),
+        `${hash}${extension}`,
+      );
+  let localWriteMs = 0;
+  if (provider === "local") {
+    const localWriteStartedAt = performance.now();
+    await mkdir(path.dirname(storagePath), { recursive: true });
+    await writeFile(storagePath, downloaded.buffer);
+    localWriteMs = Math.round(performance.now() - localWriteStartedAt);
+  }
+  return {
+    kind: "downloaded",
+    mimeType,
+    hash,
+    storageKey,
+    storagePath,
+    provider,
+    fileName,
+    sizeBytes: input.details.sizeBytes ?? bytes,
+    downloadMs,
+    uploadMs,
+    localWriteMs,
+    bytes,
+  };
+}
+
 async function storeMedia(
   message: WhatsAppMessage,
   entry: MediaEntry,
@@ -302,116 +449,73 @@ async function storeMedia(
   let uploadMs = 0;
   let localWriteMs = 0;
   let downloadedBytes = 0;
-  let storageProvider: "supabase" | "local" | null = null;
+  let storageProvider: string | null = null;
   try {
-    if (
-      details.sizeBytes !== null &&
-      details.sizeBytes > MAX_WHATSAPP_MEDIA_BYTES
-    ) {
-      throw new Error("WHATSAPP_MEDIA_SIZE_LIMIT_EXCEEDED");
-    }
-    const advertisedHash = sourceMediaHash(details.sourceSha256);
-    if (advertisedHash) {
-      const [reusable] = await db
-        .select()
-        .from(menaWhatsAppMessageMedia)
-        .where(and(
-          eq(menaWhatsAppMessageMedia.workspaceId, message.workspaceId),
-          eq(menaWhatsAppMessageMedia.sha256, advertisedHash),
-          eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
-          ne(menaWhatsAppMessageMedia.id, existing.id),
-        ))
-        .limit(1);
-      if (
-        reusable &&
-        (!details.sizeBytes || !reusable.sizeBytes || details.sizeBytes === reusable.sizeBytes) &&
-        await hasUsableFile(reusable.storagePath, reusable.storageProvider)
-      ) {
-        await db
-          .update(menaWhatsAppMessageMedia)
-          .set({
-            fileName: details.fileName ?? reusable.fileName,
-            mimeType: reusable.mimeType ?? normalizeMimeType(details.mimeType),
-            sizeBytes: details.sizeBytes ?? reusable.sizeBytes,
-            storageKey: reusable.storageKey,
-            storagePath: reusable.storagePath,
-            storageProvider: reusable.storageProvider,
-            thumbnailPath: reusable.thumbnailPath,
-            sha256: advertisedHash,
-            downloadStatus: "stored",
-            failureReason: null,
-            lastError: null,
-            nextAttemptAt: null,
-            updatedAt: new Date(),
-          })
-          .where(identity);
-        await requeueWhatsAppProductMessage(message.workspaceId, message.id);
-        return "stored";
-      }
+    const acquired = await acquireAndStoreMediaBuffer({
+      instanceName: message.instanceName,
+      workspaceId: message.workspaceId,
+      ownerId: message.ownerId,
+      storageScope: message.groupJid,
+      details,
+      sourceMessage,
+      messageKey: key,
+      findReusable: async (hash) => {
+        const [reusable] = await db
+          .select()
+          .from(menaWhatsAppMessageMedia)
+          .where(and(
+            eq(menaWhatsAppMessageMedia.workspaceId, message.workspaceId),
+            eq(menaWhatsAppMessageMedia.sha256, hash),
+            eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
+            ne(menaWhatsAppMessageMedia.id, existing.id),
+          ))
+          .limit(1);
+        return reusable
+          ? { ...reusable, hash }
+          : null;
+      },
+    });
+
+    if (acquired.kind === "reuse") {
+      const reusable = acquired.reusable;
+      await db
+        .update(menaWhatsAppMessageMedia)
+        .set({
+          fileName: details.fileName ?? reusable.fileName,
+          mimeType: reusable.mimeType ?? normalizeMimeType(details.mimeType),
+          sizeBytes: details.sizeBytes ?? reusable.sizeBytes,
+          storageKey: reusable.storageKey ?? "",
+          storagePath: reusable.storagePath ?? "",
+          storageProvider: reusable.storageProvider ?? "local",
+          thumbnailPath: reusable.thumbnailPath,
+          sha256: reusable.hash,
+          downloadStatus: "stored",
+          failureReason: null,
+          lastError: null,
+          nextAttemptAt: null,
+          updatedAt: new Date(),
+        })
+        .where(identity);
+      await requeueWhatsAppProductMessage(message.workspaceId, message.id);
+      return "stored";
     }
 
-    const inlineData = details.base64Data
-      ? mediaBuffer({ base64: details.base64Data })
-      : null;
-    const downloadStartedAt = performance.now();
-    const downloaded = inlineData
-      ? { buffer: inlineData, mimeType: details.mimeType }
-      : await fetchMedia(message.instanceName, sourceMessage, key);
-    downloadMs = Math.round(performance.now() - downloadStartedAt);
-    downloadedBytes = downloaded.buffer.length;
-    if (downloadedBytes > MAX_WHATSAPP_MEDIA_BYTES) {
-      throw new Error("WHATSAPP_MEDIA_SIZE_LIMIT_EXCEEDED");
-    }
-    const mimeType = normalizeMimeType(downloaded.mimeType ?? details.mimeType);
-    const mimeExtension = mimeType?.split("/")[1];
-    const fileExtension = details.fileName?.slice(details.fileName.lastIndexOf("."));
-    const extension = mimeExtension && /^[a-z0-9.+-]{1,20}$/i.test(mimeExtension)
-      ? `.${mimeExtension}`
-      : fileExtension && /^\.[a-z0-9]{1,12}$/i.test(fileExtension)
-        ? fileExtension
-        : ".bin";
-    const hash = createHash("sha256").update(downloaded.buffer).digest("hex");
-    if (advertisedHash && hash !== advertisedHash) {
-      throw new Error("MEDIA_SOURCE_HASH_MISMATCH");
-    }
-    const fileName = details.fileName ?? `${hash}${extension}`;
-    const objectPath = [
-      pathSegment(message.workspaceId),
-      "objects",
-      `${hash}${extension}`,
-    ].join("/");
-    const storageKey = objectPath;
-    const uploadStartedAt = performance.now();
-    const provider = await storeMediaObject(objectPath, downloaded.buffer, mimeType ?? "application/octet-stream");
-    uploadMs = Math.round(performance.now() - uploadStartedAt);
-    storageProvider = provider;
-    const storagePath = provider === "supabase"
-      ? objectPath
-      : path.join(
-          MEDIA_ROOT,
-          pathSegment(message.workspaceId),
-          pathSegment(message.ownerId),
-          pathSegment(message.instanceName),
-          pathSegment(message.groupJid),
-          `${hash}${extension}`,
-        );
-    if (provider === "local") {
-      const localWriteStartedAt = performance.now();
-      await mkdir(path.dirname(storagePath), { recursive: true });
-      await writeFile(storagePath, downloaded.buffer);
-      localWriteMs = Math.round(performance.now() - localWriteStartedAt);
-    }
-    const [stored] = await db
+    downloadMs = acquired.downloadMs;
+    uploadMs = acquired.uploadMs;
+    localWriteMs = acquired.localWriteMs;
+    downloadedBytes = acquired.bytes;
+    storageProvider = acquired.provider;
+    await db
       .update(menaWhatsAppMessageMedia)
       .set({
-        fileName,
-        mimeType,
-        sizeBytes: details.sizeBytes ?? downloaded.buffer.length,
-        storageKey,
-        storagePath,
-        storageProvider: provider,
+        fileName: acquired.fileName,
+        mimeType: acquired.mimeType,
+        sizeBytes: acquired.sizeBytes,
+        storageKey: acquired.storageKey,
+        storagePath: acquired.storagePath,
+        storageProvider: acquired.provider,
         thumbnailPath: null,
-        sha256: hash,
+        sha256: acquired.hash,
         downloadStatus: "stored",
         failureReason: null,
         lastError: null,
@@ -420,14 +524,13 @@ async function storeMedia(
       })
       .where(identity)
       .returning({ id: menaWhatsAppMessageMedia.id });
-    if (!stored) throw new Error("MEDIA_STORAGE_CONFLICT_WORKSPACE_MISMATCH");
     await requeueWhatsAppProductMessage(message.workspaceId, message.id);
     logger.info(
       {
         messageId: message.id,
         mediaIndex,
         bytes: downloadedBytes,
-        provider,
+        provider: storageProvider,
         downloadMs,
         uploadMs,
         localWriteMs,
@@ -474,6 +577,195 @@ async function storeMedia(
         totalMs: Math.round(performance.now() - startedAt),
       },
       "WhatsApp media download attempt failed",
+    );
+    return retry ? "pending" : "failed";
+  }
+}
+
+type WhatsAppDirectMediaRow = typeof menaWhatsAppDirectMessageMedia.$inferSelect;
+
+/** Downloads and stores one direct-message attachment. Never throws for a
+ * transport failure — the row keeps the failure code and remains retryable. */
+async function storeDirectMedia(
+  media: WhatsAppDirectMediaRow,
+): Promise<"stored" | "pending" | "failed"> {
+  assertWorkspaceContext(media.workspaceId);
+  const metadata = asRecord(media.sourceMetadata) ?? {};
+  const sourceMessage = asRecord(metadata.sourceMessage);
+  if (!sourceMessage) throw new Error("MEDIA_SOURCE_UNAVAILABLE");
+  const items = extractMediaItemsFromMessage(sourceMessage);
+  // Albums carry several media nodes under one provider message id. The row's
+  // mediaIndex selects which one this worker must fetch; falling back to the
+  // first item keeps older single-attachment rows compatible.
+  const details = items[media.mediaIndex] ?? items[0];
+  if (!details) throw new Error("MEDIA_SOURCE_UNAVAILABLE");
+  const sourceKey = asRecord(metadata.messageKey) ?? {};
+  const key = {
+    ...sourceKey,
+    id: sourceKey.id ?? media.providerMessageId ?? media.id,
+    remoteJid: sourceKey.remoteJid ?? media.remoteJidHash,
+  };
+  const identity = and(
+    eq(menaWhatsAppDirectMessageMedia.id, media.id),
+    eq(menaWhatsAppDirectMessageMedia.workspaceId, media.workspaceId),
+    eq(menaWhatsAppDirectMessageMedia.instanceName, media.instanceName),
+    eq(menaWhatsAppDirectMessageMedia.directMessageId, media.directMessageId),
+  );
+  if (
+    media.downloadStatus === "stored" &&
+    await hasUsableFile(media.storagePath, media.storageProvider)
+  ) return "stored";
+
+  const now = new Date();
+  const attemptLimit = mediaDownloadAttemptLimit({
+    messageAgeMs: messageAgeMs(media.createdAt, now),
+    defaultLimit: MAX_DOWNLOAD_ATTEMPTS,
+  });
+  if (media.downloadAttempts >= attemptLimit) return "failed";
+  if (
+    media.downloadStatus === "failed" &&
+    !isRetryableMediaError(media.lastError ?? media.errorCode ?? "")
+  ) return "failed";
+  if (media.nextAttemptAt && media.nextAttemptAt > now) return "pending";
+
+  const [attempt] = await db
+    .update(menaWhatsAppDirectMessageMedia)
+    .set({
+      downloadStatus: "pending",
+      downloadAttempts: sql`${menaWhatsAppDirectMessageMedia.downloadAttempts} + 1`,
+      lastAttemptAt: now,
+      nextAttemptAt: null,
+      errorCode: null,
+      lastError: null,
+      updatedAt: now,
+    })
+    .where(and(
+      identity,
+      eq(menaWhatsAppDirectMessageMedia.downloadAttempts, media.downloadAttempts),
+      or(
+        isNull(menaWhatsAppDirectMessageMedia.nextAttemptAt),
+        lte(menaWhatsAppDirectMessageMedia.nextAttemptAt, now),
+      ),
+    ))
+    .returning({ downloadAttempts: menaWhatsAppDirectMessageMedia.downloadAttempts });
+  if (!attempt) {
+    const [current] = await db
+      .select({ downloadStatus: menaWhatsAppDirectMessageMedia.downloadStatus })
+      .from(menaWhatsAppDirectMessageMedia)
+      .where(identity)
+      .limit(1);
+    return current?.downloadStatus === "stored" ? "stored" : "pending";
+  }
+
+  const startedAt = performance.now();
+  let downloadMs = 0;
+  let uploadMs = 0;
+  let downloadedBytes = 0;
+  try {
+    const acquired = await acquireAndStoreMediaBuffer({
+      instanceName: media.instanceName,
+      workspaceId: media.workspaceId,
+      ownerId: media.ownerId,
+      storageScope: media.remoteJidHash,
+      details,
+      sourceMessage,
+      messageKey: key,
+      findReusable: async (hash) => {
+        const [reusable] = await db
+          .select()
+          .from(menaWhatsAppDirectMessageMedia)
+          .where(and(
+            eq(menaWhatsAppDirectMessageMedia.workspaceId, media.workspaceId),
+            eq(menaWhatsAppDirectMessageMedia.sha256, hash),
+            eq(menaWhatsAppDirectMessageMedia.downloadStatus, "stored"),
+            ne(menaWhatsAppDirectMessageMedia.id, media.id),
+          ))
+          .limit(1);
+        return reusable ? { ...reusable, hash } : null;
+      },
+    });
+
+    const stored = acquired.kind === "reuse"
+      ? {
+          mimeType: acquired.reusable.mimeType ?? normalizeMimeType(details.mimeType),
+          storageKey: acquired.reusable.storageKey,
+          storagePath: acquired.reusable.storagePath,
+          storageProvider: acquired.reusable.storageProvider ?? "local",
+          thumbnailPath: acquired.reusable.thumbnailPath,
+          sha256: acquired.reusable.hash,
+          fileName: details.fileName ?? acquired.reusable.fileName,
+          sizeBytes: details.sizeBytes ?? acquired.reusable.sizeBytes,
+        }
+      : {
+          mimeType: acquired.mimeType,
+          storageKey: acquired.storageKey,
+          storagePath: acquired.storagePath,
+          storageProvider: acquired.provider,
+          thumbnailPath: null,
+          sha256: acquired.hash,
+          fileName: acquired.fileName,
+          sizeBytes: acquired.sizeBytes,
+        };
+    if (acquired.kind === "downloaded") {
+      downloadMs = acquired.downloadMs;
+      uploadMs = acquired.uploadMs;
+      downloadedBytes = acquired.bytes;
+    }
+    await db
+      .update(menaWhatsAppDirectMessageMedia)
+      .set({
+        ...stored,
+        downloadStatus: "stored",
+        errorCode: null,
+        lastError: null,
+        nextAttemptAt: null,
+        updatedAt: new Date(),
+      })
+      .where(identity)
+      .returning({ id: menaWhatsAppDirectMessageMedia.id });
+    logger.info(
+      {
+        mediaId: media.id,
+        providerMessageId: media.providerMessageId,
+        mediaIndex: media.mediaIndex,
+        bytes: downloadedBytes,
+        downloadMs,
+        uploadMs,
+        totalMs: Math.round(performance.now() - startedAt),
+      },
+      "WhatsApp direct media stored",
+    );
+    return "stored";
+  } catch (error) {
+    const errorCode = mediaErrorCode(error);
+    const failureReason = mediaDownloadFailureReason({
+      messageAgeMs: messageAgeMs(media.createdAt, new Date()),
+      errorCode,
+    });
+    const retry = isRetryableMediaError(failureReason) &&
+      attempt.downloadAttempts < attemptLimit;
+    const retryAt = retry ? nextRetryAt(attempt.downloadAttempts, new Date()) : null;
+    await db
+      .update(menaWhatsAppDirectMessageMedia)
+      .set({
+        downloadStatus: retry ? "pending" : "failed",
+        errorCode: failureReason,
+        lastError: failureReason,
+        nextAttemptAt: retryAt,
+        updatedAt: new Date(),
+      })
+      .where(identity);
+    logger.error(
+      {
+        mediaId: media.id,
+        providerMessageId: media.providerMessageId,
+        mediaIndex: media.mediaIndex,
+        attempt: attempt.downloadAttempts,
+        retryAt: retryAt?.toISOString() ?? null,
+        reason: failureReason,
+        totalMs: Math.round(performance.now() - startedAt),
+      },
+      "WhatsApp direct media download attempt failed",
     );
     return retry ? "pending" : "failed";
   }
@@ -641,6 +933,58 @@ export async function retryWhatsAppMediaDownload(message: WhatsAppMessage): Prom
   return status === "stored";
 }
 
+let directMediaDownloadWorkerRunning = false;
+
+/**
+ * Downloads attachments created by the direct-message webhook path. It is
+ * intentionally part of the same worker tick as group media: no new worker,
+ * config or cron is needed, and both queues share the same storage primitives.
+ */
+export async function processWhatsAppDirectMediaDownloadQueue(): Promise<number> {
+  if (directMediaDownloadWorkerRunning) return 0;
+  directMediaDownloadWorkerRunning = true;
+  try {
+    const now = new Date();
+    const pending = await db
+      .select()
+      .from(menaWhatsAppDirectMessageMedia)
+      .where(and(
+        eq(menaWhatsAppDirectMessageMedia.downloadStatus, "pending"),
+        or(
+          isNull(menaWhatsAppDirectMessageMedia.nextAttemptAt),
+          lte(menaWhatsAppDirectMessageMedia.nextAttemptAt, now),
+        ),
+      ))
+      .orderBy(asc(menaWhatsAppDirectMessageMedia.updatedAt))
+      .limit(10);
+
+    let completed = 0;
+    for (let offset = 0; offset < pending.length; offset += 3) {
+      const batch = pending.slice(offset, offset + 3);
+      const outcomes = await Promise.all(batch.map(async (media) => {
+        try {
+          const result = await storeDirectMedia(media);
+          return result === "stored";
+        } catch (error) {
+          logger.error(
+            {
+              mediaId: media.id,
+              providerMessageId: media.providerMessageId,
+              reason: mediaErrorCode(error),
+            },
+            "WhatsApp direct media queue item failed",
+          );
+          return false;
+        }
+      }));
+      completed += outcomes.filter(Boolean).length;
+    }
+    return completed;
+  } finally {
+    directMediaDownloadWorkerRunning = false;
+  }
+}
+
 let mediaDownloadWorkerRunning = false;
 
 export async function processWhatsAppMediaDownloadQueue(): Promise<number> {
@@ -694,11 +1038,15 @@ export async function processWhatsAppMediaDownloadQueue(): Promise<number> {
       completed += outcomes.filter(Boolean).length;
     }
 
-    if (messages.length > 0) {
+    const directCompleted = await processWhatsAppDirectMediaDownloadQueue();
+    completed += directCompleted;
+
+    if (messages.length > 0 || directCompleted > 0) {
       logger.info(
         {
           selected: messages.length,
           completed,
+          directCompleted,
           totalMs: Math.round(performance.now() - startedAt),
         },
         "WhatsApp media queue batch completed",
@@ -712,39 +1060,70 @@ export async function processWhatsAppMediaDownloadQueue(): Promise<number> {
 
 let thumbnailWorkerRunning = false;
 
+type ThumbnailCandidate = {
+  id: string;
+  workspaceId: string;
+  storagePath: string | null;
+  storageProvider: string | null;
+  mimeType: string | null;
+};
+
+async function buildMediaThumbnail(candidate: ThumbnailCandidate): Promise<string> {
+  if (!candidate.mimeType || !candidate.storagePath) {
+    throw new Error("MEDIA_SOURCE_UNAVAILABLE");
+  }
+  const original = candidate.storageProvider === "supabase"
+    ? await readMediaObject(candidate.storagePath)
+    : await readLocalMedia(candidate.storagePath);
+  const thumbnail = await createMediaThumbnail(original);
+  let thumbnailPath = thumbnailObjectPath(candidate.storagePath);
+  if (candidate.storageProvider === "supabase") {
+    await storeMediaObject(thumbnailPath, thumbnail, "image/webp");
+  } else {
+    thumbnailPath = path.join(
+      path.dirname(candidate.storagePath),
+      path.basename(thumbnailPath),
+    );
+    await mkdir(path.dirname(thumbnailPath), { recursive: true });
+    await writeFile(thumbnailPath, thumbnail);
+  }
+  return thumbnailPath;
+}
+
 export async function processWhatsAppMediaThumbnailQueue(): Promise<number> {
   if (thumbnailWorkerRunning) return 0;
   thumbnailWorkerRunning = true;
 
   try {
-    const pending = await db
-      .select()
-      .from(menaWhatsAppMessageMedia)
-      .where(and(
-        eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
-        like(menaWhatsAppMessageMedia.mimeType, "image/%"),
-        notLike(menaWhatsAppMessageMedia.mimeType, "%svg%"),
-        isNull(menaWhatsAppMessageMedia.thumbnailPath),
-      ))
-      .orderBy(asc(menaWhatsAppMessageMedia.updatedAt))
-      .limit(5);
+    const [groupPending, directPending] = await Promise.all([
+      db
+        .select()
+        .from(menaWhatsAppMessageMedia)
+        .where(and(
+          eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
+          like(menaWhatsAppMessageMedia.mimeType, "image/%"),
+          notLike(menaWhatsAppMessageMedia.mimeType, "%svg%"),
+          isNull(menaWhatsAppMessageMedia.thumbnailPath),
+        ))
+        .orderBy(asc(menaWhatsAppMessageMedia.updatedAt))
+        .limit(5),
+      db
+        .select()
+        .from(menaWhatsAppDirectMessageMedia)
+        .where(and(
+          eq(menaWhatsAppDirectMessageMedia.downloadStatus, "stored"),
+          like(menaWhatsAppDirectMessageMedia.mimeType, "image/%"),
+          notLike(menaWhatsAppDirectMessageMedia.mimeType, "%svg%"),
+          isNull(menaWhatsAppDirectMessageMedia.thumbnailPath),
+        ))
+        .orderBy(asc(menaWhatsAppDirectMessageMedia.updatedAt))
+        .limit(5),
+    ]);
 
     let completed = 0;
-    for (const media of pending) {
+    for (const media of groupPending) {
       try {
-        if (!media.mimeType) continue;
-        const original = media.storageProvider === "supabase"
-          ? await readMediaObject(media.storagePath)
-          : await readLocalMedia(media.storagePath);
-        const thumbnail = await createMediaThumbnail(original);
-        let thumbnailPath = thumbnailObjectPath(media.storagePath);
-        if (media.storageProvider === "supabase") {
-          await storeMediaObject(thumbnailPath, thumbnail, "image/webp");
-        } else {
-          thumbnailPath = path.join(path.dirname(media.storagePath), path.basename(thumbnailPath));
-          await mkdir(path.dirname(thumbnailPath), { recursive: true });
-          await writeFile(thumbnailPath, thumbnail);
-        }
+        const thumbnailPath = await buildMediaThumbnail(media);
         await db
           .update(menaWhatsAppMessageMedia)
           .set({ thumbnailPath, updatedAt: new Date() })
@@ -770,6 +1149,38 @@ export async function processWhatsAppMediaThumbnailQueue(): Promise<number> {
             eq(menaWhatsAppMessageMedia.id, media.id),
             eq(menaWhatsAppMessageMedia.workspaceId, media.workspaceId),
             isNull(menaWhatsAppMessageMedia.thumbnailPath),
+          ));
+      }
+    }
+
+    for (const media of directPending) {
+      try {
+        const thumbnailPath = await buildMediaThumbnail(media);
+        await db
+          .update(menaWhatsAppDirectMessageMedia)
+          .set({ thumbnailPath, updatedAt: new Date() })
+          .where(and(
+            eq(menaWhatsAppDirectMessageMedia.id, media.id),
+            eq(menaWhatsAppDirectMessageMedia.workspaceId, media.workspaceId),
+            isNull(menaWhatsAppDirectMessageMedia.thumbnailPath),
+          ));
+        completed += 1;
+      } catch (error) {
+        logger.error(
+          {
+            mediaId: media.id,
+            workspaceId: media.workspaceId,
+            error: mediaErrorCode(error),
+          },
+          "WhatsApp direct thumbnail job failed",
+        );
+        await db
+          .update(menaWhatsAppDirectMessageMedia)
+          .set({ thumbnailPath: "failed", updatedAt: new Date() })
+          .where(and(
+            eq(menaWhatsAppDirectMessageMedia.id, media.id),
+            eq(menaWhatsAppDirectMessageMedia.workspaceId, media.workspaceId),
+            isNull(menaWhatsAppDirectMessageMedia.thumbnailPath),
           ));
       }
     }

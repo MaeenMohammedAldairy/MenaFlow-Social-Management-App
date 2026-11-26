@@ -30,6 +30,8 @@ import {
 } from "@workspace/db";
 import { createHash, randomUUID } from "node:crypto";
 import { enqueueWhatsAppMessage } from "../lib/whatsapp-marketing";
+import { storeWhatsAppDirectMediaForMessage } from "./whatsapp-direct-media-store.ts";
+import { stripInlineMediaData } from "./whatsapp-direct-media.ts";
 
 import {
   extractMediaItemsFromMessage,
@@ -132,9 +134,12 @@ import {
   outboundWhatsAppDirectMessageValues,
   normalizeWhatsAppDirectMessageText,
   redactWhatsAppPrivateData,
+  classifyWhatsAppDirectMessage,
+  whatsappDirectSenderNameFromPayload,
   selectWhatsAppDirectJid,
   whatsappDirectConversationKeys,
   whatsappDirectMessageExpiry,
+  whatsappDirectMessagePlaceholder,
 } from "../lib/whatsapp-direct-messages";
 import { asRecord, queryString } from "./value-utils.ts";
 import { resolveMessageSenderId } from "../lib/whatsapp-marketing-safety";
@@ -152,19 +157,6 @@ function persistedWhatsAppCursor(value: unknown): Date | null {
   const cursor = parseWhatsAppHistoryTimestamp(value);
   if (!cursor) throw new Error("WHATSAPP_SYNC_CURSOR_INVALID");
   return cursor;
-}
-
-function stripInlineMediaData(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stripInlineMediaData);
-  const record = asRecord(value);
-  if (!record) return value;
-  return Object.fromEntries(
-    Object.entries(record)
-      .filter(
-        ([key]) => !["base64", "data", "buffer"].includes(key.toLowerCase()),
-      )
-      .map(([key, nested]) => [key, stripInlineMediaData(nested)]),
-  );
 }
 
 function arrayFromUnknown(value: unknown): unknown[] {
@@ -2280,7 +2272,20 @@ export async function processWebhookEvent(
   ) {
     const direction = eventKey?.fromMe === true ? "outbound" : "inbound";
     const directMessage = eventMessage ?? eventPayload;
-    const messageText = extractWhatsAppTextFromMessage(directMessage);
+    // Only an inbound payload carries the customer's own pushName. Never let
+    // an outbound/business name overwrite the stored contact name.
+    const directSenderName = direction === "inbound"
+      ? whatsappDirectSenderNameFromPayload(eventPayload, directMessage)
+      : null;
+    // A media-only DM has no conversation or caption. Store a typed Arabic
+    // placeholder instead of an empty body so the Inbox thread shows that a
+    // photo/voice note arrived. Nothing is downloaded or copied here: the body
+    // stays encrypted at rest with the same workspace/instance key as before.
+    const messageText =
+      extractWhatsAppTextFromMessage(directMessage) ??
+      whatsappDirectMessagePlaceholder(
+        classifyWhatsAppDirectMessage(directMessage, null),
+      );
     const messageTimestamp =
       [
         directMessage.messageTimestamp,
@@ -2300,22 +2305,97 @@ export async function processWebhookEvent(
       directRemoteJid,
     )[0]!;
     directConversationKey = conversationKey;
-    await db.insert(menaWhatsAppDirectMessages).values({
-      id: randomUUID(),
-      ownerId: connection.ownerId,
-      workspaceId: connection.workspaceId,
-      instanceName,
-      remoteJidHash: conversationKey,
-      encryptedRemoteJid: encryptWhatsAppDirectMessageValue(directRemoteJid),
-      providerMessageId: directMessageId,
-      direction,
-      status: direction === "outbound" ? "sent" : "received",
-      encryptedTextBody: encryptWhatsAppDirectMessageValue(
-        normalizeWhatsAppDirectMessageText(messageText ?? ""),
-      ),
-      messageTimestamp,
-      expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
-    }).onConflictDoNothing();
+    const [savedDirectMessage] = await db
+      .insert(menaWhatsAppDirectMessages)
+      .values({
+        id: randomUUID(),
+        ownerId: connection.ownerId,
+        workspaceId: connection.workspaceId,
+        instanceName,
+        remoteJidHash: conversationKey,
+        encryptedRemoteJid: encryptWhatsAppDirectMessageValue(directRemoteJid),
+        providerMessageId: directMessageId,
+        senderName: directSenderName,
+        direction,
+        status: direction === "outbound" ? "sent" : "received",
+        encryptedTextBody: encryptWhatsAppDirectMessageValue(
+          normalizeWhatsAppDirectMessageText(messageText ?? ""),
+        ),
+        messageTimestamp,
+        expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
+      })
+      .onConflictDoNothing()
+      .returning({
+        id: menaWhatsAppDirectMessages.id,
+        senderName: menaWhatsAppDirectMessages.senderName,
+      });
+
+    // A retried webhook finds the row created by the first delivery. Resolve it
+    // by the same stable identity the unique index uses, then let the media
+    // store apply its own on-conflict rule per attachment.
+    const [directMessageRow] = savedDirectMessage
+      ? [savedDirectMessage]
+      : await db
+          .select({
+            id: menaWhatsAppDirectMessages.id,
+            senderName: menaWhatsAppDirectMessages.senderName,
+          })
+          .from(menaWhatsAppDirectMessages)
+          .where(
+            and(
+              eq(menaWhatsAppDirectMessages.workspaceId, connection.workspaceId),
+              eq(menaWhatsAppDirectMessages.instanceName, instanceName),
+              eq(menaWhatsAppDirectMessages.remoteJidHash, conversationKey),
+              eq(menaWhatsAppDirectMessages.providerMessageId, directMessageId),
+            ),
+          )
+          .limit(1);
+    if (directMessageRow) {
+      // A redelivered payload can carry a name the first delivery lacked. Only
+      // this nullable display column changes — never the conversation key,
+      // ownership, body, direction or provider message id.
+      if (directSenderName && directMessageRow.senderName !== directSenderName) {
+        await db
+          .update(menaWhatsAppDirectMessages)
+          .set({ senderName: directSenderName })
+          .where(
+            and(
+              eq(menaWhatsAppDirectMessages.id, directMessageRow.id),
+              eq(
+                menaWhatsAppDirectMessages.workspaceId,
+                connection.workspaceId,
+              ),
+              eq(menaWhatsAppDirectMessages.instanceName, instanceName),
+            ),
+          );
+      }
+      const directMediaMessageKey = {
+        ...(eventKey ?? {}),
+        id: directMessageId,
+        remoteJid: eventRemoteJid ?? directRemoteJid,
+        ...(eventRemoteJidAlt ? { remoteJidAlt: eventRemoteJidAlt } : {}),
+      };
+      try {
+        await storeWhatsAppDirectMediaForMessage({
+          ownerId: connection.ownerId,
+          workspaceId: connection.workspaceId,
+          instanceName,
+          directMessageId: directMessageRow.id,
+          providerMessageId: directMessageId,
+          remoteJidHash: conversationKey,
+          message: directMessage as Record<string, unknown>,
+          messageKey: directMediaMessageKey,
+          connection,
+        });
+      } catch (error) {
+        // The text was saved successfully. Media is a best-effort enrichment,
+        // and its failure is diagnosable from the pending/failed media row.
+        logger.warn(
+          { error, instanceName, providerMessageId: directMessageId },
+          "WhatsApp direct media could not be queued",
+        );
+      }
+    }
   }
   const remoteMessageId =
     typeof eventKey?.id === "string"
