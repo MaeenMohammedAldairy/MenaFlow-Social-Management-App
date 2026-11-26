@@ -60,7 +60,14 @@ export function WhatsAppMessageGroupCard({
           ) : group.postId ? (
             <StatusPill label="تم التحويل إلى محتوى" tone="green" />
           ) : group.contentBundleId ? (
-            <StatusPill label="ارتباط أكّده المستخدم" tone="blue" />
+            <StatusPill
+              label={group.messages.length > 1
+                ? "حزمة منتج متعددة المصادر"
+                : "ارتباط أكّده المستخدم"}
+              tone="blue"
+            />
+          ) : group.associationSuggestions.length > 0 ? (
+            <StatusPill label="اقتراح تجميع يحتاج مراجعة" tone="amber" />
           ) : group.mediaGroupId ? (
             <StatusPill label="ألبوم واتساب مؤكد" tone="blue" />
           ) : (

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export type WhatsAppContentAssociationDecision = "accepted" | "rejected";
 
 type AssociationEdge = {
@@ -30,6 +32,22 @@ export function areWhatsAppMessagesInSameContentScope(
       first.groupId === second.groupId &&
       first.groupJid === second.groupJid,
   );
+}
+
+/** Deterministic identity for a newly accepted product bundle. */
+export function whatsappProductBundleId(scope: {
+  workspaceId: string;
+  instanceName: string;
+  groupId: string;
+}, messageIds: readonly string[]): string {
+  // Replayed webhooks and reversed decision order must resolve to the same id.
+  const ordered = [...new Set(messageIds)].sort();
+  const identity = createHash("sha256")
+    .update(`${scope.workspaceId}\u0000${scope.instanceName}\u0000${scope.groupId}\u0000`)
+    .update(ordered.join("\u0000"))
+    .digest("hex")
+    .slice(0, 24);
+  return `bundle-${identity}`;
 }
 
 export function normalizeWhatsAppAssociationPair(
