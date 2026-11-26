@@ -6137,6 +6137,12 @@ components:
       properties:
         remoteJid:
           type: string
+        senderName:
+          type: [string, "null"]
+          description: >-
+            The customer name from Evolution's `pushName`/`senderName` field,
+            when one is available. Null means the client must show
+            `customerNumber` instead. The conversation identity never changes.
         customerNumber:
           type: string
           description: >-

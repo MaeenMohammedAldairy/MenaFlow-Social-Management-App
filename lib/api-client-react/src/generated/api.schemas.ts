@@ -1757,6 +1757,11 @@ export const WhatsAppDirectConversationLastStatus = {
 
 export interface WhatsAppDirectConversation {
   remoteJid: string;
+  /**
+     * The customer name from Evolution's `pushName`/`senderName` field, when one is available. Null means the client must show `customerNumber` instead. The conversation identity never changes.
+     * @nullable
+     */
+  senderName?: string | null;
   /** The phone number where the provider supplies one; otherwise a label carrying the opaque id, so the row is never blank. */
   customerNumber: string;
   preview: string;

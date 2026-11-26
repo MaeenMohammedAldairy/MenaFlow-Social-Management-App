@@ -23,6 +23,7 @@ import {
   normalizeWhatsAppDirectJid,
   whatsappDirectMessagePlaceholder,
   whatsappDirectConversationKeys,
+  normalizeWhatsAppDirectSenderName,
   outboundWhatsAppDirectMessageValues,
 } from "../lib/whatsapp-direct-messages";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
@@ -155,7 +156,7 @@ router.get(
 
     const latestByConversation = new Map<
       string,
-      { message: typeof rows[number]; text: string }
+      { message: typeof rows[number]; text: string; senderName: string | null }
     >();
     let skippedEncryptedMessages = 0;
     for (const row of rows) {
@@ -163,11 +164,18 @@ router.get(
         const remoteJid = decryptWhatsAppDirectMessageValue(
           row.encryptedRemoteJid,
         );
-        if (!latestByConversation.has(remoteJid)) {
+        const senderName = normalizeWhatsAppDirectSenderName(row.senderName);
+        const existing = latestByConversation.get(remoteJid);
+        if (!existing) {
           latestByConversation.set(remoteJid, {
             message: row,
             text: decryptWhatsAppDirectMessageValue(row.encryptedTextBody),
+            senderName,
           });
+        } else if (!existing.senderName && senderName) {
+          // Keep the newest message for the preview, but display a name from
+          // any message in the scanned window instead of an older blank label.
+          existing.senderName = senderName;
         }
       } catch (error) {
         if (
@@ -187,12 +195,13 @@ router.get(
     }
     const conversations = [...latestByConversation.values()]
       .slice(0, conversationPageSize)
-      .map(({ message, text }) => {
+      .map(({ message, text, senderName }) => {
         const remoteJid = decryptWhatsAppDirectMessageValue(
           message.encryptedRemoteJid,
         );
         return {
           remoteJid,
+          senderName,
           customerNumber: remoteJid.endsWith("@s.whatsapp.net")
             ? remoteJid.replace(/@s\.whatsapp\.net$/, "")
             : `معرّف ${remoteJid.replace(/@lid$/, "")}`,
