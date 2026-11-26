@@ -18,7 +18,6 @@ import {
   whatsappProductExtractionJobs,
 } from "@workspace/db";
 import { metaString } from "../lib/meta-inbox-utils";
-import { resolveWhatsAppSourceMediaIds } from "../lib/product-source-media.ts";
 
 import { requestOwnerId, requireOwnerId } from "../lib/owner-access";
 
@@ -547,10 +546,34 @@ router.post(
       );
       if (!input) return { status: "incomplete" as const };
       const { inventoryReason, ...productInput } = input;
-      const sourceMedia = await resolveWhatsAppSourceMediaIds({
-        workspaceId,
-        suggestionId,
-      });
+      const sourceMedia = await transaction
+        .select({ id: menaWhatsAppMessageMedia.id })
+        .from(productExtractionSources)
+        .innerJoin(
+          menaWhatsAppMessageMedia,
+          and(
+            eq(
+              menaWhatsAppMessageMedia.messageId,
+              productExtractionSources.messageId,
+            ),
+            eq(
+              menaWhatsAppMessageMedia.workspaceId,
+              productExtractionSources.workspaceId,
+            ),
+            eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
+          ),
+        )
+        .where(
+          and(
+            eq(productExtractionSources.workspaceId, workspaceId),
+            eq(productExtractionSources.suggestionId, suggestionId),
+          ),
+        )
+        .orderBy(
+          asc(menaWhatsAppMessageMedia.createdAt),
+          asc(menaWhatsAppMessageMedia.mediaIndex),
+        )
+        .limit(20);
       const [product] = await transaction
         .insert(products)
         .values({
@@ -569,7 +592,7 @@ router.post(
               : input.inventoryTracked
                 ? "in_stock"
                 : input.availability,
-          mediaUrls: sourceMedia,
+          mediaUrls: sourceMedia.map(({ id }) => id),
           verifiedAt: null,
           updatedAt: new Date(),
         })

@@ -6,7 +6,7 @@ import {
   PublicMediaUrlError,
   signedProductMediaUrl,
   signedWhatsAppMediaUrl,
-} from "../lib/public-media-url.ts";
+} from "../lib/public-media-url";
 
 import { productMediaInfo } from "../lib/product-utils.ts";
 import {

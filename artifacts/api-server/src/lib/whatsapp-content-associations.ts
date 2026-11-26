@@ -8,8 +8,8 @@ import {
   menaWhatsAppMessages,
 } from "@workspace/db";
 import {
-  findWhatsAppProductBundleSuggestions,
-  selectAutoAcceptableProductBundleSuggestions,
+  findWhatsAppAssociationSuggestions,
+  selectAutoAcceptableWhatsAppAssociations,
   type WhatsAppSuggestionMessage,
 } from "./whatsapp-association-suggestions.ts";
 import {
@@ -17,7 +17,6 @@ import {
   connectedWhatsAppMessageIds,
   normalizeWhatsAppAssociationPair,
   whatsappAssociationPairKey,
-  whatsappProductBundleId,
   type WhatsAppContentAssociationDecision,
 } from "./whatsapp-content-association-logic.ts";
 
@@ -26,7 +25,6 @@ export {
   connectedWhatsAppMessageIds,
   normalizeWhatsAppAssociationPair,
   whatsappAssociationPairKey,
-  whatsappProductBundleId,
 } from "./whatsapp-content-association-logic.ts";
 export type { WhatsAppContentAssociationDecision } from "./whatsapp-content-association-logic.ts";
 
@@ -173,55 +171,23 @@ export async function autoAcceptWhatsAppSuggestions(input: {
     instanceName: input.instanceName,
     groupId: input.groupId,
   };
-  const suggestions = findWhatsAppProductBundleSuggestions(input.messages);
-  const autoAcceptable = selectAutoAcceptableProductBundleSuggestions(suggestions);
+  const suggestions = findWhatsAppAssociationSuggestions(input.messages);
+  const autoAcceptable = selectAutoAcceptableWhatsAppAssociations(suggestions);
   if (autoAcceptable.length === 0) return { acceptedCount: 0, messageIds: [] };
   const decisions = await getWhatsAppContentAssociationDecisions(scope);
-  const edges = [...decisions].map(([pair, decision]) => {
-    const [leftMessageId, rightMessageId] = pair.split("\u0000");
-    return { leftMessageId, rightMessageId, decision };
-  });
   const acceptedMessageIds = new Set<string>();
   let acceptedCount = 0;
   for (const suggestion of autoAcceptable) {
-    const pairKey = whatsappAssociationPairKey(
+    if (decisions.has(whatsappAssociationPairKey(
       suggestion.sourceMessageId,
       suggestion.candidateMessageId,
-    );
-    if (decisions.has(pairKey)) continue;
-    const sourceComponent = connectedWhatsAppMessageIds(
-      suggestion.sourceMessageId,
-      edges,
-    );
-    const candidateComponent = connectedWhatsAppMessageIds(
-      suggestion.candidateMessageId,
-      edges,
-    );
-    const sourceSet = new Set(sourceComponent);
-    if (candidateComponent.some((id) => sourceSet.has(id))) continue;
-    // A merchant's earlier "reject" is a decision, not an absent suggestion.
-    if ([...sourceSet].some((id) =>
-      candidateComponent.some((candidateId) =>
-        decisions.get(whatsappAssociationPairKey(id, candidateId)) === "rejected",
-      ),
-    )) continue;
+    ))) continue;
     try {
       await decideWhatsAppContentAssociation({
         decidedBy: input.decidedBy ?? WHATSAPP_AUTO_ASSOCIATION_DECIDED_BY,
         workspaceId: input.workspaceId,
         firstMessageId: suggestion.sourceMessageId,
         secondMessageId: suggestion.candidateMessageId,
-        decision: "accepted",
-      });
-      edges.push({
-        leftMessageId: normalizeWhatsAppAssociationPair(
-          suggestion.sourceMessageId,
-          suggestion.candidateMessageId,
-        )[0],
-        rightMessageId: normalizeWhatsAppAssociationPair(
-          suggestion.sourceMessageId,
-          suggestion.candidateMessageId,
-        )[1],
         decision: "accepted",
       });
     } catch (error) {
@@ -388,8 +354,7 @@ export async function decideWhatsAppContentAssociation(input: {
         )
         .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
         .map((edge) => edge.contentBundleId!);
-      contentBundleId = existingBundles[0] ??
-        whatsappProductBundleId(scope, [...combinedIds]);
+      contentBundleId = existingBundles[0] ?? randomUUID();
       const bundleIdsToMerge = [...new Set(existingBundles)];
       if (bundleIdsToMerge.length > 0) {
         await transaction
