@@ -36,6 +36,7 @@ import {
   getWhatsAppDirectConversations,
   getWhatsAppDirectMessages,
   sendWhatsAppDirectReply,
+  whatsappDirectConversationLabel,
   whatsappDirectMessagePlaceholder,
   type WhatsAppDirectMessage,
   type WhatsAppDirectMessageCursor,
@@ -253,7 +254,9 @@ function WhatsAppDirectInboxContent({ userId }: { userId: string | null }) {
           </View>
           <View style={styles.conversationCopy}>
             <Text style={{ color: colors.foreground, fontWeight: "800" }}>
-              {selectedConversation?.customerNumber ?? directConversationLabel(selectedRemoteJid)}
+              {selectedConversation
+                ? whatsappDirectConversationLabel(selectedConversation)
+                : directConversationLabel(selectedRemoteJid)}
             </Text>
             <Text numberOfLines={1} style={{ color: colors.mutedForeground, fontSize: 12 }}>
               تنتهي صلاحية الرسائل بعد 90 يومًا.

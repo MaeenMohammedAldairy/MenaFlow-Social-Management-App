@@ -2808,6 +2808,7 @@ export const GetWhatsAppPublicMediaResponse = zod.unknown()
 export const ListWhatsAppDirectConversationsResponse = zod.object({
   "conversations": zod.array(zod.object({
   "remoteJid": zod.string(),
+  "senderName": zod.string().nullish().describe('The customer name from Evolution\'s `pushName`/`senderName` field, when one is available. Null means the client must show `customerNumber` instead. The conversation identity never changes.'),
   "customerNumber": zod.string().describe('The phone number where the provider supplies one; otherwise a label carrying the opaque id, so the row is never blank.'),
   "preview": zod.string(),
   "lastDirection": zod.enum(['inbound', 'outbound']),

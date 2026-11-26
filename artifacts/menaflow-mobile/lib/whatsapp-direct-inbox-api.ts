@@ -31,6 +31,8 @@ export type {
   WhatsAppDirectMessageListResponse,
 };
 
+export { whatsappDirectConversationLabel } from "./whatsapp-direct-conversation-label";
+
 /**
  * Whether a message held text. The server derives this from the stored body
  * rather than reading a type field, so it cannot name an attachment type.

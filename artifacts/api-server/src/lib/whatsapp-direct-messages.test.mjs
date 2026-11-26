@@ -8,6 +8,8 @@ import {
   isWhatsAppDirectPhoneJid,
   normalizeWhatsAppDirectJid,
   normalizeWhatsAppDirectMessageText,
+  normalizeWhatsAppDirectSenderName,
+  whatsappDirectSenderNameFromPayload,
   outboundWhatsAppDirectMessageValues,
   redactWhatsAppPrivateData,
   selectWhatsAppDirectJid,
@@ -193,4 +195,27 @@ test("redacts private order details before building AI prompts", () => {
   assert.match(redacted, /المنتج: المصحف/);
   assert.doesNotMatch(redacted, /فاطمة علي|967777123456|صنعاء، حدة/);
   assert.match(redacted, /\[محذوف\]/);
+});
+test("uses Evolution's pushName/senderName fields and rejects non-names", () => {
+  assert.equal(
+    whatsappDirectSenderNameFromPayload({ pushName: "  ميناء  ", senderName: "أخرى" }),
+    "ميناء",
+  );
+  assert.equal(
+    whatsappDirectSenderNameFromPayload({}, { senderName: "Sanaa Store" }),
+    "Sanaa Store",
+  );
+  assert.equal(
+    whatsappDirectSenderNameFromPayload({ pushName: "   ", senderName: "ميناء" }),
+    "ميناء",
+  );
+  assert.equal(
+    whatsappDirectSenderNameFromPayload({ pushName: "967777123456@s.whatsapp.net" }),
+    null,
+    "a JID is an identity, not a display name",
+  );
+  assert.equal(whatsappDirectSenderNameFromPayload({ pushName: "967777123456" }), null);
+  assert.equal(whatsappDirectSenderNameFromPayload({ pushName: " \n " }), null);
+  assert.equal(normalizeWhatsAppDirectSenderName("x".repeat(121)), null);
+  assert.equal(normalizeWhatsAppDirectSenderName(42), null);
 });

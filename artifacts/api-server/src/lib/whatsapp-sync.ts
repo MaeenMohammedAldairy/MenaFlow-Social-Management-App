@@ -135,6 +135,7 @@ import {
   normalizeWhatsAppDirectMessageText,
   redactWhatsAppPrivateData,
   classifyWhatsAppDirectMessage,
+  whatsappDirectSenderNameFromPayload,
   selectWhatsAppDirectJid,
   whatsappDirectConversationKeys,
   whatsappDirectMessageExpiry,
@@ -2271,6 +2272,11 @@ export async function processWebhookEvent(
   ) {
     const direction = eventKey?.fromMe === true ? "outbound" : "inbound";
     const directMessage = eventMessage ?? eventPayload;
+    // Only an inbound payload carries the customer's own pushName. Never let
+    // an outbound/business name overwrite the stored contact name.
+    const directSenderName = direction === "inbound"
+      ? whatsappDirectSenderNameFromPayload(eventPayload, directMessage)
+      : null;
     // A media-only DM has no conversation or caption. Store a typed Arabic
     // placeholder instead of an empty body so the Inbox thread shows that a
     // photo/voice note arrived. Nothing is downloaded or copied here: the body
@@ -2309,6 +2315,7 @@ export async function processWebhookEvent(
         remoteJidHash: conversationKey,
         encryptedRemoteJid: encryptWhatsAppDirectMessageValue(directRemoteJid),
         providerMessageId: directMessageId,
+        senderName: directSenderName,
         direction,
         status: direction === "outbound" ? "sent" : "received",
         encryptedTextBody: encryptWhatsAppDirectMessageValue(
@@ -2318,7 +2325,10 @@ export async function processWebhookEvent(
         expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
       })
       .onConflictDoNothing()
-      .returning({ id: menaWhatsAppDirectMessages.id });
+      .returning({
+        id: menaWhatsAppDirectMessages.id,
+        senderName: menaWhatsAppDirectMessages.senderName,
+      });
 
     // A retried webhook finds the row created by the first delivery. Resolve it
     // by the same stable identity the unique index uses, then let the media
@@ -2326,7 +2336,10 @@ export async function processWebhookEvent(
     const [directMessageRow] = savedDirectMessage
       ? [savedDirectMessage]
       : await db
-          .select({ id: menaWhatsAppDirectMessages.id })
+          .select({
+            id: menaWhatsAppDirectMessages.id,
+            senderName: menaWhatsAppDirectMessages.senderName,
+          })
           .from(menaWhatsAppDirectMessages)
           .where(
             and(
@@ -2338,6 +2351,24 @@ export async function processWebhookEvent(
           )
           .limit(1);
     if (directMessageRow) {
+      // A redelivered payload can carry a name the first delivery lacked. Only
+      // this nullable display column changes — never the conversation key,
+      // ownership, body, direction or provider message id.
+      if (directSenderName && directMessageRow.senderName !== directSenderName) {
+        await db
+          .update(menaWhatsAppDirectMessages)
+          .set({ senderName: directSenderName })
+          .where(
+            and(
+              eq(menaWhatsAppDirectMessages.id, directMessageRow.id),
+              eq(
+                menaWhatsAppDirectMessages.workspaceId,
+                connection.workspaceId,
+              ),
+              eq(menaWhatsAppDirectMessages.instanceName, instanceName),
+            ),
+          );
+      }
       const directMediaMessageKey = {
         ...(eventKey ?? {}),
         id: directMessageId,

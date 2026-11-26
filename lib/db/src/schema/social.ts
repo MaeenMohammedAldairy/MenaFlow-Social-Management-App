@@ -298,6 +298,8 @@ export const menaWhatsAppDirectMessages = pgTable(
     encryptedRemoteJid: text("encrypted_remote_jid").notNull(),
     providerMessageId: text("provider_message_id"),
     clientRequestId: text("client_request_id"),
+    // Same field name as group messages: Evolution's `pushName`/`senderName`.
+    senderName: text("sender_name"),
     direction: text("direction").$type<"inbound" | "outbound">().notNull(),
     status: text("status")
       .$type<"received" | "sending" | "sent" | "failed" | "unknown">()

@@ -152,6 +152,40 @@ export function normalizeWhatsAppDirectMessageText(value: string): string {
   return value.trim().slice(0, maximumDirectMessageLength);
 }
 
+const maximumDirectSenderNameLength = 120;
+
+/**
+ * Evolution already sends the customer's display name as `pushName` (and
+ * sometimes `senderName`). Reuse those exact fields — and the same
+ * `sender_name` column the group messages use — instead of inventing another
+ * contact-name vocabulary. A JID, a phone number or an empty/control-character
+ * string is not a usable display name: callers fall back to the phone number.
+ */
+export function normalizeWhatsAppDirectSenderName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > maximumDirectSenderNameLength) return null;
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) return null;
+  if (/^\d{7,20}(?::\d+)?@(?:s\.whatsapp\.net|lid)$/.test(trimmed)) return null;
+  if (/^\d{7,20}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+/** `pushName` wins, matching the existing group-message extraction path. */
+export function whatsappDirectSenderNameFromPayload(
+  ...payloads: unknown[]
+): string | null {
+  for (const payload of payloads) {
+    const record = asRecord(payload);
+    if (!record) continue;
+    const name =
+      normalizeWhatsAppDirectSenderName(record.pushName) ??
+      normalizeWhatsAppDirectSenderName(record.senderName);
+    if (name) return name;
+  }
+  return null;
+}
+
 export function redactWhatsAppPrivateData(value: string): string {
   const labeled = value
     .replace(
