@@ -6,7 +6,7 @@
     "preinstall": "node -e \"const { unlinkSync } = require('node:fs'); const userAgent = process.env.npm_config_user_agent || ''; if (!userAgent.startsWith('pnpm/')) { console.error('Use pnpm instead'); process.exit(1); } for (const file of ['package-lock.json', 'yarn.lock']) { try { unlinkSync(file); } catch (error) { if (error.code !== 'ENOENT') throw error; } }\"",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "lint": "eslint .",
-    "test": "node --experimental-strip-types --test",
+    "test": "node --experimental-strip-types --experimental-test-module-mocks --test",
     "test:post-readiness": "node --experimental-strip-types --test artifacts/api-server/src/lib/post-readiness.test.mjs",
     "test:whatsapp-auto-reply": "node --experimental-strip-types --test artifacts/api-server/src/lib/whatsapp-auto-reply.test.mjs",
     "test:meta-auto-reply": "node --experimental-strip-types --test artifacts/api-server/src/lib/meta-auto-reply.test.mjs artifacts/api-server/src/lib/meta-inbox-graph.test.mjs artifacts/api-server/src/lib/meta-inbox-utils.test.mjs artifacts/api-server/src/lib/meta-order-intake.test.mjs",

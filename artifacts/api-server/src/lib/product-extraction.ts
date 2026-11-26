@@ -433,6 +433,72 @@ export function productExtractionSourceKey(
     .digest("hex");
 }
 
+/**
+ * A confirmed bundle is one logical product. The model may split its evidence
+ * into several candidates or leave the photo out of the source list; neither
+ * is allowed to become several suggestions. All bundle members are therefore
+ * collapsed into a single candidate, and a disagreement between them (two
+ * names or two prices) keeps the result in manual review.
+ */
+export function collapseProductCandidatesForBundle(
+  candidates: readonly ProductExtractionCandidate[],
+  sourceMessageIds: readonly string[],
+): { candidates: ProductExtractionCandidate[]; mixedBundle: boolean } {
+  const products = candidates.filter((item) => item.classification === "product");
+  if (products.length === 0) {
+    return { candidates: [...candidates], mixedBundle: false };
+  }
+  const first = products[0];
+  const merged: ExtractedProductData = {
+    name: first.data.name,
+    sku: first.data.sku,
+    aliases: [...first.data.aliases],
+    description: first.data.description,
+    price: first.data.price,
+    currency: first.data.currency,
+    availability: first.data.availability,
+  };
+  for (const candidate of products.slice(1)) {
+    if (!merged.name) merged.name = candidate.data.name;
+    if (!merged.sku) merged.sku = candidate.data.sku;
+    if (!merged.description) merged.description = candidate.data.description;
+    if (!merged.price) merged.price = candidate.data.price;
+    if (!merged.currency) merged.currency = candidate.data.currency;
+    if (!merged.availability) merged.availability = candidate.data.availability;
+    merged.aliases = [...new Set([...merged.aliases, ...candidate.data.aliases])];
+  }
+  const evidence: Record<string, string | null> = {};
+  const confidence: Record<string, number> = {};
+  const evidenceSpans: NonNullable<ProductExtractionCandidate["evidenceSpans"]> = {};
+  for (const candidate of products) {
+    for (const field of fieldNames) {
+      if (evidence[field] == null && candidate.evidence[field] != null) {
+        evidence[field] = candidate.evidence[field] ?? null;
+      }
+      if (candidate.confidence[field] != null) {
+        confidence[field] = candidate.confidence[field];
+      }
+      if (candidate.evidenceSpans?.[field]) {
+        evidenceSpans[field] = candidate.evidenceSpans[field];
+      }
+    }
+  }
+  const names = new Set(products.map((item) => item.data.name).filter(Boolean));
+  const prices = new Set(products.map((item) => item.data.price).filter(Boolean));
+  const mixedBundle = names.size > 1 || prices.size > 1 ||
+    candidates.some((item) => item.classification !== "product");
+  const candidate: ProductExtractionCandidate = {
+    classification: "product",
+    sourceMessageIds: [...new Set(sourceMessageIds)],
+    data: merged,
+    evidence,
+    confidence,
+    evidenceSpans,
+    complete: products.every((item) => item.complete) && !mixedBundle,
+  };
+  return { candidates: [candidate], mixedBundle };
+}
+
 export function generatedProductSku(
   sourceMessageIds: readonly string[],
 ): string {
