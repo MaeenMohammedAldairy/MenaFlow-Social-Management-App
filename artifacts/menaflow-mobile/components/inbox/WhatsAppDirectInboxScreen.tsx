@@ -22,6 +22,7 @@ import {
 } from "@/lib/poll-intervals";
 import { CairoText as Text } from "@/components/CairoTypography";
 import { Skeleton } from "@/components/Skeleton";
+import { WhatsAppDirectMedia } from "@/components/inbox/WhatsAppDirectMedia";
 import { LucideIcon as Icon } from "@/components/LucideIcon";
 import { ActionButton, EmptyState, IconButton, Page, Panel } from "@/components/Ui";
 import { useColors } from "@/hooks/useColors";
@@ -487,6 +488,7 @@ function DirectMessageBubble({
       <Text selectable style={{ color: colors.foreground, textAlign: "right", lineHeight: 22 }}>
         {message.text || messageTypeLabel}
       </Text>
+      <WhatsAppDirectMedia attachments={message.attachments ?? []} />
       {message.text && message.messageType !== "text" ? (
         <Text style={{ color: colors.mutedForeground, textAlign: "right", fontSize: 12 }}>
           {messageTypeLabel}
