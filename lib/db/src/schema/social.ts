@@ -354,6 +354,108 @@ export const menaWhatsAppDirectMessages = pgTable(
   ],
 );
 
+/**
+ * Attachments belonging to a one-to-one WhatsApp message.
+ *
+ * The group media pipeline uses `mena_whatsapp_message_media`, whose identity
+ * is built around a group JID/id. A direct conversation has no group identity,
+ * so its media needs its own table: the same storage and signing primitives
+ * are reused, but the row is keyed by the direct message and its provider id.
+ * The binary never lives in PostgreSQL — only identifiers and state do.
+ */
+export const menaWhatsAppDirectMessageMedia = pgTable(
+  "mena_whatsapp_direct_message_media",
+  {
+    id: text("id").primaryKey(),
+    ownerId: text("owner_id").notNull(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "restrict" }),
+    instanceName: text("instance_name").notNull(),
+    directMessageId: text("direct_message_id")
+      .notNull()
+      .references(() => menaWhatsAppDirectMessages.id, { onDelete: "cascade" }),
+    providerMessageId: text("provider_message_id"),
+    remoteJidHash: text("remote_jid_hash").notNull(),
+    mediaIndex: integer("media_index").notNull().default(0),
+    mediaType: text("media_type").notNull(),
+    mimeType: text("mime_type"),
+    fileName: text("file_name"),
+    sizeBytes: integer("size_bytes"),
+    /** Provider URL or directPath, kept as metadata only — never trusted as a signed URL. */
+    sourceUrl: text("source_url"),
+    /** Message key + sanitized source message, needed to ask Evolution for the binary. */
+    sourceMetadata: jsonb("source_metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    sha256: text("sha256"),
+    storageKey: text("storage_key"),
+    storagePath: text("storage_path"),
+    storageProvider: text("storage_provider").notNull().default("local"),
+    thumbnailPath: text("thumbnail_path"),
+    downloadStatus: text("download_status")
+      .$type<"pending" | "stored" | "failed">()
+      .notNull()
+      .default("pending"),
+    errorCode: text("error_code"),
+    downloadAttempts: integer("download_attempts").notNull().default(0),
+    lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mena_whatsapp_direct_media_provider_key")
+      .on(
+        table.workspaceId,
+        table.instanceName,
+        table.remoteJidHash,
+        table.providerMessageId,
+        table.mediaIndex,
+        table.mediaType,
+      )
+      .where(sql`${table.providerMessageId} IS NOT NULL`),
+    uniqueIndex("mena_whatsapp_direct_media_message_key").on(
+      table.directMessageId,
+      table.mediaIndex,
+      table.mediaType,
+    ),
+    index("mena_whatsapp_direct_media_conversation_idx").on(
+      table.workspaceId,
+      table.instanceName,
+      table.remoteJidHash,
+      table.createdAt,
+    ),
+    index("mena_whatsapp_direct_media_retry_idx").on(
+      table.workspaceId,
+      table.downloadStatus,
+      table.nextAttemptAt,
+    ),
+    foreignKey({
+      columns: [table.workspaceId, table.instanceName],
+      foreignColumns: [
+        menaWhatsAppConnections.workspaceId,
+        menaWhatsAppConnections.instanceName,
+      ],
+      name: "mena_whatsapp_direct_media_connection_fk",
+    }).onDelete("cascade"),
+    check(
+      "mena_whatsapp_direct_media_index_check",
+      sql`${table.mediaIndex} >= 0`,
+    ),
+    check(
+      "mena_whatsapp_direct_media_status_check",
+      sql`${table.downloadStatus} IN ('pending', 'stored', 'failed')`,
+    ),
+  ],
+);
+
 export const menaWhatsAppGroupSelections = pgTable(
   "mena_whatsapp_group_selections",
   {

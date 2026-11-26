@@ -1622,6 +1622,43 @@ export interface PushTokenRemovedResponse {
   removed: boolean;
 }
 
+export type WhatsAppDirectMessageAttachmentDownloadStatus = typeof WhatsAppDirectMessageAttachmentDownloadStatus[keyof typeof WhatsAppDirectMessageAttachmentDownloadStatus];
+
+
+export const WhatsAppDirectMessageAttachmentDownloadStatus = {
+  pending: 'pending',
+  stored: 'stored',
+  failed: 'failed',
+} as const;
+
+/**
+ * A stored attachment of a one-to-one WhatsApp message. `url` and `thumbnailUrl` are short-lived signed links to the app's own media route; the storage path is never exposed. `caption` is not duplicated here — it remains part of the message text.
+ */
+export interface WhatsAppDirectMessageAttachment {
+  id: string;
+  /** @minimum 0 */
+  mediaIndex: number;
+  mediaType: string;
+  /** @nullable */
+  mimeType?: string | null;
+  /** @nullable */
+  fileName?: string | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  sizeBytes?: number | null;
+  downloadStatus: WhatsAppDirectMessageAttachmentDownloadStatus;
+  /** @nullable */
+  errorCode?: string | null;
+  /** @nullable */
+  url: string | null;
+  /** @nullable */
+  thumbnailUrl: string | null;
+  /** @nullable */
+  accessError: string | null;
+}
+
 export type WhatsAppDirectMessageDirection = typeof WhatsAppDirectMessageDirection[keyof typeof WhatsAppDirectMessageDirection];
 
 
@@ -1656,7 +1693,7 @@ export const WhatsAppDirectMessageMessageType = {
 } as const;
 
 /**
- * One message of a one-to-one WhatsApp conversation. The inbox stores only encrypted text, so a message either has text or it does not — there is no attachment type to report.
+ * One message of a one-to-one WhatsApp conversation. Text and attachments are stored separately: `text` may carry a caption while `attachments` carries the stored file. `messageType` still describes text only.
  */
 export interface WhatsAppDirectMessage {
   id: string;
@@ -1682,6 +1719,7 @@ export interface WhatsAppDirectMessage {
   createdAt: string;
   /** @nullable */
   errorCode: string | null;
+  attachments: WhatsAppDirectMessageAttachment[];
 }
 
 /**

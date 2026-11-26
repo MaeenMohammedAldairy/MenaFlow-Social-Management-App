@@ -18,6 +18,7 @@ import {
   confirmWhatsAppDirectReplyNotSent as generatedConfirmWhatsAppDirectReplyNotSent,
   type WhatsAppDirectConversation,
   type WhatsAppDirectMessage,
+  type WhatsAppDirectMessageAttachment,
   type WhatsAppDirectMessageListResponse,
   type WhatsAppDirectReplyResponse,
   type WhatsAppDirectMessageEnvelope,
@@ -26,6 +27,7 @@ import {
 export type {
   WhatsAppDirectConversation,
   WhatsAppDirectMessage,
+  WhatsAppDirectMessageAttachment,
   WhatsAppDirectMessageListResponse,
 };
 
@@ -48,6 +50,22 @@ export function whatsappDirectMessagePlaceholder(
     unknown: "رسالة واتساب بدون محتوى نصي",
   };
   return labels[messageType];
+}
+
+/** What to show while a stored attachment is still being downloaded, or after
+ * its download failed. The caption stays in `message.text`, never here. */
+export function whatsappDirectAttachmentStatusLabel(
+  attachment: WhatsAppDirectMessageAttachment,
+): string {
+  if (attachment.downloadStatus === "failed") {
+    const code = attachment.errorCode ? ` (${attachment.errorCode})` : "";
+    return `تعذر تنزيل المرفق${code}`;
+  }
+  if (attachment.downloadStatus === "pending") return "جارٍ تنزيل المرفق...";
+  if (attachment.accessError) {
+    return `تعذر إنشاء رابط آمن للمرفق (${attachment.accessError})`;
+  }
+  return "المرفق غير متاح";
 }
 
 export async function getWhatsAppDirectConversations(): Promise<{

@@ -30,6 +30,8 @@ import {
 } from "@workspace/db";
 import { createHash, randomUUID } from "node:crypto";
 import { enqueueWhatsAppMessage } from "../lib/whatsapp-marketing";
+import { storeWhatsAppDirectMediaForMessage } from "./whatsapp-direct-media-store.ts";
+import { stripInlineMediaData } from "./whatsapp-direct-media.ts";
 
 import {
   extractMediaItemsFromMessage,
@@ -154,19 +156,6 @@ function persistedWhatsAppCursor(value: unknown): Date | null {
   const cursor = parseWhatsAppHistoryTimestamp(value);
   if (!cursor) throw new Error("WHATSAPP_SYNC_CURSOR_INVALID");
   return cursor;
-}
-
-function stripInlineMediaData(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(stripInlineMediaData);
-  const record = asRecord(value);
-  if (!record) return value;
-  return Object.fromEntries(
-    Object.entries(record)
-      .filter(
-        ([key]) => !["base64", "data", "buffer"].includes(key.toLowerCase()),
-      )
-      .map(([key, nested]) => [key, stripInlineMediaData(nested)]),
-  );
 }
 
 function arrayFromUnknown(value: unknown): unknown[] {
@@ -2310,22 +2299,72 @@ export async function processWebhookEvent(
       directRemoteJid,
     )[0]!;
     directConversationKey = conversationKey;
-    await db.insert(menaWhatsAppDirectMessages).values({
-      id: randomUUID(),
-      ownerId: connection.ownerId,
-      workspaceId: connection.workspaceId,
-      instanceName,
-      remoteJidHash: conversationKey,
-      encryptedRemoteJid: encryptWhatsAppDirectMessageValue(directRemoteJid),
-      providerMessageId: directMessageId,
-      direction,
-      status: direction === "outbound" ? "sent" : "received",
-      encryptedTextBody: encryptWhatsAppDirectMessageValue(
-        normalizeWhatsAppDirectMessageText(messageText ?? ""),
-      ),
-      messageTimestamp,
-      expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
-    }).onConflictDoNothing();
+    const [savedDirectMessage] = await db
+      .insert(menaWhatsAppDirectMessages)
+      .values({
+        id: randomUUID(),
+        ownerId: connection.ownerId,
+        workspaceId: connection.workspaceId,
+        instanceName,
+        remoteJidHash: conversationKey,
+        encryptedRemoteJid: encryptWhatsAppDirectMessageValue(directRemoteJid),
+        providerMessageId: directMessageId,
+        direction,
+        status: direction === "outbound" ? "sent" : "received",
+        encryptedTextBody: encryptWhatsAppDirectMessageValue(
+          normalizeWhatsAppDirectMessageText(messageText ?? ""),
+        ),
+        messageTimestamp,
+        expiresAt: whatsappDirectMessageExpiry(messageTimestamp),
+      })
+      .onConflictDoNothing()
+      .returning({ id: menaWhatsAppDirectMessages.id });
+
+    // A retried webhook finds the row created by the first delivery. Resolve it
+    // by the same stable identity the unique index uses, then let the media
+    // store apply its own on-conflict rule per attachment.
+    const [directMessageRow] = savedDirectMessage
+      ? [savedDirectMessage]
+      : await db
+          .select({ id: menaWhatsAppDirectMessages.id })
+          .from(menaWhatsAppDirectMessages)
+          .where(
+            and(
+              eq(menaWhatsAppDirectMessages.workspaceId, connection.workspaceId),
+              eq(menaWhatsAppDirectMessages.instanceName, instanceName),
+              eq(menaWhatsAppDirectMessages.remoteJidHash, conversationKey),
+              eq(menaWhatsAppDirectMessages.providerMessageId, directMessageId),
+            ),
+          )
+          .limit(1);
+    if (directMessageRow) {
+      const directMediaMessageKey = {
+        ...(eventKey ?? {}),
+        id: directMessageId,
+        remoteJid: eventRemoteJid ?? directRemoteJid,
+        ...(eventRemoteJidAlt ? { remoteJidAlt: eventRemoteJidAlt } : {}),
+      };
+      try {
+        await storeWhatsAppDirectMediaForMessage({
+          ownerId: connection.ownerId,
+          workspaceId: connection.workspaceId,
+          instanceName,
+          directMessageId: directMessageRow.id,
+          providerMessageId: directMessageId,
+          remoteJidHash: conversationKey,
+          message: directMessage as Record<string, unknown>,
+          messageKey: directMediaMessageKey,
+          connection,
+        });
+      } catch (error) {
+        // The text was saved successfully. Media is a best-effort enrichment,
+        // and its failure is diagnosable from the pending/failed media row.
+        logger.warn(
+          { error, instanceName, providerMessageId: directMessageId },
+          "WhatsApp direct media could not be queued",
+        );
+      }
+    }
   }
   const remoteMessageId =
     typeof eventKey?.id === "string"

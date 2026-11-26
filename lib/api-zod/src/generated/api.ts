@@ -2832,6 +2832,12 @@ export const ListWhatsAppDirectMessagesQueryParams = zod.object({
   "beforeId": zod.string().max(listWhatsAppDirectMessagesQueryBeforeIdMax).optional().describe('Where the previous page ended. Send together with `beforeTimestamp`.')
 })
 
+export const listWhatsAppDirectMessagesResponseMessagesItemAttachmentsItemMediaIndexMin = 0;
+
+export const listWhatsAppDirectMessagesResponseMessagesItemAttachmentsItemSizeBytesMin = 0;
+
+
+
 export const ListWhatsAppDirectMessagesResponse = zod.object({
   "messages": zod.array(zod.object({
   "id": zod.string(),
@@ -2844,8 +2850,21 @@ export const ListWhatsAppDirectMessagesResponse = zod.object({
   "messageType": zod.enum(['text', 'unknown']).describe('Whether the message held text. The server derives this from the stored body rather than reading a type field, so it cannot name an attachment type.'),
   "occurredAt": zod.string().datetime({"offset":true}),
   "createdAt": zod.string().datetime({"offset":true}),
-  "errorCode": zod.string().nullable()
-}).describe('One message of a one-to-one WhatsApp conversation. The inbox stores only encrypted text, so a message either has text or it does not — there is no attachment type to report.')),
+  "errorCode": zod.string().nullable(),
+  "attachments": zod.array(zod.object({
+  "id": zod.string(),
+  "mediaIndex": zod.number().int().min(listWhatsAppDirectMessagesResponseMessagesItemAttachmentsItemMediaIndexMin),
+  "mediaType": zod.string(),
+  "mimeType": zod.string().nullish(),
+  "fileName": zod.string().nullish(),
+  "sizeBytes": zod.number().int().min(listWhatsAppDirectMessagesResponseMessagesItemAttachmentsItemSizeBytesMin).nullish(),
+  "downloadStatus": zod.enum(['pending', 'stored', 'failed']),
+  "errorCode": zod.string().nullish(),
+  "url": zod.string().nullable(),
+  "thumbnailUrl": zod.string().nullable(),
+  "accessError": zod.string().nullable()
+}).describe('A stored attachment of a one-to-one WhatsApp message. `url` and `thumbnailUrl` are short-lived signed links to the app\'s own media route; the storage path is never exposed. `caption` is not duplicated here — it remains part of the message text.'))
+}).describe('One message of a one-to-one WhatsApp conversation. Text and attachments are stored separately: `text` may carry a caption while `attachments` carries the stored file. `messageType` still describes text only.')),
   "nextCursor": zod.union([zod.object({
   "beforeTimestamp": zod.string().datetime({"offset":true}),
   "beforeId": zod.string()
@@ -2863,6 +2882,12 @@ export const SendWhatsAppDirectReplyBody = zod.object({
   "clientRequestId": zod.string().describe('Chosen by the client. Replaying a request with the same id returns the original message instead of sending again, so a retried tap on a slow connection cannot double-send.')
 })
 
+export const sendWhatsAppDirectReplyResponseMessageOneAttachmentsItemMediaIndexMin = 0;
+
+export const sendWhatsAppDirectReplyResponseMessageOneAttachmentsItemSizeBytesMin = 0;
+
+
+
 export const SendWhatsAppDirectReplyResponse = zod.object({
   "message": zod.union([zod.object({
   "id": zod.string(),
@@ -2875,8 +2900,21 @@ export const SendWhatsAppDirectReplyResponse = zod.object({
   "messageType": zod.enum(['text', 'unknown']).describe('Whether the message held text. The server derives this from the stored body rather than reading a type field, so it cannot name an attachment type.'),
   "occurredAt": zod.string().datetime({"offset":true}),
   "createdAt": zod.string().datetime({"offset":true}),
-  "errorCode": zod.string().nullable()
-}).describe('One message of a one-to-one WhatsApp conversation. The inbox stores only encrypted text, so a message either has text or it does not — there is no attachment type to report.'),zod.null()]).describe('Null only if the stored row could not be read back.'),
+  "errorCode": zod.string().nullable(),
+  "attachments": zod.array(zod.object({
+  "id": zod.string(),
+  "mediaIndex": zod.number().int().min(sendWhatsAppDirectReplyResponseMessageOneAttachmentsItemMediaIndexMin),
+  "mediaType": zod.string(),
+  "mimeType": zod.string().nullish(),
+  "fileName": zod.string().nullish(),
+  "sizeBytes": zod.number().int().min(sendWhatsAppDirectReplyResponseMessageOneAttachmentsItemSizeBytesMin).nullish(),
+  "downloadStatus": zod.enum(['pending', 'stored', 'failed']),
+  "errorCode": zod.string().nullish(),
+  "url": zod.string().nullable(),
+  "thumbnailUrl": zod.string().nullable(),
+  "accessError": zod.string().nullable()
+}).describe('A stored attachment of a one-to-one WhatsApp message. `url` and `thumbnailUrl` are short-lived signed links to the app\'s own media route; the storage path is never exposed. `caption` is not duplicated here — it remains part of the message text.'))
+}).describe('One message of a one-to-one WhatsApp conversation. Text and attachments are stored separately: `text` may carry a caption while `attachments` carries the stored file. `messageType` still describes text only.'),zod.null()]).describe('Null only if the stored row could not be read back.'),
   "duplicate": zod.boolean().optional().describe('True when the request id had already been used and nothing new was sent.')
 })
 
@@ -2893,6 +2931,12 @@ export const ConfirmWhatsAppDirectReplyNotSentParams = zod.object({
   "id": zod.coerce.string().min(1).max(confirmWhatsAppDirectReplyNotSentPathIdMax)
 })
 
+export const confirmWhatsAppDirectReplyNotSentResponseMessageAttachmentsItemMediaIndexMin = 0;
+
+export const confirmWhatsAppDirectReplyNotSentResponseMessageAttachmentsItemSizeBytesMin = 0;
+
+
+
 export const ConfirmWhatsAppDirectReplyNotSentResponse = zod.object({
   "message": zod.object({
   "id": zod.string(),
@@ -2905,8 +2949,21 @@ export const ConfirmWhatsAppDirectReplyNotSentResponse = zod.object({
   "messageType": zod.enum(['text', 'unknown']).describe('Whether the message held text. The server derives this from the stored body rather than reading a type field, so it cannot name an attachment type.'),
   "occurredAt": zod.string().datetime({"offset":true}),
   "createdAt": zod.string().datetime({"offset":true}),
-  "errorCode": zod.string().nullable()
-}).describe('One message of a one-to-one WhatsApp conversation. The inbox stores only encrypted text, so a message either has text or it does not — there is no attachment type to report.')
+  "errorCode": zod.string().nullable(),
+  "attachments": zod.array(zod.object({
+  "id": zod.string(),
+  "mediaIndex": zod.number().int().min(confirmWhatsAppDirectReplyNotSentResponseMessageAttachmentsItemMediaIndexMin),
+  "mediaType": zod.string(),
+  "mimeType": zod.string().nullish(),
+  "fileName": zod.string().nullish(),
+  "sizeBytes": zod.number().int().min(confirmWhatsAppDirectReplyNotSentResponseMessageAttachmentsItemSizeBytesMin).nullish(),
+  "downloadStatus": zod.enum(['pending', 'stored', 'failed']),
+  "errorCode": zod.string().nullish(),
+  "url": zod.string().nullable(),
+  "thumbnailUrl": zod.string().nullable(),
+  "accessError": zod.string().nullable()
+}).describe('A stored attachment of a one-to-one WhatsApp message. `url` and `thumbnailUrl` are short-lived signed links to the app\'s own media route; the storage path is never exposed. `caption` is not duplicated here — it remains part of the message text.'))
+}).describe('One message of a one-to-one WhatsApp conversation. Text and attachments are stored separately: `text` may carry a caption while `attachments` carries the stored file. `messageType` still describes text only.')
 })
 
 

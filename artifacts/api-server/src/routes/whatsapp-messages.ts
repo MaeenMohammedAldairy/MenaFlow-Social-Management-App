@@ -41,11 +41,24 @@ import {
 } from "../lib/whatsapp-content-associations";
 import { isConfirmedWhatsAppMediaGroupSource } from "../lib/whatsapp-album-relations";
 import { enqueueWhatsAppMessageIfMissing } from "../lib/whatsapp-marketing";
+import { findStoredDirectAttachmentForServing } from "../lib/whatsapp-direct-media-serving";
 import { logger } from "../lib/logger.ts";
 
 const router: IRouter = Router();
 
 const WHATSAPP_MEDIA_STORAGE_ROOT = resolveWhatsAppMediaStorageRoot();
+
+/** Fields shared by group media and direct-message media. */
+type ServableWhatsAppMedia = {
+  id: string;
+  storagePath: string | null;
+  storageProvider: string | null;
+  mimeType: string | null;
+  fileName: string | null;
+  thumbnailPath: string | null;
+  mediaType: string;
+  downloadStatus: string;
+};
 
 function buildMediaUrl(
   mediaId: string,
@@ -98,9 +111,10 @@ function serializeWhatsAppMessageMedia(
 }
 
 async function mediaResponse(
-  media: typeof menaWhatsAppMessageMedia.$inferSelect,
+  media: ServableWhatsAppMedia,
   variant: "original" | "thumbnail" | "instagram-jpeg",
 ) {
+  if (!media.storagePath) throw new Error("MEDIA_FILE_MISSING");
   const thumbnailPath =
     variant === "thumbnail" &&
     media.thumbnailPath &&
@@ -179,9 +193,10 @@ async function sendMediaResponse(
 }
 
 async function storedMediaExists(
-  media: typeof menaWhatsAppMessageMedia.$inferSelect,
+  media: ServableWhatsAppMedia,
   variant: "original" | "thumbnail",
 ): Promise<boolean> {
+  if (!media.storagePath) return false;
   const thumbnailPath = variant === "thumbnail" ? media.thumbnailPath : null;
   const storagePath = thumbnailPath ?? media.storagePath;
   if (media.storageProvider === "supabase") return hasMediaObject(storagePath);
@@ -207,8 +222,11 @@ async function storedMediaExists(
   }
 }
 
-async function getWhatsAppMediaRecord(mediaId: string, workspaceId?: string) {
-  const predicates = [
+async function getWhatsAppMediaRecord(
+  mediaId: string,
+  workspaceId?: string,
+): Promise<ServableWhatsAppMedia | null> {
+  const groupPredicates = [
     eq(menaWhatsAppMessageMedia.id, mediaId),
     eq(menaWhatsAppMessages.id, menaWhatsAppMessageMedia.messageId),
     eq(menaWhatsAppMessages.workspaceId, menaWhatsAppMessageMedia.workspaceId),
@@ -220,9 +238,9 @@ async function getWhatsAppMediaRecord(mediaId: string, workspaceId?: string) {
     eq(menaWhatsAppMessageMedia.downloadStatus, "stored"),
   ];
   if (workspaceId) {
-    predicates.push(eq(menaWhatsAppMessageMedia.workspaceId, workspaceId));
+    groupPredicates.push(eq(menaWhatsAppMessageMedia.workspaceId, workspaceId));
   }
-  const [result] = await db
+  const [group] = await db
     .select({ media: menaWhatsAppMessageMedia })
     .from(menaWhatsAppMessageMedia)
     .innerJoin(
@@ -240,9 +258,13 @@ async function getWhatsAppMediaRecord(mediaId: string, workspaceId?: string) {
         eq(menaWhatsAppMessages.groupId, menaWhatsAppMessageMedia.groupId),
       ),
     )
-    .where(and(...predicates))
+    .where(and(...groupPredicates))
     .limit(1);
-  return result?.media ?? null;
+  if (group) return group.media;
+
+  // One-to-one attachments are owned by a separate helper/table; the group
+  // lookup above is unchanged and always wins if an id overlaps.
+  return findStoredDirectAttachmentForServing(mediaId, workspaceId);
 }
 
 router.get(
