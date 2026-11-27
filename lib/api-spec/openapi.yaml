@@ -3684,6 +3684,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadinessResponse"
+  /internal/worker-tick:
+    post:
+      operationId: runWorkerTick
+      tags: [health]
+      summary: Run one pass over the background queues, now
+      description: >-
+        Every queue in this product (WhatsApp media downloads, product
+        extraction, publication, auto-replies, push) is normally driven by a
+        timer inside the API process. On a serverless deployment that timer only
+        advances while an instance stays warm, so work that is *due* waits for a
+        customer: measured on 2026-11-27, four media rows sat past
+        `next_attempt_at` and thirteen extraction jobs past `next_run_at`.
+
+        This route is the door a scheduler knocks on — Vercel Cron, a container
+        entrypoint with `MENA_WORKER_RUN_ONCE=true`, a GitHub Action. It runs each
+        enabled worker once and reports what happened; it reads no workspace's
+        records and returns none, so the secret can be handed to a scheduler
+        without handing over the data.
+
+        Authenticated by `Authorization: Bearer <MENA_WORKER_TICK_SECRET>` (or
+        `CRON_SECRET` when no dedicated name is configured), which is why it
+        carries no `bearerAuth` security: a cron sends no session. With no secret
+        configured the route answers 503 `TICK_DISABLED` rather than running —
+        a deployment that has not decided is a deployment that is closed. `busy`
+        lists workers still running from an earlier pass (never doubled), and
+        `deferred` lists the ones the time budget did not reach.
+      parameters:
+        - in: query
+          name: workers
+          required: false
+          description: >-
+            Comma-separated worker names to restrict the pass to, so one queue can
+            be driven alone. Unknown names simply run nothing.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The pass finished; individual worker failures are in `failed`
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkerTickResponse"
+        "401":
+          description: No token, or a token that is not one of the configured secrets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkerTickError"
+        "503":
+          description: The tick is not enabled on this deployment (`TICK_DISABLED`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkerTickError"
   /posts/events:
     get:
       operationId: subscribeToPostEvents
@@ -5030,16 +5084,81 @@ components:
           type: string
           enum: [ok, error]
         workers:
-          type: object
+          type: array
           description: >-
-            Per worker, the state of its last run. Present only on the success
-            path, so a client must not rely on it.
-          additionalProperties: true
+            One snapshot per worker loop in this process — its interval, when it
+            last ran, and how many errors it has stacked. Present only on the
+            success path, so a client must not rely on it.
+          items:
+            type: object
+            additionalProperties: true
+        staleWorkers:
+          type: array
+          description: >-
+            Names of loops that have missed several cycles. Non-empty means a
+            queue is not advancing even though the API answers fine — the state
+            where media rows and extraction jobs quietly age. Alert on this; it is
+            deliberately not a 503, because every resumed instance reads stale
+            until its first pass lands.
+          items:
+            type: string
         missingSchema:
           type: array
           description: "`table.column` pairs the database is missing."
           items:
             type: string
+    WorkerTickResponse:
+      type: object
+      required: [ran, disabled, busy, deferred, failed, processed, durationMs, budgetMs]
+      properties:
+        ran:
+          type: array
+          description: Workers this pass ran to completion, in registration order.
+          items:
+            type: string
+        disabled:
+          type: array
+          description: Workers switched off by configuration — not failures.
+          items:
+            type: string
+        busy:
+          type: array
+          description: Workers still running from an earlier pass, so this one did not double up.
+          items:
+            type: string
+        deferred:
+          type: array
+          description: Workers the time budget did not reach; the next tick takes them.
+          items:
+            type: string
+        failed:
+          type: array
+          description: One entry per worker that threw. The pass kept going.
+          items:
+            type: object
+            required: [name, error]
+            properties:
+              name:
+                type: string
+              error:
+                type: string
+        processed:
+          type: integer
+          description: "Counted passes: `ran` plus `failed`, so an empty tick reads differently from a full one."
+        durationMs:
+          type: integer
+        budgetMs:
+          type: integer
+          description: The limit in force; `0` means the pass ran unrestricted.
+    WorkerTickError:
+      type: object
+      required: [error, code]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+          enum: [TICK_DISABLED, TICK_TOKEN_MISSING, TICK_TOKEN_REJECTED, WORKER_TICK_FAILED]
     FacebookPostVerification:
       type: object
       required: [status, reason, post]

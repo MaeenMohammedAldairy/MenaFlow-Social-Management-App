@@ -2,7 +2,10 @@ import { Router, type IRouter } from "express";
 import { sql } from "drizzle-orm";
 import { HealthCheckResponse } from "@workspace/api-zod";
 import { db } from "@workspace/db";
-import { backgroundWorkerSnapshots } from "../lib/background-worker-loop";
+import {
+  backgroundWorkerSnapshots,
+  staleBackgroundWorkers,
+} from "../lib/background-worker-loop";
 import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
@@ -49,7 +52,17 @@ router.get("/readyz", async (_req, res) => {
       res.status(503).json({ status: "error", missingSchema: missing });
       return;
     }
-    res.json({ status: "ok", workers: backgroundWorkerSnapshots() });
+    // A worker loop that stopped ticking is invisible from the outside: the API
+    // answers, the queues fill, and nothing is red. `staleWorkers` names them so
+    // a platform can alert on a non-empty array. It is deliberately not a 503 —
+    // every resumed instance reads stale until its first pass lands, and a probe
+    // that flaps on cold starts trains nobody to read it.
+    const workers = backgroundWorkerSnapshots();
+    res.json({
+      status: "ok",
+      workers,
+      staleWorkers: staleBackgroundWorkers(workers),
+    });
   } catch (err) {
     logger.error({ err }, "Readiness check failed");
     res.status(503).json({ status: "error" });

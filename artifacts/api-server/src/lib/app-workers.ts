@@ -3,6 +3,7 @@ import {
   startBackgroundWorkerLoop,
   type BackgroundWorkerLoopHandle,
 } from "./background-worker-loop";
+import { runWorkerPass, type WorkerPassResult } from "./app-worker-pass.ts";
 import { processWhatsAppMarketingQueue } from "./whatsapp-marketing";
 import {
   processWhatsAppMediaDownloadQueue,
@@ -265,6 +266,25 @@ const workers: WorkerDefinition[] = [
     errorMessage: "WhatsApp content queue poll failed",
   },
 ];
+
+/**
+ * One pass over the same list the loops use, for a caller with no timer.
+ *
+ * This is the body behind `POST /api/internal/worker-tick` and behind
+ * `MENA_WORKER_RUN_ONCE=true` in `worker.ts`. It is not a second registration of
+ * the queues and must never become one: a list kept twice is a queue that stops
+ * running in whichever copy nobody reads, which is the failure this whole module
+ * exists to prevent.
+ */
+export async function runAppWorkersOnce(
+  options: { only?: readonly string[] | null; budgetMs?: number } = {},
+): Promise<WorkerPassResult> {
+  return runWorkerPass({
+    definitions: workers,
+    only: options.only ?? null,
+    budgetMs: options.budgetMs,
+  });
+}
 
 export function startAppWorkerLoops(
   selectedName = "all",

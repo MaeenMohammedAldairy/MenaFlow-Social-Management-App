@@ -728,17 +728,54 @@ export const ReadinessResponseStatus = {
   error: 'error',
 } as const;
 
-/**
- * Per worker, the state of its last run. Present only on the success path, so a client must not rely on it.
- */
-export type ReadinessResponseWorkers = { [key: string]: unknown };
+export type ReadinessResponseWorkersItem = { [key: string]: unknown };
 
 export interface ReadinessResponse {
   status: ReadinessResponseStatus;
-  /** Per worker, the state of its last run. Present only on the success path, so a client must not rely on it. */
-  workers?: ReadinessResponseWorkers;
+  /** One snapshot per worker loop in this process — its interval, when it last ran, and how many errors it has stacked. Present only on the success path, so a client must not rely on it. */
+  workers?: ReadinessResponseWorkersItem[];
+  /** Names of loops that have missed several cycles. Non-empty means a queue is not advancing even though the API answers fine — the state where media rows and extraction jobs quietly age. Alert on this; it is deliberately not a 503, because every resumed instance reads stale until its first pass lands. */
+  staleWorkers?: string[];
   /** `table.column` pairs the database is missing. */
   missingSchema?: string[];
+}
+
+export type WorkerTickResponseFailedItem = {
+  name: string;
+  error: string;
+};
+
+export interface WorkerTickResponse {
+  /** Workers this pass ran to completion, in registration order. */
+  ran: string[];
+  /** Workers switched off by configuration — not failures. */
+  disabled: string[];
+  /** Workers still running from an earlier pass, so this one did not double up. */
+  busy: string[];
+  /** Workers the time budget did not reach; the next tick takes them. */
+  deferred: string[];
+  /** One entry per worker that threw. The pass kept going. */
+  failed: WorkerTickResponseFailedItem[];
+  /** Counted passes: `ran` plus `failed`, so an empty tick reads differently from a full one. */
+  processed: number;
+  durationMs: number;
+  /** The limit in force; `0` means the pass ran unrestricted. */
+  budgetMs: number;
+}
+
+export type WorkerTickErrorCode = typeof WorkerTickErrorCode[keyof typeof WorkerTickErrorCode];
+
+
+export const WorkerTickErrorCode = {
+  TICK_DISABLED: 'TICK_DISABLED',
+  TICK_TOKEN_MISSING: 'TICK_TOKEN_MISSING',
+  TICK_TOKEN_REJECTED: 'TICK_TOKEN_REJECTED',
+  WORKER_TICK_FAILED: 'WORKER_TICK_FAILED',
+} as const;
+
+export interface WorkerTickError {
+  error: string;
+  code: WorkerTickErrorCode;
 }
 
 export type FacebookPostVerificationStatus = typeof FacebookPostVerificationStatus[keyof typeof FacebookPostVerificationStatus];
@@ -3472,5 +3509,12 @@ beforeTimestamp?: string;
  * @maxLength 200
  */
 beforeId?: string;
+};
+
+export type RunWorkerTickParams = {
+/**
+ * Comma-separated worker names to restrict the pass to, so one queue can be driven alone. Unknown names simply run nothing.
+ */
+workers?: string;
 };
 

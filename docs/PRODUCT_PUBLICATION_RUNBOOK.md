@@ -233,6 +233,47 @@ never re-cut from behind: `status` also covers `update_proposed`,
 links the chain. `media_state` (`not_applicable|included|partial|pending|lost`)
 says what the group's photos did, and `mediaStateMessage` renders it for the card.
 
+### Who looks at a job next
+
+`mena_whatsapp_product_extraction_jobs.status` is a promise about the future, and
+every state now names who keeps it. The table is `product-extraction-lifecycle.ts`
+— one module, read by the claim query, so a state cannot be added without deciding
+here who reads it (a test fails otherwise).
+
+| Status | Read again by | Attempt spent | Merchant sees |
+| --- | --- | --- | --- |
+| `pending` | the queue, next pass | yes | في الطابور |
+| `processing` | the run; a claim older than 10 min is handed back | yes | يُقرأ الآن |
+| `waiting_media` | the queue on its own timer, or immediately when a photo lands | **no — refunded** | ينظر إليها مجددًا عند وصول صور المجموعة |
+| `waiting_association` | hourly re-check, plus the merchant's association decision | **no — refunded** | بانتظار قرارك: أي الرسائل تنتمي إلى هذا المنتج؟ |
+| `review` | the merchant, from the card | yes | يحتاج مراجعتك قبل النشر |
+| `complete` | nobody; `reason_code` says what it concluded | yes | انتهت القراءة |
+| `failed` | the merchant: «استخراج المنتجات» re-queues failed jobs | yes | تعذّرت القراءة؛ اضغط «استخراج المنتجات» |
+
+Two rules in that table are load-bearing. A waiting state **is claimed** — until
+2026-11-27 the claim filtered on `pending` alone, which turned "look again in
+ sixty seconds" into a tomb, and 13 jobs sat past `next_run_at` with every photo in
+their bundle already stored. And a wait **costs no attempt**, because photos are
+not the job's fault: without the refund, five minutes of slow downloads exhausts a
+bundle's attempts and the merchant's only way back is the button.
+
+Measure it (read-only, and it should be empty):
+
+```sql
+select count(*) as parked_but_due
+from mena_whatsapp_product_extraction_jobs
+where status in ('waiting_media','waiting_association') and next_run_at <= now();
+
+select count(*) as media_rows_overdue
+from mena_whatsapp_message_media
+where download_status = 'pending' and next_attempt_at is not null
+  and next_attempt_at < now();
+```
+
+Both non-zero while `/api/readyz` also reports `staleWorkers` is the same
+diagnosis: nothing is driving the queues. See *Driving the queues on a frozen
+runtime* in `docs/PRODUCTION_DEPLOYMENT.md`.
+
 Required fields for publication (`PRODUCT_PUBLICATION_REQUIRED_FIELDS`): `name`,
 `price`, `currency`, `availability`, `media`. `description` is advisory — worth
 completing, never a blocker. A price is kept with the state of its evidence

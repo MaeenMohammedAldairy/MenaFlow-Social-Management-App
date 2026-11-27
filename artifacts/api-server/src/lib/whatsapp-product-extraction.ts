@@ -52,6 +52,10 @@ import {
 } from "./product-extraction-media-policy.ts";
 import { resetFailedWhatsAppMedia } from "./whatsapp-media-reset.ts";
 import {
+  CLAIMABLE_JOB_STATUSES,
+  FRESH_WORK_JOB_STATUS,
+} from "./product-extraction-lifecycle.ts";
+import {
   detectGroupDisagreement,
   extractWhatsAppProductCandidates,
   generatedProductSku,
@@ -265,13 +269,30 @@ export async function requeueWhatsAppProductMessage(
     ));
 }
 
-async function hasCompleteWhatsAppProductMedia(
+/**
+ * The messages that make up one product group, in the order they were sent.
+ *
+ * One rule, three callers: the media gate, the extraction pass, and the wake-up
+ * a finished download has to trigger. It is a single function because the day the
+ * definitions differ is the day a bundle is extracted by one rule and revived by
+ * another — which is what left six of thirteen jobs parked: the download worker
+ * woke the job of the message it had just stored, and every other member of the
+ * group stayed asleep.
+ *
+ * An accepted content bundle wins over an album: a merchant (or the auto-accept
+ * rule) that linked a caption to its photos has said something the provider's
+ * album id has not.
+ */
+export async function whatsappProductBundleMemberIds(
   workspaceId: string,
   messageId: string,
-): Promise<boolean> {
+): Promise<{
+  instanceName: string;
+  groupId: string | null;
+  memberIds: string[];
+} | null> {
   const [message] = await db
     .select({
-      id: menaWhatsAppMessages.id,
       instanceName: menaWhatsAppMessages.instanceName,
       groupId: menaWhatsAppMessages.groupId,
       mediaGroupId: menaWhatsAppMessages.mediaGroupId,
@@ -283,17 +304,25 @@ async function hasCompleteWhatsAppProductMedia(
       eq(menaWhatsAppMessages.workspaceId, workspaceId),
     ))
     .limit(1);
-  if (!message?.groupId) return false;
+  if (!message) return null;
 
-  let sourceMessageIds: string[] = [message.id];
-  const confirmedBundle = await getWhatsAppContentBundle({
-    workspaceId,
-    instanceName: message.instanceName,
-    groupId: message.groupId,
-  }, message.id);
+  const confirmedBundle = message.groupId
+    ? await getWhatsAppContentBundle({
+        workspaceId,
+        instanceName: message.instanceName,
+        groupId: message.groupId,
+      }, messageId)
+    : null;
   if (confirmedBundle) {
-    sourceMessageIds = confirmedBundle.messageIds;
-  } else if (
+    return {
+      instanceName: message.instanceName,
+      groupId: message.groupId,
+      memberIds: [...new Set(confirmedBundle.messageIds)],
+    };
+  }
+
+  if (
+    message.groupId &&
     message.mediaGroupId &&
     (message.mediaGroupSource === "protocol_association" ||
       message.mediaGroupSource === "provider_album_container")
@@ -308,9 +337,83 @@ async function hasCompleteWhatsAppProductMedia(
         eq(menaWhatsAppMessages.mediaGroupId, message.mediaGroupId),
         eq(menaWhatsAppMessages.mediaGroupSource, message.mediaGroupSource),
       ));
-    sourceMessageIds = albumMessages.map((item) => item.id);
+    return {
+      instanceName: message.instanceName,
+      groupId: message.groupId,
+      memberIds: albumMessages.map((item) => item.id),
+    };
   }
-  sourceMessageIds = [...new Set(sourceMessageIds)];
+
+  return {
+    instanceName: message.instanceName,
+    groupId: message.groupId,
+    memberIds: [messageId],
+  };
+}
+
+/**
+ * Wake the jobs of a product group whose media just settled.
+ *
+ * The download worker knows one thing: *this* message's photos are now stored.
+ * The unit of work is the group, so a wake-up aimed at one message revives one
+ * job out of thirteen and leaves the rest parked behind a `pending` row that no
+ * longer exists — measured as six `waiting_media` jobs on one album of thirteen
+ * messages. This revives the sibling jobs too, and only the waiting ones: a
+ * sibling's `failed` is the merchant's decision to re-run, not a download's
+ * business.
+ *
+ * Attempts are not reset here. A wait gives its attempt back at the moment it
+ * parks (see `refundsAttemptForStatus`), so a revived job arrives with the count
+ * it earned, and a bundle that keeps failing still reaches its ceiling.
+ */
+export async function requeueWhatsAppProductBundle(
+  workspaceId: string,
+  messageId: string,
+): Promise<number> {
+  const bundle = await whatsappProductBundleMemberIds(workspaceId, messageId);
+  const siblings = (bundle?.memberIds ?? []).filter(
+    (id) => id !== messageId,
+  );
+  const now = new Date();
+  let released = 0;
+  if (siblings.length > 0) {
+    const rows = await db
+      .update(whatsappProductExtractionJobs)
+      .set({
+        status: "pending",
+        stage: "received",
+        lastError: null,
+        nextRunAt: now,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+        inArray(whatsappProductExtractionJobs.messageId, siblings),
+        inArray(whatsappProductExtractionJobs.status, [
+          "waiting_media",
+          "waiting_association",
+        ]),
+      ))
+      .returning({ id: whatsappProductExtractionJobs.id });
+    released = rows.length;
+    if (released > 0) {
+      logger.info(
+        { workspaceId, settledMessageId: messageId, released },
+        "PRODUCT_EXTRACTION_BUNDLE_RELEASED_ON_MEDIA_SETTLED",
+      );
+    }
+  }
+  await requeueWhatsAppProductMessage(workspaceId, messageId);
+  return released + 1;
+}
+
+async function hasCompleteWhatsAppProductMedia(
+  workspaceId: string,
+  messageId: string,
+): Promise<boolean> {
+  const bundle = await whatsappProductBundleMemberIds(workspaceId, messageId);
+  if (!bundle || !bundle.groupId) return false;
+  const sourceMessageIds = bundle.memberIds;
   if (sourceMessageIds.length === 0) return false;
 
   const sourceMessages = await db
@@ -343,7 +446,6 @@ async function hasCompleteWhatsAppProductMedia(
       eq(menaWhatsAppMessageMedia.workspaceId, workspaceId),
       inArray(menaWhatsAppMessageMedia.messageId, sourceMessageIds),
     ));
-  if (mediaRows.length === 0) return false;
 
   const mediaFailed = sourceMessages.some(
     (item) => item.mediaDownloadStatus === "failed",
@@ -365,6 +467,18 @@ async function hasCompleteWhatsAppProductMedia(
       )
       .map((item) => item.mediaGroupExpectedCount ?? 0),
   );
+  if (mediaRows.length === 0) {
+    // Nothing was promised and nothing exists: a text-only message has no media
+    // left to wait for, so it is *complete* on this question. Reading the absence
+    // as incompleteness is what made the merchant's «استخراج هذه الرسالة» answer
+    // «لم تُضف رسالة جديدة» over a perfectly readable offer — the gate fired on
+    // every message without photos, and the only message about it sent the
+    // merchant to look for an earlier suggestion that never existed.
+    // An album that promised photos and produced none is the opposite case, and
+    // stays refused: something is missing, and queueing now would extract half an
+    // offer.
+    return expectedCount === 0 && !mediaFailed && !mediaPending;
+  }
   return !mediaFailed &&
     !mediaPending &&
     expectedCount <= mediaRows.length &&
@@ -990,6 +1104,11 @@ export async function processProductExtractionJob(
       reasonCode: "WAITING_ASSOCIATION",
       lastError: "WHATSAPP_CONTENT_ASSOCIATION_REQUIRES_REVIEW",
       nextRunAt: new Date(Date.now() + 60 * 60_000),
+      // Same bargain as the media wait: an hourly re-check of a question the
+      // merchant has not answered yet costs a SELECT and no attempts. This state
+      // held one job since 2026-11-24, which is four days of "the queue will get
+      // to it" that no one had promised.
+      attempts: sql`greatest(${whatsappProductExtractionJobs.attempts} - 1, 0)`,
       event: { event: extractionEventForReason("WAITING_ASSOCIATION") },
     });
     return;
@@ -1162,6 +1281,13 @@ export async function processProductExtractionJob(
       reasonCode: "WAITING_MEDIA",
       lastError: mediaGate.reason,
       nextRunAt: new Date(Date.now() + PRODUCT_MEDIA_WAIT_INTERVAL_MS),
+      // The claim spent an attempt to answer "not yet"; give it back. The quota
+      // path already refunds this way, and for the same reason: a job must not
+      // exhaust its retries on something that is not its failure. Without it,
+      // five minutes of slow photos would dead-letter a bundle whose only fault
+      // was importing while the download queue was cold — and a dead job cannot
+      // be woken by the photo finally landing.
+      attempts: sql`greatest(${whatsappProductExtractionJobs.attempts} - 1, 0)`,
     });
     await recordExtractionEvent({
       workspaceId: job.workspaceId,
@@ -1930,10 +2056,28 @@ export async function processWhatsAppProductExtractionQueue(): Promise<void> {
         .select()
         .from(whatsappProductExtractionJobs)
         .where(and(
-          eq(whatsappProductExtractionJobs.status, "pending"),
+          // `pending`, and every state that parks itself with a promise to look
+          // again: a job that wrote `next_run_at = now + 60s` into
+          // `waiting_media` was, until this line, unreadable by anything. The
+          // list is imported from the lifecycle module so a state cannot be
+          // added without deciding, here, who reads it.
+          inArray(
+            whatsappProductExtractionJobs.status,
+            [...CLAIMABLE_JOB_STATUSES],
+          ),
           lte(whatsappProductExtractionJobs.nextRunAt, new Date()),
         ))
-        .orderBy(asc(whatsappProductExtractionJobs.createdAt))
+        .orderBy(
+          // Fresh work before a re-check. A waiting job is by definition older
+          // than anything pending, and `limit(3)` is the whole throughput of this
+          // pipeline: reclaimed purely by age, the thirteen parked jobs of
+          // 2026-11-27 would spend every pass re-deciding themselves and a
+          // merchant's new message would wait behind them forever.
+          asc(
+            sql`case when ${whatsappProductExtractionJobs.status} = ${FRESH_WORK_JOB_STATUS} then 0 else 1 end`,
+          ),
+          asc(whatsappProductExtractionJobs.createdAt),
+        )
         .limit(3)
         .for("update", { skipLocked: true });
       if (pending.length === 0) return [];

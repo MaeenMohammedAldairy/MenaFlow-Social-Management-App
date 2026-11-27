@@ -9,6 +9,7 @@ import { clerkMiddleware } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import router from "./routes";
 import healthRouter from "./routes/health";
+import workerTickRouter from "./routes/worker-tick";
 import { logger } from "./lib/logger";
 import { apiNotFoundHandler } from "./lib/api-not-found";
 import { resolveTrustProxy } from "./lib/trust-proxy";
@@ -161,6 +162,14 @@ app.use(
   }),
 );
 app.use("/api", healthRouter);
+/**
+ * The scheduler's door. Mounted with the probes, deliberately *before* the
+ * session middleware: a cron sends no Clerk session, and `MENA_WORKER_TICK_SECRET`
+ * is the credential (`lib/worker-tick-policy.ts`). Without this route the queues
+ * only move while a warm instance keeps its `setInterval` alive — which is how
+ * media rows and extraction jobs sat past their own `next_run_at` on 2026-11-27.
+ */
+app.use("/api", workerTickRouter);
 
 if (!isLocalAuthDisabled()) {
   app.use(

@@ -240,6 +240,14 @@ const EXEMPT = new Map([
     "Evolution webhook secret (WHATSAPP_EVOLUTION_WEBHOOK_SECRET)",
   ],
 
+  // Scheduler door: no session and no workspace, because the caller is cron.
+  // Authenticated by a static bearer secret, and it only runs queue passes — it
+  // reads no tenant record and returns none, so there is nothing to scope.
+  [
+    "routes/worker-tick.ts POST /internal/worker-tick",
+    "bearer secret MENA_WORKER_TICK_SECRET (or CRON_SECRET), fail-closed when unset: lib/worker-tick-policy.ts",
+  ],
+
   // OAuth redirect: authenticated by the stored state, not by a session.
   [
     "routes/meta.ts GET /social/meta/callback",
@@ -303,11 +311,16 @@ const EXEMPT = new Map([
  * Anything else that turns up here is a cross-tenant write, not a design choice.
  */
 const SANCTIONED_WRITERS = new Set([
+  // Runs a queue pass, which moves job rows in every workspace by design: the
+  // caller is a scheduler holding the tick secret, and the mutation is "re-decide
+  // what is due" — never a read of someone's data.
+
   // Consumes a single-use, expiring, hashed OAuth state (`delete … returning`)
   // and takes the workspace from that row, so the write is state-authenticated.
   "routes/meta.ts GET /social/meta/callback",
   "routes/meta-webhook.ts POST /social/meta/webhook",
   "routes/whatsapp-sync.ts POST /social/whatsapp/webhook",
+  "routes/worker-tick.ts POST /internal/worker-tick",
   "routes/push-notifications.ts POST /notifications/push-token",
   "routes/push-notifications.ts DELETE /notifications/push-token",
 ]);
