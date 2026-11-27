@@ -259,6 +259,12 @@ bundle's attempts and the merchant's only way back is the button.
 
 Measure it (read-only, and it should be empty):
 
+Both keys are deliberately spelled differently: the suggestion carries a camelCase
+JSON key (`priceStatus`), the table a snake_case column (`price_status`). Querying
+one and expecting the other returns `null` and reads like a missing feature — which
+is how a live row carrying `price: 17000, currency: YER, priceStatus: "ambiguous"`
+was almost filed as "the status never got written".
+
 ```sql
 select count(*) as parked_but_due
 from mena_whatsapp_product_extraction_jobs
@@ -277,7 +283,8 @@ runtime* in `docs/PRODUCTION_DEPLOYMENT.md`.
 Required fields for publication (`PRODUCT_PUBLICATION_REQUIRED_FIELDS`): `name`,
 `price`, `currency`, `availability`, `media`. `description` is advisory — worth
 completing, never a blocker. A price is kept with the state of its evidence
-rather than dropped: `extracted_data.price_status` is `confirmed` (the number and
+rather than dropped: `extracted_data->>'priceStatus'` on the suggestion —
+`mena_products.price_status` on the row it becomes — is `confirmed` (the number and
 its currency word are quoted), `unquoted` (the number is written but nothing
 around it says price), `ambiguous` (the sources hold more than one price, or two
 currency families for one number) or `missing`. Only `confirmed` — and only with
