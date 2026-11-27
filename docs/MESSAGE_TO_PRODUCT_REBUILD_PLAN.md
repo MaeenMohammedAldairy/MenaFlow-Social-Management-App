@@ -590,7 +590,7 @@ detected → classified(not_product) → archived
 | المنفَّذ (endpoint) صار صريحاً: 409 عند وظيفة حيّة، و`reopened/created/rulesetVersion` في الرد | `routes/product-extractions.ts` | كان `on conflict do nothing` يُجيب 202 ولا يعمل شيء |
 | عدّادات الطابور والمقاييس: `failed` و`quotaPaused` و`noText` و`alreadyCovered`، وتوزيع الأسباب ونسخ الـ prompt | `routes/product-extractions.ts` (`/social/products/extraction-metrics`) | |
 | قائمة المراجعة تُخفي `superseded` افتراضياً وتُظهره عند الطلب صراحةً | `product-extraction-list-policy.ts` | البطاقة المُستبدلة تاريخ لا عمل مراجعة |
-| migration كامل التوسعة/الBACKFILL/الفهارس مع أسئلة تحقق بعد التطبيق | `supabase/migrations/20261127000000_product_extraction_simplification.sql` | يوسّع قيد الحالة الضيّق الذي عطّل كل مسارات التصحيح |
+| migration كامل التوسعة/الBACKFILL/الفهارس مع أسئلة تحقق بعد التطبيق — **مُطبَّق على القاعدة الحيّة** | `supabase/migrations/20261127000000_product_extraction_simplification.sql` + `docs/SUPABASE_DATABASE_SETUP.md` §5 | يوسّع قيد الحالة الضيّق الذي عطّل كل مسارات التصحيح، ويُعيد قيد سلسلة العناصر على `item_index` |
 
 ### ما تحقق به ذلك
 
@@ -598,6 +598,6 @@ detected → classified(not_product) → archived
 
 ### ما لم يُنفَّذ بعد
 
-1. **تنفيذ الـ migration على `qznbujvanjvkfxpehcbq`**: لم تُجرَ أي `DDL` على قاعدة الإنتاج؛ الملف مكتوب ومُراجَع مقابل الأسماء الحقيقية للفهارس والقيود (`pg_indexes`/`pg_constraint`)، وتنفيذه قرار تشغيلي.
+1. ~~**تنفيذ الـ migration على `qznbujvanjvkfxpehcbq`**~~ — نُفِّذ بتاريخ 2026-11-27 وسُجِّل في `supabase_migrations.schema_migrations` بالإصدار `20261127000000`، مع القياسات ودليل الكتابة (superseded/second item/reason code) في `docs/SUPABASE_DATABASE_SETUP.md` §5. القراءتك الحيّة للكتالوجات قبل التنفيذ غيّرت الملف نفسه مرّتين: `(workspace_id, source_key)` كان قيد `UNIQUE` لا فهرساً (فـ`DROP INDEX` كان سيفشل)، وفهرس السلسلة القديم `mena_product_extraction_version_key` كان فريداً على `(workspace, previous_suggestion_id, version)` أي صفاً واحداً لكل سلف — فثاني عنصر في مجموعة متعدّدة المنتجات كان سيُرفض بصمت؛ صار الفهرس على `(workspace, previous_suggestion_id, version, item_index)` ويربط كل عنصر بسلفه هو.
 2. ~~**مسار UI للحقول الجديدة**~~ — نُفِّذ: الحقول كُتبت في `lib/api-spec/openapi.yaml` (مصدر الحقيقة الوحيد للعميل) ثم وُلِّد العميل بـ`pnpm --filter @workspace/api-spec run codegen`؛ لا يُحرَّر `lib/api-client-react/src/generated` يدوياً. النتيجة في `ProductCatalogScreen.tsx`: سطر `mediaStateMessage` على البطاقة، وسطور `features`/`specifications`/`accessories` مع تعليم قيمة بلا اقتباس («لم نجد لها اقتباسًا في الرسالة»)، و«حالة طابور الاستخراج» صارت تعرض `alreadyCovered`، ورسالة «إعادة التحليل» تُبنى من `{queued, reopened, created, workerEnabled}` بدل نجاح دائم. المنطق النقي في `lib/product-extraction-card-copy.ts` مع اختباره، وبابه `product-extraction-review-copy.test.mjs` الذي رفض فوراً حقلاً موثّقاً لا يرسله المسار.
 3. **تجربة على بيانات حيّة**: لم تُستدعَ نماذج ذكاء اصطناعي ولم تُشغَّل وظائف الخادم أثناء هذا العمل؛ الأرقام المذكورة أعلاه من التدقيق السابق، وما تغيّر هو الكود والاختبارات.

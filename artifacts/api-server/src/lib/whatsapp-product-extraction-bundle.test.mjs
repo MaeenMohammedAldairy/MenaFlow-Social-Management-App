@@ -134,15 +134,11 @@ mock.module("./product-extraction.ts", {
           rejectedResponses: ['{"products": tru}', "ليس JSON"],
         });
       }
-      return {
-      model: "test-model",
-      promptVersion: "v3",
-      rawResponse: JSON.stringify({ candidates: [{ ok: true }] }),
-      candidates: [{
+      const candidate = (group, name) => ({
         classification: "product",
-        sourceMessageIds: sources.map((source) => source.id),
+        sourceMessageIds: group.map((source) => source.id),
         data: {
-          name: "ساعة NAVIFORCE",
+          name,
           description: "ساعة يد",
           price: "25000",
           currency: "SAR",
@@ -152,26 +148,36 @@ mock.module("./product-extraction.ts", {
           priceStatus: "confirmed",
           rawPriceText: "25,000 ريال",
         },
-        evidence: {
-          name: "ساعة NAVIFORCE",
-          price: "25,000 ريال",
-          currency: "ريال",
-        },
+        evidence: { name, price: "25,000 ريال", currency: "ريال" },
         facts: {
           ...emptyProductFacts(),
           features: [{
             value: "مقاومة للماء",
-            sourceId: sources[0].id,
-            quote: "ساعة NAVIFORCE",
+            sourceId: group[0].id,
+            quote: name,
             start: 0,
-            end: 6,
+            end: name.length,
             verified: true,
           }],
         },
         confidence: { name: 0.95, price: 0.9, currency: 0.9 },
         complete: true,
-      }],
-      nonProductMessageIds: [],
+      });
+      // A group may answer with more than one product (the three-photo album
+      // that is genuinely three offers), and then each item has to be linked to
+      // its own predecessor rather than to one shared row.
+      const candidates = globalThis.__twoCandidates
+        ? [
+            candidate(sources.slice(0, 2), "ساعة NAVIFORCE"),
+            candidate(sources.slice(2), "ساعة كاسيو"),
+          ]
+        : [candidate(sources, "ساعة NAVIFORCE")];
+      return {
+        model: "test-model",
+        promptVersion: "v3",
+        rawResponse: JSON.stringify({ candidates: [{ ok: true }] }),
+        candidates,
+        nonProductMessageIds: [],
       };
     },
   },
@@ -213,6 +219,9 @@ function seedLateBundle() {
     workspaceId,
     sourceKey: extraction.productExtractionSourceKey(["name"]),
     version: 1,
+    // The default `ALTER TABLE … ADD COLUMN item_index … DEFAULT 1` gives every
+    // pre-existing row, so a legacy suggestion is item 1 of its group.
+    itemIndex: 1,
     status: "review",
     productId: null,
   });
@@ -502,4 +511,31 @@ test("a rejected answer is kept, not just counted", async () => {
   assert.deepEqual(job().rawExtractionResponse, {
     rejected: ['{"products": tru}', "ليس JSON"],
   });
+});
+
+test("each item of a multi-product group links to its own predecessor", async () => {
+  // `mena_product_extraction_version_key` is unique on
+  // (workspace, previous_suggestion_id, version). If every item of a re-read
+  // group names the same predecessor row, the second insert of that version
+  // collides with the first — and a version that cannot be written is a
+  // re-extraction that silently stores nothing.
+  seedLateBundle();
+  globalThis.__twoCandidates = true;
+  await requeueWhatsAppProductMessage(workspaceId, "name");
+  await processProductExtractionJob(job());
+  delete globalThis.__twoCandidates;
+  const versions = suggestions().filter((row) => row.version === 2);
+  assert.equal(versions.length, 2, "one group, two products, two items");
+  assert.deepEqual(
+    versions.map((row) => row.itemIndex).sort(),
+    [1, 2],
+  );
+  // The first item replaces the one review row that existed; the second is new
+  // to this group, so it chains to nothing instead of stealing the link.
+  assert.deepEqual(
+    versions
+      .map((row) => row.previousSuggestionId)
+      .sort(),
+    [null, "old-single-source"],
+  );
 });

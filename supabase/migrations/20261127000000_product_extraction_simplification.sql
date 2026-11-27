@@ -4,6 +4,13 @@
 -- Safe to apply to an existing database: every statement is additive, guarded,
 -- or drops only what this change replaces. Read the comment above each block for
 -- the measurement that made it necessary.
+--
+-- Applied to the live project `qznbujvanjvkfxpehcbq` on 2026-11-27 and recorded in
+-- `supabase_migrations.schema_migrations` under this filename's version, so
+-- `supabase db push` reports nothing pending. The verification queries in block 7
+-- were run against it; what they showed is written up in
+-- docs/SUPABASE_DATABASE_SETUP.md §5, «Record: applying
+-- 20261127000000_product_extraction_simplification».
 
 -- 1. A legacy narrow status CHECK made every correction path impossible.
 --    The table carries both `mena_product_extraction_status_check` (wide) and an
@@ -17,12 +24,16 @@ ALTER TABLE public.mena_product_extraction_suggestions
 ALTER TABLE public.mena_product_extraction_suggestions
   DROP CONSTRAINT IF EXISTS mena_product_extraction_status_check;
 
-ALTER TABLE public.mena_product_extraction_suggestions
-  ADD CONSTRAINT mena_product_extraction_status_check
-  CHECK (status IN (
-    'review', 'draft_created', 'possible_duplicate', 'dismissed',
-    'superseded', 'update_proposed', 'accepted_update', 'rejected_update'
-  ));
+DO $$
+BEGIN
+  ALTER TABLE public.mena_product_extraction_suggestions
+    ADD CONSTRAINT mena_product_extraction_status_check
+    CHECK (status IN (
+      'review', 'draft_created', 'possible_duplicate', 'dismissed',
+      'superseded', 'update_proposed', 'accepted_update', 'rejected_update'
+    ));
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- 2. One product group, one suggestion per version.
 --    `source_key` is a hash of the message ids, so any regrouping of the same
@@ -46,7 +57,13 @@ UPDATE public.mena_product_extraction_suggestions
 ALTER TABLE public.mena_product_extraction_suggestions
   ALTER COLUMN group_key SET NOT NULL;
 
-DROP INDEX IF EXISTS public.mena_product_extraction_workspace_source_key;
+-- The live database carries `(workspace_id, source_key)` as a UNIQUE
+-- CONSTRAINT, not as a plain index (measured: contype 'u'), so `DROP INDEX`
+-- would have failed here with "index is used by constraint". Dropping the
+-- constraint removes its index with it, and the non-unique index below keeps the
+-- lookup the matcher still needs.
+ALTER TABLE public.mena_product_extraction_suggestions
+  DROP CONSTRAINT IF EXISTS mena_product_extraction_workspace_source_key;
 
 CREATE INDEX IF NOT EXISTS mena_product_extraction_workspace_source_key_idx
   ON public.mena_product_extraction_suggestions (workspace_id, source_key);
@@ -63,6 +80,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS mena_product_extraction_group_version_key
 
 CREATE INDEX IF NOT EXISTS mena_product_extraction_group_idx
   ON public.mena_product_extraction_suggestions (workspace_id, group_key);
+
+-- The older chain index is unique on (workspace, predecessor, version), which is
+-- one row per predecessor — but a group is allowed to answer with several
+-- products at one version, and a second item pointing at the same predecessor
+-- would then be refused rather than stored. The item's place joins the key so
+-- the index says what it means: one predecessor per item per version.
+DROP INDEX IF EXISTS public.mena_product_extraction_version_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS mena_product_extraction_version_key
+  ON public.mena_product_extraction_suggestions
+  (workspace_id, previous_suggestion_id, version, item_index);
 
 -- 3. Structured facts and price provenance on the catalog row.
 --    «مزود ب12 رأس» and «ضد الماء 30 متر» were only ever description text, so no
@@ -136,15 +164,13 @@ END $$;
 CREATE INDEX IF NOT EXISTS mena_product_extraction_suggestion_media_state_idx
   ON public.mena_product_extraction_suggestions (workspace_id, media_state);
 
--- 6. The suggestion-level dedup the matcher could not see: it only compared
---    against `mena_products`, so three photos of one offer became three review
---    cards. A partial index gives that lookup an affordable path.
-CREATE INDEX IF NOT EXISTS mena_product_extraction_suggestion_open_name_idx
-  ON public.mena_product_extraction_suggestions (
-    workspace_id,
-    lower(regexp_replace(coalesce(extracted_data ->> 'name', ''), '\s+', ' ', 'g'))
-  )
- WHERE status IN ('review', 'possible_duplicate');
+-- 6. Nothing, on purpose. A functional index on
+--    `lower(regexp_replace(extracted_data ->> 'name', ...))` was written for the
+--    dedup lookup and then dropped again before it left the migration history:
+--    no statement in the server filters or joins on that expression (the matcher
+--    compares candidate names in memory, `matchProductCandidate`), so the index
+--    would only have cost a write per suggestion. Re-add it together with the
+--    query that uses it, not before.
 
 -- 7. What to look at after applying, in the first hour:
 --

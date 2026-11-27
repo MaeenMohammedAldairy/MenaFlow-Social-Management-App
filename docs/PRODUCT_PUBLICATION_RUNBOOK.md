@@ -594,5 +594,11 @@ behaviour stays fixed.
 | `MENA_META_WEBHOOK_VERIFY_TOKEN`, `FACEBOOK_APP_SECRET` | Meta webhook verification and signature check |
 
 Migrations are applied manually (`supabase/migrations/…`); the API never
-migrates at startup. See `docs/PRODUCT_CATALOG.md` for catalog semantics and
+migrates at startup. `20261127000000_product_extraction_simplification` is
+applied to the live project (2026-11-27), so `reason_code`, `media_state`,
+`group_key`/`item_index` and the fact columns exist there and the metrics can
+group by prompt version; the columns stay at their defaults until a build that
+writes them is deployed, which is the remaining step. Each application is recorded
+with its measurements in `docs/SUPABASE_DATABASE_SETUP.md` §5.
+See `docs/PRODUCT_CATALOG.md` for catalog semantics and
 `docs/WHATSAPP_SYNC.md` for the sync path that feeds this chain.

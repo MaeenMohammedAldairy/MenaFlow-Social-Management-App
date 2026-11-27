@@ -699,6 +699,7 @@ async function extractionGroupCoverage(input: {
   suggestions: Array<{
     id: string;
     version: number;
+    itemIndex: number;
     rulesetVersion: string;
     productId: string | null;
     extractionInputHash: string | null;
@@ -710,6 +711,7 @@ async function extractionGroupCoverage(input: {
   const fields = {
     id: productExtractionSuggestions.id,
     version: productExtractionSuggestions.version,
+    itemIndex: productExtractionSuggestions.itemIndex,
     rulesetVersion: productExtractionSuggestions.rulesetVersion,
     productId: productExtractionSuggestions.productId,
     extractionInputHash: productExtractionSuggestions.extractionInputHash,
@@ -1346,6 +1348,22 @@ export async function processProductExtractionJob(
     const suggestionVersion = priorGroupSuggestion
       ? priorGroupSuggestion.version + (isReprocess ? 1 : 0)
       : jobVersion;
+    // The row this item replaces, item by item rather than "whatever the group's
+    // newest row was". Two reasons, and the second is the one that was learned the
+    // hard way: a chain that names one predecessor for all three items of a
+    // multi-product album makes `mena_product_extraction_version_key` (unique on
+    // workspace, predecessor, version) reject the second insert — the same class
+    // of silent write failure that killed the six re-extractions.
+    const priorForItem = (itemIndex: number) =>
+      groupState.reduce(
+        (best, row) =>
+          row.itemIndex === itemIndex &&
+          (!best || row.version > best.version) &&
+          row.version < suggestionVersion
+            ? row
+            : best,
+        null as null | (typeof groupState)[number],
+      );
     // Supersede before inserting: one group leaves one open suggestion, and the
     // older versions stay readable as the chain that produced it. A suggestion a
     // merchant already turned into a product is never superseded from behind —
@@ -1494,7 +1512,7 @@ export async function processProductExtractionJob(
         groupKey,
         version: suggestionVersion,
         itemIndex: itemIndex + 1,
-        previousSuggestionId: priorGroupSuggestion?.id ?? null,
+        previousSuggestionId: priorForItem(itemIndex + 1)?.id ?? null,
         promptVersion: extraction.promptVersion,
         mediaState,
         senderRole,
