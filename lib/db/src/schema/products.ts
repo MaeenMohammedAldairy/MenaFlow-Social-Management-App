@@ -16,6 +16,47 @@ import { posts } from "./posts";
 import { menaWhatsAppMessages } from "./social";
 import { workspaces } from "./workspaces";
 
+/**
+ * One structured fact about a product — a feature, a specification or an
+ * accessory — kept with the words that prove it. `verified: false` means the
+ * value is a lead the merchant must confirm, never catalog truth.
+ */
+export type ProductFactRecord = {
+  value: string;
+  sourceId: string | null;
+  quote: string | null;
+  start: number | null;
+  end: number | null;
+  verified: boolean;
+};
+
+export type ProductPriceStatus =
+  | "confirmed"
+  | "unquoted"
+  | "ambiguous"
+  | "missing";
+
+/**
+ * Why an extraction job ended, mirrored from
+ * `api-server/src/lib/product-extraction-reasons.ts`. Kept as a literal here so
+ * the schema stays free of a cross-package import; the runtime module is the one
+ * that validates and names these.
+ */
+export type ProductExtractionReasonCode =
+  | "RECORDED"
+  | "SKIPPED_MESSAGE_UNRECEIVABLE"
+  | "SKIPPED_ALREADY_COVERED"
+  | "FAILED_ASSOCIATED_MESSAGE_UNAVAILABLE"
+  | "WAITING_MEDIA"
+  | "FAILED_MEDIA_UNRECOVERABLE"
+  | "RECORDED_MEDIA_PARTIAL"
+  | "WAITING_ASSOCIATION"
+  | "REEXTRACTED_GROUP_GROWN"
+  | "NEEDS_TEXT"
+  | "FAILED_MODEL_RESPONSE"
+  | "PAUSED_AI_QUOTA"
+  | "FAILED_PERSISTENCE";
+
 export const products = pgTable(
   "mena_products",
   {
@@ -38,6 +79,21 @@ export const products = pgTable(
     description: text("description").notNull().default(""),
     price: numeric("price", { precision: 12, scale: 2 }),
     currency: text("currency"),
+    /** The merchant's own words for the number («25 ألف»), never rewritten. */
+    rawPriceText: text("raw_price_text"),
+    priceStatus: text("price_status").$type<ProductPriceStatus>(),
+    features: jsonb("features")
+      .$type<ProductFactRecord[]>()
+      .notNull()
+      .default([]),
+    specifications: jsonb("specifications")
+      .$type<ProductFactRecord[]>()
+      .notNull()
+      .default([]),
+    accessories: jsonb("accessories")
+      .$type<ProductFactRecord[]>()
+      .notNull()
+      .default([]),
     availability: text("availability")
       .$type<"unknown" | "in_stock" | "out_of_stock" | "preorder">()
       .notNull()
@@ -103,6 +159,10 @@ export const products = pgTable(
     check(
       "mena_products_price_currency_check",
       sql`${table.price} IS NULL OR ${table.currency} IS NOT NULL`,
+    ),
+    check(
+      "mena_products_price_status_check",
+      sql`${table.priceStatus} IS NULL OR ${table.priceStatus} IN ('confirmed', 'unquoted', 'ambiguous', 'missing')`,
     ),
   ],
 );
@@ -200,8 +260,26 @@ export const productExtractionSuggestions = pgTable(
     workspaceId: text("workspace_id")
       .notNull()
       .references(() => workspaces.id, { onDelete: "cascade" }),
+    /**
+     * Hash of the message ids that were read. It identifies *what was read*, so
+     * it must not be unique: a group that gains a message gets a new source key
+     * while staying the same product group.
+     */
     sourceKey: text("source_key").notNull(),
+    /**
+     * Identity of the product group itself (album id, accepted bundle id, or the
+     * single message). One suggestion per group per version — the version chain,
+     * not a pile of near-duplicate cards.
+     */
+    groupKey: text("group_key").notNull(),
     version: integer("version").notNull().default(1),
+    /**
+     * Ordinal of this item inside the group's answer, 1-based, matching
+     * `mena_product_extraction_sources.item_index`. A group may be several
+     * products at once, so the version alone cannot identify one suggestion —
+     * and a replayed run must still collide with exactly one row.
+     */
+    itemIndex: integer("item_index").notNull().default(1),
     previousSuggestionId: text("previous_suggestion_id"),
     senderRole: text("sender_role")
       .$type<"merchant" | "customer" | "unknown">()
@@ -213,6 +291,18 @@ export const productExtractionSuggestions = pgTable(
     extractionInputHash: text("extraction_input_hash"),
     rulesetVersion: text("ruleset_version").notNull().default("v1"),
     modelVersion: text("model_version"),
+    /** Which instruction produced this row, so a prompt change is measurable. */
+    promptVersion: text("prompt_version"),
+    /**
+     * What happened to the photos of the group: `included` when they went into
+     * the same call as the text, `partial` when some were lost, `pending` when
+     * the offer was stored while a download was still running. Without it a
+     * text-only extraction is indistinguishable from a full one.
+     */
+    mediaState: text("media_state")
+      .$type<"not_applicable" | "included" | "partial" | "pending" | "lost">()
+      .notNull()
+      .default("not_applicable"),
     overrideReason: text("override_reason"),
     classification: text("classification")
       .$type<"product" | "not_product">()
@@ -264,14 +354,31 @@ export const productExtractionSuggestions = pgTable(
       table.workspaceId,
       table.id,
     ),
-    uniqueIndex("mena_product_extraction_workspace_source_key").on(
+    // A source key is a record of what was read, so it is looked up but no
+    // longer unique: uniqueness on it is what made a second version of the
+    // same group impossible and regrouping look like a new product.
+    index("mena_product_extraction_workspace_source_key_idx").on(
       table.workspaceId,
       table.sourceKey,
+    ),
+    uniqueIndex("mena_product_extraction_group_version_key").on(
+      table.workspaceId,
+      table.groupKey,
+      table.version,
+      table.itemIndex,
+    ),
+    index("mena_product_extraction_group_idx").on(
+      table.workspaceId,
+      table.groupKey,
     ),
     index("mena_product_extraction_workspace_status_created_idx").on(
       table.workspaceId,
       table.status,
       table.createdAt,
+    ),
+    check(
+      "mena_product_extraction_suggestion_media_state_check",
+      sql`${table.mediaState} IN ('not_applicable', 'included', 'partial', 'pending', 'lost')`,
     ),
     check(
       "mena_product_extraction_status_check",
@@ -285,10 +392,17 @@ export const productExtractionSuggestions = pgTable(
       "mena_product_extraction_sender_role_check",
       sql`${table.senderRole} IN ('merchant', 'customer', 'unknown')`,
     ),
+    /**
+     * One predecessor per item per version. The item's place is part of the key
+     * because a group may answer with several products at one version, and a
+     * three-column key would let only the first of them be written — the second
+     * insert would be refused by the index rather than stored.
+     */
     uniqueIndex("mena_product_extraction_version_key").on(
       table.workspaceId,
       table.previousSuggestionId,
       table.version,
+      table.itemIndex,
     ),
   ],
 );
@@ -365,6 +479,21 @@ export const whatsappProductExtractionJobs = pgTable(
       .default("received"),
     attempts: integer("attempts").notNull().default(0),
     rulesetVersion: text("ruleset_version").notNull().default("v1"),
+    /**
+     * Why the job ended, at every terminal transition. `lastError` can only
+     * carry a failure, so "nothing to do" and "we dropped your message" were
+     * indistinguishable — which is how two price-bearing merchant messages
+     * disappeared behind a silent `complete`.
+     */
+    reasonCode: text("reason_code").$type<ProductExtractionReasonCode>(),
+    /** Which instruction produced the answer; a prompt change stays measurable. */
+    promptVersion: text("prompt_version"),
+    /**
+     * What the model actually returned, for the handful of seconds it matters:
+     * a rejected answer cannot be diagnosed from a thrown error message alone.
+     */
+    rawExtractionResponse: jsonb("raw_extraction_response")
+      .$type<Record<string, unknown> | null>(),
     dedupeKey: text("dedupe_key"),
     idempotencyKey: text("idempotency_key"),
     lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
@@ -405,6 +534,15 @@ export const whatsappProductExtractionJobs = pgTable(
     check(
       "mena_whatsapp_product_extraction_job_stage_check",
       sql`${table.stage} IN ('received', 'media', 'association', 'extraction', 'persistence')`,
+    ),
+    // Every terminal transition names its reason, and the database agrees: a
+    // reason written here that the table would reject is worse than no check,
+    // because `product-extraction-reasons.ts` would then be the only truth and a
+    // typo in a new code would surface as a failed job. The list is compared
+    // against `EXTRACTION_REASON_CODES` by product-extraction-db-contract.test.mjs.
+    check(
+      "mena_whatsapp_product_extraction_job_reason_check",
+      sql`${table.reasonCode} IS NULL OR ${table.reasonCode} IN ('RECORDED', 'SKIPPED_MESSAGE_UNRECEIVABLE', 'SKIPPED_ALREADY_COVERED', 'FAILED_ASSOCIATED_MESSAGE_UNAVAILABLE', 'WAITING_MEDIA', 'FAILED_MEDIA_UNRECOVERABLE', 'RECORDED_MEDIA_PARTIAL', 'WAITING_ASSOCIATION', 'REEXTRACTED_GROUP_GROWN', 'NEEDS_TEXT', 'FAILED_MODEL_RESPONSE', 'PAUSED_AI_QUOTA', 'FAILED_PERSISTENCE')`,
     ),
   ],
 );

@@ -5,8 +5,14 @@ import {
   selectAutoAcceptableProductBundleSuggestions,
   WHATSAPP_BUNDLE_REASON,
 } from "./whatsapp-association-suggestions.ts";
-import { whatsappProductBundleId } from "./whatsapp-content-association-logic.ts";
-import { collapseProductCandidatesForBundle, productExtractionSourceKey } from "./product-extraction.ts";
+import {
+  whatsappProductBundleId,
+  whatsappProductExtractionGroupKey,
+} from "./whatsapp-content-association-logic.ts";
+import {
+  detectGroupDisagreement,
+  productExtractionSourceKey,
+} from "./product-extraction.ts";
 
 const baseTime = Date.parse("2026-11-25T10:00:00.000Z");
 const scope = {
@@ -87,21 +93,30 @@ test("1 - name, price, colour and image form one bundle and one multi-source can
   assert.ok(edges.every((edge) =>
     edge.reason !== WHATSAPP_BUNDLE_REASON.ambiguousMedia));
 
-  const sources = [...bundle];
-  const collapsed = collapseProductCandidatesForBundle(
+  const sources = [...bundle].sort();
+  const bundleId = whatsappProductBundleId(scope, sources);
+  // Four messages, one offer. The reading is not merged into one row by the
+  // server any more — the model returns one candidate for the group and names
+  // the messages it quoted — so what the grouping has to guarantee is that the
+  // four messages share ONE identity and that their answers agree.
+  const keys = new Set(sources.map((id) =>
+    whatsappProductExtractionGroupKey(scope, { bundleId, messageId: id })));
+  assert.equal(keys.size, 1);
+  const [key] = keys;
+  assert.ok(key.startsWith("bundle:"));
+  const disagreement = detectGroupDisagreement(
     messages.map((item) => singleSource({ sourceMessageId: item.id }, {
+      sourceMessageIds: sources,
       data: {
-        name: item.id === "name" ? "ساعة NAVIFORCE" : null,
-        price: item.id === "price" ? "25000" : null,
-        currency: item.id === "price" ? "SAR" : null,
+        name: "ساعة NAVIFORCE",
+        price: "25000",
+        currency: "SAR",
         aliases: [], sku: null, description: null, availability: null,
       },
     })),
-    sources,
   );
-  assert.equal(collapsed.candidates.length, 1);
-  assert.equal(collapsed.candidates[0].sourceMessageIds.length, 4);
-  assert.equal(collapsed.mixedBundle, false);
+  assert.equal(disagreement.mixedGroup, false);
+  assert.deepEqual(disagreement.reasons, []);
 });
 
 test("2 - two different products produce two independent bundles and two suggestions", () => {
@@ -197,12 +212,17 @@ test("9 - a reprocessed worker replay keeps the same source key and one candidat
   const ids = ["name", "price", "color", "image"];
   assert.equal(productExtractionSourceKey([...ids].reverse()),
     productExtractionSourceKey(ids));
-  const collapsed = collapseProductCandidatesForBundle(
-    ids.map((id) => singleSource({ sourceMessageId: id })),
-    ids,
+  const bundleId = whatsappProductBundleId(scope, ids);
+  const reading = ids.map((id) => singleSource({ sourceMessageId: id }, {
+    sourceMessageIds: ids,
+  }));
+  // A replay of the same group reads the same: one candidate per product, all of
+  // them carrying the whole group, and nothing about the order changes it.
+  assert.equal(detectGroupDisagreement(reading).mixedGroup, false);
+  assert.equal(
+    whatsappProductExtractionGroupKey(scope, { bundleId, messageId: ids[0] }),
+    whatsappProductExtractionGroupKey(scope, { bundleId, messageId: ids[3] }),
   );
-  assert.equal(collapsed.candidates.length, 1);
-  assert.equal(collapsed.candidates[0].sourceMessageIds.length, 4);
 });
 
 test("10 - messages without evidence stay separate", () => {
@@ -218,17 +238,21 @@ test("11 - a review-era single-source suggestion is preserved beside a new bundl
   const previous = singleSource({ sourceMessageId: "old" }, {
     status: "review", version: 1, sourceKey: productExtractionSourceKey(["old"]),
   });
-  const current = collapseProductCandidatesForBundle(
-    [singleSource({ sourceMessageId: "old" })], ["old", "price"],
-  );
+  const bundleKey = whatsappProductExtractionGroupKey(scope, {
+    bundleId: "bundle-late", messageId: "old",
+  });
+  const aloneKey = whatsappProductExtractionGroupKey(scope, { messageId: "old" });
+  // The single-source row and the bundle row are the same group's versions — the
+  // key that links them is the bundle's, not the message's, and the source key
+  // changes with the messages read. That is what lets the worker supersede the
+  // old card instead of filing a second one beside it.
+  assert.notEqual(bundleKey, aloneKey);
   assert.equal(previous.sourceKey, productExtractionSourceKey(["old"]));
-  assert.notEqual(previous.sourceKey,
-    productExtractionSourceKey(current.candidates[0].sourceMessageIds));
-  assert.equal(current.candidates[0].sourceMessageIds.length, 2);
+  assert.notEqual(previous.sourceKey, productExtractionSourceKey(["old", "price"]));
 });
 
 test("12 - a bundle whose suggestion already created a product is not auto-merged", () => {
-  const conflicting = collapseProductCandidatesForBundle([
+  const conflicting = detectGroupDisagreement([
     singleSource({ sourceMessageId: "a" }, { data: {
       name: "ساعة NAVIFORCE", sku: null, aliases: [], description: null,
       price: "25000", currency: "SAR", availability: "in_stock",
@@ -237,10 +261,12 @@ test("12 - a bundle whose suggestion already created a product is not auto-merge
       name: "حذاء رياضي", sku: null, aliases: [], description: null,
       price: "15000", currency: "SAR", availability: "in_stock",
     } }),
-  ], ["a", "b"]);
-  assert.equal(conflicting.candidates.length, 1);
-  assert.equal(conflicting.mixedBundle, true);
-  assert.equal(conflicting.candidates[0].complete, false);
+  ]);
+  // A watch and a shoe in one reading is a question, not a product to merge:
+  // both stay, both are reported, and the group goes to a human. This is the
+  // invariant that keeps a three-photo album as three cards.
+  assert.equal(conflicting.mixedGroup, true);
+  assert.deepEqual(conflicting.reasons, ["multiple_names", "multiple_prices"]);
 });
 
 test("13 - DM messages are excluded from product bundles", () => {

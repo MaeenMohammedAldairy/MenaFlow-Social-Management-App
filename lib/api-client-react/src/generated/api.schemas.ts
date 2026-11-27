@@ -2026,9 +2026,16 @@ export interface ProductExtractionRestoreResponse {
 }
 
 export interface ProductExtractionReprocessResponse {
-  /** The version the new pass will run with, e.g. `v2`. */
+  /** The version the whole group will run with, e.g. `v2`. One number for every member of the group: a re-extraction that left one message on the old ruleset was how a caption and its photos ended up as two answers. */
   rulesetVersion: string;
+  /** False only when the group was already fully covered at this version — which is reported as `409` on a live job instead of a silent `202`. */
   queued: boolean;
+  /** Jobs of the group armed for another run. */
+  reopened?: number;
+  /** Members of the group that had no job at all and got one. */
+  created?: number;
+  /** Whether the extraction queue is running at all. A job nobody polls is not a request that will be served, and the screen has to be able to say so instead of waiting. */
+  workerEnabled?: boolean;
 }
 
 /**
@@ -2171,6 +2178,21 @@ export type ProductExtractionMetricsSuggestionsItem = {
   total: number;
 };
 
+export type ProductExtractionMetricsFailureReasonsItem = {
+  /** @nullable */
+  reasonCode?: string | null;
+  status?: string;
+  total?: number;
+  /** The sentence for `reasonCode` in Arabic, or a note that none was recorded. */
+  message?: string;
+};
+
+export type ProductExtractionMetricsPromptVersionsItem = {
+  /** @nullable */
+  promptVersion?: string | null;
+  total?: number;
+};
+
 export type ProductExtractionMetricsDailyItem = {
   /** YYYY-MM-DD */
   day: string;
@@ -2189,8 +2211,34 @@ export interface ProductExtractionMetrics {
   proposalsAccepted: number;
   /** Products activated over product suggestions read, 0-1. */
   conversionRate: number;
+  /** Settled jobs of the window grouped by why they ended, newest first by count. A failure count without its reasons is a number nobody can act on, and every terminal job has to name one. */
+  failureReasons?: ProductExtractionMetricsFailureReasonsItem[];
+  /** Suggestions per instruction version, so a prompt change is measured against the rows it produced instead of guessed at. */
+  promptVersions?: ProductExtractionMetricsPromptVersionsItem[];
   /** Succeeded and failed extractions per day, for the sparkline. */
   daily: ProductExtractionMetricsDailyItem[];
+}
+
+/**
+ * One structured claim about a product, kept with the quotation that grounds it. A value with no source is a lead the merchant must confirm, which is why `verified` is carried to the client instead of the row being dropped.
+ */
+export interface ProductFact {
+  value: string;
+  /**
+     * Which source message of the group the claim came from.
+     * @nullable
+     */
+  sourceId?: string | null;
+  /**
+     * The literal phrase it was taken from.
+     * @nullable
+     */
+  quote?: string | null;
+  /** @nullable */
+  start?: number | null;
+  /** @nullable */
+  end?: number | null;
+  verified: boolean;
 }
 
 export interface ProductExtractionSourceMessage {
@@ -2268,6 +2316,20 @@ export const ProductExtractionSuggestionMatchStrategy = {
   new_product: 'new_product',
 } as const;
 
+/**
+ * What happened to the group's photos. `included` means they were read with the text in one request; `partial` and `lost` mean the card's values came from text alone even though images existed, which is why a price-less card and an incomplete reading are different problems.
+ */
+export type ProductExtractionSuggestionMediaState = typeof ProductExtractionSuggestionMediaState[keyof typeof ProductExtractionSuggestionMediaState];
+
+
+export const ProductExtractionSuggestionMediaState = {
+  not_applicable: 'not_applicable',
+  included: 'included',
+  partial: 'partial',
+  pending: 'pending',
+  lost: 'lost',
+} as const;
+
 export type ProductExtractionSuggestionClassification = typeof ProductExtractionSuggestionClassification[keyof typeof ProductExtractionSuggestionClassification];
 
 
@@ -2286,6 +2348,20 @@ export const ProductExtractionSuggestionExtractedDataAvailability = {
   in_stock: 'in_stock',
   out_of_stock: 'out_of_stock',
   preorder: 'preorder',
+} as const;
+
+/**
+ * How well the price is grounded, and the reason a card with a number can still be un-publishable: `ambiguous` keeps the value for a human to choose, `missing` is the only state with no number at all.
+ * @nullable
+ */
+export type ProductExtractionSuggestionExtractedDataPriceStatus = typeof ProductExtractionSuggestionExtractedDataPriceStatus[keyof typeof ProductExtractionSuggestionExtractedDataPriceStatus] | null;
+
+
+export const ProductExtractionSuggestionExtractedDataPriceStatus = {
+  confirmed: 'confirmed',
+  unquoted: 'unquoted',
+  ambiguous: 'ambiguous',
+  missing: 'missing',
 } as const;
 
 /**
@@ -2315,6 +2391,22 @@ export type ProductExtractionSuggestionExtractedData = {
   currency: string | null;
   /** @nullable */
   availability: ProductExtractionSuggestionExtractedDataAvailability;
+  /** What the offer does, one entry per claim, each with the words that prove it. `verified: false` means the model wrote the value but no quote in any source message backs it: the card shows it as a lead and it never reaches a product on its own. */
+  features?: ProductFact[];
+  /** The numbers and properties the merchant stated. */
+  specifications?: ProductFact[];
+  /** What comes with the product, as written. */
+  accessories?: ProductFact[];
+  /**
+     * How well the price is grounded, and the reason a card with a number can still be un-publishable: `ambiguous` keeps the value for a human to choose, `missing` is the only state with no number at all.
+     * @nullable
+     */
+  priceStatus?: ProductExtractionSuggestionExtractedDataPriceStatus;
+  /**
+     * The merchant's own words for the number, never rewritten.
+     * @nullable
+     */
+  rawPriceText?: string | null;
   /** Field name to where its value came from, as character offsets into a source message. This is what lets the UI highlight the words a value was read from instead of asking the merchant to trust the model. A span's source may be keyed `sourceId` or `source_id`. */
   evidence_spans?: ProductExtractionSuggestionExtractedDataEvidenceSpans;
   confidence_reasons?: string[];
@@ -2373,6 +2465,25 @@ export interface ProductExtractionSuggestion {
   /** @nullable */
   modelVersion?: string | null;
   /**
+     * Which instruction produced this row (`v3` is the single text+images reading). Rows written before that carry `v2`/`v1`/null, so a regression can be dated to a version instead of to a deploy.
+     * @nullable
+     */
+  promptVersion?: string | null;
+  /**
+     * Identity of the message group this reading covers (an accepted bundle, an album, or one message), so a client can show that two cards are versions of the same reading rather than two products.
+     * @nullable
+     */
+  groupKey?: string | null;
+  /** Ordinal inside the group's answer, 1-based. A group of three products is three rows sharing one `groupKey` and `version`. */
+  itemIndex?: number;
+  /** What happened to the group's photos. `included` means they were read with the text in one request; `partial` and `lost` mean the card's values came from text alone even though images existed, which is why a price-less card and an incomplete reading are different problems. */
+  mediaState?: ProductExtractionSuggestionMediaState;
+  /**
+     * The Arabic sentence for `mediaState`, written by the server so every client says the same thing about a missing photo. Null when there were no images to speak of. Note that `partial` — not `included` — is the best a late media relink can reach: relinking proves the images reached the product, not that the model read them.
+     * @nullable
+     */
+  mediaStateMessage?: string | null;
+  /**
      * Set when the merchant created a product despite a duplicate warning.
      * @nullable
      */
@@ -2408,6 +2519,8 @@ export interface ProductExtractionQueueCounts {
   failed: number;
   /** Pending jobs held back because the workspace AI quota is exhausted. They resume on their own; no attempt is spent while paused. */
   quotaPaused: number;
+  /** Jobs that ended without a suggestion because the message's product group had already been read at this ruleset version. This is the answer to «I reprocessed it and nothing happened»: the group is not lost, the second reading was simply refused as a duplicate. It is counted apart from `noText` because the fix differs — a covered job needs a new version or a wider group, not a caption. */
+  alreadyCovered: number;
   /** Jobs that completed with nothing readable to extract: a photo with no caption, a sticker, a voice note. Not a failure and not waiting on anything, so without this counter they simply vanish from the merchant's view. A deployment with vision extraction enabled reads the text visible inside stored images instead of counting them here. */
   noText: number;
 }

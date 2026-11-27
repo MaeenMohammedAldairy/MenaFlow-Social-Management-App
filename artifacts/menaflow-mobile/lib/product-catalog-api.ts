@@ -225,6 +225,9 @@ export const emptyProductExtractionQueueCounts: ProductExtractionQueueCounts = {
   waitingAssociation: 0,
   failed: 0,
   quotaPaused: 0,
+  // Counted apart from `noText` because the fix differs: a covered job needs a
+  // wider group or a new version, not a caption.
+  alreadyCovered: 0,
   noText: 0,
 };
 

@@ -93,10 +93,21 @@ const db = {
   update: (source) => ({
     set: (changes) => ({
       where: (predicate) => {
-        for (const row of rowsFor(source.__tableName)) {
-          if (predicate(row)) Object.assign(row, changes);
-        }
-        return Promise.resolve([]);
+        const apply = () => {
+          const touched = [];
+          for (const row of rowsFor(source.__tableName)) {
+            if (predicate(row)) {
+              Object.assign(row, changes);
+              touched.push({ ...row });
+            }
+          }
+          return touched;
+        };
+        const result = Promise.resolve(apply());
+        // `updateJob` counts its writes through `returning`, so the fake has to
+        // answer the same way or a caller looks broken when it is not.
+        result.returning = () => Promise.resolve(apply());
+        return result;
       },
     }),
   }),
@@ -108,33 +119,67 @@ mock.module("@workspace/db", {
 });
 
 const extraction = await import("./product-extraction.ts");
+const { emptyProductFacts } = await import("./product-facts.ts");
 mock.module("./product-extraction.ts", {
   namedExports: {
     ...extraction,
-    extractWhatsAppProductCandidates: async (_workspaceId, sources) => ({
-      model: "test-model",
-      candidates: sources.map((source, index) => ({
+    // The extractor's contract after the simplification: ONE reading of the
+    // whole group. One candidate carrying every message of the group, the facts
+    // with their quotes, the prompt version, and the raw response to persist.
+    extractWhatsAppProductCandidates: async (_workspaceId, sources) => {
+      if (globalThis.__rejectExtraction) {
+        // The shape the real extractor throws: the classification in `message`,
+        // the refused answers beside it.
+        throw Object.assign(new Error("PRODUCT_EXTRACTION_INVALID_RESPONSE"), {
+          rejectedResponses: ['{"products": tru}', "ليس JSON"],
+        });
+      }
+      const candidate = (group, name) => ({
         classification: "product",
-        sourceMessageIds: [source.id],
+        sourceMessageIds: group.map((source) => source.id),
         data: {
-          name: index === 0 ? "ساعة NAVIFORCE" : null,
-          description: index === 0 ? "ساعة يد" : null,
-          price: index === 1 ? "25000" : null,
-          currency: index === 1 ? "SAR" : null,
-          availability: index === 2 ? "in_stock" : null,
+          name,
+          description: "ساعة يد",
+          price: "25000",
+          currency: "SAR",
+          availability: "in_stock",
           sku: null,
           aliases: [],
+          priceStatus: "confirmed",
+          rawPriceText: "25,000 ريال",
         },
-        evidence: {
-          name: index === 0 ? "ساعة NAVIFORCE" : null,
-          price: index === 1 ? "25000 ريال" : null,
-          currency: index === 1 ? "ريال" : null,
+        evidence: { name, price: "25,000 ريال", currency: "ريال" },
+        facts: {
+          ...emptyProductFacts(),
+          features: [{
+            value: "مقاومة للماء",
+            sourceId: group[0].id,
+            quote: name,
+            start: 0,
+            end: name.length,
+            verified: true,
+          }],
         },
         confidence: { name: 0.95, price: 0.9, currency: 0.9 },
-        complete: false,
-      })),
-      nonProductMessageIds: [],
-    }),
+        complete: true,
+      });
+      // A group may answer with more than one product (the three-photo album
+      // that is genuinely three offers), and then each item has to be linked to
+      // its own predecessor rather than to one shared row.
+      const candidates = globalThis.__twoCandidates
+        ? [
+            candidate(sources.slice(0, 2), "ساعة NAVIFORCE"),
+            candidate(sources.slice(2), "ساعة كاسيو"),
+          ]
+        : [candidate(sources, "ساعة NAVIFORCE")];
+      return {
+        model: "test-model",
+        promptVersion: "v3",
+        rawResponse: JSON.stringify({ candidates: [{ ok: true }] }),
+        candidates,
+        nonProductMessageIds: [],
+      };
+    },
   },
 });
 mock.module("./product-intake-service.ts", {
@@ -160,6 +205,8 @@ mock.module("./logger.ts", {
 
 const { processProductExtractionJob, requeueWhatsAppProductMessage } =
   await import("./whatsapp-product-extraction.ts");
+const { reopenWhatsAppProductExtractionGroup } =
+  await import("./whatsapp-product-group-reopen.ts");
 const { autoAcceptWhatsAppSuggestions, whatsappProductBundleId } =
   await import("./whatsapp-content-associations.ts");
 
@@ -172,6 +219,9 @@ function seedLateBundle() {
     workspaceId,
     sourceKey: extraction.productExtractionSourceKey(["name"]),
     version: 1,
+    // The default `ALTER TABLE … ADD COLUMN item_index … DEFAULT 1` gives every
+    // pre-existing row, so a legacy suggestion is item 1 of its group.
+    itemIndex: 1,
     status: "review",
     productId: null,
   });
@@ -275,6 +325,19 @@ test("worker persists one four-source suggestion for a confirmed bundle", async 
   assert.equal(suggestions()[0].status, "review");
   assert.equal(job().status, "complete");
   assert.equal(rowsFor("products").length, 0);
+  // What the run read, and from which prompt: the review screen shows the media
+  // state and the reason codes instead of guessing.
+  const row = suggestions()[0];
+  assert.equal(row.promptVersion, "v3");
+  assert.equal(row.itemIndex, 1);
+  assert.equal(row.mediaState, "not_applicable");
+  assert.equal(row.extractedData.features.length, 1);
+  assert.equal(row.extractedData.fact_counts.features, 1);
+  // The key names what was read as one offer: an accepted bundle, an album, or
+  // the single message when neither exists.
+  assert.ok(row.groupKey && /^(bundle|album|message):[0-9a-f]{32}$/.test(row.groupKey));
+  assert.ok(row.groupKey.startsWith("bundle:"));
+  assert.equal(job().reasonCode, "RECORDED");
 });
 
 test("worker replay of the same job creates no second suggestion", async () => {
@@ -297,6 +360,9 @@ test("reprocessing a bundle keeps the old suggestion and links a new version", a
   const latest = suggestions().find((row) => row.id !== firstId);
   assert.equal(latest.version, 2);
   assert.equal(latest.previousSuggestionId, firstId);
+  // The chain belongs to the group, not to the message that happened to be
+  // first: a re-run of the same group lands on the same key.
+  assert.equal(latest.groupKey, suggestions().find((r) => r.id === firstId).groupKey);
   assert.equal(latest.sourceKey, extraction.productExtractionSourceKey(ids));
   assert.equal(sources().filter((row) => row.suggestionId === latest.id).length, 4);
   await processProductExtractionJob(job());
@@ -308,6 +374,7 @@ test("a suggestion that already created a product is never silently merged", asy
   await processProductExtractionJob(job());
   suggestions()[0].status = "draft_created";
   suggestions()[0].productId = "existing-product";
+  const firstId = suggestions()[0].id;
   rowsFor("products").push({
     id: "existing-product", workspaceId, name: "ساعة NAVIFORCE",
     normalizedName: "ساعه naviforce", sku: "MF-TEST", aliases: [],
@@ -315,10 +382,18 @@ test("a suggestion that already created a product is never silently merged", asy
   job().rulesetVersion = "v2";
   job().status = "pending";
   await processProductExtractionJob(job());
+  // No second catalog row, and the accepted suggestion keeps the link it has:
+  // a draft the merchant published is not ours to re-cut from behind.
   assert.equal(rowsFor("products").length, 1);
-  const latest = suggestions().find((row) => row.status !== "superseded");
+  const latest = suggestions().reduce((best, row) =>
+    row.version > best.version ? row : best);
+  assert.equal(latest.version, 2);
+  assert.equal(latest.previousSuggestionId, firstId);
   assert.equal(latest.productId, null);
   assert.ok(["review", "possible_duplicate"].includes(latest.status));
+  const accepted = suggestions().find((row) => row.id === firstId);
+  assert.equal(accepted.status, "draft_created");
+  assert.equal(accepted.productId, "existing-product");
 });
 
 test("a late accepted bundle reprocesses a single-source review suggestion as a new version", async () => {
@@ -390,4 +465,77 @@ test("auto-accept never links messages from a different workspace", async () => 
     ],
   });
   assert.equal(rowsFor("menaWhatsAppContentAssociations").length, 0);
+});
+
+test("a group already read together is not paid for twice", async () => {
+  seed();
+  await processProductExtractionJob(job());
+  // The four messages have been read as one group at this version.
+  const first = await reopenWhatsAppProductExtractionGroup({
+    workspaceId,
+    messageIds: [...ids],
+    reason: "association_accepted",
+  });
+  assert.equal(first.reopened, 0, "nothing joined the group, so nothing is reopened");
+  assert.equal(first.created, 0);
+  // The message that has never been read with its group is a different case:
+  // the caption is what the reading was missing, and re-running costs a call
+  // that can actually answer.
+  const grown = await reopenWhatsAppProductExtractionGroup({
+    workspaceId,
+    messageIds: [...ids, "caption-late"],
+    reason: "bundle_grown",
+  });
+  assert.ok(grown.reopened + grown.created > 0, "a grown group is re-armed");
+  assert.match(grown.rulesetVersion, /^v\d+$/);
+});
+
+test("a rejected answer is kept, not just counted", async () => {
+  // «الاستخراج سيء» used to be the whole record of a failure, and the answer
+  // that was refused vanished with it. The rejection has to reach the job row,
+  // through the worker — not through a new state the queue has to reason about.
+  seed();
+  globalThis.__rejectExtraction = true;
+  let thrown;
+  try {
+    await processProductExtractionJob(job());
+  } catch (error) {
+    thrown = error;
+  } finally {
+    delete globalThis.__rejectExtraction;
+  }
+  // The failure is still the queue's to classify — the extraction path adds the
+  // evidence without taking the decision.
+  assert.equal(thrown?.message, "PRODUCT_EXTRACTION_INVALID_RESPONSE");
+  assert.equal(job().rawExtractionResponse.rejected.length, 2);
+  assert.deepEqual(job().rawExtractionResponse, {
+    rejected: ['{"products": tru}', "ليس JSON"],
+  });
+});
+
+test("each item of a multi-product group links to its own predecessor", async () => {
+  // `mena_product_extraction_version_key` is unique on
+  // (workspace, previous_suggestion_id, version). If every item of a re-read
+  // group names the same predecessor row, the second insert of that version
+  // collides with the first — and a version that cannot be written is a
+  // re-extraction that silently stores nothing.
+  seedLateBundle();
+  globalThis.__twoCandidates = true;
+  await requeueWhatsAppProductMessage(workspaceId, "name");
+  await processProductExtractionJob(job());
+  delete globalThis.__twoCandidates;
+  const versions = suggestions().filter((row) => row.version === 2);
+  assert.equal(versions.length, 2, "one group, two products, two items");
+  assert.deepEqual(
+    versions.map((row) => row.itemIndex).sort(),
+    [1, 2],
+  );
+  // The first item replaces the one review row that existed; the second is new
+  // to this group, so it chains to nothing instead of stealing the link.
+  assert.deepEqual(
+    versions
+      .map((row) => row.previousSuggestionId)
+      .sort(),
+    [null, "old-single-source"],
+  );
 });

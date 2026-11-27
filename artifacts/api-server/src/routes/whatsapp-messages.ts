@@ -33,15 +33,12 @@ import {
 } from "../lib/whatsapp-media-storage";
 import { findWhatsAppAssociationSuggestions } from "../lib/whatsapp-association-suggestions";
 import {
-  autoAcceptWhatsAppSuggestions,
   getWhatsAppContentAssociationDecisions,
   getWhatsAppContentBundles,
   whatsappAssociationPairKey,
   type WhatsAppContentAssociationDecision,
 } from "../lib/whatsapp-content-associations";
 import { isConfirmedWhatsAppMediaGroupSource } from "../lib/whatsapp-album-relations";
-import { enqueueWhatsAppMessageIfMissing } from "../lib/whatsapp-marketing";
-import { requeueWhatsAppProductMessage } from "../lib/whatsapp-product-extraction";
 import { findStoredDirectAttachmentForServing } from "../lib/whatsapp-direct-media-serving";
 import { logger } from "../lib/logger.ts";
 
@@ -440,50 +437,12 @@ router.get(
         ids.push(message.id);
         messageIdsByGroup.set(message.groupId, ids);
       }
-      // Unambiguous text + media pairs are linked and queued for content
-      // creation on sight. Ambiguous pairs keep their manual review buttons.
-      for (const [messageGroupId, ids] of messageIdsByGroup) {
-        try {
-          const accepted = await autoAcceptWhatsAppSuggestions({
-            workspaceId,
-            instanceName: connection.instanceName,
-            groupId: messageGroupId,
-            messages: ids.flatMap((id) => {
-              const message = rows.find((row) => row.id === id);
-              if (!message) return [];
-              return [{
-                id: message.id,
-                remoteMessageId: message.remoteMessageId,
-                senderId: message.senderId,
-                textBody: message.textBody,
-                caption: message.caption,
-                mediaAvailable: message.mediaAvailable,
-                mediaGroupId: message.mediaGroupId,
-                mediaGroupSource: message.mediaGroupSource,
-                messageTimestamp: message.messageTimestamp?.toISOString() ?? null,
-                createdAt: message.createdAt.toISOString(),
-                replyToRemoteId: message.replyToRemoteId,
-                mediaCount: mediaByMessage.get(message.id)?.length ?? 0,
-                workspaceId: message.workspaceId,
-                instanceName: message.instanceName,
-                groupId: message.groupId,
-                groupJid: message.groupJid,
-              }];
-            }),
-          });
-          await Promise.all(accepted.messageIds.flatMap((messageId) => [
-            enqueueWhatsAppMessageIfMissing(workspaceId, messageId),
-            // A bundle accepted after extraction must be re-derived as a new
-            // version; a message already used as a source cannot be re-queued.
-            requeueWhatsAppProductMessage(workspaceId, messageId),
-          ]));
-        } catch (error) {
-          logger.error(
-            { error, workspaceId, groupId: messageGroupId },
-            "Failed to auto-accept WhatsApp content associations",
-          );
-        }
-      }
+      // Accepting a pair is a write, and this is a read path: a screen that has
+      // to be opened for a merchant's caption to reach its photos leaves the
+      // bundle unlinked whenever nobody opens it — which is how an album of
+      // three photos stayed three review cards. The auto-queue pass runs the same
+      // rule (see `autoAcceptWhatsAppAssociationsForWorkspace`) and re-arms the
+      // group for extraction when it links; this handler only renders.
       const bundlesByMessage = new Map<
         string,
         { id: string; messageIds: string[] }

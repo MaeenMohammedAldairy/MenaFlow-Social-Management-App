@@ -41,7 +41,7 @@ Table `mena_whatsapp_product_extraction_jobs`, one row per message
 | `processing` | Claimed with `FOR UPDATE SKIP LOCKED` | Stuck > 10 min is reset to `pending` automatically |
 | `waiting_media` | A source message has media that is still downloading (a retry is scheduled) | Requeued automatically when the download finishes. Media that gave up does **not** park here — see `failed` below |
 | `waiting_association` | The message may belong to a content bundle that a human has not confirmed | Confirm or reject the association in the app; both messages are requeued |
-| `complete` | Finished. `last_error` explains the outcome when there is no suggestion | `PRODUCT_TEXT_REQUIRED` means "no text and no readable image" |
+| `complete` | Finished. `reason_code` says which kind of finish; `last_error` carries the detail when there is no suggestion | `PRODUCT_TEXT_REQUIRED` means "no text and no readable image" |
 | `review` | Reserved for suggestions that need attention | — |
 | `failed` | 5 attempts exhausted | Read `last_error`, fix the cause, then requeue (§5) |
 
@@ -53,6 +53,27 @@ it, which is a different problem.
 Retry policy: attempts < 5, delay `min(1h, 30s × 2^(attempt-1))`. Persistence
 runs under the advisory lock `product-extraction:{workspaceId}` so two workers
 cannot create the same draft.
+
+### Every settled job names a reason
+
+`reason_code` is written by `updateJob`, and a terminal transition without one is
+refused: `RECORDED`, `RECORDED_MEDIA_PARTIAL`, `REEXTRACTED_GROUP_GROWN`,
+`SKIPPED_MESSAGE_UNRECEIVABLE`, `SKIPPED_ALREADY_COVERED`, `NEEDS_TEXT`,
+`WAITING_MEDIA`, `WAITING_ASSOCIATION`, `FAILED_MEDIA_UNRECOVERABLE`,
+`FAILED_ASSOCIATED_MESSAGE_UNAVAILABLE`, `FAILED_MODEL_RESPONSE`,
+`FAILED_PERSISTENCE`, `PAUSED_AI_QUOTA`.
+
+Two of them exist because the audit found their absence: `complete` with
+`SKIPPED_ALREADY_COVERED` (the group had already been read at this ruleset
+version — the answer to "I pressed reprocess and nothing happened") and
+`REEXTRACTED_GROUP_GROWN` (a caption joined photos that were read earlier, so the
+group was read again as one). The Arabic sentence for each code comes from
+`extractionReasonMessage()`, which `GET /api/social/products/extraction-metrics`
+returns next to the counts, so an operator does not need the code table at hand.
+
+`raw_extraction_response` holds what the model actually sent back for the last
+attempt, and `prompt_version` says which instruction produced the row — the two
+fields that make «the extraction is bad» answerable with evidence.
 
 **A media failure is terminal only when nothing readable is left.** The download
 worker claims only messages whose `media_download_status` is `pending`, and a
@@ -180,7 +201,7 @@ all?" is one log query rather than an inference from the catalog.
 | `AI_PROVIDER_COOLING_DOWN` | Both providers recently returned 429/402/401/403 | Wait for the cooldown (default 5 min, `AI_PROVIDER_COOLDOWN_MS`; credential errors wait 6× longer) |
 | `PRODUCT_EXTRACTION_INVALID_JSON` / `_INVALID_RESPONSE` / `_INVALID_CANDIDATE` | The model answered outside the contract | Transient; the job retries. If it repeats for one message, the message is unusual — check the corpus (§9) |
 | `PRODUCT_EXTRACTION_CROSS_GROUP_CANDIDATE` | The model mixed messages from different groups | Rejected by design; evidence must come from one bundle |
-| `PRODUCT_VISION_INVALID_RESPONSE` / `PRODUCT_VISION_MEDIA_UNAVAILABLE` | Vision path failed | See §6 |
+| `PRODUCT_VISION_MEDIA_UNAVAILABLE` | A stored image could not be opened (row gone, object missing, unreadable provider) | The group is still read from its text; `media_state` records the loss. See §6 |
 
 ## 3. Suggestions and drafts
 
@@ -200,10 +221,38 @@ name, the extraction is complete, it does not require manual review, and no
 name/SKU clash. Vision-derived candidates always require manual review, so they
 never auto-create anything.
 
+A group has one chain. `group_key` identifies the *group* — an accepted bundle,
+an album, or the single message — and `(workspace_id, group_key, version,
+item_index)` is unique, so a re-run writes the next version and marks the open
+rows before it `superseded`. A suggestion whose message set changed (three photos
+later joined by a caption) is found again through its sources, not only through
+its key, which is what stops a bundle from filing a second card beside the first.
+`dismissed` rows are never superseded and rows that already produced a product are
+never re-cut from behind: `status` also covers `update_proposed`,
+`accepted_update`, `rejected_update` for the correction path, and `previous_suggestion_id`
+links the chain. `media_state` (`not_applicable|included|partial|pending|lost`)
+says what the group's photos did, and `mediaStateMessage` renders it for the card.
+
 Required fields for publication (`PRODUCT_PUBLICATION_REQUIRED_FIELDS`): `name`,
 `price`, `currency`, `availability`, `media`. `description` is advisory — worth
-completing, never a blocker. Price and currency are accepted only as a verified
-pair quoted from the source text.
+completing, never a blocker. A price is kept with the state of its evidence
+rather than dropped: `extracted_data.price_status` is `confirmed` (the number and
+its currency word are quoted), `unquoted` (the number is written but nothing
+around it says price), `ambiguous` (the sources hold more than one price, or two
+currency families for one number) or `missing`. Only `confirmed` — and only with
+a currency — may reach a product on its own; the others keep their number and go
+to a person, because an empty field the merchant cannot explain is worse than a
+number they can correct. `raw_price_text` preserves the merchant's own wording
+(«25 الف», «1.500», «45 ريال»).
+
+The offer's remaining parts are structured, not prose: `features`,
+`specifications` and `accessories` are lists of `{value, sourceId, quote, start,
+end, verified}`, each quote required to appear in the source (a value quoted from
+a photo is grounded in the model's own transcription of it). A fact without a
+quote survives with `verified: false` instead of being deleted, and
+`fact_counts` (with `unverified`) is on the row so a card can say «3 facts, 1
+unverified». They are copied onto the product row, so publication and search can
+use them.
 
 **How a currency is resolved** (`lib/product-currency-resolution.ts`). The quote
 the model returns must contain the currency, and it is read strictly first:
@@ -238,17 +287,22 @@ Endpoints:
 - `GET /api/social/products/whatsapp-extractions` →
   `{ suggestions, pendingJobs, suggestionCounts, pagination }`.
   - Query: `classification=product|not_product`, `status` (repeatable or comma
-    separated, `review|draft_created|possible_duplicate`), `limit` (1–50,
-    clamped), `offset` (0–10 000, clamped). An unknown classification or status
-    is a `400`; `dismissed` cannot be requested at all. Out-of-range paging is
-    clamped rather than rejected so an older client still gets a usable page.
-    Rules in `lib/product-extraction-list-policy.ts`.
+    separated: `review|draft_created|possible_duplicate|update_proposed|
+    accepted_update|rejected_update|superseded`), `limit` (1–50, clamped),
+    `offset` (0–10 000, clamped). An unknown classification or status is a `400`;
+    `dismissed` cannot be requested at all. `superseded` is hidden by default —
+    a group's replaced version is history, not review work — and appears only
+    when it is asked for by name. Out-of-range paging is clamped rather than
+    rejected so an older client still gets a usable page. Rules in
+    `lib/product-extraction-list-policy.ts`.
   - `pendingJobs` counts `pending`, `processing`, `waitingMedia`,
     `waitingAssociation`, `failed`, `quotaPaused` (pending jobs held back by an
-    exhausted AI quota) and `noText` — jobs that completed with nothing readable
-    (a photo with no caption, a sticker, a voice note). `noText` matters because
-    those jobs are neither failed nor waiting, so nothing else on screen mentions
-    them; six such messages sat on the live workspace invisible.
+    exhausted AI quota), `noText` — jobs that completed with nothing readable (a
+    photo with no caption, a sticker, a voice note) — and `alreadyCovered`, jobs
+    that ended because the group had already been read at this version. Both
+    buckets matter because those jobs are neither failed nor waiting, so nothing
+    else on screen mentions them; six such messages sat on the live workspace
+    invisible.
   - `suggestionCounts` is counted over the whole queue ignoring the page filters,
     so the catalog badge (`pendingProductReview`) does not change while the
     merchant moves between slices, and `pagination.nextOffset` is `null` on the
@@ -257,6 +311,12 @@ Endpoints:
 - `POST /api/social/products/extract-whatsapp` (`{ messageId? }`) → `202 { queuedMessages }`.
 - `POST /api/social/products/whatsapp-extractions/:id/create-draft`.
 - `POST /api/social/products/whatsapp-extractions/:id/dismiss`.
+- `POST /api/social/products/whatsapp-extractions/:id/reprocess` — re-read the
+  whole group (see §5.5).
+- `POST /api/social/products/whatsapp-extractions/:id/propose-update` and
+  `.../:id/decide` — the correction path: a proposal against an accepted
+  suggestion becomes `update_proposed`, and deciding it writes `accepted_update`
+  or `rejected_update` without touching the product unless the merchant says so.
 - `POST /api/social/products/whatsapp-extractions/:id/review` with
   `{ field, correct }`, `field ∈ classification | grouping | name | description |
   sku | price | currency | availability`. This is the feedback signal that
@@ -264,6 +324,42 @@ Endpoints:
 
 A draft becomes publishable when a human saves it as `active`; that write stamps
 `verified_at`. Publishing refuses anything else.
+
+### From a column on the row to a sentence on the card
+
+`lib/api-spec/openapi.yaml` is the only place a response shape is written down:
+`pnpm --filter @workspace/api-spec run codegen` turns it into the Zod validators
+in `lib/api-zod` and the typed client in `lib/api-client-react`, and the mobile
+screens read those generated types. Nothing in `lib/*/src/generated` is edited by
+hand, and a field that is not in the contract is not on the merchant's screen —
+that is how `mediaState`, `mediaStateMessage`, `alreadyCovered`, `failureReasons`,
+`promptVersions`, `features`/`specifications`/`accessories`, `priceStatus` and
+`rawPriceText` all existed on the wire while the review card had no way to ask for
+them.
+
+So the order for a new surface is fixed: write the field in the route, document it
+in `openapi.yaml` (with the sentence it renders, in the description — the client
+copy comes from the server, not from the screen), run `codegen`, then use it. The
+gate that keeps the three layers honest is
+`artifacts/menaflow-mobile/lib/product-extraction-review-copy.test.mjs`, which
+parses the contract, the schema columns and the route: a documented field nothing
+sends fails the suite (that is how the client's old phantom `confidenceReasons`
+was found), and a field the route spreads but the contract omits cannot reach the
+generated type.
+
+What the mobile review card now carries from this chain:
+
+| On the card | From | Why it is there |
+|---|---|---|
+| The photo sentence under the fields | `mediaStateMessage`, shown for `partial`, `lost`, `pending` only | A price read from text alone and a price read from text plus three pictures are not the same answer |
+| `مزايا/مواصفات/ملحقات: …`, with «لم نجد لها اقتباسًا في الرسالة» on an unverified one | `extracted_data.features`/`specifications`/`accessories` | A claim with no quote is a lead, and has to look like one |
+| «N رسالة كانت مُحلَّلة سابقًا بنفس القواعد» in the queue panel | `pendingJobs.alreadyCovered` | The answer to «I reprocessed it and nothing happened», which used to read as an idle queue |
+| The reprocess notice (`أُعيدت الرسالة`, `لم تبدأ نسخة جديدة`, or the stopped-worker note) | `POST …/reprocess` → `{queued, reopened, created, workerEnabled}` | A green success was shown even when the server armed nothing |
+
+The pure parts of that copy live in
+`artifacts/menaflow-mobile/lib/product-extraction-card-copy.ts` with its own tests;
+it is a separate module because `product-catalog-api.ts` imports the generated
+client, and a node test cannot read a module that does.
 
 ## 4. Publication jobs
 
@@ -352,9 +448,25 @@ Fastest first, all read-only.
    ```
 5. **Requeue a single message** after fixing media or an association:
    `requeueWhatsAppProductMessage` runs automatically from the media-download and
-   association paths. Manually, `POST /api/social/products/extract-whatsapp`
-   with `{ messageId }` re-queues it (it also clears `PRODUCT_TEXT_REQUIRED`
-   completions, so a message can be reconsidered once vision is enabled).
+   association paths, and `reopenWhatsAppProductExtractionGroup` re-arms the whole
+   group when a late association is accepted — every member gets its job back at
+   the group's next version, and the messages that arrive after the extraction
+   grew the group instead of being ignored. Manually,
+   `POST /api/social/products/extract-whatsapp` with `{ messageId }` re-queues it
+   (it also clears `PRODUCT_TEXT_REQUIRED` completions, so a message can be
+   reconsidered once vision is enabled). Reprocessing one suggestion is not
+   limited to that row and is not a silent no-op any more:
+   `POST /api/social/products/whatsapp-extractions/:id/reprocess` re-arms every
+   message of the group at the next ruleset version and answers
+   `{ rulesetVersion, queued, reopened, created, workerEnabled }`. A group whose
+   job is still live gets `409` instead of a `202` that would be dropped by the
+   unique index — the insert used to be `on conflict do nothing`, so the old
+   behaviour was a promise nothing kept.
+6. **Why did the queue stop making progress?**
+   `GET /api/social/products/extraction-metrics` → `failureReasons` (count per
+   `reason_code` and status, with the merchant-facing sentence) and
+   `promptVersions` (how many suggestions each instruction wrote). A prompt change
+   that helped, or hurt, is visible in the second one within a day.
 6. **Retry failed publications:** `POST /api/social/products/publish-jobs/retry`
    with `{ jobIds: [...] }` (≤ 50). Only `failed` rows are requeued; `attempts`
    resets to 0. `action_required` rows are not retried by design — fix the data
@@ -364,23 +476,36 @@ Fastest first, all read-only.
    worker logs `Product publication job failed` and
    `WhatsApp product extraction job failed` with those fields.
 
-## 6. Vision extraction (photo-only offers)
+## 6. Images in the extraction call
 
-Off unless `PRODUCT_VISION_EXTRACTION_ENABLED` is `true`/`1`/`yes`. When a
-bundle has no text at all, stored images are read and the product is extracted
-from the text visible in them.
+Off unless `PRODUCT_VISION_EXTRACTION_ENABLED` is `true`/`1`/`yes`. When the
+flag is on, the group's stored images are attached to **the same request** that
+reads its messages: one call per group, one answer.
+
+There is deliberately no second, image-only call any more. Two calls meant two
+readings of one offer, and the second answer was pasted over the first: a bundle
+went in with its caption and its thirteen photos, and came out as a product named
+after a heading in a photo, with no price and no description — the caption's
+answer existed, it simply lost. `lib/product-vision-extraction.ts` now only
+prepares images (`selectVisionMedia`, `prepareVisionImage`) and reports what was
+available; `extractWhatsAppProductCandidates` sends them with the text and asks
+the model to transcribe `visibleText` first.
 
 Limits: at most 3 images (`MAX_VISION_IMAGES`), 12 MB per stored source
 (`MAX_VISION_SOURCE_BYTES`), resized so the longest edge is 1024 px
-(`VISION_IMAGE_EDGE`), visible text truncated at 6000 characters. The model
-returns `{ visibleText, products[], nonProductMessageIds[] }` with
-`temperature: 0` and a 60 s timeout.
+(`VISION_IMAGE_EDGE`), `visibleText` truncated at 6000 characters, `temperature:
+0`, and a larger budget than text-only (`maxTokens` 6000 vs 4000, 60 s vs 45 s)
+because a 13-photo album used to be cut off in the middle of its third product.
 
-Vision candidates are always `manualReviewRequired`, so they land in `review`
-and never become automatic drafts. Grounding still applies: a quoted price or
-currency survives only if the quote appears in the visible text and holds
-exactly one price. Do not loosen these gates to make a case pass — that is what
-the corpus in §9 is for.
+Grounding is unchanged and applies to both halves: a value survives if its quote
+appears in the group's message text **or** in the transcription the model itself
+returned — a value invented from what the model knows about the product is
+dropped, not repaired. `imageSourceIds` maps the images to the local ids the
+model was shown, which is what lets a photo-only group be read at all; a reading
+that came from an image is always `manualReviewRequired` (`visionUsed`), so it
+lands in `review` and never becomes an automatic draft. If some of the images
+could not be opened, the suggestion says so in `media_state` rather than looking
+like a complete read.
 
 ## 7. AI provider behaviour
 
@@ -396,7 +521,9 @@ Extraction can be pinned to specific models without touching other features:
 `AI_EXTRACTION_OPENAI_MODEL` and `AI_EXTRACTION_GEMINI_MODEL` override
 `OPENAI_MODEL` / `GEMINI_MODEL` for this purpose only (the same pattern works
 for any purpose: `AI_<PURPOSE>_<PROVIDER>_MODEL`). Pin a cheaper/faster model
-here when quota errors are frequent.
+here when quota errors are frequent. There is one knob, not two: the images ride
+in the extraction request, so `AI_VISION_EXTRACTION_*_MODEL` no longer exists and
+a workspace cannot end up reading one offer with two differently capable models.
 
 ## 8. When nothing arrives at all (inbound webhooks)
 
@@ -467,5 +594,11 @@ behaviour stays fixed.
 | `MENA_META_WEBHOOK_VERIFY_TOKEN`, `FACEBOOK_APP_SECRET` | Meta webhook verification and signature check |
 
 Migrations are applied manually (`supabase/migrations/…`); the API never
-migrates at startup. See `docs/PRODUCT_CATALOG.md` for catalog semantics and
+migrates at startup. `20261127000000_product_extraction_simplification` is
+applied to the live project (2026-11-27), so `reason_code`, `media_state`,
+`group_key`/`item_index` and the fact columns exist there and the metrics can
+group by prompt version; the columns stay at their defaults until a build that
+writes them is deployed, which is the remaining step. Each application is recorded
+with its measurements in `docs/SUPABASE_DATABASE_SETUP.md` §5.
+See `docs/PRODUCT_CATALOG.md` for catalog semantics and
 `docs/WHATSAPP_SYNC.md` for the sync path that feeds this chain.

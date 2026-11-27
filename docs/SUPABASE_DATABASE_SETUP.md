@@ -216,6 +216,76 @@ the settings screen reports the rest of the diagnostics, and inbound delivery it
 unaffected because every write to this table is best-effort. Nothing in the API requires
 the table to exist before it will serve traffic.
 
+### Record: applying `20261127000000_product_extraction_simplification` to the live project (2026-11-27)
+
+The message → product rebuild (`docs/MESSAGE_TO_PRODUCT_REBUILD_PLAN.md` §22) needed its
+schema in place before its code could run, so this migration — columns, not a table — was
+applied to `qznbujvanjvkfxpehcbq` through the Management API and recorded as
+`20261127000000 / product_extraction_simplification`; history now holds **49** entries and
+`supabase db push --linked` has nothing pending. It adds no table, so the §2 lockdown guard
+had nothing to require: measured afterwards, **0** `mena_*` tables have RLS off and `anon`
+plus `authenticated` retain **0** privileges, unchanged.
+
+Two things were found by reading the live catalogues *before* applying, and both would have
+failed the migration as written:
+
+- **`(workspace_id, source_key)` is a UNIQUE CONSTRAINT, not a plain index**
+  (`mena_product_extraction_workspace_source_key`, contype `u`). The file said
+  `DROP INDEX`, which PostgreSQL refuses for a constraint-backed index — with `IF EXISTS`
+  too. It is now `ALTER TABLE … DROP CONSTRAINT`, and the non-unique
+  `…_workspace_source_key_idx` keeps the lookup that still needs it. No foreign key points
+  at that constraint: the two keys into the suggestions table
+  (`mena_product_extraction_source_suggestion_fk`, `mena_product_match_candidates_suggestion_fk`)
+  both reference `(workspace_id, id)`.
+- **The older chain index contradicted a multi-product group.**
+  `mena_product_extraction_version_key` was unique on
+  `(workspace_id, previous_suggestion_id, version)` — one row per predecessor — while the
+  rebuild lets one group answer with several products at one version, all linking to the
+  same predecessor. The second item of such a version would have been refused by the index
+  rather than stored, which is the same class of silent write failure that had killed the six
+  re-extractions. The index is now unique on `(workspace_id, previous_suggestion_id, version,
+  item_index)`, and `whatsapp-product-extraction.ts` links each item to the predecessor of
+  its own `item_index` rather than to the group's newest row.
+
+A functional index on the extracted product name was written for the dedup lookup and then
+dropped again before it left the file: no statement in the server filters or joins on that
+expression (the matcher compares candidate names in memory), so it would only have cost a
+write per suggestion. Block 6 of the migration says so, so that it is re-added with its query
+and not before.
+
+**Measured afterwards from the catalogues:** 4 new columns on the suggestions
+(`group_key` NOT NULL, `item_index` NOT NULL DEFAULT 1, `media_state` NOT NULL DEFAULT
+`'not_applicable'`, `prompt_version`), 3 on the jobs (`reason_code`, `prompt_version`,
+`raw_extraction_response`), 5 on products (`features`, `specifications`, `accessories`,
+`raw_price_text`, `price_status`); the narrow `…_suggestions_status_check` is gone and the
+wide `mena_product_extraction_status_check` lists the eight statuses the code writes; 8
+indexes now cover the suggestions table. All **47** existing suggestions were backfilled
+with `group_key = source_key` — a placeholder, as the file states, because the identity the
+server computes hashes the accepted bundle or the album, which SQL cannot reproduce.
+
+**Behaviour, executed rather than read**, in transactions that were rolled back so the table
+kept its 47 rows: `status = 'superseded'` now writes, which is exactly what the six
+re-extractions could not do; `reason_code = 'SKIPPED_ALREADY_COVERED'` with
+`prompt_version = 'v3'` writes on a job; a second item at the same `(workspace, group_key,
+version)` with a new `item_index` inserts; and a duplicate of that identity is refused with
+`unique_violation` — enforcement, not just room to write. Afterwards: 0 rows in any of the
+new statuses, 0 jobs carrying a reason, i.e. the proofs left nothing behind.
+
+**The block-7 queries, run at the moment of applying** — these are the numbers the new
+build is measured against, not defects in this migration: **0** jobs updated in the last hour
+carried a reason (the deployed code does not write that column yet), **0** groups had more
+than one version (a chain starts at the first re-extraction), and product suggestions with a
+price read **0 / 12** — the same ratio the audit found, which the whole rebuild exists to
+move. Re-run them once the new build has been live an hour: the first two should be non-zero
+and the third should stop being zero for the messages that actually quoted a number.
+
+**What still has to happen for the new columns to fill:** deploy the build that writes them.
+Until then `reason_code`, `media_state` and `prompt_version` stay at their defaults on new
+rows — which is why every one of them is either defaulted or nullable: the deployed
+(`v2`-era) code keeps working against this schema unchanged, and the queue can be observed
+per version through `GET /api/social/products/extraction-metrics` (§22 of the plan) once the
+new build is live.
+
 Creating the Supabase database does not deploy the API or make it publicly reachable. Deploy the API separately on a host with persistent media storage and configure its HTTPS URL, CORS, Clerk, Meta callback, and webhook settings before building the Android app.
 
 ## 6. WhatsApp media in Supabase Storage

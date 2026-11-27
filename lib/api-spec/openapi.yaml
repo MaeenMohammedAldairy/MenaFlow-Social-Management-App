@@ -6427,9 +6427,27 @@ components:
       properties:
         rulesetVersion:
           type: string
-          description: The version the new pass will run with, e.g. `v2`.
+          description: >-
+            The version the whole group will run with, e.g. `v2`. One number for
+            every member of the group: a re-extraction that left one message on the
+            old ruleset was how a caption and its photos ended up as two answers.
         queued:
           type: boolean
+          description: >-
+            False only when the group was already fully covered at this version —
+            which is reported as `409` on a live job instead of a silent `202`.
+        reopened:
+          type: integer
+          description: Jobs of the group armed for another run.
+        created:
+          type: integer
+          description: Members of the group that had no job at all and got one.
+        workerEnabled:
+          type: boolean
+          description: >-
+            Whether the extraction queue is running at all. A job nobody polls is
+            not a request that will be served, and the screen has to be able to
+            say so instead of waiting.
     ProductChangeDiff:
       type: object
       description: >-
@@ -6633,6 +6651,36 @@ components:
         conversionRate:
           type: number
           description: Products activated over product suggestions read, 0-1.
+        failureReasons:
+          type: array
+          description: >-
+            Settled jobs of the window grouped by why they ended, newest first by
+            count. A failure count without its reasons is a number nobody can act
+            on, and every terminal job has to name one.
+          items:
+            type: object
+            properties:
+              reasonCode:
+                type: [string, "null"]
+              status:
+                type: string
+              total:
+                type: integer
+              message:
+                type: string
+                description: The sentence for `reasonCode` in Arabic, or a note that none was recorded.
+        promptVersions:
+          type: array
+          description: >-
+            Suggestions per instruction version, so a prompt change is measured
+            against the rows it produced instead of guessed at.
+          items:
+            type: object
+            properties:
+              promptVersion:
+                type: [string, "null"]
+              total:
+                type: integer
         daily:
           type: array
           description: Succeeded and failed extractions per day, for the sparkline.
@@ -6648,6 +6696,28 @@ components:
               total:
                 type: integer
 
+    ProductFact:
+      type: object
+      description: >-
+        One structured claim about a product, kept with the quotation that grounds
+        it. A value with no source is a lead the merchant must confirm, which is
+        why `verified` is carried to the client instead of the row being dropped.
+      required: [value, verified]
+      properties:
+        value:
+          type: string
+        sourceId:
+          type: [string, "null"]
+          description: Which source message of the group the claim came from.
+        quote:
+          type: [string, "null"]
+          description: The literal phrase it was taken from.
+        start:
+          type: [integer, "null"]
+        end:
+          type: [integer, "null"]
+        verified:
+          type: boolean
     ProductExtractionSourceMessage:
       type: object
       properties:
@@ -6730,6 +6800,39 @@ components:
           type: string
         modelVersion:
           type: [string, "null"]
+        promptVersion:
+          type: [string, "null"]
+          description: >-
+            Which instruction produced this row (`v3` is the single text+images
+            reading). Rows written before that carry `v2`/`v1`/null, so a
+            regression can be dated to a version instead of to a deploy.
+        groupKey:
+          type: [string, "null"]
+          description: >-
+            Identity of the message group this reading covers (an accepted bundle,
+            an album, or one message), so a client can show that two cards are
+            versions of the same reading rather than two products.
+        itemIndex:
+          type: integer
+          description: >-
+            Ordinal inside the group's answer, 1-based. A group of three products
+            is three rows sharing one `groupKey` and `version`.
+        mediaState:
+          type: string
+          enum: [not_applicable, included, partial, pending, lost]
+          description: >-
+            What happened to the group's photos. `included` means they were read
+            with the text in one request; `partial` and `lost` mean the card's
+            values came from text alone even though images existed, which is why a
+            price-less card and an incomplete reading are different problems.
+        mediaStateMessage:
+          type: [string, "null"]
+          description: >-
+            The Arabic sentence for `mediaState`, written by the server so every
+            client says the same thing about a missing photo. Null when there were
+            no images to speak of. Note that `partial` — not `included` — is the
+            best a late media relink can reach: relinking proves the images reached
+            the product, not that the model read them.
         overrideReason:
           type: [string, "null"]
           description: Set when the merchant created a product despite a duplicate warning.
@@ -6761,6 +6864,35 @@ components:
             availability:
               type: [string, "null"]
               enum: [in_stock, out_of_stock, preorder]
+            features:
+              type: array
+              description: >-
+                What the offer does, one entry per claim, each with the words that
+                prove it. `verified: false` means the model wrote the value but no
+                quote in any source message backs it: the card shows it as a lead
+                and it never reaches a product on its own.
+              items:
+                $ref: "#/components/schemas/ProductFact"
+            specifications:
+              type: array
+              description: The numbers and properties the merchant stated.
+              items:
+                $ref: "#/components/schemas/ProductFact"
+            accessories:
+              type: array
+              description: What comes with the product, as written.
+              items:
+                $ref: "#/components/schemas/ProductFact"
+            priceStatus:
+              type: [string, "null"]
+              enum: [confirmed, unquoted, ambiguous, missing]
+              description: >-
+                How well the price is grounded, and the reason a card with a number
+                can still be un-publishable: `ambiguous` keeps the value for a human
+                to choose, `missing` is the only state with no number at all.
+            rawPriceText:
+              type: [string, "null"]
+              description: The merchant's own words for the number, never rewritten.
             evidence_spans:
               type: object
               description: >-
@@ -6882,6 +7014,15 @@ components:
           description: >-
             Pending jobs held back because the workspace AI quota is exhausted.
             They resume on their own; no attempt is spent while paused.
+        alreadyCovered:
+          type: integer
+          description: >-
+            Jobs that ended without a suggestion because the message's product
+            group had already been read at this ruleset version. This is the answer
+            to «I reprocessed it and nothing happened»: the group is not lost, the
+            second reading was simply refused as a duplicate. It is counted apart
+            from `noText` because the fix differs — a covered job needs a new
+            version or a wider group, not a caption.
         noText:
           type: integer
           description: >-
@@ -6897,6 +7038,7 @@ components:
         - waitingAssociation
         - failed
         - quotaPaused
+        - alreadyCovered
         - noText
     ProductExtractionSuggestionCounts:
       type: object

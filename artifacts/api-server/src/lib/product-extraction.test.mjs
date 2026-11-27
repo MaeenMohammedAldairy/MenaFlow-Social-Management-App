@@ -117,7 +117,11 @@ test("keeps repeated amounts with different currencies for review", () => {
     [conflictingCurrencySource],
   );
 
-  assert.equal(candidate.data.price, null);
+  // The number itself is not in doubt — the same ١٢٥ is offered in two
+  // currencies — so it is kept. What cannot be settled is which currency, and
+  // that is what keeps the row in review instead of becoming a draft.
+  assert.equal(candidate.data.price, "125");
+  assert.equal(candidate.data.priceStatus, "confirmed");
   assert.equal(candidate.data.currency, null);
   assert.equal(candidate.complete, false);
 });
@@ -170,7 +174,7 @@ test("does not keep model-invented names, descriptions, or prices", () => {
   assert.equal(candidate.complete, false);
 });
 
-test("keeps products with multiple advertised prices as drafts without a price", () => {
+test("reports several advertised prices as an ambiguity without losing the number", () => {
   const multiPriceSource = {
     ...source,
     text: `${source.text} فقط ب 17500 ريال وبالسعودي 125`,
@@ -182,9 +186,92 @@ test("keeps products with multiple advertised prices as drafts without a price",
     })),
     [multiPriceSource],
   );
-  assert.equal(candidate.data.price, null);
-  assert.equal(candidate.data.currency, null);
+  // Two prices in one source used to null the field, which looked exactly like
+  // «the merchant never wrote a price». The claimed value is kept so the review
+  // card can show it, and the ambiguity is what keeps it out of the catalog.
+  assert.equal(candidate.data.price, "17500");
+  assert.equal(candidate.data.priceStatus, "ambiguous");
   assert.equal(candidate.complete, false);
+});
+
+test("parses a price written with a thousands word instead of dropping it", () => {
+  const scaledSource = { ...source, text: "حقيبة سعرها 25 الف" };
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify(
+      extraction({
+        data: { price: "25000" },
+        evidence: { price: "25 الف" },
+      }),
+    ),
+    [scaledSource],
+  );
+  assert.equal(candidate.data.price, "25000");
+  assert.equal(candidate.data.priceStatus, "confirmed");
+});
+
+test("keeps a number that is written but not quoted as a lead, not as a value", () => {
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify(
+      extraction({
+        data: { price: "4550" },
+        evidence: { price: "السعر" },
+      }),
+    ),
+    [{ ...source, text: "ساعة NAVIFORCE 4550" }],
+  );
+  assert.equal(candidate.data.price, "4550");
+  assert.equal(candidate.data.priceStatus, "unquoted");
+  assert.equal(candidate.complete, false);
+});
+
+test("drops a price that appears nowhere in the source", () => {
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify(
+      extraction({
+        data: { price: "999999" },
+        evidence: { price: "١٢٥ ريال" },
+      }),
+    ),
+    [source],
+  );
+  assert.equal(candidate.data.price, null);
+  assert.equal(candidate.data.priceStatus, "missing");
+});
+
+test("keeps the structured facts of an offer with the quote that proves them", () => {
+  const factSource = {
+    ...source,
+    text: "حقيبة سفر كبيرة مزودة بعجلة معدنية، الوزن 8 كجم، تأتي مع قفل",
+  };
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify(
+      extraction({
+        data: {
+          name: "حقيبة سفر كبيرة",
+          features: [
+            { value: "عجلة معدنية", evidence: "مزودة بعجلة معدنية" },
+            { value: "مقاومة للماء", evidence: "ليست في النص" },
+          ],
+          specifications: [{ value: "الوزن 8 كجم", evidence: "الوزن 8 كجم" }],
+          accessories: [{ value: "قفل", evidence: "تاتي مع قفل" }],
+        },
+      }),
+    ),
+    [factSource],
+  );
+  assert.deepEqual(
+    candidate.facts.features.map((fact) => fact.value),
+    ["عجلة معدنية"],
+  );
+  assert.equal(candidate.facts.features[0].verified, true);
+  assert.deepEqual(
+    candidate.facts.specifications.map((fact) => fact.value),
+    ["الوزن 8 كجم"],
+  );
+  assert.deepEqual(
+    candidate.facts.accessories.map((fact) => fact.value),
+    ["قفل"],
+  );
 });
 
 test("generates relevant aliases from the product name without accepting unrelated names", () => {

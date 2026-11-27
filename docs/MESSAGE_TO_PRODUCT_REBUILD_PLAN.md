@@ -570,3 +570,34 @@ detected → classified(not_product) → archived
 | بطاقات مؤشرات قابلة للنقر، مسار تحويل، واتجاه سبعة أيام في التقارير | `ReportsScreen.tsx` + `routes/product-extractions.ts` |
 
 تم استبعاد إعادة تصميم نظام التصميم بالكامل، والإشعارات الفورية لكل مقترح (الاكتفاء بالملخص اليومي)، وعرض ثقة النموذج الخام، وتطبيق التحديثات آلياً بعد الاعتماد.
+
+---
+
+## 22. جولة التبسيط الشاملة — 2026-11-27
+
+نتيجة التدقيق التشغيلي (73 رسالة / 47 اقتراحاً / 0 اقتراح يحمل سعراً رغم أن 8 رسائل ذكرته). نُفِّذت الجولات 0–6 كلها على هذا الفرع:
+
+| ما نُفِّذ | الملف | ملاحظة |
+|---|---|---|
+| هوية المجموعة قبل الاستخراج: حزمة → ألبوم → رسالة، scope كاملة، ثابتة عند نمو المجموعة | `whatsapp-content-association-logic.ts` (`whatsappProductExtractionGroupKey`) | العمود `group_key` + فهرس فريد `(workspace, group_key, version, item_index)` |
+| طلب واحد للنص والصور معاً بدل طلبين كان الثاني يُمحي الأول فوقه | `product-extraction.ts` (`extractWhatsAppProductCandidates`) + `whatsapp-product-extraction.ts` (`collectStoredVisionImages`) | حُذف `extractProductCandidatesFromImages` ومسار الـ prompt المنفصل للصور |
+| التحقق يحفظ القيمة الصحيحة بدل تصفيرها: `price_status` بحالاتها الأربع مع `raw_price_text` | `product-price-parsing.ts` (`resolveExtractedPrice`, `findPriceMentions`, `distinctCurrencyFamilies`) | «25 الف» و«1.500» و«45 ريــال» تُقرأ الآن؛ التعارض يبقى برقمه ويذهب للمراجعة |
+| اقتراح واحد للمجموعة: سلسلة إصدارات، وإلغاء الاستبدال الصامت؛ الدمج صار كشف تعارض | `whatsapp-product-extraction.ts` (`extractionGroupCoverage`) + `product-extraction.ts` (`detectGroupDisagreement`) | بطاقة واحدة لكل منتج فعلي؛ ألبوم «3 صور = 3 منتجات» يبقى ثلاث بطاقات |
+| أسباب شفافة لكل حالة نهائية + حفظ رد النموذج الخام + نسخة الـ prompt | `product-extraction-reasons.ts` + `product-extraction-prompt-version.ts` + أعمدة `reason_code`/`raw_extraction_response`/`prompt_version` | `updateJob` يرفض حالة نهائية بلا سبب؛ `SKIPPED_ALREADY_COVERED` هي جواب «أعدت المعالجة فلم يحدث شيء» |
+| سباق الوسائط: إعادة الربط بجملة واحدة تقرأ الصف وقت التنفيذ، وحالة وسائط على كل اقتراح | `relinkCompletedExtractionMedia` + `product-extraction-media-policy.ts` (`decideWhatsAppExtractionMediaState`) | `media_state ∈ not_applicable/included/partial/pending/lost` مع جملتها العربية في `mediaStateMessage` |
+| النموذج البنيوي للمنتج: features / specifications / accessories بكل عنصر موثّق باقتباس وموضع | `product-facts.ts` + أعمدة `mena_products` | قيمة بلا اقتباس تُبقى بـ`verified:false` بدل حذفها؛ من لا مصدر له يُرمى |
+| قبول الربط يعيد تسليح المجموعة كلها، والقبول التلقائي صار في الطابور لا في GET | `whatsapp-product-group-reopen.ts` + `whatsapp-association-auto-accept.ts` | مع حارس «المجموعة قُرئت معاً فلا نُعيد دفع الثمن»، وإزالة استدعاء القبول من مسار القراءة |
+| المنفَّذ (endpoint) صار صريحاً: 409 عند وظيفة حيّة، و`reopened/created/rulesetVersion` في الرد | `routes/product-extractions.ts` | كان `on conflict do nothing` يُجيب 202 ولا يعمل شيء |
+| عدّادات الطابور والمقاييس: `failed` و`quotaPaused` و`noText` و`alreadyCovered`، وتوزيع الأسباب ونسخ الـ prompt | `routes/product-extractions.ts` (`/social/products/extraction-metrics`) | |
+| قائمة المراجعة تُخفي `superseded` افتراضياً وتُظهره عند الطلب صراحةً | `product-extraction-list-policy.ts` | البطاقة المُستبدلة تاريخ لا عمل مراجعة |
+| migration كامل التوسعة/الBACKFILL/الفهارس مع أسئلة تحقق بعد التطبيق — **مُطبَّق على القاعدة الحيّة** | `supabase/migrations/20261127000000_product_extraction_simplification.sql` + `docs/SUPABASE_DATABASE_SETUP.md` §5 | يوسّع قيد الحالة الضيّق الذي عطّل كل مسارات التصحيح، ويُعيد قيد سلسلة العناصر على `item_index` |
+
+### ما تحقق به ذلك
+
+`pnpm test` على المستودع: 1088 اختباراً، 1087 نجحت، واحد مُتجاهَل، وصفر فشل. `pnpm run typecheck` (بناء الـ libs كلهم + `api-server` + `menaflow-mobile` + `owner-console` + `mockup-sandbox` + `scripts`) يمرّ بالكامل. الاختبارات المضافة/المحدّثة في هذا الدور تحمل أسماء تقصّدناها لأن الأسماء هي الوصف: `keeps a number that is written but not quoted as a lead, not as a value`، `drops a price that appears nowhere in the source`، `reports several advertised prices as an ambiguity…`، `keeps the structured facts of an offer with the quote that proves them`، `the media state says what the photos did`، `a superseded version is history, not review work`، `a group already read together is not paid for twice`، `the group's photos ride in the same request as its text`.
+
+### ما لم يُنفَّذ بعد
+
+1. ~~**تنفيذ الـ migration على `qznbujvanjvkfxpehcbq`**~~ — نُفِّذ بتاريخ 2026-11-27 وسُجِّل في `supabase_migrations.schema_migrations` بالإصدار `20261127000000`، مع القياسات ودليل الكتابة (superseded/second item/reason code) في `docs/SUPABASE_DATABASE_SETUP.md` §5. القراءتك الحيّة للكتالوجات قبل التنفيذ غيّرت الملف نفسه مرّتين: `(workspace_id, source_key)` كان قيد `UNIQUE` لا فهرساً (فـ`DROP INDEX` كان سيفشل)، وفهرس السلسلة القديم `mena_product_extraction_version_key` كان فريداً على `(workspace, previous_suggestion_id, version)` أي صفاً واحداً لكل سلف — فثاني عنصر في مجموعة متعدّدة المنتجات كان سيُرفض بصمت؛ صار الفهرس على `(workspace, previous_suggestion_id, version, item_index)` ويربط كل عنصر بسلفه هو.
+2. ~~**مسار UI للحقول الجديدة**~~ — نُفِّذ: الحقول كُتبت في `lib/api-spec/openapi.yaml` (مصدر الحقيقة الوحيد للعميل) ثم وُلِّد العميل بـ`pnpm --filter @workspace/api-spec run codegen`؛ لا يُحرَّر `lib/api-client-react/src/generated` يدوياً. النتيجة في `ProductCatalogScreen.tsx`: سطر `mediaStateMessage` على البطاقة، وسطور `features`/`specifications`/`accessories` مع تعليم قيمة بلا اقتباس («لم نجد لها اقتباسًا في الرسالة»)، و«حالة طابور الاستخراج» صارت تعرض `alreadyCovered`، ورسالة «إعادة التحليل» تُبنى من `{queued, reopened, created, workerEnabled}` بدل نجاح دائم. المنطق النقي في `lib/product-extraction-card-copy.ts` مع اختباره، وبابه `product-extraction-review-copy.test.mjs` الذي رفض فوراً حقلاً موثّقاً لا يرسله المسار.
+3. **تجربة على بيانات حيّة**: لم تُستدعَ نماذج ذكاء اصطناعي ولم تُشغَّل وظائف الخادم أثناء هذا العمل؛ الأرقام المذكورة أعلاه من التدقيق السابق، وما تغيّر هو الكود والاختبارات.

@@ -181,6 +181,10 @@ test("the documented suggestion shape is what the route actually spreads", () =>
       "missingFields",
       "missingFieldMessages",
       "possibleDuplicateProducts",
+      // Derived beside the row, in the server's words: the mobile card reads it
+      // (`productExtractionMediaNote`), and `mediaState` alone is a column the
+      // merchant cannot interpret.
+      "mediaStateMessage",
     ],
   );
 });
@@ -219,7 +223,11 @@ test("the classification values the app sends are the ones the server accepts", 
 
 test("the status values the app sends are the ones the server accepts", () => {
   const server = literals(
-    captured(serverPolicy, /const STATUSES = \[([^\]]*)\]/, "server STATUSES"),
+    captured(
+      serverPolicy,
+      /const PRODUCT_EXTRACTION_LIST_STATUSES = \[([^\]]*)\]/,
+      "server PRODUCT_EXTRACTION_LIST_STATUSES",
+    ),
   );
   const statusParam = pathBlock("/social/products/whatsapp-extractions")
     .split("- name: status")[1]

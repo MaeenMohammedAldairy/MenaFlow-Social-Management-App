@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { and, asc, desc, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { Router } from "express";
 import {
   db,
@@ -38,6 +38,7 @@ import {
   buildProductExtractionPagination,
   parseProductExtractionListQuery,
   summarizeProductExtractionSuggestions,
+  productExtractionHiddenStatuses,
 } from "../lib/product-extraction-list-policy";
 import { requireWorkspace, requestWorkspaceId } from "../lib/workspace-context";
 import { buildChangeDiff } from "../lib/product-intake-policy.ts";
@@ -46,6 +47,10 @@ import {
   recordProductChanges,
   requireProductWriter,
 } from "../lib/product-intake-service.ts";
+import { reopenWhatsAppProductExtractionGroup } from "../lib/whatsapp-product-group-reopen.ts";
+import { extractionReasonMessage } from "../lib/product-extraction-reasons.ts";
+import { productExtractionMediaStateMessage } from "../lib/product-extraction-media-policy.ts";
+import type { ProductFact } from "../lib/product-facts.ts";
 
 const router = Router();
 
@@ -130,8 +135,16 @@ router.get(
       ["merchant", "customer", "unknown"].includes(req.query.senderRole)
         ? (req.query.senderRole as "merchant" | "customer" | "unknown")
         : null;
+    // Superseded versions stay out of the queue unless the client asked for them
+    // by name: the chain is readable through `?status=superseded`, but a review
+    // surface that shows an answered card next to its replacement is the
+    // duplication the merchant is being asked to look past.
+    const hiddenStatuses = productExtractionHiddenStatuses(listQuery.statuses);
     const filteredWhere = and(
       notDismissed,
+      ...(hiddenStatuses.length > 0
+        ? [notInArray(productExtractionSuggestions.status, hiddenStatuses)]
+        : []),
       ...(listQuery.classification
         ? [eq(productExtractionSuggestions.classification, listQuery.classification)]
         : []),
@@ -324,6 +337,18 @@ router.get(
         eq(whatsappProductExtractionJobs.status, "complete"),
         eq(whatsappProductExtractionJobs.lastError, "PRODUCT_TEXT_REQUIRED"),
       ));
+    // Jobs that ended `complete` because the group had already been read at this
+    // ruleset version. Not a failure and not a wait — but the answer to «I
+    // pressed reprocess and nothing happened», which used to require reading the
+    // queue by hand.
+    const [alreadyCoveredRow] = await db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(whatsappProductExtractionJobs)
+      .where(and(
+        eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+        eq(whatsappProductExtractionJobs.status, "complete"),
+        eq(whatsappProductExtractionJobs.reasonCode, "SKIPPED_ALREADY_COVERED"),
+      ));
     const pendingJobs = {
       pending: jobCounts.pending ?? 0,
       processing: jobCounts.processing ?? 0,
@@ -332,6 +357,7 @@ router.get(
       failed: jobCounts.failed ?? 0,
       quotaPaused: quotaPausedRow?.total ?? 0,
       noText: noTextRow?.total ?? 0,
+      alreadyCovered: alreadyCoveredRow?.total ?? 0,
     };
     const requestOrigin = mediaRequestOrigin(req);
     const sourceMediaByMessageId = new Map<string, ProductMediaPreview[]>();
@@ -394,6 +420,11 @@ router.get(
           sources: suggestionSources,
           missingFields,
           missingFieldMessages: missingProductFieldMessages(missingFields),
+          // What the group's photos did, in words: `partial` and `lost` are
+          // different problems with different fixes, and the card has to show it.
+          mediaStateMessage: suggestion.mediaState
+            ? productExtractionMediaStateMessage(suggestion.mediaState)
+            : null,
           ...(suggestion.status === "possible_duplicate"
             ? {
                 possibleDuplicateProducts:
@@ -522,6 +553,11 @@ router.post(
         price: string | null;
         currency: string | null;
         availability: "in_stock" | "out_of_stock" | "preorder" | null;
+        priceStatus: "confirmed" | "unquoted" | "ambiguous" | "missing";
+        rawPriceText: string | null;
+        features: ProductFact[];
+        specifications: ProductFact[];
+        accessories: ProductFact[];
       }>;
       const input = parseProductInput(
         hasManualProduct
@@ -570,6 +606,15 @@ router.post(
                 ? "in_stock"
                 : input.availability,
           mediaUrls: sourceMedia,
+          // The reading's structured parts come along with the name and the
+          // price: a merchant accepting a card should land the same product the
+          // automatic path would have written, not a thinner one. Facts keep
+          // their quotes, so the editor can show where each line came from.
+          features: candidate.features ?? [],
+          specifications: candidate.specifications ?? [],
+          accessories: candidate.accessories ?? [],
+          priceStatus: candidate.priceStatus ?? null,
+          rawPriceText: candidate.rawPriceText ?? null,
           verifiedAt: null,
           updatedAt: new Date(),
         })
@@ -780,44 +825,90 @@ router.post(
       res.status(404).json({ error: "لم يتم العثور على الاقتراح." });
       return;
     }
-    const sourceRows = await db
-      .select({ messageId: productExtractionSources.messageId })
-      .from(productExtractionSources)
-      .where(and(
-        eq(productExtractionSources.workspaceId, workspaceId),
-        eq(productExtractionSources.suggestionId, suggestionId),
-      ))
-      .limit(1);
-    const messageId = sourceRows[0]?.messageId;
-    if (!messageId) {
+    // The whole group is re-read, not the one message that happened to carry the
+    // suggestion: a caption re-extracted without its photos produces the same
+    // half-answer the merchant is asking us to fix.
+    const sourceRows = suggestion.groupKey
+      ? await db
+          .select({ messageId: productExtractionSources.messageId })
+          .from(productExtractionSources)
+          .innerJoin(
+            productExtractionSuggestions,
+            and(
+              eq(
+                productExtractionSuggestions.id,
+                productExtractionSources.suggestionId,
+              ),
+              eq(
+                productExtractionSuggestions.workspaceId,
+                productExtractionSources.workspaceId,
+              ),
+            ),
+          )
+          .where(and(
+            eq(productExtractionSources.workspaceId, workspaceId),
+            eq(productExtractionSuggestions.groupKey, suggestion.groupKey),
+          ))
+      : await db
+          .select({ messageId: productExtractionSources.messageId })
+          .from(productExtractionSources)
+          .where(and(
+            eq(productExtractionSources.workspaceId, workspaceId),
+            eq(productExtractionSources.suggestionId, suggestionId),
+          ));
+    const messageIds = [...new Set(sourceRows.map((row) => row.messageId))];
+    if (messageIds.length === 0) {
       res.status(422).json({ error: "لا توجد رسالة مصدر يمكن إعادة تحليلها." });
       return;
     }
-    const nextVersion = (suggestion.version ?? 1) + 1;
-    const rulesetVersion = `v${nextVersion}`;
-    const idempotencyKey = createHash("sha256")
-      .update(`${workspaceId}:${messageId}:${rulesetVersion}`)
-      .digest("hex");
-    await db.insert(whatsappProductExtractionJobs).values({
-      id: randomUUID(),
-      ownerId: suggestion.ownerId,
+    const active = await db
+      .select({
+        messageId: whatsappProductExtractionJobs.messageId,
+        status: whatsappProductExtractionJobs.status,
+      })
+      .from(whatsappProductExtractionJobs)
+      .where(and(
+        eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+        inArray(whatsappProductExtractionJobs.messageId, messageIds),
+        inArray(whatsappProductExtractionJobs.status, ["pending", "processing"]),
+      ))
+      .limit(1);
+    if (active.length > 0) {
+      // Telling the merchant the group is already being read, instead of
+      // accepting a second request that a unique index would quietly drop: the
+      // insert used to be `onConflictDoNothing`, so a reprocess of a message
+      // with a live job answered 202 «queued» and never ran.
+      res.status(409).json({
+        error: "هذه المجموعة قيد التحليل بالفعل.",
+        status: active[0].status,
+        messageId: active[0].messageId,
+      });
+      return;
+    }
+    const reopened = await reopenWhatsAppProductExtractionGroup({
       workspaceId,
-      messageId,
-      status: "pending",
-      stage: "received",
-      rulesetVersion,
-      idempotencyKey,
-      dedupeKey: null,
-      nextRunAt: new Date(),
-      updatedAt: new Date(),
-    }).onConflictDoNothing();
+      messageIds,
+      reason: "bundle_grown",
+    });
     await recordExtractionEvent({
       workspaceId,
       event: "EXTRACTION_REPROCESSED",
       suggestionId,
-      context: { rulesetVersion, messageId },
+      context: {
+        rulesetVersion: reopened.rulesetVersion,
+        groupKey: suggestion.groupKey,
+        messages: messageIds.length,
+      },
     });
-    res.status(202).json({ rulesetVersion, queued: true });
+    res.status(202).json({
+      rulesetVersion: reopened.rulesetVersion,
+      queued: reopened.reopened + reopened.created > 0,
+      reopened: reopened.reopened,
+      created: reopened.created,
+      // Whether the queue is even running: a job that nobody polls is not a
+      // request that will be served, and the screen has to be able to say so.
+      workerEnabled: process.env.WHATSAPP_PRODUCT_EXTRACTION_WORKER_ENABLED !== "false",
+    });
   },
 );
 
@@ -1180,6 +1271,37 @@ router.get(
         menaProductExtractionEvents.event,
       )
       .orderBy(sql`date_trunc('day', ${menaProductExtractionEvents.createdAt})`);
+    // Why jobs ended the way they did, and which instruction produced which
+    // answer. A count of failures without their reasons is a number you cannot
+    // act on, and a prompt change with no version on the rows it produced cannot
+    // be measured afterwards — both gaps were found by hand in the last audit.
+    const failureReasons = await db
+      .select({
+        reasonCode: whatsappProductExtractionJobs.reasonCode,
+        status: whatsappProductExtractionJobs.status,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(whatsappProductExtractionJobs)
+      .where(and(
+        eq(whatsappProductExtractionJobs.workspaceId, workspaceId),
+        gte(whatsappProductExtractionJobs.updatedAt, since),
+      ))
+      .groupBy(
+        whatsappProductExtractionJobs.reasonCode,
+        whatsappProductExtractionJobs.status,
+      )
+      .orderBy(sql`count(*)::int desc`);
+    const promptVersions = await db
+      .select({
+        promptVersion: productExtractionSuggestions.promptVersion,
+        total: sql<number>`count(*)::int`,
+      })
+      .from(productExtractionSuggestions)
+      .where(and(
+        eq(productExtractionSuggestions.workspaceId, workspaceId),
+        gte(productExtractionSuggestions.createdAt, since),
+      ))
+      .groupBy(productExtractionSuggestions.promptVersion);
     const countEvent = (name: string) =>
       events.find((item) => item.event === name)?.total ?? 0;
     const created = suggestions
@@ -1196,6 +1318,15 @@ router.get(
       reprocessed: countEvent("EXTRACTION_REPROCESSED"),
       proposalsAccepted: countEvent("PROPOSAL_ACCEPTED"),
       conversionRate: created ? activated / created : 0,
+      failureReasons: failureReasons.map((row) => ({
+        ...row,
+        // The merchant-facing sentence, so an operator reading this endpoint
+        // does not need the code table at hand.
+        message: row.reasonCode
+          ? extractionReasonMessage(row.reasonCode)
+          : "لم يُسجَّل سبب لهذا التشغيل.",
+      })),
+      promptVersions,
       daily,
     });
   },
