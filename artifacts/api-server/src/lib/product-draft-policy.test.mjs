@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PRODUCT_PUBLICATION_REQUIRED_FIELDS,
+  acceptedExtractionProductFields,
   isProductPublishable,
   missingProductFieldMessages,
   missingProductFields,
@@ -208,4 +209,66 @@ test("the required publication fields stay an explicit, ordered contract", () =>
     "availability",
     "media",
   ]);
+});
+
+// The accept step is where a merchant turns a card into a product, and it used
+// to write `price: null` whenever no currency was resolved. Measured on the
+// live workspace: three products holding `raw_price_text` and no number, while
+// the publication blocker named «السعر» as missing — the digits the merchant
+// wrote were dropped for the want of a word, in the one step a human decided.
+test("a merchant's accepted card keeps its number even when no currency was resolved", () => {
+  const fields = acceptedExtractionProductFields({
+    price: "2500",
+    currency: null,
+    rawPriceText: "2500",
+    priceStatus: "unquoted",
+  });
+  assert.equal(fields.price, "2500");
+  assert.equal(fields.currency, null);
+  assert.equal(fields.rawPriceText, "2500");
+  assert.equal(fields.priceStatus, "unquoted");
+});
+
+test("an accepted card with a resolved currency is publishable material", () => {
+  const fields = acceptedExtractionProductFields({
+    price: "2500",
+    currency: "YER",
+    rawPriceText: "2500 ريال يمني",
+    priceStatus: "confirmed",
+  });
+  assert.equal(fields.price, "2500");
+  assert.equal(fields.currency, "YER");
+  assert.deepEqual(
+    productPublicationBlockers({
+      ...fields,
+      name: "دفاية",
+      description: null,
+      availability: "in_stock",
+      mediaUrls: ["m1"],
+    }),
+    [],
+  );
+});
+
+test("a number the extraction never found is not invented at accept", () => {
+  const fields = acceptedExtractionProductFields({
+    price: null,
+    currency: "YER",
+    rawPriceText: null,
+    priceStatus: "missing",
+  });
+  assert.equal(fields.price, null);
+  // A currency without a price is nothing to publish, and nothing to keep: the
+  // blocker list names the price, so the card stays honest about the gap.
+  assert.equal(fields.currency, "YER");
+  assert.deepEqual(
+    productPublicationBlockers({
+      ...fields,
+      name: "دفاية",
+      description: null,
+      availability: "in_stock",
+      mediaUrls: ["m1"],
+    }),
+    ["price"],
+  );
 });

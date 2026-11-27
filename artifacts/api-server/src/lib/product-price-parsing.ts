@@ -47,6 +47,17 @@ export type PriceMention = {
   hasCurrency: boolean;
   /** Offset of the match in the normalized text. */
   index: number;
+  /**
+   * The words written between this number and the numbers (or the line) around
+   * it — the only text that can say *which* currency this amount is in.
+   *
+   * `currencies` answers "is there a currency word touching the digits"; it is
+   * one matched token, and «ريال يمني» is two. Resolving a currency code needs
+   * the whole phrase, and it must not reach past the next number: in
+   * «بـ 3,000 او 21 ريال سعودي» the rial belongs to the 21, and reading it onto
+   * the 3,000 would print a Saudi price on a Yemeni amount.
+   */
+  neighbourhood: string;
 };
 
 /**
@@ -93,6 +104,15 @@ const NUMBER_BODY = String.raw`\d+(?:[.,\u066C]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,
 const PRICE_LEAD_IN = new RegExp(String.raw`(?:فقط\s*ب|بالريال|بالسعودي)\s*$`, "u");
 
 /**
+ * A currency word plus the qualifier written directly after it — «ريال يمني»,
+ * «الريال السعودي» — which is the half a token-by-token scan loses.
+ */
+const CURRENCY_PHRASE = new RegExp(
+  String.raw`(?:${CURRENCY_TOKEN})(?:\s+(?:ال)?[\p{L}\p{M}_]+)?`,
+  "u",
+);
+
+/**
  * Every number in the text, priced or not, with its grounding flags.
  *
  * Adjacency is read from the context around the digits rather than from one
@@ -130,10 +150,34 @@ export function findNumberMentions(text: string): PriceMention[] {
       ...(currencyWordsBefore.exec(before)?.slice(1) ?? []),
       ...(currencyWordsAfter.exec(after)?.slice(1) ?? []),
     ];
+    // A neighbourhood ends where another number or another line begins, so a
+    // bundle joined into one text cannot lend one message's currency to another.
+    const boundary = /\p{N}|\n/u;
+    const nextNumber = after.search(boundary);
+    const afterWords = nextNumber === -1 ? after : after.slice(0, nextNumber);
+    const beforeMatch = [...before.matchAll(new RegExp(boundary.source, "gu"))].at(-1);
+    const beforeWords = before.slice((beforeMatch?.index ?? -1) + 1);
+    // Keep the currency phrase, not the whole window: the card shows this text,
+    // and «واط) بشاشة لمس — بسعر» around a number is not evidence of a unit.
+    const phraseBefore = [
+      ...beforeWords.matchAll(new RegExp(CURRENCY_PHRASE.source, "gu")),
+    ].at(-1)?.[0];
+    const phraseAfter = new RegExp(
+      // `String.raw`, not a plain template: `\s` inside one is the letter `s`,
+      // and a pattern of `^s*` matches every phrase while saying nothing about
+      // whitespace — which is how this line silently returned `undefined`.
+      String.raw`^\s*(${CURRENCY_PHRASE.source})`,
+      "u",
+    ).exec(afterWords)?.[0];
+    const neighbourhood = [phraseBefore, phraseAfter]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
     mentions.push({
       raw: digits,
       value,
       currencies,
+      neighbourhood,
       multiplied: Boolean(scaled),
       hasCurrency:
         currencies.length > 0 ||
@@ -189,6 +233,16 @@ export type ParsedPrice = {
   status: PriceStatus;
   /** The merchant's own words for the number, kept verbatim for the card. */
   raw: string | null;
+  /**
+   * The text written around the number the value was matched in, or `null`.
+   *
+   * A currency is decided by what sits next to the amount, and the quote a model
+   * returns is often just the digits («2500»). Handing the caller this phrase is
+   * what lets `product-currency-resolution.ts` read «2500 ريال يمني» from the
+   * merchant's own message instead of giving up: measured on the live workspace,
+   * 0 of 57 suggestions had a currency because nothing looked past the quote.
+   */
+  currencyEvidence: string | null;
 };
 
 const PLAIN_AMOUNT = /^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/;
@@ -231,10 +285,21 @@ export function resolveExtractedPrice(input: {
       // several of them are reported as the ambiguity the merchant created.
       status: distinctSourcePrices.size > 1 ? "ambiguous" : "missing",
       raw: distinctSourcePrices.size === 1 ? sourceMentions[0]?.raw ?? null : null,
+      currencyEvidence: null,
     };
   }
   const quoteMentions = findPriceMentions(input.evidenceQuote ?? "");
   const quoteMatch = quoteMentions.find((mention) => mention.value === candidate);
+  const sourceMatchAll = findNumberMentions(input.sourceText);
+  const sourceMatchPrice = sourceMentions.find(
+    (mention) => mention.value === candidate,
+  );
+  const sourceMatchNumber = sourceMatchAll.find(
+    (mention) => mention.value === candidate,
+  );
+  const currencyEvidence = (sourceMatchPrice ?? sourceMatchNumber)?.neighbourhood ??
+    quoteMatch?.neighbourhood ??
+    null;
   if (quoteMatch) {
     const grounded = quoteMatch.hasCurrency || quoteMatch.multiplied;
     // One rule for the whole function: more than one price written in the
@@ -246,30 +311,29 @@ export function resolveExtractedPrice(input: {
       : grounded
         ? "confirmed"
         : "unquoted";
-    return { price: candidate, status, raw: quoteMatch.raw };
+    return { price: candidate, status, raw: quoteMatch.raw, currencyEvidence };
   }
-  const sourceMatch = sourceMentions.find((mention) => mention.value === candidate);
-  if (sourceMatch) {
+  if (sourceMatchPrice) {
     return {
       price: candidate,
       status: distinctSourcePrices.size > 1 ? "ambiguous" : "unquoted",
-      raw: sourceMatch.raw,
+      raw: sourceMatchPrice.raw,
+      currencyEvidence,
     };
   }
   // The number is written in the source but nothing around it says «price» — a
   // weight, a count, a size could read the same. Kept, and flagged: the field is
   // not thrown away, and it cannot become a draft on its own.
-  const writtenNumber = findNumberMentions(input.sourceText).find(
-    (mention) => mention.value === candidate,
-  );
+  const writtenNumber = sourceMatchNumber;
   if (writtenNumber) {
     return {
       price: candidate,
       status: distinctSourcePrices.size > 1 ? "ambiguous" : "unquoted",
       raw: writtenNumber.raw,
+      currencyEvidence,
     };
   }
-  return { price: null, status: "missing", raw: null };
+  return { price: null, status: "missing", raw: null, currencyEvidence: null };
 }
 
 /**

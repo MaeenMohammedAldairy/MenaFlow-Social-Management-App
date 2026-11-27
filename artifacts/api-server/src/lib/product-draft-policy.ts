@@ -7,6 +7,8 @@
  * the decisions can be unit tested without a database.
  */
 
+import type { PriceStatus } from "./product-price-parsing.ts";
+
 export type ProductFieldKey =
   | "name"
   | "description"
@@ -103,6 +105,55 @@ export function productAdvisoryFields(
 
 export function isProductPublishable(product: ProductDraftFields): boolean {
   return productPublicationBlockers(product).length === 0;
+}
+
+/**
+ * What a merchant's decision on an extraction card writes into the catalog.
+ *
+ * The accept step used to condition the number on the unit
+ * (`price && currency ? price : null`), which is how three live products ended
+ * up with `raw_price_text = "2500"`, `price = null`, and a publication blocker
+ * naming «السعر» — the digits the merchant wrote were thrown away in the one
+ * step where a human had just chosen the card. A decision is not a guess: the
+ * number is stored, and the fields that say how sure it is travel with it.
+ *
+ * Publication is still guarded where it belongs — `productPublicationBlockers`
+ * requires a currency — so this drops nothing and permits no wrong post.
+ */
+export type AcceptedExtractionPriceFields = {
+  price: string | null;
+  currency: string | null;
+  rawPriceText: string | null;
+  priceStatus: PriceStatus | null;
+};
+
+export function acceptedExtractionProductFields(candidate: {
+  price?: string | number | null;
+  currency?: string | null;
+  rawPriceText?: string | null;
+  priceStatus?: string | null;
+}): AcceptedExtractionPriceFields {
+  const text = (value: unknown): string | null => {
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+    if (typeof value !== "string") return null;
+    return value.trim() ? value.trim() : null;
+  };
+  const price = text(candidate.price);
+  // The label is kept as the reading wrote it; an unrecognised one is no claim
+  // at all, so it becomes `null` rather than being coerced into a status.
+  const stated = text(candidate.priceStatus);
+  const status: PriceStatus | null =
+    stated === "confirmed" || stated === "unquoted" || stated === "ambiguous"
+      ? stated
+      : stated === "missing"
+        ? "missing"
+        : null;
+  return {
+    price,
+    currency: text(candidate.currency),
+    rawPriceText: text(candidate.rawPriceText),
+    priceStatus: price ? status : "missing",
+  };
 }
 
 export type ProductDraftDecisionReason =
