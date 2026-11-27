@@ -11,7 +11,10 @@ import {
 } from "./value-utils.ts";
 import { logger } from "./logger.ts";
 
-import { resolveCurrencyFromEvidence } from "./product-currency-resolution.ts";
+import {
+  currencyCodeFromEvidence,
+  resolveCurrencyFromEvidence,
+} from "./product-currency-resolution.ts";
 import {
   distinctCurrencyFamilies,
   normalizePriceText,
@@ -370,10 +373,33 @@ export function normalizeProductExtractionResponse(
     // code is left for a person, because a draft with the wrong currency is
     // worth more than a draft with no currency at all.
     const currencyFamilies = distinctCurrencyFamilies(sourceText);
-    const verifiedCurrency = normalizedCurrency === evidencedCurrency &&
-        currencyFamilies.length < 2
-      ? normalizedCurrency
+    // The quote a model returns for a price is often only the digits («2500»),
+    // and then the currency is not missing — it is written next to the number in
+    // the merchant's own message («بسعر 2500 ريال يمني»). Measured on the live
+    // workspace: 0 of 57 suggestions had a currency, because nothing looked
+    // beyond the quote, and the accept step then threw the number away with it.
+    // Only the strict resolver runs on this text — the one that needs the
+    // nationality or a literal code — so a country setting never becomes the
+    // evidence for a price, and the phrase cannot cross another number or line.
+    const adjacentCurrency = !evidencedCurrency && price.currencyEvidence
+      ? currencyCodeFromEvidence(price.currencyEvidence)
       : null;
+    const resolvedCurrency = evidencedCurrency ?? adjacentCurrency;
+    // A code the model claimed is still checked against the evidence: agreeing
+    // with the message is required, claiming nothing is not a contradiction.
+    const claimAgrees = normalizedCurrency === null ||
+      normalizedCurrency === resolvedCurrency;
+    const verifiedCurrency = resolvedCurrency &&
+        claimAgrees &&
+        currencyFamilies.length < 2
+      ? resolvedCurrency
+      : null;
+    if (verifiedCurrency && !evidence.currency && price.currencyEvidence) {
+      // Show what the code came from. `confidence` is left at whatever the model
+      // claimed, so a derived currency cannot by itself make the row complete
+      // enough to skip a person.
+      evidence.currency = price.currencyEvidence;
+    }
     if (!verifiedCurrency) {
       evidence.currency = null;
       confidence.currency = 0;

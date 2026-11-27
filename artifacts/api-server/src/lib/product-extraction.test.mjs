@@ -126,6 +126,155 @@ test("keeps repeated amounts with different currencies for review", () => {
   assert.equal(candidate.complete, false);
 });
 
+// The three cases below were copied from the live workspace's own messages,
+// which is how the gap was found: 0 of 57 suggestions carried a currency, and
+// `resolveCurrencyFromEvidence` never saw a phrase wide enough to contain
+// «ريال يمني» — it was handed only the word the model quoted, if any.
+test("resolves a currency written next to the number when the model quoted only digits", () => {
+  const heater = {
+    ...source,
+    text: "دفاية الجذارة الرقمية (400–800 واط) بشاشة لمس — بسعر 2500 ريال يمني",
+  };
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify({
+      nonProductMessageIds: [],
+      products: [
+        {
+          sourceMessageIds: [heater.id],
+          data: {
+            name: "دفاية الجذارة الرقمية",
+            sku: null,
+            aliases: [],
+            description: "دفاية الجذارة الرقمية",
+            price: "2500",
+            currency: null,
+            availability: "in_stock",
+          },
+          evidence: {
+            name: "دفاية الجذارة الرقمية",
+            aliases: null,
+            description: "دفاية الجذارة الرقمية",
+            // The model quoted the amount and nothing else — which used to mean
+            // no currency, whatever the merchant wrote beside the number.
+            price: "2500",
+            currency: null,
+            availability: "سعر",
+          },
+          confidence: {
+            name: 0.96, aliases: 0, description: 0.9, price: 0.95,
+            currency: 0, availability: 0.9,
+          },
+        },
+      ],
+    }),
+    [heater],
+  );
+
+  assert.equal(candidate.data.price, "2500");
+  assert.equal(candidate.data.currency, "YER");
+  // The words beside the number are the evidence, so the card can say where the
+  // unit came from; the confidence stays 0 because the model never claimed it,
+  // which is also why this cannot become a draft without a person.
+  assert.equal(candidate.evidence.currency, "ريال يمني");
+  assert.equal(candidate.confidence.currency, 0);
+  assert.equal(candidate.complete, false);
+});
+
+test("never reads a currency across another number in the same sentence", () => {
+  // The live XL offer: «بـ 3,000 او 21 ريال سعودي». The rial belongs to the 21,
+  // not to the 3,000 — an adjacency rule that ignored the second number would
+  // have stamped a Saudi currency on a Yemeni amount.
+  const sizes = {
+    ...source,
+    text: [
+      "كبير (XL): 34×24 سم — بـ 3,000 او 21 ريال سعودي",
+      "وسط (L): 30×20 سم — بـ 2500 او 18 ريال سعودي",
+      "صغير (M): 24×15 سم — بـ 2000 او 14 ريال سعودي",
+    ].join("\\n"),
+  };
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify({
+      nonProductMessageIds: [],
+      products: [
+        {
+          sourceMessageIds: [sizes.id],
+          data: {
+            name: "ألواح التقطيع ستيل",
+            sku: null,
+            aliases: [],
+            description: "ألواح التقطيع ستيل",
+            price: "3000",
+            currency: null,
+            availability: null,
+          },
+          evidence: {
+            name: "كبير (XL)",
+            aliases: null,
+            description: "ألواح التقطيع ستيل",
+            price: "3,000",
+            currency: null,
+            availability: null,
+          },
+          confidence: {
+            name: 0.9, aliases: 0, description: 0.9, price: 0.9, currency: 0,
+            availability: 0,
+          },
+        },
+      ],
+    }),
+    [sizes],
+  );
+
+  assert.equal(candidate.data.price, "3000");
+  assert.equal(candidate.data.priceStatus, "ambiguous");
+  assert.equal(candidate.data.currency, null);
+  assert.equal(candidate.complete, false);
+});
+
+test("keeps a currency word inside one message, not one borrowed from its neighbour", () => {
+  // A bundle is joined into one text before it is read, so the line a number is
+  // written on is the only context it has.
+  const bundle = {
+    ...source,
+    text: "دفاية الجذارة الرقمية — بسعر 2500\nمتوفرة الآن بالريال السعودي",
+  };
+  const { candidates: [candidate] } = normalizeProductExtractionResponse(
+    JSON.stringify({
+      nonProductMessageIds: [],
+      products: [
+        {
+          sourceMessageIds: [bundle.id],
+          data: {
+            name: "دفاية الجذارة الرقمية",
+            sku: null,
+            aliases: [],
+            description: "دفاية الجذارة الرقمية",
+            price: "2500",
+            currency: null,
+            availability: "in_stock",
+          },
+          evidence: {
+            name: "دفاية الجذارة الرقمية",
+            aliases: null,
+            description: "دفاية الجذارة الرقمية",
+            price: "2500",
+            currency: null,
+            availability: "متوفرة الآن",
+          },
+          confidence: {
+            name: 0.96, aliases: 0, description: 0.9, price: 0.95, currency: 0,
+            availability: 0.9,
+          },
+        },
+      ],
+    }),
+    [bundle],
+  );
+
+  assert.equal(candidate.data.price, "2500");
+  assert.equal(candidate.data.currency, null);
+});
+
 test("generates a stable SKU from source message IDs", () => {
   const sku = generatedProductSku(["message-1", "message-2"]);
   assert.match(sku, /^MF-[A-F0-9]{16}$/);

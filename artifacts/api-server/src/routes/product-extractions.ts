@@ -30,6 +30,7 @@ import {
 import { getSubscriptionOverview } from "../lib/subscriptions";
 import { normalizedProductName } from "../lib/product-utils.ts";
 import {
+  acceptedExtractionProductFields,
   missingProductFieldMessages,
   missingProductFields,
 } from "../lib/product-draft-policy";
@@ -559,6 +560,15 @@ router.post(
         specifications: ProductFact[];
         accessories: ProductFact[];
       }>;
+      // The number and the unit a card carries go to the product as they are:
+      // `priceStatus` and `rawPriceText` below say how sure they are, and
+      // publication refuses a missing currency on its own.
+      const acceptedPrice = acceptedExtractionProductFields({
+        price: candidate.price,
+        currency: candidate.currency,
+        rawPriceText: candidate.rawPriceText,
+        priceStatus: candidate.priceStatus,
+      });
       const input = parseProductInput(
         hasManualProduct
           ? {
@@ -570,12 +580,8 @@ router.post(
               name: candidate.name,
               aliases: candidate.aliases ?? [],
               description: candidate.description ?? "",
-              price:
-                candidate.price && candidate.currency ? candidate.price : null,
-              currency:
-                candidate.price && candidate.currency
-                  ? candidate.currency
-                  : null,
+              price: acceptedPrice.price,
+              currency: acceptedPrice.currency,
               availability: candidate.availability ?? "unknown",
               status: "draft",
               mediaUrls: [],
@@ -613,8 +619,8 @@ router.post(
           features: candidate.features ?? [],
           specifications: candidate.specifications ?? [],
           accessories: candidate.accessories ?? [],
-          priceStatus: candidate.priceStatus ?? null,
-          rawPriceText: candidate.rawPriceText ?? null,
+          priceStatus: acceptedPrice.priceStatus,
+          rawPriceText: acceptedPrice.rawPriceText,
           verifiedAt: null,
           updatedAt: new Date(),
         })

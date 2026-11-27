@@ -245,6 +245,16 @@ to a person, because an empty field the merchant cannot explain is worse than a
 number they can correct. `raw_price_text` preserves the merchant's own wording
 («25 الف», «1.500», «45 ريال»).
 
+That last sentence used to be a lie at the last step: accepting a card wrote
+`price: candidate.price && candidate.currency ? price : null`, so a number with
+no currency word was thrown away by *the human's own decision*. Live
+measurement: three products carried `raw_price_text` and `price = null`, and the
+publication blocker named «السعر» as missing. `acceptedExtractionProductFields()`
+(`lib/product-draft-policy.ts`) now writes what the card holds — number, unit,
+the merchant's wording and the state of the evidence — and refuses to invent a
+number the reading never found. Publication still refuses a product without a
+currency, which is where a wrong unit would cost money.
+
 The offer's remaining parts are structured, not prose: `features`,
 `specifications` and `accessories` are lists of `{value, sourceId, quote, start,
 end, verified}`, each quote required to appear in the source (a value quoted from
@@ -271,7 +281,20 @@ the model returns must contain the currency, and it is read strictly first:
    (three of the five live workspaces) or that does not use the word changes
    nothing, so the behaviour is exactly as strict as it was before.
 
-Arabic needs its own word boundaries here: JavaScript's `\b` is ASCII, so a
+5. When neither the quote nor the claim settles it, the **words written next to
+   the number in the merchant's message** are read — `PriceMention.neighbourhood`
+   (`lib/product-price-parsing.ts`) feeds `price.currencyEvidence` into the same
+   strict resolver. This is what the live workspace needed: the model quoted
+   `2500` and claimed no currency, while the message said «بسعر 2500 ريال يمني»
+   — 0 of 57 suggestions had a currency, not because merchants write prices
+   without units, but because nothing looked beside the quote. Three rules keep
+   it honest: only the strict resolver runs on this text (a country setting can
+   never be the evidence for a price), the phrase stops at the next number («بـ
+   3,000 او 21 ريال سعودي» gives the rial to the 21 and nothing to the 3,000),
+   and it stops at a newline, so one message of a bundle cannot lend its unit to
+   another. A derived currency leaves `confidence.currency` at whatever the model
+   claimed, so it cannot by itself make the row `complete` — a person still
+   accepts it.
 plain `/ريال/` matched inside «ريالة» and «البرازيل». The patterns are built from
 a lookaround over the Arabic block instead.
 
