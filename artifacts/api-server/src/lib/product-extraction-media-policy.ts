@@ -62,6 +62,14 @@ export type WhatsAppMediaGateDecision =
   | {
       outcome: "waiting";
       reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING";
+      /**
+       * Downloads in the same bundle that already gave up. A wait is only
+       * recoverable while something is still trying; the rows that stopped
+       * trying need to be put back by the caller, or the in-flight one settles
+       * and the dead one is missed forever — which is how six `waiting_media`
+       * jobs sat there overnight in the live workspace.
+       */
+      failedMessageIds: string[];
     }
   | {
       outcome: "terminal";
@@ -106,7 +114,11 @@ export function decideWhatsAppMediaGate(
       message.mediaDownloadStatus !== "failed",
   );
   if (inFlight) {
-    return { outcome: "waiting", reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING" };
+    return {
+      outcome: "waiting",
+      reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING",
+      failedMessageIds: failed,
+    };
   }
 
   const anythingReadable =
@@ -124,6 +136,60 @@ export function decideWhatsAppMediaGate(
   }
 
   return { outcome: "ready", failedMediaSkipped: failed };
+}
+
+/**
+ * What the photos of an extracted group ended up doing, stored on the
+ * suggestion. Without it, a text-only extraction and a full read of an album
+ * look identical in the review queue — and the merchant cannot tell «the photos
+ * had nothing to say» from «we never opened the photos».
+ */
+export type ProductExtractionMediaState =
+  | "not_applicable"
+  | "included"
+  | "partial"
+  | "pending"
+  | "lost";
+
+export function decideWhatsAppExtractionMediaState(input: {
+  /** Media rows the group carries, of any status. */
+  sent: number;
+  /** Rows whose file reached storage. */
+  stored: number;
+  /** Images actually sent to the model (the vision cap may hold some back). */
+  used: number;
+  /** Rows still downloading, which is the only state worth waiting for. */
+  pending?: number;
+}): ProductExtractionMediaState {
+  if (input.sent === 0) return "not_applicable";
+  if (input.stored === 0) {
+    return (input.pending ?? 0) > 0 ? "pending" : "lost";
+  }
+  if (input.stored < input.sent || input.used < input.stored) return "partial";
+  return "included";
+}
+
+/**
+ * One line for the merchant, in their language, about what happened to the
+ * photos. A review card that says «the product has no image» without saying
+ * whether the image was lost, still coming, or never existed sends the merchant
+ * to look for a bug that is not in the product.
+ */
+export function productExtractionMediaStateMessage(
+  state: ProductExtractionMediaState,
+): string {
+  switch (state) {
+    case "not_applicable":
+      return "لا صور لهذه المجموعة.";
+    case "included":
+      return "قُرئت كل صور المجموعة مع النص.";
+    case "partial":
+      return "قُرئت بعض الصور فقط؛ قد ينقص المنتج صورة أو معلومة مكتوبة فيها.";
+    case "pending":
+      return "التنزيل لم يكتمل بعد؛ ستُقرأ الصور تلقائيًا عند وصولها.";
+    case "lost":
+      return "لم تُحفظ صور المجموعة في التخزين، فلا يمكن قراءتها حاليًا.";
+  }
 }
 
 /**

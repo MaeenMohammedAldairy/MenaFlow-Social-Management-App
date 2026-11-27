@@ -635,6 +635,11 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
   "matchScore": zod.string().nullish().describe('Decimal as a string, 0-1.'),
   "rulesetVersion": zod.string().optional(),
   "modelVersion": zod.string().nullish(),
+  "promptVersion": zod.string().nullish().describe('Which instruction produced this row (`v3` is the single text+images reading). Rows written before that carry `v2`/`v1`/null, so a regression can be dated to a version instead of to a deploy.'),
+  "groupKey": zod.string().nullish().describe('Identity of the message group this reading covers (an accepted bundle, an album, or one message), so a client can show that two cards are versions of the same reading rather than two products.'),
+  "itemIndex": zod.number().int().optional().describe('Ordinal inside the group\'s answer, 1-based. A group of three products is three rows sharing one `groupKey` and `version`.'),
+  "mediaState": zod.enum(['not_applicable', 'included', 'partial', 'pending', 'lost']).optional().describe('What happened to the group\'s photos. `included` means they were read with the text in one request; `partial` and `lost` mean the card\'s values came from text alone even though images existed, which is why a price-less card and an incomplete reading are different problems.'),
+  "mediaStateMessage": zod.string().nullish().describe('The Arabic sentence for `mediaState`, written by the server so every client says the same thing about a missing photo. Null when there were no images to speak of. Note that `partial` — not `included` — is the best a late media relink can reach: relinking proves the images reached the product, not that the model read them.'),
   "overrideReason": zod.string().nullish().describe('Set when the merchant created a product despite a duplicate warning.'),
   "classification": zod.enum(['product', 'not_product']),
   "extractedData": zod.object({
@@ -645,6 +650,32 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
   "price": zod.string().nullable(),
   "currency": zod.string().nullable(),
   "availability": zod.enum(['in_stock', 'out_of_stock', 'preorder']).nullable(),
+  "features": zod.array(zod.object({
+  "value": zod.string(),
+  "sourceId": zod.string().nullish().describe('Which source message of the group the claim came from.'),
+  "quote": zod.string().nullish().describe('The literal phrase it was taken from.'),
+  "start": zod.number().int().nullish(),
+  "end": zod.number().int().nullish(),
+  "verified": zod.boolean()
+}).describe('One structured claim about a product, kept with the quotation that grounds it. A value with no source is a lead the merchant must confirm, which is why `verified` is carried to the client instead of the row being dropped.')).optional().describe('What the offer does, one entry per claim, each with the words that prove it. `verified: false` means the model wrote the value but no quote in any source message backs it: the card shows it as a lead and it never reaches a product on its own.'),
+  "specifications": zod.array(zod.object({
+  "value": zod.string(),
+  "sourceId": zod.string().nullish().describe('Which source message of the group the claim came from.'),
+  "quote": zod.string().nullish().describe('The literal phrase it was taken from.'),
+  "start": zod.number().int().nullish(),
+  "end": zod.number().int().nullish(),
+  "verified": zod.boolean()
+}).describe('One structured claim about a product, kept with the quotation that grounds it. A value with no source is a lead the merchant must confirm, which is why `verified` is carried to the client instead of the row being dropped.')).optional().describe('The numbers and properties the merchant stated.'),
+  "accessories": zod.array(zod.object({
+  "value": zod.string(),
+  "sourceId": zod.string().nullish().describe('Which source message of the group the claim came from.'),
+  "quote": zod.string().nullish().describe('The literal phrase it was taken from.'),
+  "start": zod.number().int().nullish(),
+  "end": zod.number().int().nullish(),
+  "verified": zod.boolean()
+}).describe('One structured claim about a product, kept with the quotation that grounds it. A value with no source is a lead the merchant must confirm, which is why `verified` is carried to the client instead of the row being dropped.')).optional().describe('What comes with the product, as written.'),
+  "priceStatus": zod.enum(['confirmed', 'unquoted', 'ambiguous', 'missing']).nullish().describe('How well the price is grounded, and the reason a card with a number can still be un-publishable: `ambiguous` keeps the value for a human to choose, `missing` is the only state with no number at all.'),
+  "rawPriceText": zod.string().nullish().describe('The merchant\'s own words for the number, never rewritten.'),
   "evidence_spans": zod.record(zod.string(), zod.object({
   "sourceId": zod.string().optional(),
   "source_id": zod.string().optional(),
@@ -697,6 +728,7 @@ export const GetWhatsAppProductExtractionsResponse = zod.object({
   "waitingAssociation": zod.number().int(),
   "failed": zod.number().int(),
   "quotaPaused": zod.number().int().describe('Pending jobs held back because the workspace AI quota is exhausted. They resume on their own; no attempt is spent while paused.'),
+  "alreadyCovered": zod.number().int().describe('Jobs that ended without a suggestion because the message\'s product group had already been read at this ruleset version. This is the answer to «I reprocessed it and nothing happened»: the group is not lost, the second reading was simply refused as a duplicate. It is counted apart from `noText` because the fix differs — a covered job needs a new version or a wider group, not a caption.'),
   "noText": zod.number().int().describe('Jobs that completed with nothing readable to extract: a photo with no caption, a sticker, a voice note. Not a failure and not waiting on anything, so without this counter they simply vanish from the merchant\'s view. A deployment with vision extraction enabled reads the text visible inside stored images instead of counting them here.')
 }).describe('Extraction jobs by state. `waitingMedia` and `waitingAssociation` are the states only a download or a merchant decision can clear, and `noText` counts the messages that will never yield a product on their own.'),
   "suggestionCounts": zod.object({
@@ -2215,8 +2247,11 @@ export const ReprocessProductExtractionParams = zod.object({
 })
 
 export const ReprocessProductExtractionResponse = zod.object({
-  "rulesetVersion": zod.string().describe('The version the new pass will run with, e.g. `v2`.'),
-  "queued": zod.boolean()
+  "rulesetVersion": zod.string().describe('The version the whole group will run with, e.g. `v2`. One number for every member of the group: a re-extraction that left one message on the old ruleset was how a caption and its photos ended up as two answers.'),
+  "queued": zod.boolean().describe('False only when the group was already fully covered at this version — which is reported as `409` on a live job instead of a silent `202`.'),
+  "reopened": zod.number().int().optional().describe('Jobs of the group armed for another run.'),
+  "created": zod.number().int().optional().describe('Members of the group that had no job at all and got one.'),
+  "workerEnabled": zod.boolean().optional().describe('Whether the extraction queue is running at all. A job nobody polls is not a request that will be served, and the screen has to be able to say so instead of waiting.')
 })
 
 
@@ -2264,6 +2299,16 @@ export const GetProductExtractionMetricsResponse = zod.object({
   "reprocessed": zod.number().int(),
   "proposalsAccepted": zod.number().int(),
   "conversionRate": zod.number().describe('Products activated over product suggestions read, 0-1.'),
+  "failureReasons": zod.array(zod.object({
+  "reasonCode": zod.string().nullish(),
+  "status": zod.string().optional(),
+  "total": zod.number().int().optional(),
+  "message": zod.string().optional().describe('The sentence for `reasonCode` in Arabic, or a note that none was recorded.')
+})).optional().describe('Settled jobs of the window grouped by why they ended, newest first by count. A failure count without its reasons is a number nobody can act on, and every terminal job has to name one.'),
+  "promptVersions": zod.array(zod.object({
+  "promptVersion": zod.string().nullish(),
+  "total": zod.number().int().optional()
+})).optional().describe('Suggestions per instruction version, so a prompt change is measured against the rows it produced instead of guessed at.'),
   "daily": zod.array(zod.object({
   "day": zod.string().describe('YYYY-MM-DD'),
   "event": zod.string(),

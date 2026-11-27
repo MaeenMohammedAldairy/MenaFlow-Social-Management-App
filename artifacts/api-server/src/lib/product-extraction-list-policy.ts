@@ -28,7 +28,13 @@ export const PRODUCT_EXTRACTION_LIST_MAX_LIMIT = 50;
 export const PRODUCT_EXTRACTION_LIST_MAX_OFFSET = 10_000;
 
 const CLASSIFICATIONS = ["product", "not_product"] as const;
-const STATUSES = [
+/**
+ * The statuses this queue can name. Exported because the database has to allow
+ * exactly them: a `CHECK` narrower than this list is not a typo, it is a silent
+ * write failure — six re-extractions in the live workspace died on one, and the
+ * contract test compares this list against the migration.
+ */
+export const PRODUCT_EXTRACTION_LIST_STATUSES = [
   "review",
   "draft_created",
   "possible_duplicate",
@@ -39,7 +45,33 @@ const STATUSES = [
 ] as const;
 
 export type ProductExtractionClassification = (typeof CLASSIFICATIONS)[number];
-export type ProductExtractionListStatus = (typeof STATUSES)[number];
+export type ProductExtractionListStatus =
+  (typeof PRODUCT_EXTRACTION_LIST_STATUSES)[number];
+
+/**
+ * Statuses the review queue keeps out of sight until somebody asks for them.
+ *
+ * A group's version chain is history, not work: once a re-extraction supersedes
+ * the older card, showing both is the duplicate the merchant was complaining
+ * about — two cards for one offer, one of them already answered. `dismissed`
+ * stays hidden unconditionally (it is a decision, not a state to review), while
+ * `superseded` is listed on request, because «what did the new version change?»
+ * is a fair question about a product the merchant already accepted or edited.
+ */
+export const PRODUCT_EXTRACTION_DEFAULT_HIDDEN_STATUSES = [
+  "superseded",
+] as const;
+
+export type ProductExtractionHiddenStatus =
+  (typeof PRODUCT_EXTRACTION_DEFAULT_HIDDEN_STATUSES)[number];
+
+export function productExtractionHiddenStatuses(
+  requested: readonly string[],
+): ProductExtractionHiddenStatus[] {
+  return PRODUCT_EXTRACTION_DEFAULT_HIDDEN_STATUSES.filter(
+    (status) => !requested.includes(status),
+  );
+}
 
 export type ProductExtractionListQuery = {
   ok: true;
@@ -107,7 +139,7 @@ function isClassification(
 }
 
 function isListStatus(value: string): value is ProductExtractionListStatus {
-  return (STATUSES as readonly string[]).includes(value);
+  return (PRODUCT_EXTRACTION_LIST_STATUSES as readonly string[]).includes(value);
 }
 
 /**

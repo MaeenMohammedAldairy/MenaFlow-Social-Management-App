@@ -135,31 +135,42 @@ const db = {
 mock.module("@workspace/db", { namedExports: { db, ...tables } });
 
 const extraction = await import("./product-extraction.ts");
+const { emptyProductFacts } = await import("./product-facts.ts");
 mock.module("./product-extraction.ts", {
   namedExports: {
     ...extraction,
+    // One reading of the group: a single candidate that names every message the
+    // group covered, which is what lets the product inherit the media of the
+    // whole bundle rather than only the photo that happened to carry the text.
     extractWhatsAppProductCandidates: async (_workspaceId, sources) => ({
       model: "test-model",
-      candidates: sources.map((source, index) => ({
+      promptVersion: "v3",
+      rawResponse: "{}",
+      candidates: [{
         classification: "product",
-        sourceMessageIds: [source.id],
+        sourceMessageIds: sources.map((source) => source.id),
         data: {
-          name: index === 0 ? "ساعة NAVIFORCE" : null,
-          description: index === 0 ? "ساعة يد" : null,
-          price: index === 0 ? "25000" : null,
-          currency: index === 0 ? "SAR" : null,
-          availability: index === 0 ? "in_stock" : null,
-          sku: index === 0 ? "MF-1" : null, aliases: [],
+          name: "ساعة NAVIFORCE",
+          description: "ساعة يد",
+          price: "25000",
+          currency: "SAR",
+          availability: "in_stock",
+          sku: "MF-1",
+          aliases: [],
+          priceStatus: "confirmed",
+          rawPriceText: "25000 ريال",
         },
-        evidence: index === 0 ? {
+        evidence: {
           name: "ساعة NAVIFORCE", description: "ساعة يد",
           price: "25000 ريال", currency: "ريال", sku: "MF-1",
-        } : {},
-        confidence: index === 0
-          ? { name: 0.95, description: 0.95, price: 0.95, currency: 0.95, availability: 0.95, sku: 0.95 }
-          : {},
+        },
+        facts: emptyProductFacts(),
+        confidence: {
+          name: 0.95, description: 0.95, price: 0.95, currency: 0.95,
+          availability: 0.95, sku: 0.95,
+        },
         complete: true,
-      })),
+      }],
       nonProductMessageIds: [],
     }),
   },
@@ -170,7 +181,6 @@ mock.module("./product-intake-service.ts", {
 mock.module("./product-vision-extraction.ts", {
   namedExports: {
     visionProductExtractionEnabled: () => false,
-    extractProductCandidatesFromImages: async () => null,
     prepareVisionImage: async () => null,
     readStoredVisionMedia: async () => null,
     selectVisionMedia: () => [],

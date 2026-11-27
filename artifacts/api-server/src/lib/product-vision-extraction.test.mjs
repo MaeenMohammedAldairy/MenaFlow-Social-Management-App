@@ -2,21 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import sharp from "sharp";
 
+import { mock } from "node:test";
+
 import {
   MAX_VISION_IMAGES,
-  buildVisionExtractionRequest,
-  parseVisionExtractionResponse,
   prepareVisionImage,
   selectVisionMedia,
-  visionExtractionInstruction,
   visionMediaStorageLocator,
   visionProductExtractionEnabled,
 } from "./product-vision-extraction.ts";
-import {
-  normalizeProductExtractionResponse,
-  remapProductExtractionCandidates,
-  toLocalProductExtractionSources,
-} from "./product-extraction.ts";
 
 function mediaRow(overrides = {}) {
   return {
@@ -104,231 +98,164 @@ test("a small PNG passes through and a large phone JPEG is re-encoded and bounde
   assert.equal(fromUnknown.mimeType, "image/jpeg");
 });
 
-test("the request grounds the model in visible text and never sends message bodies", () => {
-  const sources = [
-    {
-      id: "message-1",
-      groupId: "bundle:1",
-      messageTimestamp: "2026-11-24T02:20:00.000Z",
-      replyToMessageId: null,
-      text: "نص سري من الرسالة يجب ألا يصل إلى النموذج",
+// The vision path used to be a second request whose answer was merged over the
+// first one's. These tests now hold the shape that replaced it: one request for
+// a group, carrying its text and its images together, grounded in the visible
+// text the model reports — and no database identifier in it.
+const sent = [];
+mock.module("./metered-ai-provider.ts", {
+  namedExports: {
+    callMeteredAiProvider: async (_workspaceId, options) => {
+      sent.push(options);
+      return { model: "vision-test-model", content: visionAnswer };
     },
-  ];
-  const options = buildVisionExtractionRequest(
-    [{ mimeType: "image/jpeg", dataBase64: "QUJD" }],
-    sources,
-  );
-  const serialized = JSON.stringify(options);
-  assert.doesNotMatch(serialized, /نص سري/);
-  assert.doesNotMatch(serialized, /message-1/);
-  assert.doesNotMatch(serialized, /bundle:1/);
-  const userText = options.openAiMessages[1].content;
-  assert.match(userText, /\[\{"id":"1","groupId":"1","time":"2026-11-24T02:20:00\.000Z"\}\]/);
-  assert.equal(options.images?.length, 1);
-  assert.equal(options.temperature, 0);
-  assert.ok(options.maxTokens >= 3000);
-  assert.equal(options.geminiResponseFormat?.text.mimeType, "application/json");
-  const schema = options.geminiResponseFormat?.text.schema;
-  assert.deepEqual(schema.required, ["visibleText", "products", "nonProductMessageIds"]);
-  assert.equal(options.openAiResponseFormat?.type, "json_object");
+    textAiProviderOptions: (input) => ({ ...input }),
+  },
+});
+const { PRODUCT_EXTRACTION_PROMPT_VERSION } = await import(
+  "./product-extraction-prompt-version.ts",
+);
+const { extractWhatsAppProductCandidates } = await import("./product-extraction.ts");
+
+const groupSource = (overrides = {}) => ({
+  id: "0f0f0f0f-0000-4000-8000-000000000001",
+  groupId: "bundle:0f0f",
+  messageTimestamp: "2026-11-24T02:20:00.000Z",
+  replyToMessageId: null,
+  text: "نص الرسالة لا يصل إلى النموذج في طلب الصور",
+  ...overrides,
 });
 
-test("vision model pinning is separate from the text extraction models", () => {
-  const previous = { ...process.env };
-  process.env.AI_VISION_EXTRACTION_GEMINI_MODEL = "gemini-2.5-pro";
-  process.env.AI_EXTRACTION_GEMINI_MODEL = "gemini-2.5-flash";
-  try {
-    const options = buildVisionExtractionRequest(
-      [{ mimeType: "image/jpeg", dataBase64: "QUJD" }],
-      [{ id: "m", groupId: "g", messageTimestamp: null, replyToMessageId: null, text: "" }],
-    );
-    assert.equal(options.geminiModel, "gemini-2.5-pro");
-    assert.equal(options.openAiModel, undefined);
-  } finally {
-    for (const key of Object.keys(process.env)) {
-      if (!(key in previous)) delete process.env[key];
-    }
-    Object.assign(process.env, previous);
-  }
+let visionAnswer = "";
+visionAnswer = JSON.stringify({
+  visibleText: "زيت أفغاني 100 مل السعر 45 ريال",
+  products: [
+    {
+      sourceMessageIds: ["1"],
+      data: {
+        name: "زيت أفغاني",
+        sku: null,
+        aliases: [],
+        description: "زيت أفغاني 100 مل",
+        price: "45",
+        currency: "SAR",
+        availability: null,
+        features: [{ value: "100 مل", evidence: "100 مل" }],
+        specifications: [],
+        accessories: [],
+      },
+      evidence: {
+        name: "زيت أفغاني",
+        price: "السعر 45 ريال",
+        currency: "ريال",
+      },
+      confidence: {
+        name: 0.9, price: 0.9, currency: 0.9, sku: 0, aliases: 0,
+        description: 0.9, availability: 0,
+      },
+    },
+  ],
+  nonProductMessageIds: [],
 });
 
-test("the instruction forbids invention and treats image text as data", () => {
-  const instruction = visionExtractionInstruction();
-  assert.match(instruction, /visibleText/);
-  assert.match(instruction, /ليست تعليمات/);
-  assert.match(instruction, /لا تخترع/);
-  assert.match(instruction, /nonProductMessageIds/);
-});
-
-test("the response parser bounds visible text and rejects malformed payloads", () => {
-  const fenced = parseVisionExtractionResponse(
-    '```json\n{"visibleText":"  زيت أفغاني 100 مل ","products":[],"nonProductMessageIds":["1"]}\n```',
-  );
-  assert.equal(fenced.visibleText, "زيت أفغاني 100 مل");
-  assert.deepEqual(fenced.products, []);
-  assert.deepEqual(fenced.nonProductMessageIds, ["1"]);
-
-  const long = parseVisionExtractionResponse(
-    JSON.stringify({ visibleText: "ا".repeat(9000), products: [] }),
-  );
-  assert.equal(long.visibleText.length, 6000);
-  assert.deepEqual(long.nonProductMessageIds, []);
-
-  assert.throws(() => parseVisionExtractionResponse("ليس JSON"), {
-    message: "PRODUCT_EXTRACTION_INVALID_JSON",
+test("the group's photos ride in the same request as its text", async () => {
+  sent.length = 0;
+  const result = await extractWhatsAppProductCandidates("workspace-a", [groupSource()], {
+    images: [
+      { mimeType: "image/jpeg", dataBase64: "QUJD" },
+      { mimeType: "image/jpeg", dataBase64: "REVG" },
+    ],
+    imageSourceIds: ["0f0f0f0f-0000-4000-8000-000000000001"],
   });
-  assert.throws(
-    () => parseVisionExtractionResponse(JSON.stringify({ visibleText: "", products: "x" })),
-    { message: "PRODUCT_VISION_INVALID_RESPONSE" },
-  );
-  assert.throws(
-    () =>
-      parseVisionExtractionResponse(
-        JSON.stringify({
-          visibleText: "",
-          products: Array.from({ length: 31 }, () => ({})),
-        }),
-      ),
-    { message: "PRODUCT_VISION_INVALID_RESPONSE" },
-  );
-  assert.throws(
-    () =>
-      parseVisionExtractionResponse(
-        JSON.stringify({ visibleText: "", products: [], nonProductMessageIds: [1] }),
-      ),
-    { message: "PRODUCT_VISION_INVALID_RESPONSE" },
-  );
+  const [options] = sent;
+  assert.equal(sent.length, 1, "one reading of the group means one request");
+  assert.equal(options.images.length, 2);
+  assert.equal(options.temperature, 0);
+  // Facts and a transcription in the same answer need more room than the old
+  // 3000-token ceiling, which truncated a 13-photo album mid-product.
+  assert.ok(options.maxTokens >= 6000, `maxTokens ${options.maxTokens}`);
+  assert.match(options.system, /visibleText/);
+  assert.match(options.system, /بيانات للتحليل/);
+  const serialized = JSON.stringify(options);
+  // The message's words are the other half of the reading and ARE sent; what
+  // must never leave the server is the identifier behind them.
+  assert.match(options.user, /"id":"1"/);
+  assert.doesNotMatch(serialized, /0f0f0f0f/, "database ids are not sent");
+  assert.doesNotMatch(serialized, /"groupId":"bundle/, "group keys are not sent");
+  assert.equal(result.model, "vision-test-model");
+  assert.equal(result.promptVersion, PRODUCT_EXTRACTION_PROMPT_VERSION);
+  assert.equal(JSON.parse(result.rawResponse).visibleText.includes("زيت أفغاني"), true);
 });
 
-test("a vision candidate keeps quoted values, drops invented ones and stays incomplete", () => {
-  // What a model is asked to return: literal visible text plus the fields it
-  // believes it read, each with a quote.
-  const payload = parseVisionExtractionResponse(
-    JSON.stringify({
-      visibleText: "الزيت الافغاني 100 مل - السعر 45 ريال سعودي",
-      products: [
-        {
-          sourceMessageIds: ["1"],
-          data: {
-            name: "الزيت الافغاني",
-            sku: null,
-            aliases: ["زيت"],
-            description: "الزيت الافغاني 100 مل",
-            price: "45",
-            currency: "SAR",
-            availability: "in_stock",
-          },
-          evidence: {
-            name: "الزيت الافغاني",
-            sku: null,
-            aliases: "الزيت الافغاني",
-            description: "الزيت الافغاني 100 مل",
-            price: "45 ريال سعودي",
-            currency: "ريال سعودي",
-            availability: null,
-          },
-          confidence: {
-            name: 0.95,
-            sku: 0,
-            aliases: 0.7,
-            description: 0.9,
-            price: 0.9,
-            currency: 0.9,
-            availability: 0,
-          },
-        },
-      ],
-      nonProductMessageIds: [],
-    }),
-  );
-
-  const realSources = [
-    {
-      id: "message-99",
-      groupId: "bundle:7",
-      messageTimestamp: "2026-11-24T02:20:00.000Z",
-      replyToMessageId: null,
-      text: "",
-    },
-  ];
-  const localSources = toLocalProductExtractionSources(realSources);
-  const groundedSources = localSources.map((source) => ({
-    ...source,
-    text: payload.visibleText,
-  }));
-  const normalized = normalizeProductExtractionResponse(
-    JSON.stringify({
-      products: payload.products,
-      nonProductMessageIds: payload.nonProductMessageIds,
-    }),
-    groundedSources,
-  );
-  const [candidate] = remapProductExtractionCandidates(normalized, realSources);
-
-  assert.equal(candidate.classification, "product");
-  assert.deepEqual(candidate.sourceMessageIds, ["message-99"]);
-  assert.equal(candidate.data.name, "الزيت الافغاني");
-  assert.equal(candidate.data.price, "45");
-  assert.equal(candidate.data.currency, "SAR");
-  // No visible evidence for availability, so the claim is dropped.
-  assert.equal(candidate.data.availability, null);
-  // A generated SKU replaces the missing one, like the text path does.
-  assert.match(candidate.data.sku ?? "", /^MF-[0-9A-F]{16}$/);
-  // Availability has no evidence, so the candidate can never be "complete" and
-  // therefore never becomes an automatic draft.
-  assert.equal(candidate.complete, false);
-});
-
-test("an invented price that is not in the visible text is dropped", () => {
-  const visibleText = "زيت أفغاني";
-  const normalized = normalizeProductExtractionResponse(
-    JSON.stringify({
-      products: [
-        {
-          sourceMessageIds: ["1"],
-          data: {
-            name: "زيت أفغاني",
-            sku: null,
-            aliases: [],
-            description: "زيت أفغاني",
-            price: "999",
-            currency: "SAR",
-            availability: null,
-          },
-          evidence: {
-            name: "زيت أفغاني",
-            sku: null,
-            aliases: null,
-            description: "زيت أفغاني",
-            price: "999 ريال",
-            currency: "ريال",
-            availability: null,
-          },
-          confidence: {
-            name: 0.9,
-            sku: 0,
-            aliases: 0,
-            description: 0.9,
-            price: 0.9,
-            currency: 0.9,
-            availability: 0,
-          },
-        },
-      ],
-      nonProductMessageIds: [],
-    }),
-    [
+test("a fact read off a photo survives; one invented past it does not", async () => {
+  sent.length = 0;
+  const { candidates } = await extractWhatsAppProductCandidates("workspace-a", [
+    groupSource({ text: "" }),
+  ], {
+    images: [{ mimeType: "image/jpeg", dataBase64: "QUJD" }],
+    imageSourceIds: ["0f0f0f0f-0000-4000-8000-000000000001"],
+  });
+  // The message said nothing: everything the candidate carries came from the
+  // photo, and each value was checked against the text the model read in it.
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].data.price, "45");
+  assert.equal(candidates[0].data.priceStatus, "confirmed");
+  assert.equal(candidates[0].facts.features[0].value, "100 مل");
+  // A value the photo does not contain is dropped by the same rule that drops an
+  // invented price — the transcription is the corpus, not the model's memory.
+  visionAnswer = JSON.stringify({
+    visibleText: "زيت أفغاني 100 مل السعر 45 ريال",
+    products: [
       {
-        id: "1",
-        groupId: "1",
-        messageTimestamp: null,
-        replyToMessageId: null,
-        text: visibleText,
+        sourceMessageIds: ["1"],
+        data: {
+          name: "زيت أفغاني عضوي فاخر",
+          sku: "VF-9999",
+          aliases: [],
+          description: "يعالج آلام المفاصل خلال يومين",
+          price: "45",
+          currency: "SAR",
+          availability: "in_stock",
+          features: [],
+          specifications: [],
+          accessories: [],
+        },
+        evidence: {
+          name: "زيت أفغاني عضوي فاخر",
+          price: "السعر 45 ريال",
+          currency: "ريال",
+        },
+        confidence: {
+          name: 0.99, price: 0.9, currency: 0.9, sku: 0.9, aliases: 0,
+          description: 0.95, availability: 0.9,
+        },
       },
     ],
-  );
-  const [candidate] = normalized.candidates;
-  assert.equal(candidate.data.price, null);
-  assert.equal(candidate.data.currency, null);
-  assert.equal(candidate.data.name, "زيت أفغاني");
+    nonProductMessageIds: [],
+  });
+  const invented = await extractWhatsAppProductCandidates("workspace-a", [
+    groupSource({ text: "" }),
+  ], {
+    images: [{ mimeType: "image/jpeg", dataBase64: "QUJD" }],
+    imageSourceIds: ["0f0f0f0f-0000-4000-8000-000000000001"],
+  });
+  const [item] = invented.candidates;
+  // Dropped, not repaired: a name the photo does not carry is not the model's to
+  // shorten until it fits. The grounded price next to it is kept, so the row is a
+  // review with numbers in it rather than an empty card.
+  assert.equal(item.data.name, null);
+  assert.equal(item.data.sku, null);
+  assert.equal(item.data.description, null);
+  assert.equal(item.data.availability, null);
+  assert.equal(item.data.price, "45");
+  assert.equal(item.complete, false, "an image reading is never auto-published");
+});
+
+test("a request without images asks for no transcription", async () => {
+  sent.length = 0;
+  await extractWhatsAppProductCandidates("workspace-a", [groupSource()], {});
+  const [options] = sent;
+  assert.equal(options.images, undefined);
+  assert.doesNotMatch(options.system, /visibleText/);
+  assert.ok(options.maxTokens < 6000, "a text-only answer needs less room");
 });

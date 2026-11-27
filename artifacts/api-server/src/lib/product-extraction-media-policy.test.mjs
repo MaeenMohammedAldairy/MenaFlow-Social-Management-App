@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  decideWhatsAppExtractionMediaState,
   decideWhatsAppMediaGate,
   shouldResetMediaForRequeue,
 } from "./product-extraction-media-policy.ts";
@@ -42,7 +43,11 @@ test("a download still in flight waits, with or without text", () => {
           message("m1", { hasText }),
           message("m2", { mediaDownloadStatus: status }),
         ]),
-        { outcome: "waiting", reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING" },
+        {
+          outcome: "waiting",
+          reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING",
+          failedMessageIds: [],
+        },
         `status ${status} hasText ${hasText}`,
       );
     }
@@ -55,7 +60,13 @@ test("a waiting download outranks a dead one: the live one may still bring a pho
       message("m1", { mediaDownloadStatus: "failed" }),
       message("m2", { mediaDownloadStatus: "pending" }),
     ]),
-    { outcome: "waiting", reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING" },
+    {
+      outcome: "waiting",
+      reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING",
+      // Named even though the job waits: the dead download has to be put back on
+      // its way now, or the wait ends with the photo still missing.
+      failedMessageIds: ["m1"],
+    },
   );
 });
 
@@ -119,11 +130,19 @@ test("an unknown status waits rather than failing the job", () => {
   // this module does not recognise as a give-up stays in the waiting bucket.
   assert.deepEqual(
     decideWhatsAppMediaGate([message("m1", { mediaDownloadStatus: "not_required" })]),
-    { outcome: "waiting", reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING" },
+    {
+      outcome: "waiting",
+      reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING",
+      failedMessageIds: [],
+    },
   );
   assert.deepEqual(
     decideWhatsAppMediaGate([message("m1", { mediaDownloadStatus: "FAILED" })]),
-    { outcome: "waiting", reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING" },
+    {
+      outcome: "waiting",
+      reason: "WHATSAPP_MEDIA_DOWNLOAD_PENDING",
+      failedMessageIds: [],
+    },
   );
 });
 
@@ -140,5 +159,37 @@ test("a re-queue resets media only for messages that gave up", () => {
     shouldResetMediaForRequeue({ mediaAvailable: false, mediaDownloadStatus: "failed" }),
     false,
     "a message with no media has nothing to download",
+  );
+});
+
+test("the media state says what the photos did", () => {
+  // A suggestion without photos, a suggestion read from all of them, one read
+  // from some, one still waiting, and one whose photos are gone for good — five
+  // different things a reviewer has to be able to tell apart.
+  assert.equal(
+    decideWhatsAppExtractionMediaState({ sent: 0, stored: 0, used: 0 }),
+    "not_applicable",
+  );
+  assert.equal(
+    decideWhatsAppExtractionMediaState({ sent: 3, stored: 3, used: 3 }),
+    "included",
+  );
+  assert.equal(
+    decideWhatsAppExtractionMediaState({ sent: 13, stored: 13, used: 4 }),
+    "partial",
+    "thirteen photos in storage, the vision cap sent four",
+  );
+  assert.equal(
+    decideWhatsAppExtractionMediaState({ sent: 13, stored: 12, used: 12 }),
+    "partial",
+    "one download gave up while the rest arrived",
+  );
+  assert.equal(
+    decideWhatsAppExtractionMediaState({ sent: 2, stored: 0, used: 0, pending: 1 }),
+    "pending",
+  );
+  assert.equal(
+    decideWhatsAppExtractionMediaState({ sent: 2, stored: 0, used: 0, pending: 0 }),
+    "lost",
   );
 });

@@ -30,6 +30,11 @@ import {
 import { isLocalAuthDisabled } from "@/constants/auth";
 import { POLL_LIST_MS } from "@/lib/poll-intervals";
 import {
+  productExtractionFactLines,
+  productExtractionMediaNote,
+  productExtractionReprocessNotice,
+} from "@/lib/product-extraction-card-copy";
+import {
   CairoText as Text,
   CairoTextInput,
 } from "@/components/CairoTypography";
@@ -1079,12 +1084,10 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   });
   const reprocessExtraction = useMutation({
     mutationFn: reprocessProductExtraction,
-    onSuccess: async () => {
-      showAppNotice({
-        title: "أُعيد إدخال الرسالة في الطابور",
-        message: "ستظهر نسخة جديدة من الاقتراح بعد اكتمال التحليل.",
-        tone: "success",
-      });
+    onSuccess: async (result) => {
+      // "أُعيد التحليل" was shown whether or not anything was armed, so a group
+      // the server refused as already-covered read as a success for days.
+      showAppNotice(productExtractionReprocessNotice([result]));
       await refresh();
     },
     onError: (cause) =>
@@ -1177,13 +1180,9 @@ function ProductCatalogContent({ userId }: { userId: string | null }) {
   };
   const reprocessManyExtractions = (suggestionIds: string[]) => {
     Promise.all(suggestionIds.map((id) => reprocessProductExtraction(id)))
-      .then(async () => {
+      .then(async (results) => {
         setSelectedSuggestionIds(new Set());
-        showAppNotice({
-          title: "أُعيدت الرسائل إلى التحليل",
-          message: "ستظهر نسخ جديدة من الاقتراحات بعد اكتمال التحليل.",
-          tone: "success",
-        });
+        showAppNotice(productExtractionReprocessNotice(results));
         await refresh();
       })
       .catch((cause: unknown) =>
@@ -3815,6 +3814,14 @@ function ProductExtractionCard({
   const statusLabel = extractionStatusLabel(suggestion);
   const evidenceSpans = productExtractionEvidenceSpans(suggestion);
   const confidenceReasons = productExtractionConfidenceReasons(suggestion);
+  // What the group's photos did, said once on the card: a price read from text
+  // alone and a price read from text plus three pictures are not the same
+  // answer, and the reviewer has to know which one they are signing.
+  const mediaNote = productExtractionMediaNote(suggestion);
+  // The offer's structured parts, with the quote each one came from. They are
+  // listed rather than folded into the description because a reviewer has to be
+  // able to see that «12 رأس تدليك» was written in the message and not made up.
+  const factLines = productExtractionFactLines(suggestion.extractedData);
   return (
     <Panel style={styles.extractionCard}>
       <Pressable
@@ -3895,9 +3902,40 @@ function ProductExtractionCard({
             </View>
           ))
         : null}
+      {factLines.length ? (
+        <View
+          style={styles.confidenceReasons}
+          accessibilityLabel="حقائق مذكورة في الرسالة"
+        >
+          {factLines.map((line) => (
+            <Text
+              key={line.key}
+              style={[
+                styles.evidence,
+                {
+                  color: line.verified
+                    ? colors.mutedForeground
+                    : colors.warning,
+                },
+              ]}
+            >
+              • {line.text}
+              {line.verified ? "" : " — لم نجد لها اقتباسًا في الرسالة"}
+            </Text>
+          ))}
+        </View>
+      ) : null}
       {suggestion.missingFieldMessages?.length ? (
         <Text style={[styles.description, { color: colors.warning }]}>
           يحتاج إلى مراجعة: {suggestion.missingFieldMessages.join(" · ")}
+        </Text>
+      ) : null}
+      {mediaNote ? (
+        <Text
+          style={[styles.description, { color: colors.mutedForeground }]}
+          accessibilityRole="text"
+        >
+          {mediaNote}
         </Text>
       ) : null}
       {suggestion.classification === "product" &&
@@ -4216,6 +4254,16 @@ function ProductExtractionQueueStrip({
     // "the feature ignored six messages" and "six messages had no text in them".
     lines.push({
       text: `${formatArabicNumber(counts.noText)} رسالة بلا نص مقروء (صورة أو ملصق أو تسجيل صوتي) فلم يُستخرج منها منتج. اكتب وصف المنتج مع الصورة ليُستخرج تلقائيًا.`,
+      tone: "muted",
+    });
+  }
+  if (counts.alreadyCovered > 0) {
+    // The answer to «I asked to re-analyze and nothing appeared». Those jobs ran
+    // and refused themselves, so without this line the queue looks idle while it
+    // is actually reporting that a second identical reading was not worth paying
+    // for.
+    lines.push({
+      text: `${formatArabicNumber(counts.alreadyCovered)} رسالة كانت مُحلَّلة سابقًا بنفس القواعد، فلم تُضف منها نسخة جديدة. وسِّع المجموعة (اربط الصورة بوصفها) ثم أعد التحليل.`,
       tone: "muted",
     });
   }

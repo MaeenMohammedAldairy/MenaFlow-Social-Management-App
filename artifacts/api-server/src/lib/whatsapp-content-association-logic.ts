@@ -50,6 +50,44 @@ export function whatsappProductBundleId(scope: {
   return `bundle-${identity}`;
 }
 
+/**
+ * The identity an extracted product group is stored under.
+ *
+ * Extraction used to key a suggestion by the *message ids it read*, so the same
+ * offer written across four messages had four possible keys and any regrouping
+ * minted a fifth — which is how one album became three review cards, and how a
+ * second version of the same group could never be written (a unique index on
+ * that key blocked it). Keying by the group instead — the bundle id once an
+ * association is accepted, the WhatsApp album id while it is forming, and the
+ * message itself when it stands alone — keeps the identity stable while the
+ * group grows, so versions chain and one group stays one suggestion per version.
+ *
+ * Ordered and scope-qualified like {@link whatsappProductBundleId}, so a replayed
+ * webhook and a reversed decision order resolve to the same key.
+ */
+export function whatsappProductExtractionGroupKey(scope: {
+  workspaceId: string;
+  instanceName: string;
+  groupId: string;
+}, identity: {
+  bundleId?: string | null;
+  mediaGroupId?: string | null;
+  messageId: string;
+}): string {
+  const kind = identity.bundleId
+    ? "bundle"
+    : identity.mediaGroupId
+      ? "album"
+      : "message";
+  const member = identity.bundleId ?? identity.mediaGroupId ?? identity.messageId;
+  const digest = createHash("sha256")
+    .update(`${scope.workspaceId}\u0000${scope.instanceName}\u0000${scope.groupId ?? ""}`)
+    .update(`\u0000${kind}\u0000${member}`)
+    .digest("hex")
+    .slice(0, 32);
+  return `${kind}:${digest}`;
+}
+
 export function normalizeWhatsAppAssociationPair(
   firstMessageId: string,
   secondMessageId: string,

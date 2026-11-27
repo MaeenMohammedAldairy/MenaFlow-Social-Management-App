@@ -6,6 +6,8 @@ import {
   PRODUCT_EXTRACTION_LIST_MAX_OFFSET,
   buildProductExtractionPagination,
   parseProductExtractionListQuery,
+  productExtractionHiddenStatuses,
+  PRODUCT_EXTRACTION_DEFAULT_HIDDEN_STATUSES,
   summarizeProductExtractionSuggestions,
 } from "./product-extraction-list-policy.ts";
 
@@ -221,4 +223,17 @@ test("a page total is clamped to the same bounds as the request", () => {
     offset: -2,
   });
   assert.deepEqual(page, { total: 0, limit: 50, offset: 0, nextOffset: null });
+});
+
+test("a superseded version is history, not review work", () => {
+  assert.deepEqual(productExtractionHiddenStatuses([]), ["superseded"]);
+  assert.deepEqual(productExtractionHiddenStatuses(["review"]), ["superseded"]);
+  // Asked for by name, it is listed: «what changed in the new version?» needs the
+  // row it replaced to be reachable at all.
+  assert.deepEqual(productExtractionHiddenStatuses(["superseded"]), []);
+  assert.deepEqual(
+    PRODUCT_EXTRACTION_DEFAULT_HIDDEN_STATUSES,
+    ["superseded"],
+    "dismissed is not here: it is excluded outright, never selectable",
+  );
 });

@@ -20,6 +20,8 @@ import {
   whatsappProductBundleId,
   type WhatsAppContentAssociationDecision,
 } from "./whatsapp-content-association-logic.ts";
+import { reopenWhatsAppProductExtractionGroup } from "./whatsapp-product-group-reopen.ts";
+import { logger } from "./logger.ts";
 
 export {
   areWhatsAppMessagesInSameContentScope,
@@ -253,7 +255,7 @@ export async function decideWhatsAppContentAssociation(input: {
     input.firstMessageId,
     input.secondMessageId,
   );
-  return db.transaction(async (transaction) => {
+  const decided = await db.transaction(async (transaction) => {
     const [leftMessage] = await transaction
       .select({
         id: menaWhatsAppMessages.id,
@@ -357,10 +359,18 @@ export async function decideWhatsAppContentAssociation(input: {
       return {
         decision: existing.decision,
         contentBundleId: existing.contentBundleId,
+        // A replayed decision created no new group, so there is nothing to
+        // re-read: the extraction that produced the current rows already saw
+        // exactly these messages.
+        bundleMemberIds: [leftMessageId, rightMessageId],
+        replayed: true,
       };
     }
 
     let contentBundleId: string | null = null;
+    // The messages the acceptance put into one group, reported to the caller so
+    // extraction can be re-armed for the whole group rather than for the pair.
+    let bundleMemberIds: string[] = [];
     if (input.decision === "accepted") {
       const edges = await transaction
         .select({
@@ -390,6 +400,7 @@ export async function decideWhatsAppContentAssociation(input: {
         .map((edge) => edge.contentBundleId!);
       contentBundleId = existingBundles[0] ??
         whatsappProductBundleId(scope, [...combinedIds]);
+      bundleMemberIds = [...combinedIds];
       const bundleIdsToMerge = [...new Set(existingBundles)];
       if (bundleIdsToMerge.length > 0) {
         await transaction
@@ -421,6 +432,38 @@ export async function decideWhatsAppContentAssociation(input: {
         contentBundleId,
         decidedBy: input.decidedBy,
       });
-    return { decision: input.decision, contentBundleId };
+    return { decision: input.decision, contentBundleId, bundleMemberIds };
   });
+  if (
+    input.decision === "accepted" &&
+    !decided.replayed &&
+    decided.bundleMemberIds.length > 1
+  ) {
+    // Reading the group again is what an acceptance is *for*. A caption linked to
+    // its photos after extraction used to leave both halves stored as separate
+    // single-message suggestions — the price stayed in one row, the product name
+    // in the other, and nothing re-read them together. Best-effort: a merchant's
+    // decision must not be rolled back because a queue row could not be written.
+    try {
+      await reopenWhatsAppProductExtractionGroup({
+        workspaceId: input.workspaceId,
+        messageIds: decided.bundleMemberIds,
+        reason: "association_accepted",
+      });
+    } catch (error) {
+      logger.warn(
+        {
+          error,
+          workspaceId: input.workspaceId,
+          members: decided.bundleMemberIds.length,
+          contentBundleId: decided.contentBundleId,
+        },
+        "WHATSAPP_GROUP_REOPEN_AFTER_ASSOCIATION_FAILED",
+      );
+    }
+  }
+  return {
+    decision: decided.decision,
+    contentBundleId: decided.contentBundleId,
+  };
 }
