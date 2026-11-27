@@ -64,6 +64,7 @@ import {
 import {
   extractionEventForReason,
   extractionReasonFor,
+  reasonCodeFromLastError,
   requiresReasonForTransition,
   type ExtractionReasonCode,
 } from "./product-extraction-reasons.ts";
@@ -1966,13 +1967,16 @@ export async function processWhatsAppProductExtractionQueue(): Promise<void> {
         // to answer and a database that refused to write look identical in
         // `last_error` alone, and the six re-extractions that died on a CHECK
         // constraint were read as "the model is bad" for days.
+        //
+        // The mapping lives in `reasonCodeFromLastError` and nowhere else. This
+        // block used to repeat it with two prefixes, so `GEMINI_CONTENTS_REQUIRED`
+        // — the provider refusing a request body — was filed under
+        // `FAILED_PERSISTENCE` on every one of the twelve live jobs that broke,
+        // pointing at SQL while the answer was in the request.
         const failureReason: ExtractionReasonCode =
           plan.kind === "quota_pause"
             ? "PAUSED_AI_QUOTA"
-            : reason.startsWith("PRODUCT_EXTRACTION_") ||
-                reason.startsWith("PRODUCT_VISION_")
-              ? "FAILED_MODEL_RESPONSE"
-              : "FAILED_PERSISTENCE";
+            : reasonCodeFromLastError(reason);
         await updateJob(job, {
           status: plan.status,
           stage: "extraction",

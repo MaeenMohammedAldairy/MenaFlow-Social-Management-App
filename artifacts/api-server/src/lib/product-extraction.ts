@@ -703,20 +703,25 @@ export async function extractWhatsAppProductCandidates(
     },
   };
   const providerOptions = {
-    // Images go with the same request as the text: two calls let the second
-    // answer overwrite the first, which is how a bundle's price was lost to its
-    // own photos. `textAiProviderOptions` only builds a text-only request, so
-    // the image path assembles the same system/user pair itself.
-    ...(images.length > 0
-      ? {
-          images: [...images],
-          system: instruction,
-          user: `رسائل المصدر بصيغة JSON:\n${input}`,
-        }
-      : textAiProviderOptions({
-          system: instruction,
-          user: `رسائل المصدر بصيغة JSON:\n${input}`,
-        })),
+    // One reading of the group: its text and its photos in the same request. Two
+    // calls let the second answer overwrite the first, which is how a bundle's
+    // price was lost to its own photos.
+    //
+    // `images` is a modifier on an ordinary request, not a request of its own:
+    // each provider needs the pair in ITS shape (`openAiMessages`, or
+    // `geminiContents` + `geminiSystemInstruction`), and `buildOpenAiRequestBody`
+    // / `buildGeminiRequestBody` append the validated images to the last user
+    // turn. Handing over `{system, user}` instead — which is what this line used
+    // to do when images were present — is accepted by no provider: `callGemini`
+    // answers `GEMINI_CONTENTS_REQUIRED` and `callOpenAI`
+    // `OPENAI_MESSAGES_REQUIRED`, and every group with a photo failed its
+    // extraction while the type checker stayed silent, because neither key exists
+    // on `AiProviderOptions` and a spread does not report unknown properties.
+    ...textAiProviderOptions({
+      system: instruction,
+      user: `رسائل المصدر بصيغة JSON:\n${input}`,
+    }),
+    ...(images.length > 0 ? { images: [...images] } : {}),
     openAiResponseFormat: { type: "json_object" },
     geminiResponseFormat: {
       text: {
