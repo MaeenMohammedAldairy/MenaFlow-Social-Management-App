@@ -81,6 +81,19 @@ export function backgroundWorkerSnapshots(
   });
 }
 
+/**
+ * Which loops have missed several cycles, from a snapshot list.
+ *
+ * Separate from `backgroundWorkerSnapshots` so a caller that already fetched the
+ * snapshots — `/readyz`, a worker service checking its own health — reads the
+ * names through one rule instead of re-deriving `stale` and drifting from it.
+ */
+export function staleBackgroundWorkers(
+  snapshots: readonly BackgroundWorkerSnapshot[] = backgroundWorkerSnapshots(),
+): string[] {
+  return snapshots.filter((snapshot) => snapshot.stale).map((snapshot) => snapshot.name);
+}
+
 export function startBackgroundWorkerLoop(
   name: string,
   runOnce: () => Promise<number>,

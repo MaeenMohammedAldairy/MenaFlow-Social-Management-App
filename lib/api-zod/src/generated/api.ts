@@ -3058,8 +3058,34 @@ export const ListPlansResponse = zod.object({
  */
 export const GetReadinessResponse = zod.object({
   "status": zod.enum(['ok', 'error']),
-  "workers": zod.record(zod.string(), zod.unknown()).optional().describe('Per worker, the state of its last run. Present only on the success path, so a client must not rely on it.'),
+  "workers": zod.array(zod.record(zod.string(), zod.unknown())).optional().describe('One snapshot per worker loop in this process — its interval, when it last ran, and how many errors it has stacked. Present only on the success path, so a client must not rely on it.'),
+  "staleWorkers": zod.array(zod.string()).optional().describe('Names of loops that have missed several cycles. Non-empty means a queue is not advancing even though the API answers fine — the state where media rows and extraction jobs quietly age. Alert on this; it is deliberately not a 503, because every resumed instance reads stale until its first pass lands.'),
   "missingSchema": zod.array(zod.string()).optional().describe('`table.column` pairs the database is missing.')
+})
+
+
+/**
+ * Every queue in this product (WhatsApp media downloads, product extraction, publication, auto-replies, push) is normally driven by a timer inside the API process. On a serverless deployment that timer only advances while an instance stays warm, so work that is *due* waits for a customer: measured on 2026-11-27, four media rows sat past `next_attempt_at` and thirteen extraction jobs past `next_run_at`.
+ * This route is the door a scheduler knocks on — Vercel Cron, a container entrypoint with `MENA_WORKER_RUN_ONCE=true`, a GitHub Action. It runs each enabled worker once and reports what happened; it reads no workspace's records and returns none, so the secret can be handed to a scheduler without handing over the data.
+ * Authenticated by `Authorization: Bearer <MENA_WORKER_TICK_SECRET>` (or `CRON_SECRET` when no dedicated name is configured), which is why it carries no `bearerAuth` security: a cron sends no session. With no secret configured the route answers 503 `TICK_DISABLED` rather than running — a deployment that has not decided is a deployment that is closed. `busy` lists workers still running from an earlier pass (never doubled), and `deferred` lists the ones the time budget did not reach.
+ * @summary Run one pass over the background queues, now
+ */
+export const RunWorkerTickQueryParams = zod.object({
+  "workers": zod.string().optional().describe('Comma-separated worker names to restrict the pass to, so one queue can be driven alone. Unknown names simply run nothing.')
+})
+
+export const RunWorkerTickResponse = zod.object({
+  "ran": zod.array(zod.string()).describe('Workers this pass ran to completion, in registration order.'),
+  "disabled": zod.array(zod.string()).describe('Workers switched off by configuration — not failures.'),
+  "busy": zod.array(zod.string()).describe('Workers still running from an earlier pass, so this one did not double up.'),
+  "deferred": zod.array(zod.string()).describe('Workers the time budget did not reach; the next tick takes them.'),
+  "failed": zod.array(zod.object({
+  "name": zod.string(),
+  "error": zod.string()
+})).describe('One entry per worker that threw. The pass kept going.'),
+  "processed": zod.number().int().describe('Counted passes: `ran` plus `failed`, so an empty tick reads differently from a full one.'),
+  "durationMs": zod.number().int(),
+  "budgetMs": zod.number().int().describe('The limit in force; `0` means the pass ran unrestricted.')
 })
 
 

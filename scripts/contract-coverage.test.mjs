@@ -36,8 +36,8 @@ const root = new URL("..", import.meta.url).pathname;
 const routesDir = join(root, "artifacts", "api-server", "src", "routes");
 const specPath = join(root, "lib", "api-spec", "openapi.yaml");
 
-/** Highest coverage reached so far: 99 of 104. Raise it, never lower it. */
-const MINIMUM_COVERED = 99;
+/** Highest coverage reached so far: 100 of 105. Raise it, never lower it. */
+const MINIMUM_COVERED = 100;
 
 /**
  * Paths excluded from the count. The owner console is an internal read-only SPA

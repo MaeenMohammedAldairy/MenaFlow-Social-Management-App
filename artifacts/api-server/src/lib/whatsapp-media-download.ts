@@ -44,7 +44,7 @@ import {
   storeMediaObject,
   thumbnailObjectPath,
 } from "./whatsapp-media-storage";
-import { requeueWhatsAppProductMessage } from "./whatsapp-product-extraction";
+import { requeueWhatsAppProductBundle } from "./whatsapp-product-extraction";
 import { asRecord } from "./value-utils.ts";
 import { logger } from "./logger.ts";
 
@@ -398,7 +398,7 @@ async function storeMedia(
     existing.downloadStatus === "stored" &&
     await hasUsableFile(existing.storagePath, existing.storageProvider)
   ) {
-    await requeueWhatsAppProductMessage(message.workspaceId, message.id);
+    await requeueWhatsAppProductBundle(message.workspaceId, message.id);
     return "stored";
   }
 
@@ -496,7 +496,7 @@ async function storeMedia(
           updatedAt: new Date(),
         })
         .where(identity);
-      await requeueWhatsAppProductMessage(message.workspaceId, message.id);
+      await requeueWhatsAppProductBundle(message.workspaceId, message.id);
       return "stored";
     }
 
@@ -524,7 +524,9 @@ async function storeMedia(
       })
       .where(identity)
       .returning({ id: menaWhatsAppMessageMedia.id });
-    await requeueWhatsAppProductMessage(message.workspaceId, message.id);
+    // The bundle, not just this message: every sibling job parked behind this
+    // download has to be re-decided, or it keeps waiting for a photo that landed.
+    await requeueWhatsAppProductBundle(message.workspaceId, message.id);
     logger.info(
       {
         messageId: message.id,

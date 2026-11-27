@@ -116,6 +116,7 @@ import type {
   PushTokenRegisteredResponse,
   PushTokenRemovedResponse,
   ReadinessResponse,
+  RunWorkerTickParams,
   ScannedPostExtraction,
   ScannedPostExtractionInput,
   SocialAccountDetails,
@@ -150,6 +151,8 @@ import type {
   WhatsAppSyncStatusResponse,
   WhatsAppSyncTriggerResponse,
   WhatsAppWebhookReconfiguration,
+  WorkerTickError,
+  WorkerTickResponse,
   WorkspaceDeletionRequestCreatedResponse,
   WorkspaceDeletionRequestResponse,
   WorkspaceExport,
@@ -7736,6 +7739,90 @@ export function useGetReadiness<TData = Awaited<ReturnType<typeof getReadiness>>
 
 
 
+
+export const getRunWorkerTickUrl = (params?: RunWorkerTickParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/internal/worker-tick?${stringifiedParams}` : `/api/internal/worker-tick`
+}
+
+/**
+ * Every queue in this product (WhatsApp media downloads, product extraction, publication, auto-replies, push) is normally driven by a timer inside the API process. On a serverless deployment that timer only advances while an instance stays warm, so work that is *due* waits for a customer: measured on 2026-11-27, four media rows sat past `next_attempt_at` and thirteen extraction jobs past `next_run_at`.
+ * This route is the door a scheduler knocks on — Vercel Cron, a container entrypoint with `MENA_WORKER_RUN_ONCE=true`, a GitHub Action. It runs each enabled worker once and reports what happened; it reads no workspace's records and returns none, so the secret can be handed to a scheduler without handing over the data.
+ * Authenticated by `Authorization: Bearer <MENA_WORKER_TICK_SECRET>` (or `CRON_SECRET` when no dedicated name is configured), which is why it carries no `bearerAuth` security: a cron sends no session. With no secret configured the route answers 503 `TICK_DISABLED` rather than running — a deployment that has not decided is a deployment that is closed. `busy` lists workers still running from an earlier pass (never doubled), and `deferred` lists the ones the time budget did not reach.
+ * @summary Run one pass over the background queues, now
+ */
+export const runWorkerTick = async (params?: RunWorkerTickParams, options?: Parameters<typeof customFetch>[1]): Promise<WorkerTickResponse> => {
+
+  return customFetch<WorkerTickResponse>(getRunWorkerTickUrl(params),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRunWorkerTickMutationKey = () => ['runWorkerTick'] as const;
+
+export const getRunWorkerTickMutationOptions = <TError = ErrorType<WorkerTickError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runWorkerTick>>, TError,RunWorkerTickMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof runWorkerTick>>, TError,RunWorkerTickMutationVariables, TContext> => {
+
+const mutationKey = getRunWorkerTickMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof runWorkerTick>>, RunWorkerTickMutationVariables> = (props) => {
+          const {params} = props ?? {};
+
+          return  runWorkerTick(params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RunWorkerTickMutationResult = NonNullable<Awaited<ReturnType<typeof runWorkerTick>>>
+
+    export type RunWorkerTickMutationError = ErrorType<WorkerTickError>
+    export type RunWorkerTickMutationVariables = {params?: RunWorkerTickParams}
+
+    /**
+ * @summary Run one pass over the background queues, now
+ */
+export const useRunWorkerTick = <TError = ErrorType<WorkerTickError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof runWorkerTick>>, TError,RunWorkerTickMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof runWorkerTick>>,
+        TError,
+        RunWorkerTickMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRunWorkerTickMutationOptions(options));
+    }
 
 export const getSubscribeToPostEventsUrl = () => {
 

@@ -17,9 +17,10 @@ pnpm --filter @workspace/api-server run start
 Meta automatic replies and Meta order-confirmation messages run inside the API
 process. Set `META_AUTO_REPLY_WORKER_ENABLED=false` to disable automatic
 conversation replies; the order-confirmation queue remains active.
-All enabled background queue workers also start inside the API process. No
-separate worker service or change to the API start command is required. The
-standalone command `pnpm --filter @workspace/api-server run start:worker`
+All enabled background queue workers also start inside the API process, so a
+long-lived host needs no separate worker service and no change to the API start
+command. That sentence is only true while the process lives — see *Driving the
+queues on a frozen runtime* below. The standalone command `pnpm --filter @workspace/api-server run start:worker`
 remains available for isolated use; do not run it alongside the API process,
 because both processes would consume the same queues. `MENA_WORKER_NAME` only
 selects a worker when using that standalone command; the API starts all enabled
@@ -33,9 +34,44 @@ Keep one replica for `meta-webhook-subscriptions` until its reconciliation
 work is protected by a cross-process claim.
 `GET /api/readyz` returns a `workers` array describing every started loop
 (`lastRunFinishedAt`, `lastRunDurationMs`, `consecutiveErrors`, `lastError`,
-`stale`). A worker that stops running is invisible in request metrics, so point
-an uptime monitor at the response and alert when a worker is `stale` or its
-`consecutiveErrors` keeps climbing. The `whatsapp-auto-replies` worker also
+`stale`) plus `staleWorkers`, the names that have missed several cycles. A worker
+that stops running is invisible in request metrics, so point an uptime monitor at
+the response and alert when a worker is `stale`, when `staleWorkers` is non-empty,
+or when `consecutiveErrors` keeps climbing.
+
+### Driving the queues on a frozen runtime
+
+`setInterval` is the only driver in that layout, and a serverless platform freezes
+the process between requests. On 2026-11-27 that was not theoretical: four media
+rows sat past `next_attempt_at` and thirteen WhatsApp product-extraction jobs sat
+past their own `next_run_at` — every one of them waiting for a tick that would
+only happen if a merchant opened the app. A queue whose progress depends on
+customer traffic is not a queue.
+
+`POST /api/internal/worker-tick` runs one pass over the same worker list the loops
+use, and it is the piece a scheduler needs:
+
+```
+curl -fsS -X POST "$API_URL/api/internal/worker-tick" \
+  -H "Authorization: Bearer $MENA_WORKER_TICK_SECRET"
+```
+
+| Variable | Meaning |
+| --- | --- |
+| `MENA_WORKER_TICK_SECRET` | Comma-separated bearer secrets, each at least 24 characters. **Unset means the route answers `503 TICK_DISABLED` and touches no queue** — a deployment that has not decided is closed, not open. List two values while rotating. |
+| `CRON_SECRET` | Used when no dedicated secret is set: Vercel sends it automatically as `Authorization: Bearer <CRON_SECRET>` for a cron declared in `vercel.json`. |
+| `MENA_WORKER_TICK_BUDGET_MS` | Wall-clock limit for one pass (default `25000`, `0` = unlimited). Workers the budget did not reach come back as `deferred`, so a pass answers with what it skipped instead of being killed mid-flight. |
+
+Three ways to drive it, in order of how much they change the deployment:
+
+1. **Vercel Cron.** Declare the path in `vercel.json` (`"crons": [{ "path": "/api/internal/worker-tick", "schedule": "* * * * *" }]`) and set `CRON_SECRET`. Note the plan limit: Hobby allows one schedule per day, so a minute-level cadence needs Pro.
+2. **A scheduled command** — GitHub Action, `systemd` timer, a container `command` — running `pnpm --filter @workspace/api-server run start:worker` with `MENA_WORKER_RUN_ONCE=true`. It takes one pass, logs `ran`/`failed`/`busy`/`deferred`, exits `1` if any worker failed, and exits. Set `MENA_WORKER_TICK_BUDGET_MS=0` to always take every queue. `MENA_WORKER_NAME` narrows it to one family, exactly as in loop mode.
+3. **A long-lived worker service** running `start:worker` (no `MENA_WORKER_RUN_ONCE`), which is the original layout: timers, no HTTP surface. Keep it to one replica for `meta-webhook-subscriptions` as above, and do not run it alongside the API process.
+
+The route never reads a workspace's records and returns none, so the secret can be
+given to a scheduler without giving it the data. Overlap is refused, not queued:
+a tick that arrives while a worker is mid-pass reports it in `busy`. To restrict a
+pass to one queue, append `?workers=media-download,product-extraction`. The `whatsapp-auto-replies` worker also
 stops answering a chat that receives more than
 `WHATSAPP_AUTO_REPLY_HOURLY_LIMIT` automatic replies in an hour (default 12,
 maximum 100) to keep two automated systems from answering each other forever;
