@@ -160,6 +160,10 @@ export const products = pgTable(
       "mena_products_price_currency_check",
       sql`${table.price} IS NULL OR ${table.currency} IS NOT NULL`,
     ),
+    check(
+      "mena_products_price_status_check",
+      sql`${table.priceStatus} IS NULL OR ${table.priceStatus} IN ('confirmed', 'unquoted', 'ambiguous', 'missing')`,
+    ),
   ],
 );
 
@@ -388,10 +392,17 @@ export const productExtractionSuggestions = pgTable(
       "mena_product_extraction_sender_role_check",
       sql`${table.senderRole} IN ('merchant', 'customer', 'unknown')`,
     ),
+    /**
+     * One predecessor per item per version. The item's place is part of the key
+     * because a group may answer with several products at one version, and a
+     * three-column key would let only the first of them be written — the second
+     * insert would be refused by the index rather than stored.
+     */
     uniqueIndex("mena_product_extraction_version_key").on(
       table.workspaceId,
       table.previousSuggestionId,
       table.version,
+      table.itemIndex,
     ),
   ],
 );
@@ -523,6 +534,15 @@ export const whatsappProductExtractionJobs = pgTable(
     check(
       "mena_whatsapp_product_extraction_job_stage_check",
       sql`${table.stage} IN ('received', 'media', 'association', 'extraction', 'persistence')`,
+    ),
+    // Every terminal transition names its reason, and the database agrees: a
+    // reason written here that the table would reject is worse than no check,
+    // because `product-extraction-reasons.ts` would then be the only truth and a
+    // typo in a new code would surface as a failed job. The list is compared
+    // against `EXTRACTION_REASON_CODES` by product-extraction-db-contract.test.mjs.
+    check(
+      "mena_whatsapp_product_extraction_job_reason_check",
+      sql`${table.reasonCode} IS NULL OR ${table.reasonCode} IN ('RECORDED', 'SKIPPED_MESSAGE_UNRECEIVABLE', 'SKIPPED_ALREADY_COVERED', 'FAILED_ASSOCIATED_MESSAGE_UNAVAILABLE', 'WAITING_MEDIA', 'FAILED_MEDIA_UNRECOVERABLE', 'RECORDED_MEDIA_PARTIAL', 'WAITING_ASSOCIATION', 'REEXTRACTED_GROUP_GROWN', 'NEEDS_TEXT', 'FAILED_MODEL_RESPONSE', 'PAUSED_AI_QUOTA', 'FAILED_PERSISTENCE')`,
     ),
   ],
 );
