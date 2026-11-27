@@ -103,15 +103,24 @@ test("a small PNG passes through and a large phone JPEG is re-encoded and bounde
 // a group, carrying its text and its images together, grounded in the visible
 // text the model reports — and no database identifier in it.
 const sent = [];
+const realMetered = await import("./metered-ai-provider.ts");
 mock.module("./metered-ai-provider.ts", {
   namedExports: {
     callMeteredAiProvider: async (_workspaceId, options) => {
       sent.push(options);
       return { model: "vision-test-model", content: visionAnswer };
     },
-    textAiProviderOptions: (input) => ({ ...input }),
+    // `textAiProviderOptions` is the request shape, not a transport detail —
+    // faking it here is what let a `{system, user}` object pass every assertion
+    // while both providers rejected it (`GEMINI_CONTENTS_REQUIRED`,
+    // `OPENAI_MESSAGES_REQUIRED`) and twelve extraction jobs died in the live
+    // workspace. The real one stays, and the tests below read the built bodies.
+    textAiProviderOptions: realMetered.textAiProviderOptions,
   },
 });
+const { buildGeminiRequestBody, buildOpenAiRequestBody } = await import(
+  "./ai-provider.ts"
+);
 const { PRODUCT_EXTRACTION_PROMPT_VERSION } = await import(
   "./product-extraction-prompt-version.ts",
 );
@@ -170,16 +179,58 @@ test("the group's photos ride in the same request as its text", async () => {
   const [options] = sent;
   assert.equal(sent.length, 1, "one reading of the group means one request");
   assert.equal(options.images.length, 2);
+  // The two shapes each provider has to be handed, checked through the builders
+  // that produce the wire bodies — a key neither provider reads is not a request.
+  const geminiBody = buildGeminiRequestBody(options);
+  const openAiBody = buildOpenAiRequestBody(options);
+  const geminiParts = geminiBody.contents.at(-1).parts;
+  const geminiText = geminiParts.map((part) => part.text ?? "").join("");
+  assert.match(geminiText, /"id":"1"/, "gemini got the source json");
+  assert.equal(
+    geminiParts.filter((part) => part.inlineData).length,
+    2,
+    "both photos ride in the same gemini turn",
+  );
+  assert.match(geminiBody.systemInstruction.parts[0].text, /visibleText/);
+  const openAiUser = openAiBody.messages.at(-1).content;
+  const openAiText = openAiUser
+    .map((part) => (typeof part === "string" ? part : part.text ?? ""))
+    .join("");
+  assert.match(openAiText, /"id":"1"/, "openai got the source json");
+  assert.equal(
+    openAiUser.filter((part) => part?.type === "image_url").length,
+    2,
+    "both photos ride in the same openai turn",
+  );
+  assert.equal(openAiBody.messages[0].role, "system");
   assert.equal(options.temperature, 0);
   // Facts and a transcription in the same answer need more room than the old
   // 3000-token ceiling, which truncated a 13-photo album mid-product.
   assert.ok(options.maxTokens >= 6000, `maxTokens ${options.maxTokens}`);
-  assert.match(options.system, /visibleText/);
-  assert.match(options.system, /بيانات للتحليل/);
-  const serialized = JSON.stringify(options);
+  // Every assertion above reads the bodies the providers are actually sent.
+  // An earlier version read `options.system` / `options.user`, keys of
+  // `AiProviderOptions` only in the mock that returned the caller's own object;
+  // that pairing is what let a request shape neither provider accepts pass CI
+  // while every live job died with GEMINI_CONTENTS_REQUIRED.
+  const instructions = [
+    geminiBody.systemInstruction.parts[0].text,
+    openAiBody.messages[0].content,
+  ];
+  for (const instruction of instructions) {
+    assert.match(instruction, /visibleText/);
+    assert.match(instruction, /بيانات للتحليل/);
+  }
+  // The group's own words are in the user turn of BOTH shapes — the images are a
+  // modifier on an ordinary request, never a request of their own.
+  assert.match(geminiText, /نص الرسالة لا يصل إلى النموذج/);
+  assert.match(openAiText, /نص الرسالة لا يصل إلى النموذج/);
+  assert.ok(
+    options.geminiContents && options.openAiMessages && options.geminiSystemInstruction,
+    "a vision request carries the same keys a text request does",
+  );
+  const serialized = JSON.stringify([geminiBody, openAiBody]);
   // The message's words are the other half of the reading and ARE sent; what
   // must never leave the server is the identifier behind them.
-  assert.match(options.user, /"id":"1"/);
   assert.doesNotMatch(serialized, /0f0f0f0f/, "database ids are not sent");
   assert.doesNotMatch(serialized, /"groupId":"bundle/, "group keys are not sent");
   assert.equal(result.model, "vision-test-model");
@@ -256,6 +307,15 @@ test("a request without images asks for no transcription", async () => {
   await extractWhatsAppProductCandidates("workspace-a", [groupSource()], {});
   const [options] = sent;
   assert.equal(options.images, undefined);
-  assert.doesNotMatch(options.system, /visibleText/);
+  // Read the instruction the providers actually receive, not a key of the local
+  // object: without images there is nothing to transcribe, and the request must
+  // not ask for a `visibleText` field the answer would then have to invent.
+  const instructions = [
+    buildGeminiRequestBody(options).systemInstruction.parts[0].text,
+    buildOpenAiRequestBody(options).messages[0].content,
+  ];
+  for (const instruction of instructions) {
+    assert.doesNotMatch(instruction, /visibleText/);
+  }
   assert.ok(options.maxTokens < 6000, "a text-only answer needs less room");
 });

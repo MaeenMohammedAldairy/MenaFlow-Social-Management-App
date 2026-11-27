@@ -107,6 +107,19 @@ export function reasonCodeFromLastError(lastError: string | null | undefined): E
     return "FAILED_ASSOCIATED_MESSAGE_UNAVAILABLE";
   }
   if (lastError.startsWith("PRODUCT_EXTRACTION_")) return "FAILED_MODEL_RESPONSE";
+  // A provider that refused the request is not a database that refused a write.
+  // Twelve extraction jobs in the live workspace were labelled `FAILED_PERSISTENCE`
+  // for exactly this reason, and the label sent somebody looking at SQL while the
+  // truth was in the request body.
+  if (
+    lastError.startsWith("PRODUCT_VISION_") ||
+    lastError.startsWith("GEMINI_") ||
+    lastError.startsWith("OPENAI_") ||
+    lastError.startsWith("MISSING_OPENAI_KEY") ||
+    lastError.startsWith("MISSING_GEMINI_KEY")
+  ) {
+    return "FAILED_MODEL_RESPONSE";
+  }
   if (lastError.startsWith("Failed query:") || lastError.startsWith("update \"")) {
     return "FAILED_PERSISTENCE";
   }
@@ -125,7 +138,7 @@ const REASON_MESSAGES: Record<ExtractionReasonCode, string> = {
   WAITING_ASSOCIATION: "يحتاج ربط الرسائل بمنتج واحد إلى قرار التاجر.",
   REEXTRACTED_GROUP_GROWN: "أُعيد الاستخراج بعد انضمام رسالة جديدة للمجموعة.",
   NEEDS_TEXT: "لا نص ولا صورة مقروءة في هذه الرسالة.",
-  FAILED_MODEL_RESPONSE: "رفض النموذج إجابة قابلة للتحليل مرتين.",
+  FAILED_MODEL_RESPONSE: "رفض مزوّد النموذج الطلب أو أعاد إجابة غير قابلة للتحليل.",
   PAUSED_AI_QUOTA: "الطابور متوقف مؤقتًا لاستنفاد حصة الذكاء الاصطناعي.",
   FAILED_PERSISTENCE: "فشل حفظ الاقتراح في قاعدة البيانات.",
 };

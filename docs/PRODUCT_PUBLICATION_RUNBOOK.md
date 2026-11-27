@@ -507,6 +507,32 @@ lands in `review` and never becomes an automatic draft. If some of the images
 could not be opened, the suggestion says so in `media_state` rather than looking
 like a complete read.
 
+### The request must still be built by `textAiProviderOptions`
+
+Adding images does not create a new kind of request. `product-extraction.ts`
+spreads `textAiProviderOptions({ system, user })` and adds `images` beside it:
+each provider's body builder (`buildGeminiRequestBody`,
+`buildOpenAiRequestBody`) appends the validated images to the last user turn,
+which is why one call can carry both halves of an offer.
+
+What enforces this: `product-vision-extraction.test.mjs` builds the *bodies*
+through both providers and asserts on those — the source JSON, the two
+`inlineData` / `image_url` parts, the system instruction — and the mock of
+`./metered-ai-provider.ts` deliberately keeps the **real** `textAiProviderOptions`.
+Without it, a test can only check a shape the test itself invented.
+
+What breaks without it is the reason all three rules exist. When the image branch
+was written, it replaced the spread with a hand-built `{ images, system, user }`.
+`system` and `user` are not keys of `AiProviderOptions`, a spread reports no
+unknown properties, and both providers refused every such request:
+`callGemini` → `GEMINI_CONTENTS_REQUIRED`, `callOpenAI` →
+`OPENAI_MESSAGES_REQUIRED`. Typecheck was clean, 1095 tests passed, and every
+group with a photo in the live workspace failed — twelve jobs, zero new
+suggestions, `prompt_version` never written. `GEMINI_CONTENTS_REQUIRED` does
+**not** mean a missing key: the key check (`MISSING_GEMINI_KEY`) runs first, so
+that message always means the request body had no provider-shaped contents.
+The same test suite now fails when the old line is put back.
+
 ## 7. AI provider behaviour
 
 Order is OpenAI then Gemini (`planAiProviders`). A provider is skipped when its
@@ -516,6 +542,11 @@ Cooldown defaults to 5 minutes (`AI_PROVIDER_COOLDOWN_MS`); credential errors
 wait six times longer (`AI_PROVIDER_CREDENTIAL_COOLDOWN_MS`). With no usable
 provider the job gets `MISSING_AI_PROVIDER_KEY` or `AI_PROVIDER_COOLING_DOWN`
 and is retried later — nothing is lost.
+
+A `GEMINI_*` / `OPENAI_*` / `PRODUCT_VISION_*` failure is labelled
+`FAILED_MODEL_RESPONSE`, not `FAILED_PERSISTENCE`: a provider that refused the
+request body is not a database that refused a write, and the label decides
+whether the next person reads SQL or reads the request.
 
 Extraction can be pinned to specific models without touching other features:
 `AI_EXTRACTION_OPENAI_MODEL` and `AI_EXTRACTION_GEMINI_MODEL` override
