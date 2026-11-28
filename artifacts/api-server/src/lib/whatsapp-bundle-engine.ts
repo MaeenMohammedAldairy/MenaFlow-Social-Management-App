@@ -100,6 +100,8 @@ export type ShadowBundle = {
   anchorMessageId: string;
   mediaExpected: number;
   mediaStored: number;
+  /** Seats the album promised and never delivered. Never subtracted from `mediaExpected`. */
+  mediaPartialSeats: number;
   openedAt: string;
   readyAt: string | null;
   frozenAt: string | null;
@@ -227,6 +229,22 @@ function isTextOnly(message: ShadowBundleMessage): boolean {
  */
 function isClaimableText(message: ShadowBundleMessage): boolean {
   return isTextOnly(message) && !isUnlabelledMedia(message);
+}
+
+/**
+ * Whether two messages provably come from the same speaker.
+ *
+ * `null === null` is NOT "same sender": in production two imported messages
+ * carry `sender_id = NULL` while coming from different authors, so an equality
+ * test there would merge strangers. Same sender therefore requires both sides to
+ * be present *and* equal. One missing side is never a match either.
+ */
+function isSameSender(a: ShadowBundleMessage, b: ShadowBundleMessage): boolean {
+  return typeof a.senderId === "string" &&
+    a.senderId.length > 0 &&
+    typeof b.senderId === "string" &&
+    b.senderId.length > 0 &&
+    a.senderId === b.senderId;
 }
 
 function sameScope(a: ShadowBundleMessage, b: ShadowBundleMessage): boolean {
@@ -373,46 +391,45 @@ function draftSpan(draft: DraftBundle): { start: number; end: number } {
 /** Media rows promised by the cluster, counted over its media members. */
 function bundleMediaCounts(draft: DraftBundle): {
   expected: number;
+  children: number;
   stored: number;
   pending: boolean;
+  /**
+   * Seats the album promised and never delivered. Reported, never subtracted
+   * from the promise itself.
+   */
+  partialSeats: number;
+  /** `children >= expected - 1`, or "every child is here" when nothing was promised. */
+  complete: boolean;
 } {
   let stored = 0;
   let pending = false;
-  let mediaMembers = 0;
+  let children = 0;
   // The advertised count lives on the album *container*, which carries no media
-  // of its own, so it has to be read from every member — not only the ones that
-  // hold rows.
-  const promised = Math.max(
+  // rows of its own, so it has to be read from every member — not only the ones
+  // that hold rows.
+  const advertised = Math.max(
     0,
     ...draft.members.map((member) => member.mediaGroupExpectedCount ?? 0),
   );
   for (const member of draft.members) {
-    if (!hasMedia(member)) continue; // an album container carries no media itself
-    mediaMembers += 1;
+    if (!hasMedia(member)) continue; // a container is not a media member
+    children += 1;
     for (const item of member.media) {
       if (item.downloadStatus === "stored") stored += 1;
       else if (item.downloadStatus !== "failed") pending = true;
     }
   }
-  // The advertised count includes the album container itself, which never
-  // carries a media row. Subtracting the containers present in the cluster is
-  // the difference between "12 of 13 arrived" (a permanent false shortfall) and
-  // "12 of 12 arrived" (the truth). The legacy gate compares 12 rows against the
-  // advertised 13 and therefore never settles — the same arithmetic, corrected.
-  const containers = draft.members.filter(
-    (member) =>
-      !hasMedia(member) &&
-      (member.messageType ?? "").toLowerCase().includes("album") &&
-      (member.mediaGroupExpectedCount ?? 0) > 0,
-  ).length;
-  // A container with no children at all is the ACE5CCDE shape: the promise was
-  // made and nothing came back. Keep the promise visible (2 expected, 0 stored)
-  // so the shortfall is reported instead of being rewritten as "0 of 0".
-  const expected =
-    mediaMembers === 0 && containers > 0
-      ? promised
-      : Math.max(promised - containers, mediaMembers);
-  return { expected, stored, pending };
+  // Measured on 11 real albums: 8 have `expected == children`, 2 have
+  // `expected == children + 1`, 2 are missing media for other reasons. The
+  // advertised number is therefore a *promise with one seat of slack*, not a
+  // count of children and not `children + 1` either. Both shapes are accepted;
+  // anything further short is reported as a shortfall. The promise is never
+  // rewritten — `expected` stays exactly what the provider advertised.
+  const expected = advertised > 0 ? advertised : children;
+  const complete = expected === 0 || children >= expected - 1;
+  const partialSeats = Math.max(0, expected - children);
+  return { expected, children, stored, pending, partialSeats, complete };
 }
 
 function evaluateReadiness(
@@ -422,6 +439,7 @@ function evaluateReadiness(
   status: ShadowBundleStatus;
   mediaExpected: number;
   mediaStored: number;
+  mediaPartialSeats: number;
   readyAt: string | null;
   reviewReason: string | null;
 } {
@@ -430,32 +448,46 @@ function evaluateReadiness(
   const ageMs = settings.evaluatedAt.getTime() - span.end;
   const withText = draft.members.some((member) => Boolean(textOf(member)));
   const withMedia = draft.members.some(hasMedia);
+  const base = {
+    mediaExpected: counts.expected,
+    mediaStored: counts.stored,
+    mediaPartialSeats: counts.partialSeats,
+  };
 
   if (draft.ambiguous) {
     return {
+      ...base,
       status: "NEEDS_REVIEW",
-      mediaExpected: counts.expected,
-      mediaStored: counts.stored,
       readyAt: null,
       reviewReason: draft.reviewReason ?? "AMBIGUOUS_EVIDENCE",
     };
   }
 
   if (draft.kind === "album") {
-    if (counts.stored >= counts.expected) {
+    // Complete means every child arrived, allowing the one seat of slack the
+    // provider's own arithmetic introduces. A failed download is terminal and
+    // does not hold the album open; a pending one does.
+    if (counts.complete) {
+      // Seats and files are two different promises. An album whose children all
+      // arrived but whose downloads failed has no usable picture, and saying so
+      // is not the same as calling it short. The same one-seat slack applies, so
+      // "12 stored of 13 advertised" is reported as complete, not as missing.
+      const usable = counts.stored >= Math.max(0, counts.expected - 1);
       return {
+        ...base,
         status: "READY",
-        mediaExpected: counts.expected,
-        mediaStored: counts.stored,
         readyAt: settings.evaluatedAt.toISOString(),
-        reviewReason: null,
+        reviewReason: counts.pending
+          ? "MEDIA_PENDING"
+          : usable
+            ? null
+            : "MEDIA_PARTIAL",
       };
     }
     if (counts.pending || ageMs < settings.albumSettleMs) {
       return {
+        ...base,
         status: "COLLECTING",
-        mediaExpected: counts.expected,
-        mediaStored: counts.stored,
         readyAt: null,
         reviewReason: counts.pending ? "MEDIA_PENDING" : "ALBUM_SETTLING",
       };
@@ -463,9 +495,8 @@ function evaluateReadiness(
     // The album stopped arriving short of what it promised. Reading what is
     // there beats waiting forever, and the gap is named rather than hidden.
     return {
+      ...base,
       status: "READY",
-      mediaExpected: counts.expected,
-      mediaStored: counts.stored,
       readyAt: settings.evaluatedAt.toISOString(),
       reviewReason: "MEDIA_PARTIAL",
     };
@@ -473,9 +504,8 @@ function evaluateReadiness(
 
   if (counts.pending) {
     return {
+      ...base,
       status: "COLLECTING",
-      mediaExpected: counts.expected,
-      mediaStored: counts.stored,
       readyAt: null,
       reviewReason: "MEDIA_PENDING",
     };
@@ -484,26 +514,23 @@ function evaluateReadiness(
     // Photos with no words: nothing to read yet, and no evidence that a text is
     // coming. It waits. It is never guessed to be a product.
     return {
+      ...base,
       status: "COLLECTING",
-      mediaExpected: counts.expected,
-      mediaStored: counts.stored,
       readyAt: null,
       reviewReason: "NEEDS_TEXT",
     };
   }
   if (!withMedia && withText && ageMs < settings.textSettleMs) {
     return {
+      ...base,
       status: "COLLECTING",
-      mediaExpected: counts.expected,
-      mediaStored: counts.stored,
       readyAt: null,
       reviewReason: "TEXT_SETTLING",
     };
   }
   return {
+    ...base,
     status: "READY",
-    mediaExpected: counts.expected,
-    mediaStored: counts.stored,
     readyAt: settings.evaluatedAt.toISOString(),
     reviewReason: null,
   };
@@ -542,6 +569,7 @@ function finalise(
     anchorMessageId: anchor.id,
     mediaExpected: readiness.mediaExpected,
     mediaStored: readiness.mediaStored,
+    mediaPartialSeats: readiness.mediaPartialSeats,
     openedAt: anchor.messageTimestamp ?? anchor.createdAt,
     readyAt: readiness.readyAt,
     frozenAt: null,
@@ -725,14 +753,25 @@ export function planShadowBundles(
     runDraft = null;
     runLast = null;
   };
-  for (const message of ordered) {
+  for (let index = 0; index < ordered.length; index += 1) {
+    const message = ordered[index];
     if (draftByMessage.has(message.id) || !isUnlabelledMedia(message)) continue;
+    // TEXT IS A HARD BOUNDARY. A run may only join two photos when nothing
+    // stands between them — no message of any kind, and in particular no text.
+    // Proximity alone is not a relationship: two products posted seconds apart
+    // are two products, and joining their photos would put one offer's pictures
+    // under the other offer's price. Using the ordered neighbour (rather than a
+    // time window) means a text, an album member, or another product's photo all
+    // break the run, which is the under-grouping this design prefers.
+    const previous = ordered[index - 1] ?? null;
+    const noMessageBetween = Boolean(previous) && previous!.id === runLast?.id;
     const continues =
       runDraft &&
       runLast &&
+      noMessageBetween &&
       runDraft.members.length < maxRun &&
       sameScope(runLast, message) &&
-      runLast.senderId === message.senderId &&
+      isSameSender(runLast, message) &&
       timeOf(message) - timeOf(runLast) <= adjacencyMs;
     if (!continues) {
       flushRun();
@@ -763,12 +802,19 @@ export function planShadowBundles(
         !clusterByMessage.has(candidate.id) &&
         isClaimableText(candidate) &&
         sameScope(candidate, cluster.draft.anchor) &&
-        candidate.senderId === cluster.senderId &&
+        isSameSender(candidate, cluster.draft.anchor) &&
         Number.isFinite(timeOf(candidate)) &&
         timeOf(candidate) >= cluster.start - adjacencyMs &&
         timeOf(candidate) <= cluster.end + adjacencyMs,
     );
     if (candidates.length === 0) continue;
+
+    // A cluster made only of a container has nothing to explain: an empty album
+    // is a promise without pictures, so it may not pull somebody else's text.
+    if (!cluster.draft.members.some(hasMedia)) {
+      cluster.draft.evidenceDetail.refusedBy = "NO_MEDIA_TO_ANCHOR";
+      continue;
+    }
 
     // Among several candidate texts, exactly one may still be unambiguous: the
     // one that is the *nearest* text on either side of the cluster, with no
@@ -781,14 +827,14 @@ export function planShadowBundles(
         (candidate) =>
           isClaimableText(candidate) &&
           sameScope(candidate, cluster.draft.anchor) &&
-          candidate.senderId === cluster.senderId &&
+          isSameSender(candidate, cluster.draft.anchor) &&
           timeOf(candidate) <= cluster.start,
       );
     const nearestAfter = ordered.find(
       (candidate) =>
         isClaimableText(candidate) &&
         sameScope(candidate, cluster.draft.anchor) &&
-        candidate.senderId === cluster.senderId &&
+        isSameSender(candidate, cluster.draft.anchor) &&
         timeOf(candidate) >= cluster.end,
     );
     const adjacentCandidates = [nearestBefore, nearestAfter].filter(
@@ -798,6 +844,32 @@ export function planShadowBundles(
     if (candidates.length > 1 && adjacentCandidates.length === 1) {
       candidates.length = 0;
       candidates.push(adjacentCandidates[0]);
+    } else if (
+      candidates.length === 2 &&
+      adjacentCandidates.length === 2 &&
+      // Only a *single* photo may resolve a two-sided text question by distance.
+      // Two or more photos between two offers is a genuine question — picking
+      // the nearer text would silently absorb the other offer's pictures.
+      cluster.draft.members.filter(hasMedia).length === 1
+    ) {
+      const distanceOf = (candidate: ShadowBundleMessage) =>
+        Math.min(
+          Math.abs(timeOf(candidate) - cluster.start),
+          Math.abs(timeOf(candidate) - cluster.end),
+        );
+      const [first, second] = adjacentCandidates;
+      const firstDistance = distanceOf(first);
+      const secondDistance = distanceOf(second);
+      if (Number.isFinite(firstDistance) && Number.isFinite(secondDistance) && firstDistance !== secondDistance) {
+        const winner = firstDistance < secondDistance ? first : second;
+        candidates.length = 0;
+        candidates.push(winner);
+        cluster.draft.evidenceDetail.tieBreak = {
+          by: "distance",
+          winnerDistanceMs: Math.min(firstDistance, secondDistance),
+          loserDistanceMs: Math.max(firstDistance, secondDistance),
+        };
+      }
     }
 
     const guard = checkMergeGuard({

@@ -37,6 +37,7 @@ import {
   extractMediaItemsFromMessage,
   extractWhatsAppTextFromMessage,
   extractWhatsAppAlbumAssociation,
+  extractWhatsAppReplySignal,
   hasWhatsAppAlbumAssociation,
   extractWhatsAppMediaGroupId,
   extractWhatsAppMediaGroupExpectedCount,
@@ -469,7 +470,11 @@ async function persistImportedMessage(
     ]
       .map(parseWhatsAppHistoryTimestamp)
       .find((timestamp): timestamp is Date => timestamp !== null) ?? new Date();
-  const contextInfo = asRecord(payload.contextInfo);
+  // The quoted-message signal, read from every address Evolution uses. The old
+  // code looked only at `payload.contextInfo`, so a stanza id living under
+  // `message.imageMessage.contextInfo` was invisible. This reads; it does not
+  // change how a message is grouped.
+  const replySignal = extractWhatsAppReplySignal(payload, message);
 
   const caption =
     mediaItems.map((item) => item.caption).find((item) => Boolean(item)) ??
@@ -585,12 +590,9 @@ async function persistImportedMessage(
         ? payload.source
         : "import",
     messageTimestamp,
-    replyToRemoteId:
-      typeof payload.replyTo === "string"
-        ? payload.replyTo
-        : typeof contextInfo?.stanzaId === "string"
-          ? contextInfo.stanzaId
-          : null,
+    // Priority is unchanged for the field itself: an explicit `replyTo`, then a
+    // stanza id from wherever it was found. `null` when nothing carries one.
+    replyToRemoteId: replySignal.replyToRemoteId,
     updatedAt: new Date(),
   };
 

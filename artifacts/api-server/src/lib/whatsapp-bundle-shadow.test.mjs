@@ -18,6 +18,7 @@ import {
   planShadowBundles,
 } from "./whatsapp-bundle-engine.ts";
 import { compareShadowPlan } from "./whatsapp-bundle-shadow-compare.ts";
+import { extractWhatsAppReplySignal } from "./whatsapp-message-scope.ts";
 
 const WORKSPACE = "ws";
 const OWNER = "owner";
@@ -41,7 +42,9 @@ function message(overrides = {}) {
     instanceName: INSTANCE,
     groupId: GROUP_ID,
     groupJid: GROUP_JID,
-    senderId: overrides.senderId ?? SENDER,
+    // An explicit `null` must survive: it is a real production state, not an
+    // omitted field.
+    senderId: "senderId" in overrides ? overrides.senderId : SENDER,
     messageType: overrides.messageType ?? (withMedia ? "imageMessage" : "conversation"),
     textBody: overrides.text ?? null,
     caption: overrides.caption ?? null,
@@ -140,8 +143,12 @@ test("case 1 — Massage Gun: the price text and its 12 photos land in one bundl
   assert.ok(membersOf(result, "ac72828e-gun-text").includes("gun-image-12"));
   assert.ok(membersOf(result, "gun-image-12").includes("ac72828e-gun-text"));
   assert.equal(membersOf(result, "gun-image-12").length, 14);
-  assert.equal(bundle.mediaExpected, 12, "13 advertised minus the container itself");
+  // The advertised 13 is a promise with one seat of slack, not "13 minus the
+  // container". It is reported untouched; the one missing seat is named.
+  assert.equal(bundle.mediaExpected, 13);
   assert.equal(bundle.mediaStored, 12);
+  assert.equal(bundle.mediaPartialSeats, 1);
+  assert.equal(bundle.reviewReason, null, "12 of 13 with one seat of slack is complete");
 });
 
 // ------------------------------------------------------------ cases 2+3 ----
@@ -480,4 +487,297 @@ test("plan — is deterministic and keeps bundle ids stable when the window grow
 
   assert.equal(bundleOf(first, "text").id, bundleOf(second, "text").id);
   assert.equal(second.messageBundle.get("late"), bundleOf(first, "text").id);
+});
+
+// ============================================================================
+// Phase 4 — signal repair. Every test below fails on the pre-repair engine.
+// ============================================================================
+
+const at4 = (time) => `2026-11-28T${time}Z`;
+
+function plan4(messages) {
+  return planShadowBundles(messages, { evaluatedAt: NOW });
+}
+
+/** Which bundle ids exist, as sorted member lists, for shape assertions. */
+function shapes(result, names) {
+  return result.bundles
+    .map((bundle) => bundle.members.map((member) => names[member.messageId] ?? member.messageId).sort().join("+"))
+    .sort();
+}
+
+// ---------------------------------------------------------------- R-1 ----
+
+test("R-1 CASE A — Text A, Image A, Text B, Image B: two bundles, never crossed", () => {
+  const result = plan4([
+    message({ id: "TA", text: "منتج اول 1000", at: at4("10:00:00.000") }),
+    message({ id: "IA", media: true, at: at4("10:00:01.000") }),
+    message({ id: "TB", text: "منتج ثاني 2000", at: at4("10:00:05.000") }),
+    message({ id: "IB", media: true, at: at4("10:00:06.000") }),
+  ]);
+  const bundleA = bundleOf(result, "TA");
+  const bundleB = bundleOf(result, "TB");
+
+  assert.ok(bundleA && bundleB);
+  assert.notEqual(bundleA.id, bundleB.id, "two products must be two bundles");
+  assert.ok(!bundleA.members.some((member) => member.messageId === "IB"), "image B must not join product A");
+  assert.ok(!bundleB.members.some((member) => member.messageId === "IA"), "image A must not join product B");
+});
+
+test("R-1 CASE B — Text A, Image A, Image B, Text B: B's photo is not absorbed silently", () => {
+  const result = plan4([
+    message({ id: "TA", text: "منتج اول 1000", at: at4("10:00:00.000") }),
+    message({ id: "IA", media: true, at: at4("10:00:01.000") }),
+    message({ id: "IB", media: true, at: at4("10:00:02.000") }),
+    message({ id: "TB", text: "منتج ثاني 2000", at: at4("10:00:05.000") }),
+  ]);
+
+  const mediaCluster = bundleOf(result, "IA");
+  assert.equal(mediaCluster.status, "NEEDS_REVIEW");
+  assert.equal(mediaCluster.reviewReason, "MULTIPLE_TEXT_CANDIDATES");
+  // Neither text is swallowed by the undecidable pair.
+  assert.ok(!mediaCluster.members.some((member) => member.messageId === "TA"));
+  assert.ok(!mediaCluster.members.some((member) => member.messageId === "TB"));
+});
+
+test("R-1 CASE C — Image A, Text B, Image C: no cluster across the text", () => {
+  const result = plan4([
+    message({ id: "IA", media: true, at: at4("10:00:00.000") }),
+    message({ id: "TB", text: "منتج ثاني 2000", at: at4("10:00:01.000") }),
+    message({ id: "IC", media: true, at: at4("10:00:02.000") }),
+  ]);
+
+  assert.notEqual(bundleOf(result, "IA").id, bundleOf(result, "IC").id, "the text is a hard boundary");
+});
+
+test("R-1 CASE D — Product A then Product B inside 30 s: zero merges", () => {
+  const result = plan4([
+    message({ id: "TA", text: "ساعة نافي فورس 6500", at: at4("10:00:00.000") }),
+    message({ id: "IA", media: true, at: at4("10:00:01.000") }),
+    message({ id: "TB", text: "مسحوق سحري 1000", at: at4("10:00:10.000") }),
+    message({ id: "IB", media: true, at: at4("10:00:11.000") }),
+  ]);
+
+  assert.deepEqual(
+    shapes(result, { TA: "TA", IA: "IA", TB: "TB", IB: "IB" }),
+    ["IA+TA", "IB+TB"],
+  );
+});
+
+test("R-1 CASE E — three products inside 30 s: no cluster holds all three", () => {
+  const result = plan4([
+    message({ id: "T1", text: "اول منتج", at: at4("10:00:00.000") }),
+    message({ id: "I1", media: true, at: at4("10:00:02.000") }),
+    message({ id: "T2", text: "ثاني منتج", at: at4("10:00:06.000") }),
+    message({ id: "I2", media: true, at: at4("10:00:08.000") }),
+    message({ id: "T3", text: "ثالث منتج", at: at4("10:00:12.000") }),
+    message({ id: "I3", media: true, at: at4("10:00:14.000") }),
+  ]);
+
+  for (const bundle of result.bundles) {
+    assert.ok(bundle.members.length <= 2, `a bundle of ${bundle.members.length} spans products: ${bundle.kind}`);
+    assert.ok(!bundle.members.some((member) => member.messageId.startsWith("I") && member.messageId !== member.messageId));
+  }
+  const mediaMembers = result.bundles.flatMap((bundle) =>
+    bundle.members.filter((member) => member.messageId.startsWith("I")).map((member) => member.messageId),
+  );
+  assert.deepEqual([...new Set(mediaMembers)].sort(), ["I1", "I2", "I3"], "each photo is planned exactly once");
+  // And no single bundle carries two of the three photos.
+  const maxPhotosInOneBundle = Math.max(
+    ...result.bundles.map((bundle) => bundle.members.filter((member) => member.messageId.startsWith("I")).length),
+  );
+  assert.equal(maxPhotosInOneBundle, 1);
+});
+
+test("R-1 — a text still anchors the photos on the other side of it", () => {
+  // The boundary must not break the legitimate shape: one text, its own photos.
+  const result = plan4([
+    message({ id: "T", text: "مكنسة غسيل السجاد 1200 واط", at: at4("10:00:00.000") }),
+    message({ id: "I1", media: true, at: at4("10:00:05.000") }),
+    message({ id: "I2", media: true, at: at4("10:00:06.000") }),
+    message({ id: "I3", media: true, at: at4("10:00:07.000") }),
+  ]);
+
+  assert.deepEqual(shapes(result, { T: "T", I1: "I1", I2: "I2", I3: "I3" }), ["I1+I2+I3+T"]);
+});
+
+// ---------------------------------------------------------------- R-2 ----
+
+test("R-2 — expected 13, children 12, container 1: complete, promise untouched", () => {
+  const result = plan4([
+    message({ id: "AC", messageType: "albumMessage", mediaGroupId: "album:A", expected: 13, at: at4("10:00:00.000") }),
+    ...Array.from({ length: 12 }, (_, index) =>
+      message({ id: `C${index}`, media: true, mediaGroupId: "album:A", at: at4("10:00:01.000") }),
+    ),
+  ]);
+  const bundle = bundleOf(result, "AC");
+
+  assert.equal(bundle.status, "READY");
+  assert.equal(bundle.reviewReason, null);
+  assert.equal(bundle.mediaExpected, 13, "the advertised promise is reported, never rewritten");
+  assert.equal(bundle.mediaStored, 12);
+  assert.equal(bundle.mediaPartialSeats, 1);
+});
+
+test("R-2 — expected 8, children 7, container 1: complete", () => {
+  const result = plan4([
+    message({ id: "AC", messageType: "albumMessage", mediaGroupId: "album:A", expected: 8, at: at4("10:00:00.000") }),
+    ...Array.from({ length: 7 }, (_, index) =>
+      message({ id: `C${index}`, media: true, mediaGroupId: "album:A", at: at4("10:00:01.000") }),
+    ),
+  ]);
+  const bundle = bundleOf(result, "AC");
+
+  assert.equal(bundle.status, "READY");
+  assert.equal(bundle.reviewReason, null);
+  assert.equal(bundle.mediaPartialSeats, 1);
+});
+
+test("R-2 — expected 4, children 4, container 1: complete with no shortfall", () => {
+  const result = plan4([
+    message({ id: "AC", messageType: "albumMessage", mediaGroupId: "album:A", expected: 4, at: at4("10:00:00.000") }),
+    ...Array.from({ length: 4 }, (_, index) =>
+      message({ id: `C${index}`, media: true, mediaGroupId: "album:A", at: at4("10:00:01.000") }),
+    ),
+  ]);
+  const bundle = bundleOf(result, "AC");
+
+  assert.equal(bundle.status, "READY");
+  assert.equal(bundle.reviewReason, null);
+  assert.equal(bundle.mediaExpected, 4, "the container is not added to, nor subtracted from, the count");
+  assert.equal(bundle.mediaPartialSeats, 0);
+});
+
+test("R-2 — expected 4, children 2: MEDIA_PARTIAL with two seats named", () => {
+  const result = plan4([
+    message({ id: "AC", messageType: "albumMessage", mediaGroupId: "album:A", expected: 4, at: at4("10:00:00.000") }),
+    message({ id: "C1", media: true, mediaGroupId: "album:A", at: at4("10:00:01.000") }),
+    message({ id: "C2", media: true, mediaGroupId: "album:A", at: at4("10:00:02.000") }),
+  ]);
+  const bundle = bundleOf(result, "AC");
+
+  assert.equal(bundle.status, "READY");
+  assert.equal(bundle.reviewReason, "MEDIA_PARTIAL");
+  assert.equal(bundle.mediaPartialSeats, 2);
+});
+
+test("R-2 — container only is not media", () => {
+  const result = plan4([
+    message({ id: "AC", messageType: "albumMessage", mediaGroupId: "album:A", expected: 2, at: "2026-11-24T22:02:41.000Z" }),
+  ]);
+  const bundle = bundleOf(result, "AC");
+
+  assert.equal(bundle.status, "READY");
+  assert.equal(bundle.mediaStored, 0);
+  assert.equal(bundle.mediaExpected, 2);
+  assert.equal(bundle.mediaPartialSeats, 2);
+  assert.equal(bundle.reviewReason, "MEDIA_PARTIAL");
+  assert.equal(bundle.members[0].role, "media");
+});
+
+test("R-2 — an empty container may not claim an unrelated text", () => {
+  const result = plan4([
+    message({ id: "AC", messageType: "albumMessage", mediaGroupId: "album:A", expected: 2, at: at4("10:00:00.000") }),
+    message({ id: "T", text: "ساعات نافي فورس حديد رجالي", at: at4("10:00:00.000") }),
+  ]);
+
+  assert.notEqual(bundleOf(result, "AC").id, bundleOf(result, "T").id);
+  assert.equal(bundleOf(result, "T").members.length, 1);
+});
+
+// ---------------------------------------------------------------- R-6 ----
+
+test("R-6 — two unknown senders are not the same sender", () => {
+  const result = plan4([
+    message({ id: "I1", senderId: null, media: true, at: at4("10:00:00.000") }),
+    message({ id: "I2", senderId: null, media: true, at: at4("10:00:01.000") }),
+  ]);
+
+  assert.notEqual(bundleOf(result, "I1").id, bundleOf(result, "I2").id, "null === null is not a match");
+});
+
+test("R-6 — unknown vs known sender is not the same sender", () => {
+  const result = plan4([
+    message({ id: "I1", senderId: null, media: true, at: at4("10:00:00.000") }),
+    message({ id: "I2", senderId: "+967777187184", media: true, at: at4("10:00:01.000") }),
+  ]);
+
+  assert.notEqual(bundleOf(result, "I1").id, bundleOf(result, "I2").id);
+});
+
+test("R-6 — equal non-null senders are the same sender", () => {
+  const result = plan4([
+    message({ id: "I1", senderId: "+967777187184", media: true, at: at4("10:00:00.000") }),
+    message({ id: "I2", senderId: "+967777187184", media: true, at: at4("10:00:01.000") }),
+  ]);
+
+  assert.equal(bundleOf(result, "I1").id, bundleOf(result, "I2").id);
+});
+
+test("R-6 — a text from an unknown sender does not anchor another sender's photo", () => {
+  const result = plan4([
+    message({ id: "T", senderId: null, text: "مسحوق سحري 1000", at: at4("10:00:00.000") }),
+    message({ id: "I", senderId: "+967777187184", media: true, at: at4("10:00:01.000") }),
+  ]);
+
+  assert.notEqual(bundleOf(result, "T").id, bundleOf(result, "I").id);
+});
+
+// ---------------------------------------------------------------- R-3 ----
+
+test("R-3 CASE 24 — stanzaId is read from the nested media node", () => {
+  const payload = {
+    key: { id: "ACNEW", remoteJid: GROUP_JID, fromMe: true },
+    messageType: "imageMessage",
+    message: {
+      imageMessage: {
+        url: "https://example.invalid/a.enc",
+        contextInfo: {
+          stanzaId: "ACFF586F7372CE2E5E24BB9B24A2F9FA",
+          participant: "967777187184@s.whatsapp.net",
+          quotedMessage: { imageMessage: { url: "https://example.invalid/b.enc" } },
+        },
+      },
+      messageContextInfo: { messageSecret: "secret" },
+    },
+  };
+  const signal = extractWhatsAppReplySignal(payload, payload.message);
+
+  assert.equal(signal.replyToRemoteId, "ACFF586F7372CE2E5E24BB9B24A2F9FA");
+  assert.equal(signal.participant, "967777187184@s.whatsapp.net");
+  assert.equal(signal.hasQuotedMessage, true);
+  assert.equal(signal.source, "message.contextInfo");
+});
+
+test("R-3 CASE 25 — a nested context without stanzaId yields nothing", () => {
+  const payload = {
+    key: { id: "ACNEW", remoteJid: GROUP_JID },
+    message: {
+      imageMessage: {
+        url: "https://example.invalid/a.enc",
+        contextInfo: { mentionedJid: [], groupMentions: [], pairedMediaType: 0, statusAttributions: [] },
+      },
+      messageContextInfo: { messageSecret: "secret" },
+    },
+  };
+  const signal = extractWhatsAppReplySignal(payload, payload.message);
+
+  assert.equal(signal.replyToRemoteId, null);
+  assert.equal(signal.hasQuotedMessage, false);
+  assert.equal(signal.source, null);
+});
+
+test("R-3 — the root-level paths that used to work still work", () => {
+  assert.equal(extractWhatsAppReplySignal({ replyTo: "ACREPLY" }, {}).replyToRemoteId, "ACREPLY");
+  assert.equal(
+    extractWhatsAppReplySignal({ contextInfo: { stanzaId: "ACROOT" } }, {}).replyToRemoteId,
+    "ACROOT",
+  );
+});
+
+test("R-3 — a look-alike string in an unrelated field is never taken", () => {
+  const payload = {
+    message: { imageMessage: { url: "x", mediaKey: "ACDEADBEEF", contextInfo: {} } },
+  };
+  assert.equal(extractWhatsAppReplySignal(payload, payload.message).replyToRemoteId, null);
 });

@@ -128,6 +128,136 @@ export function extractWhatsAppAlbumAssociation(value: unknown): WhatsAppAlbumAs
   return association;
 }
 
+/** Where a quoted-message signal was found. Recorded, never guessed. */
+export type WhatsAppReplySignalSource =
+  | "payload.replyTo"
+  | "payload.contextInfo"
+  | "message.contextInfo"
+  | "message.messageContextInfo"
+  | "message.info.contextInfo";
+
+export type WhatsAppReplySignal = {
+  /** The remote id of the quoted message, when one can be identified. */
+  replyToRemoteId: string | null;
+  /** The author of the *original* message, when the payload names one. */
+  participant: string | null;
+  /** True when a quoted body was present. Recorded as a signal only. */
+  hasQuotedMessage: boolean;
+  source: WhatsAppReplySignalSource | null;
+};
+
+const NO_REPLY_SIGNAL: WhatsAppReplySignal = {
+  replyToRemoteId: null,
+  participant: null,
+  hasQuotedMessage: false,
+  source: null,
+};
+
+/**
+ * Evolution puts the quoted-message context under the *media node*
+ * (`message.imageMessage.contextInfo`) or beside it (`message.messageContextInfo`),
+ * not on the envelope root. The old code read only the root, so a stanza id that
+ * did arrive could never be seen.
+ *
+ * The lookup is a fixed list of addresses, in priority order, and each address
+ * is read with a fixed field list. Nothing is found by shape: a value that
+ * merely *looks like* a message id is never taken, because a wrong quote is worse
+ * than no quote — it would attach one product's reply to another product.
+ *
+ * `message` must be the resolved node (`payload.message` when present, else the
+ * payload itself), which is what the caller already computes for text and media.
+ */
+export function extractWhatsAppReplySignal(
+  payload: unknown,
+  message: unknown,
+): WhatsAppReplySignal {
+  const envelope = asRecord(payload);
+  const node = asRecord(message) ?? envelope;
+  if (!envelope && !node) return NO_REPLY_SIGNAL;
+
+  const idFields = ["stanzaId", "stanzaID", "quotedMessageId", "replyToId"] as const;
+  const participantFields = ["participant", "participantPn", "senderJid"] as const;
+
+  const readString = (
+    record: Record<string, unknown> | null,
+    fields: readonly string[],
+  ): string | null => {
+    if (!record) return null;
+    for (const field of fields) {
+      const value = normalizeText(record[field]);
+      if (value) return value;
+    }
+    return null;
+  };
+
+  const hasQuotedBody = (record: Record<string, unknown> | null): boolean => {
+    if (!record) return false;
+    const quoted = asRecord(record.quotedMessage);
+    return Boolean(quoted && Object.keys(quoted).length > 0);
+  };
+
+  // The media/type node is the first key of `message` whose value holds a
+  // `contextInfo` (imageMessage, videoMessage, extendedTextMessage, …).
+  const typeNodes: Record<string, unknown>[] = [];
+  for (const [key, value] of Object.entries(node ?? {})) {
+    if (key.endsWith("Message") && key !== "quotedMessage") {
+      const record = asRecord(value);
+      if (record) typeNodes.push(record);
+    }
+  }
+
+  const candidates: Array<{
+    source: WhatsAppReplySignalSource;
+    context: Record<string, unknown> | null;
+    directId?: string | null;
+  }> = [];
+
+  // 1. The envelope root, exactly as the old code read it — kept so nothing that
+  //    worked before stops working.
+  candidates.push({
+    source: "payload.replyTo",
+    context: null,
+    directId: normalizeText(envelope?.replyTo),
+  });
+  candidates.push({
+    source: "payload.contextInfo",
+    context: asRecord(envelope?.contextInfo),
+  });
+  // 2. Beside the message node.
+  candidates.push({
+    source: "message.messageContextInfo",
+    context: asRecord(node?.messageContextInfo),
+  });
+  // 3. Inside each typed media node — the shape Evolution actually sends.
+  for (const typeNode of typeNodes) {
+    candidates.push({
+      source: "message.contextInfo",
+      context: asRecord(typeNode.contextInfo),
+    });
+  }
+  // 4. Some wrappers put it under `info`.
+  candidates.push({
+    source: "message.info.contextInfo",
+    context: asRecord(asRecord(node?.info)?.contextInfo),
+  });
+
+  for (const candidate of candidates) {
+    const direct = candidate.directId ?? null;
+    const id = direct ?? readString(candidate.context, idFields);
+    const participant = readString(candidate.context, participantFields);
+    const hasQuotedMessage = hasQuotedBody(candidate.context);
+    if (!id && !participant && !hasQuotedMessage) continue;
+    return {
+      replyToRemoteId: id,
+      participant,
+      hasQuotedMessage,
+      source: candidate.source,
+    };
+  }
+
+  return NO_REPLY_SIGNAL;
+}
+
 export function isWhatsAppAlbumContainer(value: unknown): boolean {
   let found = false;
   walkRecords(value, (record) => {
