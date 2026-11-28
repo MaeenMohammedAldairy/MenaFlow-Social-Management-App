@@ -1,0 +1,1650 @@
+{
+  "_comment": [
+    "Real production rows, copied verbatim from mena_whatsapp_messages + mena_whatsapp_message_media",
+    "on 2026-11-28. Texts are the stored bodies (trimmed to the lines that carry the offer).",
+    "`legacy` is what the current pipeline actually did with each message, read from",
+    "mena_product_extraction_sources -> mena_product_extraction_suggestions.group_key and from",
+    "mena_whatsapp_content_associations for the accepted bundles.",
+    "This file is READ ONLY input for the shadow planner: nothing writes to it.",
+    "Legacy membership below is the NEWEST suggestion version per group_key, read from mena_product_extraction_suggestions/sources."
+  ],
+  "evaluatedAt": "2026-11-28T18:30:00.000Z",
+  "messages": [
+    {
+      "id": "c9571cf9-2a7e-4f12-8184-72795e2acf4d",
+      "remoteMessageId": "AC395EBE954CA284FC2B811ACE0802D9",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "conversation",
+      "textBody": "عروض شهر 11 ساعات نافي فورس حديد رجالي تاريخ\n\nساعات نافي فورس استانلس ستيل شبابي كلاسيكي مع التاريخ ضد الماء 30 متر\n\nسعر البيع لا يقل عن 6500",
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-24T22:02:41.000Z",
+      "createdAt": "2026-11-25T22:01:09.150Z",
+      "media": []
+    },
+    {
+      "id": "e5ccde-album-container",
+      "remoteMessageId": "ACE5CCDE",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "albumMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": "album:64ed7a888acd",
+      "mediaGroupSource": "provider_album_container",
+      "mediaGroupExpectedCount": 2,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-24T22:02:41.000Z",
+      "createdAt": "2026-11-25T22:01:09.120Z",
+      "media": []
+    },
+    {
+      "id": "a6f68e10-0808-4b75-b527-0b0742df0b9b",
+      "remoteMessageId": "AC0232BE6FF49D37AE92A527BC8AF812",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-24T22:09:11.000Z",
+      "createdAt": "2026-11-25T22:51:09.967Z",
+      "media": [
+        {
+          "id": "md-ac0232be",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "246a489c-7c90-4836-98e5-81cea330179b",
+      "remoteMessageId": "AC18D92208EFC7865FF5B598C24C982A",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-24T22:09:11.000Z",
+      "createdAt": "2026-11-25T22:51:10.230Z",
+      "media": [
+        {
+          "id": "md-ac18d922",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "fda0fd1d-a1fb-4de1-968a-d365f3712f67",
+      "remoteMessageId": "AC86C24C790585663E1682B0348DCF3E",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-24T22:09:12.000Z",
+      "createdAt": "2026-11-25T22:51:10.234Z",
+      "media": [
+        {
+          "id": "md-ac86c24c",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "bb9706db-fd14-4f53-98d3-7cf1126708fd",
+      "remoteMessageId": "ACB1DD625F130C7C7E810200DAC9BBAA",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "conversation",
+      "textBody": "مسحوق سحري لفك انسداد الأنابيب – الحل السريع والفعال!\n\nبتركيبة قوية وفعالة، هذا المسحوق بوزن 270 جرام\n\nفقط ب 1000ريال",
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-24T22:09:22.000Z",
+      "createdAt": "2026-11-25T22:51:10.964Z",
+      "media": []
+    },
+    {
+      "id": "9a45b275-449b-41c5-9086-812ad3f188c5",
+      "remoteMessageId": "AC72828E726D35275A84F765D52A7326",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "conversation",
+      "textBody": "السعر بعد التخفيض 9500 ريااال\n\nمسدس تدليك العضلات الاحترافي مزود بـ12 راس النوع الاصلي",
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:10.000Z",
+      "createdAt": "2026-11-27T00:19:41.900Z",
+      "media": []
+    },
+    {
+      "id": "acfeface-album-container",
+      "remoteMessageId": "ACFEFACE",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "albumMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": 13,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:10.000Z",
+      "createdAt": "2026-11-27T00:19:41.776Z",
+      "media": []
+    },
+    {
+      "id": "ac72932b-gun-01",
+      "remoteMessageId": "AC72932B44B9C5919552520CF94A7983",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:10.000Z",
+      "createdAt": "2026-11-27T00:19:42.268Z",
+      "media": [
+        {
+          "id": "md-ac72932b",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-02",
+      "remoteMessageId": "ACA67596",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:11.000Z",
+      "createdAt": "2026-11-27T00:19:44.098Z",
+      "media": [
+        {
+          "id": "md-gun02",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-03",
+      "remoteMessageId": "ACA7D6DA",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:11.000Z",
+      "createdAt": "2026-11-27T00:19:43.632Z",
+      "media": [
+        {
+          "id": "md-gun03",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-04",
+      "remoteMessageId": "AC0B4EA8",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:12.000Z",
+      "createdAt": "2026-11-27T00:19:45.489Z",
+      "media": [
+        {
+          "id": "md-gun04",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-05",
+      "remoteMessageId": "AC192812",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:12.000Z",
+      "createdAt": "2026-11-27T00:19:48.532Z",
+      "media": [
+        {
+          "id": "md-gun05",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-06",
+      "remoteMessageId": "AC4960DE",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:12.000Z",
+      "createdAt": "2026-11-27T00:19:48.085Z",
+      "media": [
+        {
+          "id": "md-gun06",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-07",
+      "remoteMessageId": "AC7B8A53",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:12.000Z",
+      "createdAt": "2026-11-27T00:19:50.184Z",
+      "media": [
+        {
+          "id": "md-gun07",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-08",
+      "remoteMessageId": "AC465E0C",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:13.000Z",
+      "createdAt": "2026-11-27T00:19:52.488Z",
+      "media": [
+        {
+          "id": "md-gun08",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-09",
+      "remoteMessageId": "ACB969BC",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:13.000Z",
+      "createdAt": "2026-11-27T00:19:52.266Z",
+      "media": [
+        {
+          "id": "md-gun09",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-10",
+      "remoteMessageId": "ACFCD663",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:13.000Z",
+      "createdAt": "2026-11-27T00:19:52.250Z",
+      "media": [
+        {
+          "id": "md-gun10",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-11",
+      "remoteMessageId": "AC98BF30",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:14.000Z",
+      "createdAt": "2026-11-27T00:19:54.843Z",
+      "media": [
+        {
+          "id": "md-gun11",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "gun-12",
+      "remoteMessageId": "ACC45830",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:5e793280bf47f71a5a8c1fc809ddaad781fd53a6ef0764afa7e35827dd4b489c",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-26T20:51:14.000Z",
+      "createdAt": "2026-11-27T00:19:54.563Z",
+      "media": [
+        {
+          "id": "md-gun12",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "ac518df9-fleece",
+      "remoteMessageId": "AC518DF9DC24F48080D5CEA91616DD81",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "conversation",
+      "textBody": "دفا وأناقة في قطعة واحدة!\n\nالسعر فقط با 1000",
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:39:03.000Z",
+      "createdAt": "2026-11-27T22:39:05.000Z",
+      "media": []
+    },
+    {
+      "id": "fleece-img-1",
+      "remoteMessageId": "AC18F778",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:39:04.000Z",
+      "createdAt": "2026-11-27T22:39:06.000Z",
+      "media": [
+        {
+          "id": "md-fleece1",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "fleece-img-2",
+      "remoteMessageId": "AC1AE7D1",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:39:04.000Z",
+      "createdAt": "2026-11-27T22:39:06.100Z",
+      "media": [
+        {
+          "id": "md-fleece2",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "fleece-img-3",
+      "remoteMessageId": "ACF022E8",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:39:04.000Z",
+      "createdAt": "2026-11-27T22:39:06.200Z",
+      "media": [
+        {
+          "id": "md-fleece3",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "ac44c7c8-fleece",
+      "remoteMessageId": "AC44C7C89996A3954D70E4E83680D99F",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:39:04.000Z",
+      "createdAt": "2026-11-27T22:39:06.300Z",
+      "media": [
+        {
+          "id": "md-fleece4",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "fleece-img-5",
+      "remoteMessageId": "AC65922F",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:39:04.000Z",
+      "createdAt": "2026-11-27T22:39:06.400Z",
+      "media": [
+        {
+          "id": "md-fleece5",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "acb17355-sokany",
+      "remoteMessageId": "ACB17355B85286D026733BA722225622",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "conversation",
+      "textBody": "شي جديد ولاول مره باليمن\n\nعجانه سوكاني 3.5 لتر 9500 ريال",
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:46:49.000Z",
+      "createdAt": "2026-11-27T22:46:50.000Z",
+      "media": []
+    },
+    {
+      "id": "sokany-img-1",
+      "remoteMessageId": "AC771840",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:46:49.000Z",
+      "createdAt": "2026-11-27T22:46:51.000Z",
+      "media": [
+        {
+          "id": "md-sokany1",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "sokany-img-2",
+      "remoteMessageId": "ACE7FB8F",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:46:49.000Z",
+      "createdAt": "2026-11-27T22:46:51.100Z",
+      "media": [
+        {
+          "id": "md-sokany2",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "sokany-img-3",
+      "remoteMessageId": "AC6DB6DD",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:46:49.000Z",
+      "createdAt": "2026-11-27T22:46:51.200Z",
+      "media": [
+        {
+          "id": "md-sokany3",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "sokany-img-4",
+      "remoteMessageId": "AC91A1DA",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:46:50.000Z",
+      "createdAt": "2026-11-27T22:46:51.300Z",
+      "media": [
+        {
+          "id": "md-sokany4",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "sokany-img-5",
+      "remoteMessageId": "ACF6F9B3",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-27T22:46:50.000Z",
+      "createdAt": "2026-11-27T22:46:51.400Z",
+      "media": [
+        {
+          "id": "md-sokany5",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "ac683ca0-vacuum",
+      "remoteMessageId": "AC683CA094BF5841CC7D72FA4E00BC75",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "conversation",
+      "textBody": "مكنسة غسيل السجاد والكنب من DSP Professional تتميز بقوة شفط عالية 1200 واط",
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:50.000Z",
+      "createdAt": "2026-11-28T17:44:50.500Z",
+      "media": []
+    },
+    {
+      "id": "acb52bb7-album-container",
+      "remoteMessageId": "ACB52BB7",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "albumMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": "album:2157410a77",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": 3,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:50.000Z",
+      "createdAt": "2026-11-28T17:44:50.800Z",
+      "media": []
+    },
+    {
+      "id": "acd7322c-vacuum-img",
+      "remoteMessageId": "ACD7322CE078451C1EF4ED0263659D54",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:51.000Z",
+      "createdAt": "2026-11-28T17:44:51.100Z",
+      "media": [
+        {
+          "id": "md-acd7322c",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "ac550874-decor",
+      "remoteMessageId": "AC5508745816D30DAEF7253782541C24",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": "وصل وصل",
+      "caption": "وصل وصل",
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:51.000Z",
+      "createdAt": "2026-11-28T17:44:51.200Z",
+      "media": [
+        {
+          "id": "md-ac550874",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "acd54fe5-drain-gun",
+      "remoteMessageId": "ACD54FE536CF0030ACF4B53D4FCD8CA9",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "conversation",
+      "textBody": "مسدس تسليك المجاري الهوائي – قوة الضغط لحل أصعب الانسدادات 8500 ريال",
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:51.000Z",
+      "createdAt": "2026-11-28T17:44:51.300Z",
+      "media": []
+    },
+    {
+      "id": "acf2865d-decor2",
+      "remoteMessageId": "ACF2865DF17C599A53DB817BA458DDAD",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:51.000Z",
+      "createdAt": "2026-11-28T17:44:51.400Z",
+      "media": [
+        {
+          "id": "md-acf2865d",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "vac-img-album-1",
+      "remoteMessageId": "AC9321C2",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:2157410a77",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:52.000Z",
+      "createdAt": "2026-11-28T17:44:52.100Z",
+      "media": [
+        {
+          "id": "md-ac9321c2",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "acfdcc6e-clock",
+      "remoteMessageId": "ACFDCC6ECD5279DBF7187C2B3503450E",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "conversation",
+      "textBody": "ساعة الحائط الزاوية الثنائية – أناقة الوقت من كل زاوية",
+      "caption": null,
+      "mediaAvailable": false,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:52.000Z",
+      "createdAt": "2026-11-28T17:44:52.200Z",
+      "media": []
+    },
+    {
+      "id": "vac-img-album-2",
+      "remoteMessageId": "ACE821FB",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:2157410a77",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:52.000Z",
+      "createdAt": "2026-11-28T17:44:52.300Z",
+      "media": [
+        {
+          "id": "md-ace821fb",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "ac67cba2-alone",
+      "remoteMessageId": "AC67CBA2",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": "عالم من الخيال",
+      "caption": "عالم من الخيال",
+      "mediaAvailable": true,
+      "mediaGroupId": null,
+      "mediaGroupSource": null,
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:52.000Z",
+      "createdAt": "2026-11-28T17:44:52.400Z",
+      "media": [
+        {
+          "id": "md-ac67cba2",
+          "downloadStatus": "stored"
+        }
+      ]
+    },
+    {
+      "id": "vac-img-album-3",
+      "remoteMessageId": "ACB7B87B",
+      "workspaceId": "ws",
+      "ownerId": "owner",
+      "instanceName": "mena",
+      "groupId": "3c26d6f4-80c1-411c-942b-e45385589fd9",
+      "groupJid": "120363430177130458@g.us",
+      "senderId": "+967777187184",
+      "messageType": "imageMessage",
+      "textBody": null,
+      "caption": null,
+      "mediaAvailable": true,
+      "mediaGroupId": "album:2157410a77",
+      "mediaGroupSource": "protocol_association",
+      "mediaGroupExpectedCount": null,
+      "mediaGroupIndex": null,
+      "replyToRemoteId": null,
+      "messageTimestamp": "2026-11-28T17:44:52.000Z",
+      "createdAt": "2026-11-28T17:44:52.500Z",
+      "media": [
+        {
+          "id": "md-acb7b87b",
+          "downloadStatus": "stored"
+        }
+      ]
+    }
+  ],
+  "legacy": [
+    {
+      "messageId": "c9571cf9-2a7e-4f12-8184-72795e2acf4d",
+      "groupKey": "0bef4438",
+      "kind": "message",
+      "memberMessageIds": [
+        "c9571cf9-2a7e-4f12-8184-72795e2acf4d"
+      ]
+    },
+    {
+      "messageId": "a6f68e10-0808-4b75-b527-0b0742df0b9b",
+      "groupKey": "2992d1f6",
+      "kind": "message",
+      "memberMessageIds": [
+        "a6f68e10-0808-4b75-b527-0b0742df0b9b"
+      ]
+    },
+    {
+      "messageId": "246a489c-7c90-4836-98e5-81cea330179b",
+      "groupKey": "01e0c6b3",
+      "kind": "message",
+      "memberMessageIds": [
+        "246a489c-7c90-4836-98e5-81cea330179b"
+      ]
+    },
+    {
+      "messageId": "fda0fd1d-a1fb-4de1-968a-d365f3712f67",
+      "groupKey": "507cf0a6",
+      "kind": "message",
+      "memberMessageIds": [
+        "fda0fd1d-a1fb-4de1-968a-d365f3712f67"
+      ]
+    },
+    {
+      "messageId": "acfeface-album-container",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "ac72932b-gun-01",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-02",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-03",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-04",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-05",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-06",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-07",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-08",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-09",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-10",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-11",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "gun-12",
+      "groupKey": "0d958cd8",
+      "kind": "album",
+      "memberMessageIds": [
+        "acfeface-album-container",
+        "ac72932b-gun-01",
+        "gun-02",
+        "gun-03",
+        "gun-04",
+        "gun-05",
+        "gun-06",
+        "gun-07",
+        "gun-08",
+        "gun-09",
+        "gun-10",
+        "gun-11",
+        "gun-12"
+      ]
+    },
+    {
+      "messageId": "ac683ca0-vacuum",
+      "groupKey": "bundle:a556eb70",
+      "kind": "bundle",
+      "memberMessageIds": [
+        "ac683ca0-vacuum",
+        "acd54fe5-drain-gun",
+        "acd7322c-vacuum-img",
+        "acfdcc6e-clock"
+      ]
+    },
+    {
+      "messageId": "acd54fe5-drain-gun",
+      "groupKey": "bundle:a556eb70",
+      "kind": "bundle",
+      "memberMessageIds": [
+        "ac683ca0-vacuum",
+        "acd54fe5-drain-gun",
+        "acd7322c-vacuum-img",
+        "acfdcc6e-clock"
+      ]
+    },
+    {
+      "messageId": "acd7322c-vacuum-img",
+      "groupKey": "bundle:a556eb70",
+      "kind": "bundle",
+      "memberMessageIds": [
+        "ac683ca0-vacuum",
+        "acd54fe5-drain-gun",
+        "acd7322c-vacuum-img",
+        "acfdcc6e-clock"
+      ]
+    },
+    {
+      "messageId": "acfdcc6e-clock",
+      "groupKey": "bundle:a556eb70",
+      "kind": "bundle",
+      "memberMessageIds": [
+        "ac683ca0-vacuum",
+        "acd54fe5-drain-gun",
+        "acd7322c-vacuum-img",
+        "acfdcc6e-clock"
+      ]
+    },
+    {
+      "messageId": "acf2865d-decor2",
+      "groupKey": "bundle:90630bd3",
+      "kind": "bundle",
+      "memberMessageIds": [
+        "acf2865d-decor2",
+        "ac550874-decor"
+      ]
+    },
+    {
+      "messageId": "ac550874-decor",
+      "groupKey": "bundle:90630bd3",
+      "kind": "bundle",
+      "memberMessageIds": [
+        "acf2865d-decor2",
+        "ac550874-decor"
+      ]
+    },
+    {
+      "messageId": "ac518df9-fleece",
+      "groupKey": "bundle:d459a5cc",
+      "kind": "bundle",
+      "memberMessageIds": [
+        "ac518df9-fleece",
+        "ac44c7c8-fleece"
+      ]
+    },
+    {
+      "messageId": "ac44c7c8-fleece",
+      "groupKey": "bundle:d459a5cc",
+      "kind": "bundle",
+      "memberMessageIds": [
+        "ac518df9-fleece",
+        "ac44c7c8-fleece"
+      ]
+    },
+    {
+      "messageId": "acb17355-sokany",
+      "groupKey": "bundle:d459a5cc",
+      "kind": "bundle",
+      "memberMessageIds": [
+        "acb17355-sokany"
+      ]
+    },
+    {
+      "messageId": "fleece-img-1",
+      "groupKey": "message:4b6071fd",
+      "kind": "message",
+      "memberMessageIds": [
+        "fleece-img-1"
+      ]
+    },
+    {
+      "messageId": "fleece-img-2",
+      "groupKey": "message:1ad225f1",
+      "kind": "message",
+      "memberMessageIds": [
+        "fleece-img-2"
+      ]
+    },
+    {
+      "messageId": "fleece-img-3",
+      "groupKey": "message:a720b871",
+      "kind": "message",
+      "memberMessageIds": [
+        "fleece-img-3"
+      ]
+    },
+    {
+      "messageId": "fleece-img-5",
+      "groupKey": "message:3822419b",
+      "kind": "message",
+      "memberMessageIds": [
+        "fleece-img-5"
+      ]
+    },
+    {
+      "messageId": "sokany-img-1",
+      "groupKey": "message:2e294d6e",
+      "kind": "message",
+      "memberMessageIds": [
+        "sokany-img-1"
+      ]
+    },
+    {
+      "messageId": "sokany-img-2",
+      "groupKey": "message:685dc142",
+      "kind": "message",
+      "memberMessageIds": [
+        "sokany-img-2"
+      ]
+    },
+    {
+      "messageId": "sokany-img-3",
+      "groupKey": "message:c0a01d58",
+      "kind": "message",
+      "memberMessageIds": [
+        "sokany-img-3"
+      ]
+    },
+    {
+      "messageId": "sokany-img-4",
+      "groupKey": "message:db63560f",
+      "kind": "message",
+      "memberMessageIds": [
+        "sokany-img-4"
+      ]
+    },
+    {
+      "messageId": "sokany-img-5",
+      "groupKey": "message:bad79d81",
+      "kind": "message",
+      "memberMessageIds": [
+        "sokany-img-5"
+      ]
+    },
+    {
+      "messageId": "acb52bb7-album-container",
+      "groupKey": "album:4ba89c38",
+      "kind": "album",
+      "memberMessageIds": [
+        "acb52bb7-album-container",
+        "vac-img-album-2",
+        "vac-img-album-3",
+        "vac-img-album-1"
+      ]
+    },
+    {
+      "messageId": "vac-img-album-2",
+      "groupKey": "album:4ba89c38",
+      "kind": "album",
+      "memberMessageIds": [
+        "acb52bb7-album-container",
+        "vac-img-album-2",
+        "vac-img-album-3",
+        "vac-img-album-1"
+      ]
+    },
+    {
+      "messageId": "vac-img-album-3",
+      "groupKey": "album:4ba89c38",
+      "kind": "album",
+      "memberMessageIds": [
+        "acb52bb7-album-container",
+        "vac-img-album-2",
+        "vac-img-album-3",
+        "vac-img-album-1"
+      ]
+    },
+    {
+      "messageId": "vac-img-album-1",
+      "groupKey": "album:4ba89c38",
+      "kind": "album",
+      "memberMessageIds": [
+        "acb52bb7-album-container",
+        "vac-img-album-2",
+        "vac-img-album-3",
+        "vac-img-album-1"
+      ]
+    },
+    {
+      "messageId": "ac67cba2-alone",
+      "groupKey": "message:915144bd",
+      "kind": "message",
+      "memberMessageIds": [
+        "ac67cba2-alone"
+      ]
+    },
+    {
+      "messageId": "e5ccde-album-container",
+      "groupKey": null,
+      "kind": "none",
+      "memberMessageIds": [
+        "e5ccde-album-container"
+      ]
+    },
+    {
+      "messageId": "bb9706db-fd14-4f53-98d3-7cf1126708fd",
+      "groupKey": null,
+      "kind": "none",
+      "memberMessageIds": [
+        "bb9706db-fd14-4f53-98d3-7cf1126708fd"
+      ]
+    },
+    {
+      "messageId": "9a45b275-449b-41c5-9086-812ad3f188c5",
+      "groupKey": null,
+      "kind": "none",
+      "memberMessageIds": [
+        "9a45b275-449b-41c5-9086-812ad3f188c5"
+      ]
+    }
+  ]
+}

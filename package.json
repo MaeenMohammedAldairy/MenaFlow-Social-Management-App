@@ -15,6 +15,7 @@
     "db:report:whatsapp-albums": "node scripts/report-whatsapp-album-post-candidates.js",
     "db:export:product-review-fixtures": "node --experimental-strip-types scripts/export-product-review-fixtures.mjs",
     "db:preview:whatsapp-media-recovery": "node scripts/preview-whatsapp-media-recovery.js",
+    "shadow:bundles": "node --experimental-strip-types artifacts/api-server/src/lib/whatsapp-bundle-shadow-cli.ts",
     "db:migrate:workspaces": "node scripts/migrate-workspaces.mjs",
     "dev:instagram": "node scripts/dev-instagram-tunnel.mjs",
     "typecheck:libs": "tsc --build",
